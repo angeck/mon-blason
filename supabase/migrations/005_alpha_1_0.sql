@@ -86,6 +86,7 @@ create or replace function can_manage_player(p uuid) returns boolean language sq
 $$;
 
 -- ---------- Validation : crée ou relie la fiche joueur ----------
+drop function if exists validate_membership(uuid);
 drop function if exists validate_membership(uuid, uuid);
 create or replace function validate_membership(mid uuid, p_team uuid default null, p_player uuid default null) returns void
 language plpgsql security definer set search_path = public as $$
