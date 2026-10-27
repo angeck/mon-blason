@@ -301,6 +301,13 @@ function shortName(id) { const p = name(id).trim().split(/\s+/); return p.length
 function pendRows(list) {
   return list.map((m) => `<div class="row" style="cursor:default"><span class="g">${esc(name(m.user_id))}<small>${ROLES[m.role]}${m.team_id ? ' · ' + esc(teamName(m.team_id)) : ''}${m.child_name ? ' · enfant : ' + esc(m.child_name) : ''}${!m.team_id && ['coach', 'joueur', 'parent'].includes(m.role) ? ' · équipe non choisie' : ''}</small></span><button class="btn small main" data-act="mok" data-id="${m.id}">Valider</button><button class="btn small" data-act="mno" data-id="${m.id}">Refuser</button></div>${teamPick(m)}`).join('');
 }
+function tagLabel(m, full) { return ROLES[m.role] + (m.team_id ? ' ' + teamName(m.team_id) : '') + (m.child_name ? ' · ' + (full ? m.child_name : m.child_name.split(' ')[0]) : ''); }
+function memberLine(u, ms, full, manage) {
+  const tags = ms.map((m) => manage && canValidate(m) && m.role !== 'president'
+    ? `<button class="pill" data-act="mdel" data-id="${m.id}" style="border:0;cursor:pointer;min-height:32px;${S.delPend === m.id ? 'background:var(--absent);color:#fff' : ''}" aria-label="Retirer le profil ${esc(tagLabel(m, full))}">${esc(tagLabel(m, full))} ${S.delPend === m.id ? '· confirmer le retrait' : '×'}</button>`
+    : `<span class="pill">${esc(tagLabel(m, full))}</span>`).join(' ');
+  return `<div class="row" style="cursor:default;flex-direction:column;align-items:flex-start;gap:6px"><span class="g">${esc(full ? name(u) : shortName(u))}</span><div class="chips" style="gap:6px">${tags}</div></div>`;
+}
 function teamTab() {
   const ids = myTeamIds();
   if (!ids.length) return `<h1>Équipe</h1><p class="empty">Vous n'êtes rattaché à aucune équipe dans ce club.</p><button class="btn" data-act="account">Demander un rôle dans une équipe (Mon compte)</button>`;
@@ -312,9 +319,9 @@ function teamTab() {
   if (vp.length) h += `<div class="kick">Demandes à valider (${vp.length})</div><div class="card">${pendRows(vp)}</div>`;
   const evs = S.events.filter((e) => e.team_id === tid);
   h += `<div class="kick">Prochains rendez-vous</div>` + (coach ? `<button class="btn main" data-act="evnew" data-team="${tid}">Ajouter un rendez-vous pour l'équipe</button>` : '') + (evs.length ? evs.slice(0, 5).map((e) => evLine(e, true)).join('') : '<p class="empty">Aucun rendez-vous prévu pour l\'équipe.</p>');
-  const mem = S.members.filter((m) => m.status === 'active' && m.team_id === tid), grpBy = (r) => mem.filter((m) => m.role === r);
-  const line = (m) => `<div class="row" style="cursor:default"><span class="g">${esc(full ? name(m.user_id) : shortName(m.user_id))}<small>${ROLES[m.role]}${m.child_name ? ' · enfant : ' + esc(full ? m.child_name : m.child_name.split(' ')[0]) : ''}</small></span></div>`;
-  h += `<div class="kick">Membres de l'équipe (${mem.length})</div><div class="card">${mem.length ? ['coach', 'joueur', 'parent', 'supporteur'].map((r) => grpBy(r).map(line).join('')).join('') : '<p class="empty" style="margin:0">Aucun membre validé.</p>'}</div>`;
+  const mem = S.members.filter((m) => m.status === 'active' && m.team_id === tid), order = ['coach', 'joueur', 'parent', 'supporteur'];
+  const users = [...new Set(mem.sort((a, b) => order.indexOf(a.role) - order.indexOf(b.role)).map((m) => m.user_id))];
+  h += `<div class="kick">Membres de l'équipe (${users.length})</div><div class="card">${users.length ? users.map((u) => memberLine(u, mem.filter((m) => m.user_id === u), full, false)).join('') : '<p class="empty" style="margin:0">Aucun membre validé.</p>'}</div>`;
   if (!full) h += '<p class="note">Les familles voient les autres membres en « Prénom N. ». Noms complets visibles du coach et du bureau.</p>';
   return h;
 }
@@ -325,9 +332,11 @@ function clubTab() {
   h += `<div class="card hi"><div class="kick">Code pour rejoindre le club</div><div style="font-family:var(--titre);font-style:italic;font-weight:800;font-size:40px;letter-spacing:.08em">${esc(c.join_code)}</div><button class="btn small" data-act="share">Partager l'invitation</button></div>`;
   const vp = toValidate();
   if (vp.length) h += `<div class="kick">Demandes à valider (${vp.length})</div><div class="card">${pendRows(vp)}</div>`;
-  h += `<div class="kick">Équipes (${S.teams.length})</div><div class="card">${S.teams.length ? S.teams.map((t) => { const n = act.filter((m) => m.team_id === t.id).length; return `<div class="row" style="cursor:default"><span class="g">${esc(t.name)}<small>${n} membre${n > 1 ? 's' : ''}</small></span>${staff ? `<button class="btn small" data-act="tdel" data-id="${t.id}">${S.delPend === t.id ? 'Confirmer' : 'Supprimer'}</button>` : ''}</div>`; }).join('') : '<p class="empty" style="margin:0">Aucune équipe.</p>'}</div>`;
+  h += `<div class="kick">Équipes (${S.teams.length})</div><div class="card">${S.teams.length ? S.teams.map((t) => { const n = new Set(act.filter((m) => m.team_id === t.id).map((m) => m.user_id)).size; return `<div class="row" style="cursor:default"><span class="g">${esc(t.name)}<small>${n} membre${n > 1 ? 's' : ''}</small></span>${staff ? `<button class="btn small" data-act="tdel" data-id="${t.id}">${S.delPend === t.id ? 'Confirmer' : 'Supprimer'}</button>` : ''}</div>`; }).join('') : '<p class="empty" style="margin:0">Aucune équipe.</p>'}</div>`;
   if (staff) h += `<form id="teamf" style="display:flex;gap:8px"><input name="name" placeholder="Nouvelle équipe (ex. U9)" required style="flex:1;min-height:50px;padding:10px 12px;border:2px solid var(--trait);border-radius:12px"><button class="btn small main" type="submit">Ajouter</button></form>`;
-  h += `<div class="kick">Membres (${act.length})</div><div class="card">${act.map((m) => `<div class="row" style="cursor:default"><span class="g">${esc(name(m.user_id))}<small>${ROLES[m.role]}${m.team_id ? ' · ' + esc(teamName(m.team_id)) : ''}${m.child_name ? ' · enfant : ' + esc(m.child_name) : ''}</small></span>${canValidate(m) && m.role !== 'president' ? `<button class="btn small" data-act="mdel" data-id="${m.id}">${S.delPend === m.id ? 'Confirmer' : 'Retirer'}</button>` : ''}</div>`).join('')}</div>`;
+  const rank = (u) => Math.min(...act.filter((m) => m.user_id === u).map((m) => ['president', 'bureau', 'coach', 'joueur', 'parent', 'supporteur'].indexOf(m.role)));
+  const users = [...new Set(act.map((m) => m.user_id))].sort((a, b) => rank(a) - rank(b) || name(a).localeCompare(name(b)));
+  h += `<div class="kick">Membres (${users.length})</div><div class="card">${users.map((u) => memberLine(u, act.filter((m) => m.user_id === u), true, true)).join('')}</div>`;
   return h;
 }
 function roleRequest() {
@@ -364,7 +373,7 @@ function render(keep) {
   else if (v?.type === 'gform') { hd = head('Messages', c.name, true); bd = groupForm(); }
   else if (v?.type === 'account') { hd = head('Mon compte', S.me.full_name, true); bd = compte(); }
   else if (v?.type === 'group') { hd = head(grp(v.id)?.name || 'Groupe', 'Groupe d\'échange', true); bd = groupPage(v.id); }
-  else { hd = head(c.name, myMem().filter((m) => m.status === 'active').map((m) => ROLES[m.role]).join(' · ')); bd = [home, agenda, messagesTab, teamTab, clubTab][S.tab](); }
+  else { hd = head(c.name, [...new Set(myMem().filter((m) => m.status === 'active').map((m) => ROLES[m.role] + (m.team_id ? ' ' + teamName(m.team_id) : '')))].join(' · ')); bd = [home, agenda, messagesTab, teamTab, clubTab][S.tab](); }
   app.innerHTML = hd + `<main class="bd">${syncBar()}${bd}</main><nav class="tb" aria-label="Onglets"><div>${TABS.map((t, i) => { const n = t === 'Club' ? toValidate().length : t === 'Équipe' ? toValidate().filter((m) => myTeamIds().includes(m.team_id)).length : 0; return `<button data-act="tab" data-i="${i}" ${i === S.tab && !v ? 'aria-current="page"' : ''}>${t}${n ? ' · ' + n : ''}</button>`; }).join('')}</div></nav>`;
   window.scrollTo(0, y);
 }
@@ -453,7 +462,7 @@ document.addEventListener('click', async (e) => {
       return;
     }
     case 'mno': if (await run(sb.from('memberships').delete().eq('id', d.id), 'Demande refusée.')) await refresh(); return;
-    case 'mdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('memberships').delete().eq('id', d.id), 'Membre retiré du club.')) await refresh(); return;
+    case 'mdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('memberships').delete().eq('id', d.id), 'Profil retiré du club.')) await refresh(); return;
     case 'tdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('teams').delete().eq('id', d.id), 'Équipe supprimée.')) await refresh(); return;
     case 'leave': if (S.delPend !== 'leave') { S.delPend = 'leave'; return render(true); } S.delPend = null; if (await run(sb.from('memberships').delete().eq('club_id', S.clubId).eq('user_id', S.me.id), 'Vous avez quitté le club.')) { S.clubId = null; S.tab = 0; await refresh(); } return;
   }
