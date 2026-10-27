@@ -174,8 +174,7 @@ function head(title, sub, back) {
   return `<header class="hd">${back ? '<button class="back" data-act="back" aria-label="Retour">‹</button>' : ''}${c ? crest(c, 38) : ''}<div class="grow"><div class="t">${esc(title)}</div><div class="s">${esc(sub || '')}</div></div>${S.view?.type === 'account' ? '' : accountBtn()}</header>`;
 }
 function accountBtn() {
-  const b = club()?.color2 || '#FFD400';
-  return `<button class="acct" data-act="account" aria-label="Mon compte" title="Mon compte"><svg width="34" height="40" viewBox="0 0 40 46" aria-hidden="true"><path d="M3 3h34v20c0 11-8 18-17 21C11 41 3 34 3 23z" fill="rgba(255,255,255,.15)" stroke="${b}" stroke-width="3"/><circle cx="20" cy="17" r="6" fill="${b}"/><path d="M9 33c2-6 6-9 11-9s9 3 11 9c-3 4-7 6-11 7-4-1-8-3-11-7z" fill="${b}"/></svg></button>`;
+  return `<button class="acct" data-act="account" aria-label="Mon compte" title="Mon compte"><svg width="34" height="40" viewBox="0 0 40 46" aria-hidden="true"><path d="M3 3h34v20c0 11-8 18-17 21C11 41 3 34 3 23z" fill="#0B6B3A" stroke="#FFD400" stroke-width="3"/><circle cx="20" cy="17" r="6" fill="#FFD400"/><path d="M9 33c2-6 6-9 11-9s9 3 11 9c-3 4-7 6-11 7-4-1-8-3-11-7z" fill="#FFD400"/></svg></button>`;
 }
 function brandHead(sub) { return `<header class="hd"><div class="grow"><div class="t">Mon Blason</div><div class="s">${esc(sub || 'Mon club, mes couleurs')}</div></div></header>`; }
 
@@ -235,6 +234,7 @@ function evLine(e, withPair) {
 function home() {
   const todo = S.events.filter((e) => !respOf(e.id).mine).slice(0, 5);
   let h = `<div class="kick">Bonjour ${esc(S.me.nickname || (S.me.full_name || '').split(' ')[0])}</div><h1>Accueil</h1>`;
+  if (!store.get('mb_hiderq_' + S.clubId)) h += `<div class="card hi"><div style="font-weight:800">Vous jouez, coachez ou êtes parent dans une autre équipe du club ?</div><p class="note" style="margin:4px 0 10px">Ajoutez vos autres rôles : chacun est validé par le club.</p><div class="chips"><button class="btn small main" data-act="rqgo">➕ Demander un autre rôle</button><button class="btn small" data-act="rqhide">Ne plus afficher</button></div></div>`;
   const vp = toValidate().length; if (vp) h += `<button class="btn main" data-act="tab" data-i="4">${vp} demande${vp > 1 ? 's' : ''} à valider</button>`;
   h += `<div class="kick">À répondre${todo.length ? ' · ' + todo.length : ''}</div>` + (todo.length ? todo.map((e) => evLine(e, true)).join('') : '<p class="empty">Rien à répondre pour le moment.</p>');
   const next = S.events.filter((e) => respOf(e.id).mine).slice(0, 3);
@@ -341,7 +341,7 @@ function clubTab() {
 }
 function roleRequest() {
   const r = S.rq, c = club(), mine = myMem();
-  return `<details class="card" ${r.open ? 'open' : ''}><summary data-act="rqopen" style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">Demander un autre rôle dans ${esc(c.name)}</summary><div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">
+  return `<details id="rqbox" class="card hi" ${r.open ? 'open' : ''}><summary data-act="rqopen" style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">Demander un autre rôle dans ${esc(c.name)}</summary><div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">
   <div class="det">Mes rôles : ${mine.map((m) => ROLES[m.role] + (m.team_id ? ' ' + esc(teamName(m.team_id)) : '') + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</div>
   <div class="chips">${JOIN_ROLES.map((x) => `<button class="chip" data-act="rqrole" data-v="${x}" aria-pressed="${r.role === x}">${ROLES[x]}</button>`).join('')}</div>
   ${r.role === 'parent' ? `<div class="field"><label for="rk">Prénom et nom de l'enfant</label><input id="rk" data-r="child" value="${esc(r.child || '')}"></div>` : ''}
@@ -352,7 +352,7 @@ function roleRequest() {
 }
 function compte() {
   const clubs = Object.values(S.clubs);
-  return `<h1>Compte</h1><div class="kick">Mon profil</div><form id="proff" class="card" style="display:flex;flex-direction:column;gap:12px"><div class="field"><label for="pn">Prénom et nom</label><input id="pn" name="full_name" value="${esc(S.me.full_name)}" required></div><div class="field"><label for="pp">Pseudo (affiché dans les groupes)</label><input id="pp" name="nickname" value="${esc(S.me.nickname || '')}" maxlength="30"></div><div class="field"><label for="pm">Adresse e-mail</label><input id="pm" value="${esc(S.session.user.email)}" readonly style="background:#EEF1EC"></div><div class="field"><label for="pt">Téléphone (visible des membres de vos clubs)</label><input id="pt" name="phone" type="tel" value="${esc(S.me.phone || '')}"></div><button class="btn main" type="submit">Enregistrer mon profil</button></form>
+  return `<h1>Mon compte</h1><button class="btn main" data-act="rqgo">➕ Demander un autre rôle dans ${esc(club().name)}</button><div class="kick">Mon profil</div><form id="proff" class="card" style="display:flex;flex-direction:column;gap:12px"><div class="field"><label for="pn">Prénom et nom</label><input id="pn" name="full_name" value="${esc(S.me.full_name)}" required></div><div class="field"><label for="pp">Pseudo (affiché dans les groupes)</label><input id="pp" name="nickname" value="${esc(S.me.nickname || '')}" maxlength="30"></div><div class="field"><label for="pm">Adresse e-mail</label><input id="pm" value="${esc(S.session.user.email)}" readonly style="background:#EEF1EC"></div><div class="field"><label for="pt">Téléphone (visible des membres de vos clubs)</label><input id="pt" name="phone" type="tel" value="${esc(S.me.phone || '')}"></div><button class="btn main" type="submit">Enregistrer mon profil</button></form>
   ${roleRequest()}
   <div class="kick">Mes clubs et profils</div><div class="card">${clubs.map((c) => `<button class="row" data-act="club" data-id="${c.id}">${crest(c, 30)}<span class="g">${esc(c.name)}<small>${S.mems.filter((m) => m.club_id === c.id).map((m) => ROLES[m.role] + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</small></span>${c.id === S.clubId ? '<span class="pill ok">Affiché</span>' : '<span class="chev">›</span>'}</button>`).join('')}</div>
   <button class="btn" data-act="onbopen">Rejoindre ou créer un autre club</button>
@@ -399,6 +399,8 @@ document.addEventListener('click', async (e) => {
     case 'onbopen': S.onb = ''; render(); return;
     case 'jrole': S.join.role = d.v; return render(true);
     case 'account': S.view = { type: 'account' }; return render();
+    case 'rqgo': S.rq.open = true; S.view = { type: 'account' }; render(); setTimeout(() => document.getElementById('rqbox')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); return;
+    case 'rqhide': store.set('mb_hiderq_' + S.clubId, '1'); toast('Rappel masqué. Le bouton reste dans Mon compte.'); return render(true);
     case 'teamsel': S.teamSel = d.id; return render(true);
     case 'rqopen': S.rq.open = !S.rq.open; return render(true);
     case 'rqrole': S.rq.role = d.v; return render(true);
