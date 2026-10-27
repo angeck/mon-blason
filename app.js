@@ -15,7 +15,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch { re
 const S = {
   session: null, me: null, mems: [], clubs: {}, clubId: store.get('mb_club'), tab: 0, view: null,
   members: [], names: {}, teams: [], events: [], resp: [], groups: [], lastMsgs: [], msgs: [], polls: [], votes: [], gmembers: [],
-  authMode: 'login', onb: null, join: { code: '', role: 'supporteur', teams: [] }, form: null,
+  authMode: 'login', onb: null, rq: { role: 'joueur', team: '', child: '', age: false, open: false }, join: { code: '', role: 'supporteur', teams: [] }, form: null,
   updated: null, online: navigator.onLine, busy: false, channel: null,
 };
 
@@ -31,6 +31,12 @@ function myMem() { return S.mems.filter((m) => m.club_id === S.clubId); }
 function isStaff() { return myMem().some((m) => m.status === 'active' && ['president', 'bureau', 'coach'].includes(m.role)); }
 function isActive() { return myMem().some((m) => m.status === 'active'); }
 function name(id) { return S.names[id] || 'Membre'; }
+function nick(id) { return (S.nicks || {})[id] || name(id); }
+function canValidate(m) {
+  if (m.user_id === S.me.id) return false;
+  return myMem().filter((x) => x.status === 'active').some((x) => x.role === 'president' || (x.role === 'bureau' && ['joueur', 'parent', 'coach', 'supporteur'].includes(m.role)) || (x.role === 'coach' && ['joueur', 'parent'].includes(m.role) && m.team_id && m.team_id === x.team_id));
+}
+function toValidate() { return S.members.filter((m) => m.status === 'pending' && canValidate(m)); }
 function teamName(id) { return (S.teams.find((t) => t.id === id) || {}).name || ''; }
 function initials(n) { return n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase(); }
 let crestN = 0;
@@ -106,7 +112,7 @@ async function loadClub() {
   ]);
   S.members = mem.data || []; S.teams = teams.data || []; S.events = evs.data || []; S.groups = grps.data || [];
   const uids = [...new Set(S.members.map((m) => m.user_id))];
-  if (uids.length) { const { data: pr } = await sb.from('profiles').select('id,full_name').in('id', uids); (pr || []).forEach((p) => (S.names[p.id] = p.full_name || 'Membre')); }
+  if (uids.length) { const { data: pr } = await sb.from('profiles').select('id,full_name,nickname').in('id', uids); S.nicks = S.nicks || {}; (pr || []).forEach((p) => { S.names[p.id] = p.full_name || 'Membre'; S.nicks[p.id] = p.nickname || ''; }); }
   const eids = S.events.map((e) => e.id);
   S.resp = eids.length ? ((await sb.from('event_responses').select('*').in('event_id', eids)).data || []) : [];
   const gids = S.groups.map((g) => g.id);
@@ -133,7 +139,7 @@ async function refresh(msg) {
 // ---------- temps réel ----------
 function subscribe() {
   if (S.channel) { sb.removeChannel(S.channel); S.channel = null; }
-  if (!S.clubId || !isActive()) return;
+  if (!S.clubId) return;
   S.channel = sb.channel('club-' + S.clubId)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
       const m = p.new; if (!S.groups.some((g) => g.id === m.group_id)) return;
@@ -146,6 +152,7 @@ function subscribe() {
       const eids = S.events.map((e) => e.id); if (!eids.length) return;
       S.resp = (await sb.from('event_responses').select('*').in('event_id', eids)).data || []; render(true);
     })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'memberships' }, () => { clearTimeout(S.mt); S.mt = setTimeout(() => refresh(), 400); })
     .subscribe();
 }
 const grp = (id) => S.groups.find((g) => g.id === id);
@@ -200,6 +207,7 @@ function onboarding() {
       ${j.clubName ? `<div style="font-weight:800">Club : ${esc(j.clubName)}</div>` : ''}
       <div class="kick">Je rejoins comme</div><div class="chips">${JOIN_ROLES.map((r) => `<button class="chip" data-act="jrole" data-v="${r}" aria-pressed="${j.role === r}">${ROLES[r]}</button>`).join('')}</div>
       ${j.role === 'parent' ? `<div class="field"><label for="jk">Prénom et nom de l'enfant</label><input id="jk" data-j="child" value="${esc(j.child || '')}"></div>` : ''}
+      ${j.role === 'joueur' ? `<label class="check"><input type="checkbox" data-j="age" ${j.age ? 'checked' : ''}><span>J'ai 15 ans ou plus</span></label>` : ''}
       ${['parent', 'joueur', 'coach'].includes(j.role) && j.teams.length ? `<div class="field"><label for="jt">Équipe</label><select id="jt" data-j="team"><option value="">Je ne sais pas</option>${j.teams.map((t) => `<option value="${t.id}" ${j.team === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>` : ''}
       <p class="note">${j.role === 'supporteur' ? 'Accès immédiat.' : "Le club valide votre demande. En attendant, vous n'avez pas encore accès."}</p>
       <button class="btn main" data-act="jsend">Envoyer</button></div><button class="btn" data-act="onb" data-v="">Retour</button>`;
@@ -216,7 +224,8 @@ function evLine(e, withPair) {
 }
 function home() {
   const todo = S.events.filter((e) => !respOf(e.id).mine).slice(0, 5);
-  let h = `<div class="kick">Bonjour ${esc((S.me.full_name || '').split(' ')[0])}</div><h1>Accueil</h1>`;
+  let h = `<div class="kick">Bonjour ${esc(S.me.nickname || (S.me.full_name || '').split(' ')[0])}</div><h1>Accueil</h1>`;
+  const vp = toValidate().length; if (vp) h += `<button class="btn main" data-act="tab" data-i="3">${vp} demande${vp > 1 ? 's' : ''} à valider</button>`;
   h += `<div class="kick">À répondre${todo.length ? ' · ' + todo.length : ''}</div>` + (todo.length ? todo.map((e) => evLine(e, true)).join('') : '<p class="empty">Rien à répondre pour le moment.</p>');
   const next = S.events.filter((e) => respOf(e.id).mine).slice(0, 3);
   if (next.length) h += '<div class="kick">Mes prochains rendez-vous</div>' + next.map((e) => evLine(e, false)).join('');
@@ -267,7 +276,7 @@ function groupPage(id) {
   let h = `<div class="det">${S.gmembers.length} membres : ${S.gmembers.map((x) => esc(name(x.user_id))).join(', ')}</div>`;
   h += S.polls.map((p) => { const v = S.votes.filter((x) => x.poll_id === p.id), my = (v.find((x) => x.user_id === S.me.id) || {}).answer;
     return `<div class="card hi"><div class="kick">Sondage · ${esc(name(p.created_by))}</div><div style="font-weight:800;margin-top:4px">${esc(p.question)}</div><div class="chips" style="margin-top:8px">${['Présent', 'Absent', 'Je ne sais pas'].map((a) => `<button class="chip" data-act="vote" data-id="${p.id}" data-v="${a}" aria-pressed="${my === a}">${a} · ${v.filter((x) => x.answer === a).length}</button>`).join('')}</div><div class="det" style="margin-top:6px">${v.length} réponse${v.length > 1 ? 's' : ''} sur ${S.gmembers.length}</div></div>`; }).join('');
-  h += '<div class="msgs">' + (S.msgs.length ? S.msgs.map((m) => `<div class="bub ${m.user_id === S.me.id ? 'me' : ''}">${m.user_id === S.me.id ? '' : `<div class="who">${esc(name(m.user_id))}</div>`}<div>${esc(m.body)}</div><div class="when">${esc(fmtShort(m.created_at))}</div></div>`).join('') : '<p class="empty">Écrivez le premier message.</p>') + '</div>';
+  h += '<div class="msgs">' + (S.msgs.length ? S.msgs.map((m) => `<div class="bub ${m.user_id === S.me.id ? 'me' : ''}">${m.user_id === S.me.id ? '' : `<div class="who">${esc(nick(m.user_id))}</div>`}<div>${esc(m.body)}</div><div class="when">${esc(fmtShort(m.created_at))}</div></div>`).join('') : '<p class="empty">Écrivez le premier message.</p>') + '</div>';
   h += `<form id="msgf" class="compose"><input name="body" placeholder="Votre message" autocomplete="off" maxlength="2000" aria-label="Message"><button class="btn main small" type="submit">Envoyer</button></form>`;
   h += `<div class="chips"><button class="chip" data-act="pollnew">+ Sondage</button><button class="chip" data-act="gmute" aria-pressed="${!!mine?.muted}">${mine?.muted ? 'Notifications coupées' : 'Couper les notifications'}</button>${g.created_by === S.me.id ? `<button class="chip" data-act="gdel" data-id="${id}">${S.delPend === id ? 'Confirmer la suppression' : 'Supprimer le groupe'}</button>` : '<button class="chip" data-act="gleave">Quitter le groupe</button>'}</div>`;
   return h;
@@ -277,15 +286,28 @@ function clubTab() {
   let h = `<h1>${esc(c.name)}</h1><div class="det">${esc(c.sport)}${c.city ? ' · ' + esc(c.city) : ''}</div>`;
   if (myMem().some((m) => m.status === 'active' && ['president', 'bureau'].includes(m.role))) h += `<details class="card"><summary style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">Blason et couleurs du club</summary><form id="brandf" style="display:flex;flex-direction:column;gap:12px;margin-top:10px"><div data-prev>${previewHtml(c.name, c.color1, c.color2, S.tmpLogo === undefined ? c.logo : S.tmpLogo)}</div>${logoField(S.tmpLogo === undefined ? !!c.logo : !!S.tmpLogo)}<div class="grid2"><div class="field"><label for="b1">Couleur principale</label><input id="b1" name="c1" type="color" value="${esc(c.color1.toLowerCase())}"></div><div class="field"><label for="b2">Seconde couleur</label><input id="b2" name="c2" type="color" value="${esc(c.color2.toLowerCase())}"></div></div><button class="btn main" type="submit">Enregistrer le blason</button></form></details>`;
   h += `<div class="card hi"><div class="kick">Code pour rejoindre le club</div><div style="font-family:var(--titre);font-style:italic;font-weight:800;font-size:40px;letter-spacing:.08em">${esc(c.join_code)}</div><button class="btn small" data-act="share">Partager l'invitation</button></div>`;
-  if (staff && pend.length) h += `<div class="kick">Demandes à valider (${pend.length})</div><div class="card">${pend.map((m) => `<div class="row" style="cursor:default"><span class="g">${esc(name(m.user_id))}<small>${ROLES[m.role]}${m.team_id ? ' · ' + esc(teamName(m.team_id)) : ''}${m.child_name ? ' · enfant : ' + esc(m.child_name) : ''}</small></span><button class="btn small main" data-act="mok" data-id="${m.id}">Valider</button><button class="btn small" data-act="mno" data-id="${m.id}">Refuser</button></div>`).join('')}</div>`;
+  const vp = toValidate();
+  if (vp.length) h += `<div class="kick">Demandes à valider (${vp.length})</div><div class="card">${vp.map((m) => `<div class="row" style="cursor:default"><span class="g">${esc(name(m.user_id))}<small>${ROLES[m.role]}${m.team_id ? ' · ' + esc(teamName(m.team_id)) : ''}${m.child_name ? ' · enfant : ' + esc(m.child_name) : ''}</small></span><button class="btn small main" data-act="mok" data-id="${m.id}">Valider</button><button class="btn small" data-act="mno" data-id="${m.id}">Refuser</button></div>`).join('')}</div>`;
   h += `<div class="kick">Équipes (${S.teams.length})</div><div class="card">${S.teams.length ? S.teams.map((t) => { const n = act.filter((m) => m.team_id === t.id).length; return `<div class="row" style="cursor:default"><span class="g">${esc(t.name)}<small>${n} membre${n > 1 ? 's' : ''}</small></span>${staff ? `<button class="btn small" data-act="tdel" data-id="${t.id}">${S.delPend === t.id ? 'Confirmer' : 'Supprimer'}</button>` : ''}</div>`; }).join('') : '<p class="empty" style="margin:0">Aucune équipe.</p>'}</div>`;
   if (staff) h += `<form id="teamf" style="display:flex;gap:8px"><input name="name" placeholder="Nouvelle équipe (ex. U9)" required style="flex:1;min-height:50px;padding:10px 12px;border:2px solid var(--trait);border-radius:12px"><button class="btn small main" type="submit">Ajouter</button></form>`;
-  h += `<div class="kick">Membres (${act.length})</div><div class="card">${act.map((m) => `<div class="row" style="cursor:default"><span class="g">${esc(name(m.user_id))}<small>${ROLES[m.role]}${m.team_id ? ' · ' + esc(teamName(m.team_id)) : ''}${m.child_name ? ' · enfant : ' + esc(m.child_name) : ''}</small></span>${staff && m.user_id !== S.me.id && m.role !== 'president' ? `<button class="btn small" data-act="mdel" data-id="${m.id}">${S.delPend === m.id ? 'Confirmer' : 'Retirer'}</button>` : ''}</div>`).join('')}</div>`;
+  h += `<div class="kick">Membres (${act.length})</div><div class="card">${act.map((m) => `<div class="row" style="cursor:default"><span class="g">${esc(name(m.user_id))}<small>${ROLES[m.role]}${m.team_id ? ' · ' + esc(teamName(m.team_id)) : ''}${m.child_name ? ' · enfant : ' + esc(m.child_name) : ''}</small></span>${canValidate(m) && m.role !== 'president' ? `<button class="btn small" data-act="mdel" data-id="${m.id}">${S.delPend === m.id ? 'Confirmer' : 'Retirer'}</button>` : ''}</div>`).join('')}</div>`;
   return h;
+}
+function roleRequest() {
+  const r = S.rq, c = club(), mine = myMem();
+  return `<details class="card" ${r.open ? 'open' : ''}><summary data-act="rqopen" style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">Demander un autre rôle dans ${esc(c.name)}</summary><div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">
+  <div class="det">Mes rôles : ${mine.map((m) => ROLES[m.role] + (m.team_id ? ' ' + esc(teamName(m.team_id)) : '') + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</div>
+  <div class="chips">${JOIN_ROLES.map((x) => `<button class="chip" data-act="rqrole" data-v="${x}" aria-pressed="${r.role === x}">${ROLES[x]}</button>`).join('')}</div>
+  ${r.role === 'parent' ? `<div class="field"><label for="rk">Prénom et nom de l'enfant</label><input id="rk" data-r="child" value="${esc(r.child || '')}"></div>` : ''}
+  ${r.role === 'joueur' ? `<label class="check"><input type="checkbox" data-r="age" ${r.age ? 'checked' : ''}><span>J'ai 15 ans ou plus</span></label>` : ''}
+  ${['parent', 'joueur', 'coach'].includes(r.role) && S.teams.length ? `<div class="field"><label for="rt">Équipe</label><select id="rt" data-r="team"><option value="">Je ne sais pas</option>${S.teams.map((t) => `<option value="${t.id}" ${r.team === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>` : ''}
+  <p class="note">${r.role === 'supporteur' ? 'Accès immédiat.' : r.role === 'bureau' ? 'Validé par le président.' : r.role === 'coach' ? 'Validé par le bureau ou le président.' : "Validé par le coach de l'équipe, le bureau ou le président."}</p>
+  <button class="btn main" data-act="rqsend">Envoyer la demande</button></div></details>`;
 }
 function compte() {
   const clubs = Object.values(S.clubs);
-  return `<h1>Compte</h1><form id="proff" class="card" style="display:flex;flex-direction:column;gap:12px"><div class="field"><label for="pn">Prénom et nom</label><input id="pn" name="full_name" value="${esc(S.me.full_name)}" required></div><div class="field"><label for="pt">Téléphone (visible des membres de vos clubs)</label><input id="pt" name="phone" type="tel" value="${esc(S.me.phone || '')}"></div><button class="btn main" type="submit">Enregistrer</button></form>
+  return `<h1>Compte</h1><div class="kick">Mon profil</div><form id="proff" class="card" style="display:flex;flex-direction:column;gap:12px"><div class="field"><label for="pn">Prénom et nom</label><input id="pn" name="full_name" value="${esc(S.me.full_name)}" required></div><div class="field"><label for="pp">Pseudo (affiché dans les groupes)</label><input id="pp" name="nickname" value="${esc(S.me.nickname || '')}" maxlength="30"></div><div class="field"><label for="pm">Adresse e-mail</label><input id="pm" value="${esc(S.session.user.email)}" readonly style="background:#EEF1EC"></div><div class="field"><label for="pt">Téléphone (visible des membres de vos clubs)</label><input id="pt" name="phone" type="tel" value="${esc(S.me.phone || '')}"></div><button class="btn main" type="submit">Enregistrer mon profil</button></form>
+  ${roleRequest()}
   <div class="kick">Mes clubs et profils</div><div class="card">${clubs.map((c) => `<button class="row" data-act="club" data-id="${c.id}">${crest(c, 30)}<span class="g">${esc(c.name)}<small>${S.mems.filter((m) => m.club_id === c.id).map((m) => ROLES[m.role] + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</small></span>${c.id === S.clubId ? '<span class="pill ok">Affiché</span>' : '<span class="chev">›</span>'}</button>`).join('')}</div>
   <button class="btn" data-act="onbopen">Rejoindre ou créer un autre club</button>
   <button class="btn" data-act="leave">${S.delPend === 'leave' ? 'Confirmer : quitter ce club' : 'Quitter ce club'}</button>
@@ -305,7 +327,7 @@ function render(keep) {
   else if (v?.type === 'gform') { hd = head('Messages', c.name, true); bd = groupForm(); }
   else if (v?.type === 'group') { hd = head(grp(v.id)?.name || 'Groupe', 'Groupe d\'échange', true); bd = groupPage(v.id); }
   else { hd = head(c.name, myMem().filter((m) => m.status === 'active').map((m) => ROLES[m.role]).join(' · ')); bd = [home, agenda, messagesTab, clubTab, compte][S.tab](); }
-  app.innerHTML = hd + `<main class="bd">${syncBar()}${bd}</main><nav class="tb" aria-label="Onglets"><div>${TABS.map((t, i) => `<button data-act="tab" data-i="${i}" ${i === S.tab && !v ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</div></nav>`;
+  app.innerHTML = hd + `<main class="bd">${syncBar()}${bd}</main><nav class="tb" aria-label="Onglets"><div>${TABS.map((t, i) => { const n = t === 'Club' ? toValidate().length : 0; return `<button data-act="tab" data-i="${i}" ${i === S.tab && !v ? 'aria-current="page"' : ''}>${t}${n ? ' · ' + n : ''}</button>`; }).join('')}</div></nav>`;
   window.scrollTo(0, y);
 }
 
@@ -314,6 +336,7 @@ document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const a = el.dataset.act, d = el.dataset;
   if (el.tagName === 'INPUT' && a !== 'gsel') return;
+  if (el.tagName === 'INPUT' && el.type === 'checkbox' && !a) return;
   if (a !== 'gsel') e.preventDefault();
   const keepDel = ['evdel', 'gdel', 'tdel', 'mdel', 'leave'].includes(a); if (!keepDel) S.delPend = null;
   switch (a) {
@@ -328,6 +351,16 @@ document.addEventListener('click', async (e) => {
     case 'onb': S.tmpLogo = undefined; S.onb = d.v || null; if (!d.v && isActive()) S.onb = null; render(); return;
     case 'onbopen': S.onb = ''; render(); return;
     case 'jrole': S.join.role = d.v; return render(true);
+    case 'rqopen': S.rq.open = !S.rq.open; return render(true);
+    case 'rqrole': S.rq.role = d.v; return render(true);
+    case 'rqsend': {
+      const r = S.rq;
+      if (r.role === 'parent' && !(r.child || '').trim()) return toast("Indiquez le prénom et le nom de l'enfant.");
+      if (r.role === 'joueur' && !r.age) return toast('Le compte joueur est réservé aux 15 ans et plus.');
+      if (myMem().some((m) => m.role === r.role && (m.team_id || '') === (r.team || '') && (r.role !== 'parent' || (m.child_name || '') === r.child.trim()))) return toast('Vous avez déjà ce rôle (ou une demande en cours).');
+      if (await run(sb.rpc('join_club', { p_code: club().join_code, p_role: r.role, p_team: r.team || null, p_child: r.child || null }), r.role === 'supporteur' ? 'Rôle ajouté.' : 'Demande envoyée.')) { S.rq = { role: 'joueur', team: '', child: '', age: false, open: false }; await refresh(); }
+      return;
+    }
     case 'jcheck': {
       const r = await run(sb.rpc('teams_for_code', { p_code: S.join.code }));
       if (r) { S.join.teams = r; S.join.clubName = r[0]?.club_name || (r.length === 0 ? 'Code accepté (le club n\'a pas encore d\'équipe)' : ''); render(true); }
@@ -336,6 +369,7 @@ document.addEventListener('click', async (e) => {
     case 'jsend': {
       if (!S.join.code) return toast('Indiquez le code du club.');
       if (S.join.role === 'parent' && !(S.join.child || '').trim()) return toast("Indiquez le prénom et le nom de l'enfant.");
+      if (S.join.role === 'joueur' && !S.join.age) return toast('Le compte joueur est réservé aux 15 ans et plus. En dessous, un parent suit l\'enfant depuis son compte.');
       const cid = await run(sb.rpc('join_club', { p_code: S.join.code, p_role: S.join.role, p_team: S.join.team || null, p_child: S.join.child || null }), S.join.role === 'supporteur' ? 'Bienvenue dans le club !' : 'Demande envoyée au club.');
       if (cid) { S.clubId = cid; store.set('mb_club', cid); S.onb = null; S.join = { code: '', role: 'supporteur', teams: [] }; await refresh(); }
       return;
@@ -369,7 +403,7 @@ document.addEventListener('click', async (e) => {
     case 'gleave': if (await run(sb.from('group_members').delete().eq('group_id', S.view.id).eq('user_id', S.me.id), 'Vous avez quitté le groupe.')) { S.view = null; await refresh(); } return;
     case 'gdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('groups').delete().eq('id', d.id), 'Groupe supprimé.')) { S.view = null; await refresh(); } return;
     case 'share': { const c = club(), txt = `Rejoins ${c.name} sur Mon Blason : ouvre ${location.href.split('#')[0]} puis « Rejoindre un club » avec le code ${c.join_code}.`; if (navigator.share) { try { await navigator.share({ title: 'Mon Blason', text: txt }); } catch {} } else { try { await navigator.clipboard.writeText(txt); toast('Invitation copiée.'); } catch { toast(txt); } } return; }
-    case 'mok': if (await run(sb.from('memberships').update({ status: 'active' }).eq('id', d.id), 'Demande validée.')) await refresh(); return;
+    case 'mok': if (await run(sb.rpc('validate_membership', { mid: d.id }), 'Demande validée.')) await refresh(); return;
     case 'mno': if (await run(sb.from('memberships').delete().eq('id', d.id), 'Demande refusée.')) await refresh(); return;
     case 'mdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('memberships').delete().eq('id', d.id), 'Membre retiré du club.')) await refresh(); return;
     case 'tdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('teams').delete().eq('id', d.id), 'Équipe supprimée.')) await refresh(); return;
@@ -380,12 +414,14 @@ async function openGroup(id) { S.view = { type: 'group', id }; await loadGroup(i
 
 document.addEventListener('input', (e) => {
   const t = e.target;
-  if (t.dataset.j) { S.join[t.dataset.j] = t.dataset.j === 'code' ? t.value.toUpperCase() : t.value; }
+  if (t.dataset.j && t.type !== 'checkbox') { S.join[t.dataset.j] = t.dataset.j === 'code' ? t.value.toUpperCase() : t.value; }
+  if (t.dataset.r && t.type !== 'checkbox') S.rq[t.dataset.r] = t.value;
   if (t.dataset.f && S.form) S.form[t.dataset.f] = t.value;
   if (t.closest('#clubf,#brandf') && t.type !== 'file') updatePreview(t.closest('form'));
 });
 document.addEventListener('change', async (e) => {
-  const t = e.target; if (t.dataset.j) S.join[t.dataset.j] = t.value;
+  const t = e.target; if (t.dataset.j) S.join[t.dataset.j] = t.type === 'checkbox' ? t.checked : t.value;
+  if (t.dataset.r) S.rq[t.dataset.r] = t.type === 'checkbox' ? t.checked : t.value;
   if (t.dataset.logo && t.files?.[0]) {
     try {
       const r = await readLogo(t.files[0]); S.tmpLogo = r.data; const f = t.closest('form');
@@ -420,7 +456,7 @@ document.addEventListener('submit', async (e) => {
     } else if (f.id === 'teamf') {
       if (await run(sb.from('teams').insert({ club_id: S.clubId, name: v.name.trim() }), 'Équipe ajoutée.')) await refresh();
     } else if (f.id === 'proff') {
-      if (await run(sb.from('profiles').update({ full_name: v.full_name.trim(), phone: v.phone.trim() || null }).eq('id', S.me.id), 'Profil enregistré.')) await refresh();
+      if (await run(sb.from('profiles').update({ full_name: v.full_name.trim(), nickname: (v.nickname || '').trim() || null, phone: v.phone.trim() || null }).eq('id', S.me.id), 'Profil enregistré.')) await refresh();
     }
   } finally { if (btn && document.body.contains(btn)) btn.disabled = false; }
 });

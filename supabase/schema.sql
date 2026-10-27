@@ -2,13 +2,14 @@
 -- Le script peut être relancé : il supprime puis recrée tout (les données de test sont perdues).
 
 drop table if exists poll_votes, polls, messages, group_members, groups, event_responses, events, memberships, teams, clubs, profiles cascade;
-drop function if exists is_member, is_staff, is_group_member, shares_club, join_club, create_club, teams_for_code, handle_new_user cascade;
+drop function if exists is_member, is_staff, is_group_member, shares_club, join_club, create_club, teams_for_code, handle_new_user, can_validate, validate_membership cascade;
 
 -- ---------- Tables ----------
 create table profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text not null default '',
   phone text,
+  nickname text,
   created_at timestamptz not null default now()
 );
 
@@ -188,8 +189,6 @@ create policy "équipes lisibles par les membres" on teams for select using (is_
 create policy "équipes gérées par l'encadrement" on teams for all using (is_staff(club_id)) with check (is_staff(club_id));
 
 create policy "adhésions lisibles par soi et les membres" on memberships for select using (user_id = auth.uid() or is_member(club_id));
-create policy "adhésions validées par l'encadrement" on memberships for update using (is_staff(club_id)) with check (is_staff(club_id));
-create policy "adhésion quittée par soi ou retirée par l'encadrement" on memberships for delete using (user_id = auth.uid() or is_staff(club_id));
 
 create policy "événements lisibles par les membres" on events for select using (is_member(club_id));
 create policy "événements créés par l'encadrement" on events for insert with check (is_staff(club_id) and created_by = auth.uid());
@@ -232,3 +231,32 @@ create policy "chacun change son vote" on poll_votes for update using (user_id =
 
 -- ---------- Temps réel (messages, votes, réponses) ----------
 alter publication supabase_realtime add table messages, poll_votes, event_responses;
+
+-- ---------- Validations (alpha 0.3) ----------
+
+-- Qui peut valider ou retirer une adhésion :
+-- président : tout ; bureau : joueurs, parents, coachs, supporteurs ; coach : joueurs et parents de son équipe.
+create or replace function can_validate(mid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(
+    select 1 from memberships t
+    join memberships me on me.club_id = t.club_id and me.user_id = auth.uid() and me.status = 'active'
+    where t.id = mid and t.user_id <> auth.uid() and (
+      me.role = 'president'
+      or (me.role = 'bureau' and t.role in ('joueur','parent','coach','supporteur'))
+      or (me.role = 'coach' and t.role in ('joueur','parent') and t.team_id is not null and t.team_id = me.team_id)));
+$$;
+
+create or replace function validate_membership(mid uuid) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not can_validate(mid) then raise exception 'Vous ne pouvez pas valider cette demande'; end if;
+  update memberships set status = 'active' where id = mid;
+end $$;
+
+drop policy if exists "adhésions validées par l'encadrement" on memberships;
+drop policy if exists "adhésion quittée par soi ou retirée par l'encadrement" on memberships;
+drop policy if exists "adhésion quittée par soi ou retirée selon les droits" on memberships;
+create policy "adhésion quittée par soi ou retirée selon les droits" on memberships for delete using (user_id = auth.uid() or can_validate(id));
+
+do $$ begin
+  alter publication supabase_realtime add table memberships;
+exception when duplicate_object then null; end $$;
