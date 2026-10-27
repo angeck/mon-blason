@@ -281,13 +281,18 @@ function groupPage(id) {
   h += `<div class="chips"><button class="chip" data-act="pollnew">+ Sondage</button><button class="chip" data-act="gmute" aria-pressed="${!!mine?.muted}">${mine?.muted ? 'Notifications coupées' : 'Couper les notifications'}</button>${g.created_by === S.me.id ? `<button class="chip" data-act="gdel" data-id="${id}">${S.delPend === id ? 'Confirmer la suppression' : 'Supprimer le groupe'}</button>` : '<button class="chip" data-act="gleave">Quitter le groupe</button>'}</div>`;
   return h;
 }
+function teamPick(m) {
+  if (m.team_id || !['coach', 'joueur', 'parent'].includes(m.role)) return '';
+  const v = (S.vt || {})[m.id] || '', canNew = isStaff();
+  return `<div style="display:flex;flex-direction:column;gap:8px;padding:0 0 12px;border-bottom:1px solid var(--trait)"><div class="field"><label for="vt${m.id}">Équipe à attribuer en validant</label><select id="vt${m.id}" data-vt="${m.id}"><option value="">Aucune pour l'instant</option>${S.teams.map((t) => `<option value="${t.id}" ${v === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}${canNew ? `<option value="new" ${v === 'new' ? 'selected' : ''}>+ Créer une nouvelle équipe</option>` : ''}</select></div>${v === 'new' ? `<div class="field"><label for="vn${m.id}">Nom de la nouvelle équipe</label><input id="vn${m.id}" data-vn="${m.id}" value="${esc((S.vn || {})[m.id] || '')}" placeholder="Ex. Reines"></div>` : ''}</div>`;
+}
 function clubTab() {
   const c = club(), staff = isStaff(), pend = S.members.filter((m) => m.status === 'pending'), act = S.members.filter((m) => m.status === 'active');
   let h = `<h1>${esc(c.name)}</h1><div class="det">${esc(c.sport)}${c.city ? ' · ' + esc(c.city) : ''}</div>`;
   if (myMem().some((m) => m.status === 'active' && ['president', 'bureau'].includes(m.role))) h += `<details class="card"><summary style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">Blason et couleurs du club</summary><form id="brandf" style="display:flex;flex-direction:column;gap:12px;margin-top:10px"><div data-prev>${previewHtml(c.name, c.color1, c.color2, S.tmpLogo === undefined ? c.logo : S.tmpLogo)}</div>${logoField(S.tmpLogo === undefined ? !!c.logo : !!S.tmpLogo)}<div class="grid2"><div class="field"><label for="b1">Couleur principale</label><input id="b1" name="c1" type="color" value="${esc(c.color1.toLowerCase())}"></div><div class="field"><label for="b2">Seconde couleur</label><input id="b2" name="c2" type="color" value="${esc(c.color2.toLowerCase())}"></div></div><button class="btn main" type="submit">Enregistrer le blason</button></form></details>`;
   h += `<div class="card hi"><div class="kick">Code pour rejoindre le club</div><div style="font-family:var(--titre);font-style:italic;font-weight:800;font-size:40px;letter-spacing:.08em">${esc(c.join_code)}</div><button class="btn small" data-act="share">Partager l'invitation</button></div>`;
   const vp = toValidate();
-  if (vp.length) h += `<div class="kick">Demandes à valider (${vp.length})</div><div class="card">${vp.map((m) => `<div class="row" style="cursor:default"><span class="g">${esc(name(m.user_id))}<small>${ROLES[m.role]}${m.team_id ? ' · ' + esc(teamName(m.team_id)) : ''}${m.child_name ? ' · enfant : ' + esc(m.child_name) : ''}</small></span><button class="btn small main" data-act="mok" data-id="${m.id}">Valider</button><button class="btn small" data-act="mno" data-id="${m.id}">Refuser</button></div>`).join('')}</div>`;
+  if (vp.length) h += `<div class="kick">Demandes à valider (${vp.length})</div><div class="card">${vp.map((m) => `<div class="row" style="cursor:default"><span class="g">${esc(name(m.user_id))}<small>${ROLES[m.role]}${m.team_id ? ' · ' + esc(teamName(m.team_id)) : ''}${m.child_name ? ' · enfant : ' + esc(m.child_name) : ''}${!m.team_id && ['coach', 'joueur', 'parent'].includes(m.role) ? ' · équipe non choisie' : ''}</small></span><button class="btn small main" data-act="mok" data-id="${m.id}">Valider</button><button class="btn small" data-act="mno" data-id="${m.id}">Refuser</button></div>${teamPick(m)}`).join('')}</div>`;
   h += `<div class="kick">Équipes (${S.teams.length})</div><div class="card">${S.teams.length ? S.teams.map((t) => { const n = act.filter((m) => m.team_id === t.id).length; return `<div class="row" style="cursor:default"><span class="g">${esc(t.name)}<small>${n} membre${n > 1 ? 's' : ''}</small></span>${staff ? `<button class="btn small" data-act="tdel" data-id="${t.id}">${S.delPend === t.id ? 'Confirmer' : 'Supprimer'}</button>` : ''}</div>`; }).join('') : '<p class="empty" style="margin:0">Aucune équipe.</p>'}</div>`;
   if (staff) h += `<form id="teamf" style="display:flex;gap:8px"><input name="name" placeholder="Nouvelle équipe (ex. U9)" required style="flex:1;min-height:50px;padding:10px 12px;border:2px solid var(--trait);border-radius:12px"><button class="btn small main" type="submit">Ajouter</button></form>`;
   h += `<div class="kick">Membres (${act.length})</div><div class="card">${act.map((m) => `<div class="row" style="cursor:default"><span class="g">${esc(name(m.user_id))}<small>${ROLES[m.role]}${m.team_id ? ' · ' + esc(teamName(m.team_id)) : ''}${m.child_name ? ' · enfant : ' + esc(m.child_name) : ''}</small></span>${canValidate(m) && m.role !== 'president' ? `<button class="btn small" data-act="mdel" data-id="${m.id}">${S.delPend === m.id ? 'Confirmer' : 'Retirer'}</button>` : ''}</div>`).join('')}</div>`;
@@ -403,7 +408,15 @@ document.addEventListener('click', async (e) => {
     case 'gleave': if (await run(sb.from('group_members').delete().eq('group_id', S.view.id).eq('user_id', S.me.id), 'Vous avez quitté le groupe.')) { S.view = null; await refresh(); } return;
     case 'gdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('groups').delete().eq('id', d.id), 'Groupe supprimé.')) { S.view = null; await refresh(); } return;
     case 'share': { const c = club(), txt = `Rejoins ${c.name} sur Mon Blason : ouvre ${location.href.split('#')[0]} puis « Rejoindre un club » avec le code ${c.join_code}.`; if (navigator.share) { try { await navigator.share({ title: 'Mon Blason', text: txt }); } catch {} } else { try { await navigator.clipboard.writeText(txt); toast('Invitation copiée.'); } catch { toast(txt); } } return; }
-    case 'mok': if (await run(sb.rpc('validate_membership', { mid: d.id }), 'Demande validée.')) await refresh(); return;
+    case 'mok': {
+      let team = (S.vt || {})[d.id] || null;
+      if (team === 'new') {
+        const nm = ((S.vn || {})[d.id] || '').trim(); if (!nm) return toast('Donnez un nom à la nouvelle équipe.');
+        const t = await run(sb.from('teams').insert({ club_id: S.clubId, name: nm }).select().single()); if (!t) return; team = t.id;
+      }
+      if (await run(sb.rpc('validate_membership', { mid: d.id, p_team: team }), 'Demande validée.')) { if (S.vt) delete S.vt[d.id]; await refresh(); }
+      return;
+    }
     case 'mno': if (await run(sb.from('memberships').delete().eq('id', d.id), 'Demande refusée.')) await refresh(); return;
     case 'mdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('memberships').delete().eq('id', d.id), 'Membre retiré du club.')) await refresh(); return;
     case 'tdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('teams').delete().eq('id', d.id), 'Équipe supprimée.')) await refresh(); return;
@@ -416,12 +429,14 @@ document.addEventListener('input', (e) => {
   const t = e.target;
   if (t.dataset.j && t.type !== 'checkbox') { S.join[t.dataset.j] = t.dataset.j === 'code' ? t.value.toUpperCase() : t.value; }
   if (t.dataset.r && t.type !== 'checkbox') S.rq[t.dataset.r] = t.value;
+  if (t.dataset.vn) { S.vn = S.vn || {}; S.vn[t.dataset.vn] = t.value; }
   if (t.dataset.f && S.form) S.form[t.dataset.f] = t.value;
   if (t.closest('#clubf,#brandf') && t.type !== 'file') updatePreview(t.closest('form'));
 });
 document.addEventListener('change', async (e) => {
   const t = e.target; if (t.dataset.j) S.join[t.dataset.j] = t.type === 'checkbox' ? t.checked : t.value;
   if (t.dataset.r) S.rq[t.dataset.r] = t.type === 'checkbox' ? t.checked : t.value;
+  if (t.dataset.vt) { S.vt = S.vt || {}; S.vt[t.dataset.vt] = t.value; render(true); }
   if (t.dataset.logo && t.files?.[0]) {
     try {
       const r = await readLogo(t.files[0]); S.tmpLogo = r.data; const f = t.closest('form');

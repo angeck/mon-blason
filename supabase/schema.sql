@@ -246,10 +246,14 @@ create or replace function can_validate(mid uuid) returns boolean language sql s
       or (me.role = 'coach' and t.role in ('joueur','parent') and t.team_id is not null and t.team_id = me.team_id)));
 $$;
 
-create or replace function validate_membership(mid uuid) returns void language plpgsql security definer set search_path = public as $$
+create or replace function validate_membership(mid uuid, p_team uuid default null) returns void language plpgsql security definer set search_path = public as $$
+declare c uuid;
 begin
   if not can_validate(mid) then raise exception 'Vous ne pouvez pas valider cette demande'; end if;
-  update memberships set status = 'active' where id = mid;
+  select club_id into c from memberships where id = mid;
+  if p_team is not null and not exists(select 1 from teams where id = p_team and club_id = c) then raise exception 'Équipe inconnue dans ce club'; end if;
+  update memberships set status = 'active', team_id = coalesce(p_team, team_id) where id = mid;
+  if not found then raise exception 'Demande introuvable'; end if;
 end $$;
 
 drop policy if exists "adhésions validées par l'encadrement" on memberships;
