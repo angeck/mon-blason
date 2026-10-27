@@ -2,6 +2,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_KEY, VERSION } from './config.js';
 import * as V1 from './v1.js';
+import * as V2 from './v2.js';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = (s) => document.querySelector(s);
@@ -44,7 +45,7 @@ let crestN = 0;
 const SHIELD = 'M3 3h34v20c0 11-8 18-17 21C11 41 3 34 3 23z';
 function crest(c, size = 40) {
   const a = c?.color1 || '#0B6B3A', b = c?.color2 || '#FFD400', t = onColor(a);
-  if (c?.logo) { const id = 'cl' + (++crestN); return `<svg class="crest" width="${size}" height="${size * 1.15}" viewBox="0 0 40 46" aria-hidden="true"><defs><clipPath id="${id}"><path d="${SHIELD}"/></clipPath></defs><path d="${SHIELD}" fill="#fff"/><image href="${esc(c.logo)}" x="5" y="5" width="30" height="34" preserveAspectRatio="xMidYMid meet" clip-path="url(#${id})"/><path d="${SHIELD}" fill="none" stroke="${b}" stroke-width="3"/></svg>`; }
+  if (c?.logo) { const id = 'cl' + (++crestN); return `<svg class="crest" width="${size}" height="${size * 1.15}" viewBox="0 0 40 46" aria-hidden="true"><defs><clipPath id="${id}"><path d="${SHIELD}"/></clipPath></defs><path d="${SHIELD}" fill="${esc(c.crest_bg || '#fff')}"/><image href="${esc(c.logo)}" x="5" y="5" width="30" height="34" preserveAspectRatio="xMidYMid meet" clip-path="url(#${id})"/><path d="${SHIELD}" fill="none" stroke="${b}" stroke-width="3"/></svg>`; }
   return `<svg class="crest" width="${size}" height="${size * 1.15}" viewBox="0 0 40 46" aria-hidden="true"><path d="M3 3h34v20c0 11-8 18-17 21C11 41 3 34 3 23z" fill="${a}" stroke="${b}" stroke-width="3"/><path d="M20 3h17v20H20z" fill="${b}" opacity=".9"/><text x="20" y="31" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-style="italic" font-weight="800" font-size="15" fill="${t}" stroke="${a}" stroke-width=".6">${esc(initials(c?.name || 'MB'))}</text></svg>`;
 }
 async function readLogo(file) {
@@ -59,23 +60,28 @@ async function readLogo(file) {
     for (let i = 0; i < px.length; i += 4) { if (px[i + 3] < 200) continue; const r = px[i] >> 4, g = px[i + 1] >> 4, bl = px[i + 2] >> 4, hx = '#' + [r, g, bl].map((v) => (v * 17).toString(16).padStart(2, '0')).join('').toUpperCase(); const L = lum(hx); if (L > 0.85 || L < 0.01) continue; cnt[hx] = (cnt[hx] || 0) + 1; }
     const top = Object.keys(cnt).sort((p, q) => cnt[q] - cnt[p]), dist = (p, q) => { const A = parseInt(p.slice(1), 16), B = parseInt(q.slice(1), 16); return Math.abs((A >> 16) - (B >> 16)) + Math.abs(((A >> 8) & 255) - ((B >> 8) & 255)) + Math.abs((A & 255) - (B & 255)); };
     const c1 = top[0], c2 = top.find((q) => dist(q, c1) > 120);
-    return { data, colors: [c1, c2].filter(Boolean) };
+    // n° 5 : fond de l'écu = couleur des bords si le logo a un fond plein, sinon couleur dominante
+    let n = 0, op = 0, rs = 0, gs = 0, bs = 0;
+    for (let i = 0; i < 32; i++) for (const [xx, yy] of [[i, 0], [i, 31], [0, i], [31, i]]) { const o = (yy * 32 + xx) * 4; n++; if (px[o + 3] > 200) { op++; rs += px[o]; gs += px[o + 1]; bs += px[o + 2]; } }
+    const bg = op > n * 0.7 ? '#' + [rs, gs, bs].map((v) => Math.round(v / op).toString(16).padStart(2, '0')).join('').toUpperCase() : (c1 || '#FFFFFF');
+    return { data, colors: [c1, c2].filter(Boolean), bg };
   } finally { URL.revokeObjectURL(url); }
 }
-function previewHtml(nm, c1, c2, logo) {
-  return `<div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:${c1};color:${onColor(c1)};border-bottom:5px solid ${c2}">${crest({ name: nm, color1: c1, color2: c2, logo }, 44)}<div style="font-family:var(--titre);font-style:italic;font-weight:800;font-size:22px;text-transform:uppercase;line-height:1.05">${esc(nm || 'Mon club')}</div></div>`;
+function previewHtml(nm, c1, c2, logo, bg) {
+  return `<div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:${c1};color:${onColor(c1)};border-bottom:5px solid ${c2}">${crest({ name: nm, color1: c1, color2: c2, logo, crest_bg: bg }, 44)}<div style="font-family:var(--titre);font-style:italic;font-weight:800;font-size:22px;text-transform:uppercase;line-height:1.05">${esc(nm || 'Mon club')}</div></div>`;
 }
 function updatePreview(f) {
   const p = f?.querySelector('[data-prev]'); if (!p) return;
   const v = Object.fromEntries(new FormData(f));
-  const cr = f.id === 'clubf'; p.innerHTML = previewHtml(cr ? v.name : club()?.name, v.c1, v.c2, S.tmpLogo === undefined ? (cr ? null : club()?.logo) : S.tmpLogo);
+  const cr = f.id === 'clubf'; p.innerHTML = previewHtml(cr ? v.name : club()?.name, v.c1, v.c2, S.tmpLogo === undefined ? (cr ? null : club()?.logo) : S.tmpLogo, v.bg);
 }
-function logoField(hasLogo) {
-  return `<div class="field"><label for="lg">Logo du club (image, facultatif)</label><input id="lg" type="file" accept="image/*" data-logo="1"></div>${hasLogo ? '<button type="button" class="btn small" data-act="logorm">Retirer le logo</button>' : ''}<p class="note">Une image prise sur votre téléphone ou enregistrée depuis la page Facebook ou Instagram du club. Les couleurs du logo sont proposées automatiquement, vous pouvez les changer.</p>`;
+function logoField(hasLogo, bg) {
+  return `<div class="field"><label for="lbg">Fond de l'écu derrière le logo</label><input id="lbg" name="bg" type="color" value="${esc((bg || '#ffffff').toLowerCase())}"></div><div class="field"><label for="lg">Logo du club (image, facultatif)</label><input id="lg" type="file" accept="image/*" data-logo="1"></div>${hasLogo ? '<button type="button" class="btn small" data-act="logorm">Retirer le logo</button>' : ''}<p class="note">Une image prise sur votre téléphone ou enregistrée depuis la page Facebook ou Instagram du club. Les couleurs du logo sont proposées automatiquement, vous pouvez les changer.</p>`;
 }
+function brandMode() { return !S.session || !S.me || ['account', 'legal'].includes(S.view?.type) || !S.clubId || !isActive() || S.onb !== null || (S.me && S.me.cgu_version === null); }
 function applyTheme() {
-  const c = club(), r = document.documentElement.style;
-  const a = c?.color1 || '#0B6B3A', b = c?.color2 || '#FFD400';
+  const c = club(), r = document.documentElement.style, P = V2.PALETTES[S.me?.palette || 'terrain'] || V2.PALETTES.terrain, br = brandMode();
+  const a = br ? P[0] : c?.color1 || '#0B6B3A', b = br ? P[1] : c?.color2 || '#FFD400';
   r.setProperty('--c1', a); r.setProperty('--c2', b); r.setProperty('--on1', onColor(a));
   document.querySelector('meta[name=theme-color]').content = a;
 }
@@ -91,7 +97,7 @@ async function run(p, ok) {
 async function loadMe() {
   const uid = S.session.user.id;
   const [{ data: prof }, { data: mems }] = await Promise.all([
-    sb.from('profiles').select('*').eq('id', uid).maybeSingle(),
+    sb.rpc('my_profile').then((r) => (r.error ? sb.from('profiles').select('*').eq('id', uid).maybeSingle() : r)),
     sb.from('memberships').select('*').eq('user_id', uid),
   ]);
   S.me = prof || { id: uid, full_name: '' };
@@ -113,7 +119,10 @@ async function loadClub() {
   ]);
   S.members = mem.data || []; S.teams = teams.data || []; S.events = evs.data || []; S.groups = grps.data || [];
   const uids = [...new Set(S.members.map((m) => m.user_id))];
-  if (uids.length) { const { data: pr } = await sb.from('profiles').select('id,full_name,nickname,phone').in('id', uids); S.nicks = S.nicks || {}; S.phones = S.phones || {}; (pr || []).forEach((p) => { S.names[p.id] = p.full_name || 'Membre'; S.nicks[p.id] = p.nickname || ''; S.phones[p.id] = p.phone || ''; }); }
+  await loadNames(uids);
+  await V2.loadRoster(cid);
+  const ph = await sb.rpc('phones_for', { p_ids: [...new Set(uids.concat((S.roster || []).map((x) => x.user_id).filter(Boolean)))] });
+  S.phones = {}; (ph.data || []).forEach((x) => (S.phones[x.id] = x.phone));
   const eids = S.events.map((e) => e.id);
   S.resp = eids.length ? ((await sb.from('event_responses').select('*').in('event_id', eids)).data || []) : [];
   const gids = S.groups.map((g) => g.id);
@@ -123,7 +132,16 @@ async function loadClub() {
   S.pparents = pids.length ? ((await sb.from('player_parents').select('*').in('player_id', pids)).data || []) : [];
   S.padmin = pids.length ? ((await sb.from('player_admin').select('*').in('player_id', pids)).data || []) : [];
   S.att = pids.length ? ((await sb.from('attendance').select('*').in('player_id', pids)).data || []) : [];
+  const [fg, dc, hid] = await Promise.all([sb.from('fee_grid').select('*').eq('club_id', cid), V2.isBoard() && pids.length ? sb.from('player_discount').select('*').in('player_id', pids) : Promise.resolve({ data: [] }), sb.from('event_hidden').select('*').eq('user_id', S.me.id)]);
+  S.fees = fg.error ? null : fg.data || []; S.discounts = dc.data || []; S.hidden = hid.data || [];
+  const parentIds = (S.pparents || []).map((x) => x.user_id).filter((u) => !S.names[u]); if (parentIds.length) await loadNames(parentIds);
   S.updated = hm();
+}
+async function loadNames(ids) {
+  ids = [...new Set(ids)].filter(Boolean); if (!ids.length) return;
+  let r = await sb.from('profiles').select('id,full_name,first_name,last_name,nickname').in('id', ids);
+  if (r.error) r = await sb.from('profiles').select('id,full_name,nickname').in('id', ids);
+  S.nicks = S.nicks || {}; (r.data || []).forEach((p) => { S.names[p.id] = p.full_name || 'Membre'; S.nicks[p.id] = p.nickname || ''; });
 }
 async function loadGroup(gid) {
   const [m, p, gm] = await Promise.all([
@@ -132,6 +150,7 @@ async function loadGroup(gid) {
     sb.from('group_members').select('*').eq('group_id', gid),
   ]);
   S.msgs = m.data || []; S.polls = p.data || []; S.gmembers = gm.data || [];
+  await loadNames(S.gmembers.map((x) => x.user_id).concat(S.msgs.map((x) => x.user_id)).filter((u) => !S.names[u]));
   const pids = S.polls.map((x) => x.id);
   S.votes = pids.length ? ((await sb.from('poll_votes').select('*').in('poll_id', pids)).data || []) : [];
 }
@@ -176,8 +195,8 @@ function syncBar() {
     `<div class="sync"><span style="flex:1">${S.updated ? 'Mis à jour à ' + S.updated : ''}</span><button data-act="refresh">⟳ Actualiser</button></div>`;
 }
 function head(title, sub, back) {
-  const c = club();
-  return `<header class="hd">${back ? '<button class="back" data-act="back" aria-label="Retour">‹</button>' : ''}${c ? crest(c, 38) : ''}<div class="grow"><div class="t">${esc(title)}</div><div class="s">${esc(sub || '')}</div></div>${S.view?.type === 'account' ? '' : accountBtn()}</header>`;
+  const c = brandMode() ? null : club();
+  return `<header class="hd">${back ? '<button class="back" data-act="back" aria-label="Retour">‹</button>' : ''}${c ? crest(c, 38) : ''}<div class="grow"><div class="t">${esc(title)}</div><div class="s">${esc(sub || '')}</div></div>${['account', 'legal'].includes(S.view?.type) ? '' : accountBtn()}</header>`;
 }
 function accountBtn() {
   return `<button class="acct" data-act="account" aria-label="Mon compte" title="Mon compte"><svg width="34" height="40" viewBox="0 0 40 46" aria-hidden="true"><path d="M3 3h34v20c0 11-8 18-17 21C11 41 3 34 3 23z" fill="#0B6B3A" stroke="#FFD400" stroke-width="3"/><circle cx="20" cy="17" r="6" fill="#FFD400"/><path d="M9 33c2-6 6-9 11-9s9 3 11 9c-3 4-7 6-11 7-4-1-8-3-11-7z" fill="#FFD400"/></svg><span>Mon compte</span></button>`;
@@ -189,12 +208,13 @@ function authScreen() {
   return brandHead() + `<main class="bd"><h1>${L ? 'Connexion' : 'Créer un compte'}</h1>
   <div class="chips"><button class="chip" data-act="authmode" data-v="login" aria-pressed="${L}">J'ai un compte</button><button class="chip" data-act="authmode" data-v="signup" aria-pressed="${!L}">Créer un compte</button></div>
   <form id="authf" class="card" style="display:flex;flex-direction:column;gap:12px">
-  ${L ? '' : '<div class="field"><label for="an">Prénom et nom</label><input id="an" name="full_name" required autocomplete="name"></div>'}
+  ${L ? '' : '<div class="grid2"><div class="field"><label for="an">Prénom</label><input id="an" name="first_name" required autocomplete="given-name"></div><div class="field"><label for="an2">Nom</label><input id="an2" name="last_name" required autocomplete="family-name"></div></div>'}
   <div class="field"><label for="ae">Adresse e-mail</label><input id="ae" name="email" type="email" required autocomplete="email"></div>
   <div class="field"><label for="ap">Mot de passe${L ? '' : ' (8 caractères minimum)'}</label><div style="display:flex;gap:8px"><input id="ap" name="password" type="password" required minlength="${L ? 1 : 8}" autocomplete="${L ? 'current-password' : 'new-password'}" style="flex:1;min-width:0"><button type="button" class="btn small" data-act="pwtog" aria-label="Afficher le mot de passe" aria-pressed="false">Afficher</button></div></div>
+  ${L ? '' : V2.signupExtras()}
   <button class="btn main" type="submit">${L ? 'Se connecter' : 'Créer mon compte'}</button></form>
   ${L ? '<button class="btn small" data-act="forgot" style="align-self:center;border:0">Mot de passe oublié ?</button>' : ''}
-  <p class="note">Version ${VERSION} · données de test.</p></main>`;
+  <button class="btn small" data-act="legal" style="align-self:center;border:0">Mentions légales et données</button><p class="note">Version ${VERSION} · version de test.</p></main>`;
 }
 
 function onboarding() {
@@ -217,11 +237,11 @@ function onboarding() {
   } else {
     const j = S.join;
     h += `<h1>Rejoindre un club</h1><div class="card" style="display:flex;flex-direction:column;gap:12px">
-      <div class="field"><label for="jc">Code du club (6 caractères)</label><input id="jc" data-j="code" value="${esc(j.code)}" autocapitalize="characters" maxlength="6"></div>
+      <div class="field"><label for="jc">Code du club (8 caractères)</label><input id="jc" data-j="code" value="${esc(j.code)}" autocapitalize="characters" maxlength="8"></div>
       <button class="btn small" data-act="jcheck">Vérifier le code</button>
       ${j.clubName ? `<div style="font-weight:800">Club : ${esc(j.clubName)}</div>` : ''}
       <div class="kick">Je rejoins comme</div><div class="chips">${JOIN_ROLES.map((r) => `<button class="chip" data-act="jrole" data-v="${r}" aria-pressed="${j.role === r}">${ROLES[r]}</button>`).join('')}</div>
-      ${j.role === 'parent' ? `<div class="field"><label for="jk">Prénom et nom de l'enfant</label><input id="jk" data-j="child" value="${esc(j.child || '')}"></div>` : ''}
+      ${j.role === 'parent' ? `<div class="grid2"><div class="field"><label for="jk">Prénom de l'enfant</label><input id="jk" data-j="childf" value="${esc(j.childf || '')}"></div><div class="field"><label for="jk2">Nom de l'enfant</label><input id="jk2" data-j="childl" value="${esc(j.childl || '')}"></div></div>` : ''}
       ${j.role === 'joueur' ? `<label class="check"><input type="checkbox" data-j="age" ${j.age ? 'checked' : ''}><span>J'ai 15 ans ou plus</span></label>` : ''}
       ${['parent', 'joueur', 'coach'].includes(j.role) && j.teams.length ? `<div class="field"><label for="jt">Équipe</label><select id="jt" data-j="team"><option value="">Je ne sais pas</option>${j.teams.map((t) => `<option value="${t.id}" ${j.team === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>` : ''}
       <p class="note">${j.role === 'supporteur' ? 'Accès immédiat.' : "Le club valide votre demande. En attendant, vous n'avez pas encore accès."}</p>
@@ -236,15 +256,15 @@ function evLine(e, withPair) {
   const r = respOf(e.id);
   if (e.cancelled) return `<div class="card" style="opacity:.75"><button class="row" style="border:0;padding:0;min-height:44px" data-act="event" data-id="${e.id}"><span class="g" style="text-decoration:line-through">${esc(e.title)}<small>${esc(e.type)}${e.team_id ? ' · ' + esc(teamName(e.team_id)) : ''} · ${esc(fmtShort(e.starts_at))}</small></span><span class="pill ko">Annulé</span></button></div>`;
   return `<div class="card"><button class="row" style="border:0;padding:0;min-height:44px" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(e.type)}${e.team_id ? ' · ' + esc(teamName(e.team_id)) : ''} · ${esc(fmtShort(e.starts_at))}${e.place ? ' · ' + esc(e.place) : ''}</small></span><span class="chev">›</span></button>
-  <div class="chips" style="margin-top:6px"><span class="pill ok">${r.oui.length} viennent</span><span class="pill">${r.non.length} ne viennent pas</span></div>${withPair ? pair(e.id) : ''}</div>`;
+  <div class="chips" style="margin-top:6px"><span class="pill ok">${r.oui.length} viennent</span><span class="pill">${r.non.length} ne viennent pas</span></div>${withPair ? pair(e.id) + V2.hideBtn(e, r.mine) : ''}</div>`;
 }
 function home() {
-  const todo = S.events.filter((e) => !e.cancelled && !respOf(e.id).mine).slice(0, 5);
+  const todo = S.events.filter((e) => !e.cancelled && !respOf(e.id).mine && !V2.isHidden(e)).slice(0, 5);
   let h = `<div class="kick">Bonjour ${esc(S.me.nickname || (S.me.full_name || '').split(' ')[0])}</div><h1>Accueil</h1>`;
   if (!store.get('mb_hiderq_' + S.clubId)) h += `<div class="card hi"><div style="font-weight:800">Vous jouez, coachez ou êtes parent dans une autre équipe du club ?</div><p class="note" style="margin:4px 0 10px">Ajoutez vos autres rôles : chacun est validé par le club.</p><div class="chips"><button class="btn small main" data-act="rqgo">➕ Demander un autre rôle</button><button class="btn small" data-act="rqhide">Ne plus afficher</button></div></div>`;
   const vp = toValidate().length; if (vp) h += `<button class="btn main" data-act="tab" data-i="4">${vp} demande${vp > 1 ? 's' : ''} à valider</button>`;
   h += `<div class="kick">À répondre${todo.length ? ' · ' + todo.length : ''}</div>` + (todo.length ? todo.map((e) => evLine(e, true)).join('') : '<p class="empty">Rien à répondre pour le moment.</p>');
-  const next = S.events.filter((e) => respOf(e.id).mine).slice(0, 3);
+  const next = S.events.filter((e) => respOf(e.id).mine && !V2.isHidden(e)).slice(0, 3);
   if (next.length) h += '<div class="kick">Mes prochains rendez-vous</div>' + next.map((e) => evLine(e, false)).join('');
   h += '<div class="kick">Dernières infos</div><div class="card">' + (S.lastMsgs.length ? S.lastMsgs.slice(0, 5).map((m) => `<button class="row" data-act="group" data-id="${m.group_id}"><span class="g">${esc(grp(m.group_id)?.name || 'Groupe')}<small>${esc(name(m.user_id))} : ${esc(m.body.slice(0, 80))}</small></span><span class="chev">›</span></button>`).join('') : '<p class="empty" style="margin:0">Aucun message.</p>') + '</div>';
   return h;
@@ -265,7 +285,7 @@ function eventForm() {
   <div class="field"><label for="ed">Date et heure</label><input id="ed" name="starts_at" type="datetime-local" required value="${esc(f.starts_at || '')}"></div>
   ${V1.repeatFields(f)}
   <div class="field"><label for="el">Lieu</label><input id="el" name="place" value="${esc(f.place || '')}"></div>
-  <div class="field"><label for="eq">Équipe</label><select id="eq" name="team_id"><option value="">Tout le club</option>${S.teams.map((t) => `<option value="${t.id}" ${f.team_id === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>
+  <div class="field"><label for="eq">Équipe</label><select id="eq" name="team_id">${V2.isBoard() ? '<option value="">Tout le club</option>' : ''}${S.teams.filter((t) => V2.isBoard() || V2.coachTeams().includes(t.id)).map((t) => `<option value="${t.id}" ${f.team_id === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>
   <button class="btn main" type="submit">Enregistrer</button></form>`;
 }
 function eventPage(id) {
@@ -273,8 +293,9 @@ function eventPage(id) {
   const r = respOf(id), list = (a) => a.length ? a.map((x) => esc(name(x.user_id))).join(', ') : '—';
   return `<h1>${esc(e.title)}</h1>${e.cancelled ? '<span class="pill ko">Séance annulée</span>' : ''}<div class="det">${esc(e.type)}${e.team_id ? ' · ' + esc(teamName(e.team_id)) : ''}<br>${esc(fmtDate(e.starts_at))}${e.place ? '<br>' + esc(e.place) : ''}${e.opponents ? '<br>Contre : ' + esc(e.opponents) : ''}</div>
   ${pair(id)}<div class="card"><div class="kick">Viennent (${r.oui.length})</div><div>${list(r.oui)}</div><div class="kick" style="margin-top:10px">Ne viennent pas (${r.non.length})</div><div>${list(r.non)}</div></div>
+  <button class="btn" data-act="ics" data-id="${id}">📅 Ajouter à mon agenda</button>${V2.hideBtn(e, r.mine)}
   ${V1.eventStaffBlock(e)}
-  ${isStaff() ? `<button class="btn danger" data-act="evdel" data-id="${id}">${S.delPend === id ? 'Confirmer la suppression' : 'Supprimer ce rendez-vous'}</button>` : ''}`;
+  ${V2.isBoard() || V2.coachTeams().includes(e.team_id) ? `<button class="btn danger" data-act="evdel" data-id="${id}">${S.delPend === id ? 'Confirmer la suppression' : 'Supprimer ce rendez-vous'}</button>` : ''}`;
 }
 function messagesTab() {
   let h = '<h1>Messages</h1><button class="btn main" data-act="gnew">Créer un groupe d\'échange</button>';
@@ -282,7 +303,7 @@ function messagesTab() {
   return h + '<p class="note">Les groupes remplacent WhatsApp : covoiturage, organisation, sondages. Seuls les membres invités les voient.</p>';
 }
 function groupForm() {
-  const f = S.form, act = S.members.filter((m) => m.status === 'active' && m.user_id !== S.me.id);
+  const f = S.form, act = S.members.filter((m) => m.status === 'active' && m.user_id !== S.me.id).concat((S.roster || []).filter((x) => x.user_id && x.user_id !== S.me.id).map((x) => ({ user_id: x.user_id, role: x.kind === 'joueur' ? 'joueur' : x.role, team_id: x.team_id })));
   const people = [...new Map(act.map((m) => [m.user_id, m])).values()];
   return `<h1>Nouveau groupe</h1><div class="card" style="display:flex;flex-direction:column;gap:12px">
   <div class="field"><label for="gn">Nom du groupe</label><input id="gn" data-f="name" value="${esc(f.name || '')}" placeholder="Ex. U9 · Parents et coachs"></div>
@@ -334,20 +355,18 @@ function teamTab() {
   h += V1.coachBlock(tid);
   const evs = S.events.filter((e) => e.team_id === tid);
   h += `<div class="kick">Prochains rendez-vous</div>` + (coach ? `<button class="btn main" data-act="evnew" data-team="${tid}">Ajouter un rendez-vous pour l'équipe</button>` : '') + (evs.length ? evs.slice(0, 5).map((e) => evLine(e, true)).join('') : '<p class="empty">Aucun rendez-vous prévu pour l\'équipe.</p>');
-  const mem = S.members.filter((m) => m.status === 'active' && m.team_id === tid), order = ['coach', 'joueur', 'parent', 'supporteur'];
-  const users = [...new Set(mem.sort((a, b) => order.indexOf(a.role) - order.indexOf(b.role)).map((m) => m.user_id))];
-  h += `<div class="kick">Membres de l'équipe (${users.length})</div><div class="card">${users.length ? users.map((u) => memberLine(u, mem.filter((m) => m.user_id === u), full, false)).join('') : '<p class="empty" style="margin:0">Aucun membre validé.</p>'}</div>`;
-  if (!full) h += '<p class="note">Les familles voient les autres membres en « Prénom N. ». Noms complets visibles du coach et du bureau.</p>';
+  h += `<button class="btn" data-act="team" data-id="${tid}">Fiche de l'équipe ${esc(teamName(tid))}</button>` + V2.teamRoster(tid);
   return h;
 }
 function clubTab() {
   const c = club(), staff = isStaff(), pend = S.members.filter((m) => m.status === 'pending'), act = S.members.filter((m) => m.status === 'active');
   let h = `<h1>${esc(c.name)}</h1><div class="det">${esc(c.sport)}${c.city ? ' · ' + esc(c.city) : ''}</div>`;
-  if (myMem().some((m) => m.status === 'active' && ['president', 'bureau'].includes(m.role))) h += `<details class="card"><summary style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">Blason et couleurs du club</summary><form id="brandf" style="display:flex;flex-direction:column;gap:12px;margin-top:10px"><div data-prev>${previewHtml(c.name, c.color1, c.color2, S.tmpLogo === undefined ? c.logo : S.tmpLogo)}</div>${logoField(S.tmpLogo === undefined ? !!c.logo : !!S.tmpLogo)}<div class="grid2"><div class="field"><label for="b1">Couleur principale</label><input id="b1" name="c1" type="color" value="${esc(c.color1.toLowerCase())}"></div><div class="field"><label for="b2">Seconde couleur</label><input id="b2" name="c2" type="color" value="${esc(c.color2.toLowerCase())}"></div></div><button class="btn main" type="submit">Enregistrer le blason</button></form></details>`;
+  if (myMem().some((m) => m.status === 'active' && ['president', 'bureau'].includes(m.role))) h += `<details class="card"><summary style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">Blason et couleurs du club</summary><form id="brandf" style="display:flex;flex-direction:column;gap:12px;margin-top:10px"><div data-prev>${previewHtml(c.name, c.color1, c.color2, S.tmpLogo === undefined ? c.logo : S.tmpLogo)}</div>${logoField(S.tmpLogo === undefined ? !!c.logo : !!S.tmpLogo, c.crest_bg)}<div class="grid2"><div class="field"><label for="b1">Couleur principale</label><input id="b1" name="c1" type="color" value="${esc(c.color1.toLowerCase())}"></div><div class="field"><label for="b2">Seconde couleur</label><input id="b2" name="c2" type="color" value="${esc(c.color2.toLowerCase())}"></div></div><p class="note">En enregistrant un logo, le club certifie avoir le droit de l'utiliser.</p><button class="btn main" type="submit">Enregistrer le blason</button></form></details>`;
   h += `<div class="card hi"><div class="kick">Code pour rejoindre le club</div><div style="font-family:var(--titre);font-style:italic;font-weight:800;font-size:40px;letter-spacing:.08em">${esc(c.join_code)}</div><button class="btn small" data-act="share">Partager l'invitation</button></div>`;
   const vp = toValidate();
   if (vp.length) h += `<div class="kick">Demandes à valider (${vp.length})</div><div class="card">${pendRows(vp)}</div>`;
-  h += V1.licencesBlock();
+  h += V1.licencesBlock() + V2.feesBlock() + V2.namesToCheck() + V2.teamsBlock() + V2.membersBlock();
+  return h;
   h += `<div class="kick">Équipes (${S.teams.length})</div><div class="card">${S.teams.length ? S.teams.map((t) => { const n = new Set(act.filter((m) => m.team_id === t.id).map((m) => m.user_id)).size; return `<div class="row" style="cursor:default"><span class="g">${esc(t.name)}<small>${n} membre${n > 1 ? 's' : ''}</small></span>${staff ? `<button class="btn small" data-act="tdel" data-id="${t.id}">${S.delPend === t.id ? 'Confirmer' : 'Supprimer'}</button>` : ''}</div>`; }).join('') : '<p class="empty" style="margin:0">Aucune équipe.</p>'}</div>`;
   if (staff) h += `<form id="teamf" style="display:flex;gap:8px"><input name="name" placeholder="Nouvelle équipe (ex. U9)" required style="flex:1;min-height:50px;padding:10px 12px;border:2px solid var(--trait);border-radius:12px"><button class="btn small main" type="submit">Ajouter</button></form>`;
   const rank = (u) => Math.min(...act.filter((m) => m.user_id === u).map((m) => ['president', 'bureau', 'coach', 'joueur', 'parent', 'supporteur'].indexOf(m.role)));
@@ -360,27 +379,31 @@ function roleRequest() {
   return `<details id="rqbox" class="card hi" ${r.open ? 'open' : ''}><summary data-act="rqopen" style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">Demander un autre rôle dans ${esc(c.name)}</summary><div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">
   <div class="det">Mes rôles : ${mine.map((m) => ROLES[m.role] + (m.team_id ? ' ' + esc(teamName(m.team_id)) : '') + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</div>
   <div class="chips">${JOIN_ROLES.map((x) => `<button class="chip" data-act="rqrole" data-v="${x}" aria-pressed="${r.role === x}">${ROLES[x]}</button>`).join('')}</div>
-  ${r.role === 'parent' ? `<div class="field"><label for="rk">Prénom et nom de l'enfant</label><input id="rk" data-r="child" value="${esc(r.child || '')}"></div>` : ''}
+  ${r.role === 'parent' ? `<div class="grid2"><div class="field"><label for="rk">Prénom de l'enfant</label><input id="rk" data-r="childf" value="${esc(r.childf || '')}"></div><div class="field"><label for="rk2">Nom de l'enfant</label><input id="rk2" data-r="childl" value="${esc(r.childl || '')}"></div></div>` : ''}
   ${r.role === 'joueur' ? `<label class="check"><input type="checkbox" data-r="age" ${r.age ? 'checked' : ''}><span>J'ai 15 ans ou plus</span></label>` : ''}
   ${['parent', 'joueur', 'coach'].includes(r.role) && S.teams.length ? `<div class="field"><label for="rt">Équipe</label><select id="rt" data-r="team"><option value="">Je ne sais pas</option>${S.teams.map((t) => `<option value="${t.id}" ${r.team === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>` : ''}
-  <p class="note">${r.role === 'supporteur' ? 'Accès immédiat.' : r.role === 'bureau' ? 'Validé par le président.' : r.role === 'coach' ? 'Validé par le bureau ou le président.' : "Validé par le coach de l'équipe, le bureau ou le président."}</p>
+  <p class="note">${r.role === 'supporteur' || V2.isPresident() || (r.role === 'coach' && V2.isBoard()) ? 'Accès immédiat.' : r.role === 'bureau' ? 'Validé par le président.' : r.role === 'coach' ? 'Validé par le bureau ou le président.' : "Validé par le coach de l'équipe, le bureau ou le président."}</p>
   <button class="btn main" data-act="rqsend">Envoyer la demande</button></div></details>`;
 }
 function compte() {
   const clubs = Object.values(S.clubs);
-  return `<h1>Mon compte</h1><button class="btn main" data-act="rqgo">➕ Demander un autre rôle dans ${esc(club().name)}</button><div class="kick">Mon profil</div><form id="proff" class="card" style="display:flex;flex-direction:column;gap:12px"><div class="field"><label for="pn">Prénom et nom</label><input id="pn" name="full_name" value="${esc(S.me.full_name)}" required></div><div class="field"><label for="pp">Pseudo (affiché dans les groupes)</label><input id="pp" name="nickname" value="${esc(S.me.nickname || '')}" maxlength="30"></div><div class="field"><label for="pm">Adresse e-mail</label><input id="pm" value="${esc(S.session.user.email)}" readonly style="background:#EEF1EC"></div><div class="field"><label for="pt">Téléphone (visible des membres de vos clubs)</label><input id="pt" name="phone" type="tel" value="${esc(S.me.phone || '')}"></div><button class="btn main" type="submit">Enregistrer mon profil</button></form>
+  return `<h1>Mon compte</h1><button class="btn main" data-act="rqgo">➕ Demander un autre rôle dans ${esc(club().name)}</button><div class="kick">Mon profil</div><form id="proff" class="card" style="display:flex;flex-direction:column;gap:12px"><div class="grid2"><div class="field"><label for="pn">Prénom</label><input id="pn" name="first_name" value="${esc(S.me.first_name ?? (S.me.full_name || '').split(' ')[0])}" required></div><div class="field"><label for="pn2">Nom</label><input id="pn2" name="last_name" value="${esc(S.me.last_name ?? (S.me.full_name || '').split(' ').slice(1).join(' '))}" required></div></div><div class="field"><label for="pp">Pseudo (affiché dans les groupes)</label><input id="pp" name="nickname" value="${esc(S.me.nickname || '')}" maxlength="30"></div><div class="field"><label for="pm">Adresse e-mail</label><input id="pm" value="${esc(S.session.user.email)}" readonly style="background:#EEF1EC"></div><div class="field"><label for="pt">Téléphone (visible de l'encadrement et des familles concernées)</label><input id="pt" name="phone" type="tel" value="${esc(S.me.phone || '')}"></div><button class="btn main" type="submit">Enregistrer mon profil</button></form>
   ${roleRequest()}
   <div class="kick">Mes clubs et profils</div><div class="card">${clubs.map((c) => `<button class="row" data-act="club" data-id="${c.id}">${crest(c, 30)}<span class="g">${esc(c.name)}<small>${S.mems.filter((m) => m.club_id === c.id).map((m) => ROLES[m.role] + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</small></span>${c.id === S.clubId ? '<span class="pill ok">Affiché</span>' : '<span class="chev">›</span>'}</button>`).join('')}</div>
   <button class="btn" data-act="onbopen">Rejoindre ou créer un autre club</button>
   <button class="btn" data-act="leave">${S.delPend === 'leave' ? 'Confirmer : quitter ce club' : 'Quitter ce club'}</button>
+  <div class="kick">Couleurs de Mon Blason</div><div class="chips">${Object.entries(V2.PALETTES).map(([k, p]) => `<button class="chip" data-act="palette" data-v="${k}" aria-pressed="${(S.me.palette || 'terrain') === k}" style="border-left:14px solid ${p[0]}">${p[2]}</button>`).join('')}</div>
+  <button class="btn" data-act="legal">Mentions légales, confidentialité et conditions</button>
   <button class="btn" data-act="logout">Se déconnecter</button><p class="note">${esc(S.session.user.email)} · Mon Blason ${VERSION}</p>`;
 }
 
 function render(keep) {
   const y = keep ? window.scrollY : 0, app = $('#app');
   applyTheme();
-  if (!S.session) { app.innerHTML = authScreen(); return; }
+  if (!S.session) { app.innerHTML = S.view?.type === 'legal' ? head('Mentions et données', 'Mon Blason', true) + '<main class="bd">' + V2.legalText() + '</main>' : authScreen(); return; }
   if (!S.me) { app.innerHTML = '<div class="splash"><div class="brand">Mon Blason</div></div>'; return; }
+  if (S.me.cgu_version === null && S.view?.type !== 'legal') { app.innerHTML = brandHead('Conditions d\'utilisation') + V2.cguScreen(); return; }
+  if (S.view?.type === 'legal') { app.innerHTML = head('Mentions et données', 'Mon Blason', true) + '<main class="bd">' + V2.legalText() + '</main>'; return; }
   if (!S.clubId || !isActive() || S.onb !== null) { app.innerHTML = onboarding(); return; }
   const v = S.view, c = club();
   let hd, bd;
@@ -389,6 +412,9 @@ function render(keep) {
   else if (v?.type === 'gform') { hd = head('Messages', c.name, true); bd = groupForm(); }
   else if (v?.type === 'appel') { hd = head('Appel', c.name, true); bd = V1.appelPage(v.id); }
   else if (v?.type === 'player') { hd = head('Fiche joueur', c.name, true); bd = V1.playerPage(v.id); }
+  else if (v?.type === 'team') { hd = head('Équipe', c.name, true); bd = V2.teamPage(v.id); }
+  else if (v?.type === 'import') { hd = head('Ajouter des joueurs', c.name, true); bd = V2.importPage(v.id); }
+  else if (v?.type === 'legal') { hd = head('Mentions et données', 'Mon Blason', true); bd = V2.legalText(); }
   else if (v?.type === 'account') { hd = head('Mon compte', S.me.full_name, true); bd = compte(); }
   else if (v?.type === 'group') { hd = head(grp(v.id)?.name || 'Groupe', 'Groupe d\'échange', true); bd = groupPage(v.id); }
   else { hd = head(c.name, [...new Set(myMem().filter((m) => m.status === 'active').map((m) => ROLES[m.role] + (m.team_id ? ' ' + teamName(m.team_id) : '')))].join(' · ')); bd = [home, agenda, messagesTab, teamTab, clubTab][S.tab](); }
@@ -403,7 +429,7 @@ document.addEventListener('click', async (e) => {
   if (el.tagName === 'INPUT' && a !== 'gsel') return;
   if (el.tagName === 'INPUT' && el.type === 'checkbox' && !a) return;
   if (a !== 'gsel') e.preventDefault();
-  const keepDel = ['evdel', 'gdel', 'tdel', 'mdel', 'leave', ...V1.KEEP_DEL].includes(a); if (!keepDel) S.delPend = null;
+  const keepDel = ['evdel', 'gdel', 'tdel', 'mdel', 'leave', ...V1.KEEP_DEL, ...V2.KEEP_DEL].includes(a); if (!keepDel) S.delPend = null;
   switch (a) {
     case 'authmode': S.authMode = d.v; return render();
     case 'pwtog': { const i = $('#ap'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.textContent = show ? 'Masquer' : 'Afficher'; el.setAttribute('aria-pressed', show); el.setAttribute('aria-label', show ? 'Masquer le mot de passe' : 'Afficher le mot de passe'); return; }
@@ -412,7 +438,7 @@ document.addEventListener('click', async (e) => {
     case 'logout': await sb.auth.signOut(); return;
     case 'refresh': return refresh(true);
     case 'tab': S.tab = +d.i; S.view = null; S.tmpLogo = undefined; render(); return;
-    case 'back': S.view = null; S.form = null; render(); return;
+    case 'back': S.view = S.view?.type === 'legal' ? S.prevView || null : S.view?.type === 'import' ? { type: 'team', id: S.view.id } : null; S.prevView = null; S.form = null; render(); return;
     case 'onb': S.tmpLogo = undefined; S.onb = d.v || null; if (!d.v && isActive()) S.onb = null; render(); return;
     case 'onbopen': S.onb = ''; render(); return;
     case 'jrole': S.join.role = d.v; return render(true);
@@ -424,22 +450,24 @@ document.addEventListener('click', async (e) => {
     case 'rqrole': S.rq.role = d.v; return render(true);
     case 'rqsend': {
       const r = S.rq;
-      if (r.role === 'parent' && !(r.child || '').trim()) return toast("Indiquez le prénom et le nom de l'enfant.");
+      if (r.role === 'parent' && (!(r.childf || '').trim() || !(r.childl || '').trim())) return toast("Indiquez le prénom et le nom de l'enfant.");
       if (r.role === 'joueur' && !r.age) return toast('Le compte joueur est réservé aux 15 ans et plus.');
-      if (myMem().some((m) => m.role === r.role && (m.team_id || '') === (r.team || '') && (r.role !== 'parent' || (m.child_name || '') === r.child.trim()))) return toast('Vous avez déjà ce rôle (ou une demande en cours).');
-      if (await run(sb.rpc('join_club', { p_code: club().join_code, p_role: r.role, p_team: r.team || null, p_child: r.child || null }), r.role === 'supporteur' ? 'Rôle ajouté.' : 'Demande envoyée.')) { S.rq = { role: 'joueur', team: '', child: '', age: false, open: false }; await refresh(); }
+      if (myMem().some((m) => m.role === r.role && (m.team_id || '') === (r.team || '') && r.role !== 'parent')) return toast('Vous avez déjà ce rôle (ou une demande en cours).');
+      if (await run(sb.rpc('join_club', { p_code: club().join_code, p_role: r.role, p_team: r.team || null, p_child: null, p_child_first: r.childf || null, p_child_last: r.childl || null }), r.role === 'supporteur' || V2.isPresident() || (r.role === 'coach' && V2.isBoard()) ? 'Rôle ajouté.' : 'Demande envoyée.')) { S.rq = { role: 'joueur', team: '', child: '', age: false, open: false }; await refresh(); }
       return;
     }
     case 'jcheck': {
       const r = await run(sb.rpc('teams_for_code', { p_code: S.join.code }));
-      if (r) { S.join.teams = r; S.join.clubName = r[0]?.club_name || (r.length === 0 ? 'Code accepté (le club n\'a pas encore d\'équipe)' : ''); render(true); }
+      if (r) { if (!r.length) { S.join.clubName = ''; toast('Code inconnu. Vérifiez les 8 caractères.'); return render(true); } S.join.teams = r.filter((x) => x.id); S.join.clubName = r[0].club_name; render(true); }
       return;
     }
     case 'jsend': {
       if (!S.join.code) return toast('Indiquez le code du club.');
-      if (S.join.role === 'parent' && !(S.join.child || '').trim()) return toast("Indiquez le prénom et le nom de l'enfant.");
+      if (S.join.role === 'parent' && (!(S.join.childf || '').trim() || !(S.join.childl || '').trim())) return toast("Indiquez le prénom et le nom de l'enfant.");
       if (S.join.role === 'joueur' && !S.join.age) return toast('Le compte joueur est réservé aux 15 ans et plus. En dessous, un parent suit l\'enfant depuis son compte.');
-      const cid = await run(sb.rpc('join_club', { p_code: S.join.code, p_role: S.join.role, p_team: S.join.team || null, p_child: S.join.child || null }), S.join.role === 'supporteur' ? 'Bienvenue dans le club !' : 'Demande envoyée au club.');
+      const cid = await run(sb.rpc('join_club', { p_code: S.join.code, p_role: S.join.role, p_team: S.join.team || null, p_child: null, p_child_first: S.join.childf || null, p_child_last: S.join.childl || null }));
+      if (cid === true || !cid) { if (cid !== null) toast('Code inconnu. Vérifiez les 8 caractères.'); return; }
+      toast(S.join.role === 'supporteur' ? 'Bienvenue dans le club !' : 'Demande envoyée au club.');
       if (cid) { S.clubId = cid; store.set('mb_club', cid); S.onb = null; S.join = { code: '', role: 'supporteur', teams: [] }; await refresh(); }
       return;
     }
@@ -456,8 +484,8 @@ document.addEventListener('click', async (e) => {
     case 'evdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('events').delete().eq('id', d.id), 'Rendez-vous supprimé.')) { S.view = null; await refresh(); } return;
     case 'gnew': S.form = { name: '', sel: new Set() }; S.view = { type: 'gform' }; return render();
     case 'gsel': { S.form.sel[el.checked ? 'add' : 'delete'](d.id); return render(true); }
-    case 'gteam': S.members.filter((m) => m.status === 'active' && m.team_id === d.id && m.user_id !== S.me.id).forEach((m) => S.form.sel.add(m.user_id)); return render(true);
-    case 'gstaff': S.members.filter((m) => m.status === 'active' && ['president', 'bureau', 'coach'].includes(m.role) && m.user_id !== S.me.id).forEach((m) => S.form.sel.add(m.user_id)); return render(true);
+    case 'gteam': S.members.filter((m) => m.status === 'active' && m.team_id === d.id && m.user_id !== S.me.id).forEach((m) => S.form.sel.add(m.user_id)); (S.roster || []).filter((x) => x.team_id === d.id && x.user_id && x.user_id !== S.me.id).forEach((x) => S.form.sel.add(x.user_id)); (S.players || []).filter((p) => p.team_id === d.id).forEach((p) => (S.pparents || []).filter((y) => y.player_id === p.id && y.user_id !== S.me.id).forEach((y) => S.form.sel.add(y.user_id))); return render(true);
+    case 'gstaff': (S.roster || []).filter((x) => x.kind === 'membre' && x.user_id !== S.me.id).forEach((x) => S.form.sel.add(x.user_id)); return render(true);
     case 'gcreate': {
       const nm = (S.form.name || '').trim(); if (!nm) return toast('Donnez un nom au groupe.');
       const g = await run(sb.from('groups').insert({ club_id: S.clubId, name: nm, created_by: S.me.id }).select().single()); if (!g) return;
@@ -484,15 +512,15 @@ document.addEventListener('click', async (e) => {
     }
     case 'mno': if (await run(sb.from('memberships').delete().eq('id', d.id), 'Demande refusée.')) await refresh(); return;
     case 'mdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('memberships').delete().eq('id', d.id), 'Profil retiré du club.')) await refresh(); return;
-    case 'tdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('teams').delete().eq('id', d.id), 'Équipe supprimée.')) await refresh(); return;
+    case 'tdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('teams').delete().eq('id', d.id), 'Équipe supprimée.')) { S.view = null; await refresh(); } return;
     case 'leave': if (S.delPend !== 'leave') { S.delPend = 'leave'; return render(true); } S.delPend = null; if (await run(sb.from('memberships').delete().eq('club_id', S.clubId).eq('user_id', S.me.id), 'Vous avez quitté le club.')) { S.clubId = null; S.tab = 0; await refresh(); } return;
-    default: if (V1.ACTIONS[a]) return V1.ACTIONS[a](el, d);
+    default: if (V2.ACTIONS[a]) return V2.ACTIONS[a](el, d); if (V1.ACTIONS[a]) return V1.ACTIONS[a](el, d);
   }
 });
 async function openGroup(id) { S.view = { type: 'group', id }; await loadGroup(id); render(); scrollEnd(); }
 
 document.addEventListener('input', (e) => {
-  const t = e.target;
+  const t = e.target; if (V2.onInput(t)) return;
   if (t.dataset.j && t.type !== 'checkbox') { S.join[t.dataset.j] = t.dataset.j === 'code' ? t.value.toUpperCase() : t.value; }
   if (t.dataset.r && t.type !== 'checkbox') S.rq[t.dataset.r] = t.value;
   if (t.dataset.vn) { S.vn = S.vn || {}; S.vn[t.dataset.vn] = t.value; }
@@ -500,7 +528,7 @@ document.addEventListener('input', (e) => {
   if (t.closest('#clubf,#brandf') && t.type !== 'file') updatePreview(t.closest('form'));
 });
 document.addEventListener('change', async (e) => {
-  const t = e.target; if (t.dataset.j) S.join[t.dataset.j] = t.type === 'checkbox' ? t.checked : t.value;
+  const t = e.target; if (await V2.onChange(t)) return; if (t.dataset.j) S.join[t.dataset.j] = t.type === 'checkbox' ? t.checked : t.value;
   if (t.dataset.r) S.rq[t.dataset.r] = t.type === 'checkbox' ? t.checked : t.value;
   if (t.dataset.vpl) { S.vpl = S.vpl || {}; S.vpl[t.dataset.vpl] = t.value; }
   if (t.dataset.vt) { S.vt = S.vt || {}; S.vt[t.dataset.vt] = t.value; render(true); }
@@ -509,6 +537,7 @@ document.addEventListener('change', async (e) => {
       const r = await readLogo(t.files[0]); S.tmpLogo = r.data; const f = t.closest('form');
       if (r.colors[0]) f.querySelector('[name=c1]').value = r.colors[0].toLowerCase();
       if (r.colors[1]) f.querySelector('[name=c2]').value = r.colors[1].toLowerCase();
+      if (r.bg && f.querySelector('[name=bg]')) f.querySelector('[name=bg]').value = r.bg.toLowerCase();
       updatePreview(f); toast(r.colors.length ? 'Logo ajouté. Couleurs proposées d\'après le logo.' : 'Logo ajouté.');
     } catch { toast('Image illisible. Essayez une image PNG ou JPG.'); }
   }
@@ -521,12 +550,12 @@ document.addEventListener('submit', async (e) => {
   try {
     if (f.id === 'authf') {
       if (S.authMode === 'login') { await run(sb.auth.signInWithPassword({ email: v.email, password: v.password })); }
-      else { const r = await run(sb.auth.signUp({ email: v.email, password: v.password, options: { data: { full_name: v.full_name.trim() } } })); if (r && !r.session) toast('Compte créé. Confirmez votre adresse depuis l\'e-mail reçu, puis connectez-vous.'); }
+      else { if (!v.cgu) return toast('Merci d\'accepter les conditions d\'utilisation.'); const fn = V2.niceFirst(v.first_name), ln = V2.niceLast(v.last_name); const r = await run(sb.auth.signUp({ email: v.email, password: v.password, options: { data: { first_name: fn, last_name: ln, full_name: fn + ' ' + ln, cgu_version: V2.CGU_VERSION, optin_emails: !!v.optin } } })); if (r && !r.session) toast('Compte créé. Confirmez votre adresse depuis l\'e-mail reçu, puis connectez-vous.'); }
     } else if (f.id === 'clubf') {
       const cid = await run(sb.rpc('create_club', { p_name: v.name.trim(), p_city: v.city.trim(), p_sport: v.sport, p_c1: v.c1.toUpperCase(), p_c2: v.c2.toUpperCase() }), 'Club créé. Vous en êtes président.');
-      if (cid) { if (S.tmpLogo) await run(sb.from('clubs').update({ logo: S.tmpLogo }).eq('id', cid)); S.tmpLogo = undefined; S.clubId = cid; store.set('mb_club', cid); S.onb = null; S.tab = 4; await refresh(); }
+      if (cid) { if (S.tmpLogo) await run(sb.from('clubs').update({ logo: S.tmpLogo, crest_bg: (v.bg || '#ffffff').toUpperCase() }).eq('id', cid)); S.tmpLogo = undefined; S.clubId = cid; store.set('mb_club', cid); S.onb = null; S.tab = 4; await refresh(); }
     } else if (f.id === 'brandf') {
-      const row = { color1: v.c1.toUpperCase(), color2: v.c2.toUpperCase() }; if (S.tmpLogo !== undefined) row.logo = S.tmpLogo;
+      const row = { color1: v.c1.toUpperCase(), color2: v.c2.toUpperCase(), crest_bg: (v.bg || '#ffffff').toUpperCase() }; if (S.tmpLogo !== undefined) row.logo = S.tmpLogo;
       if (await run(sb.from('clubs').update(row).eq('id', S.clubId), 'Blason enregistré.')) { S.tmpLogo = undefined; await refresh(); }
     } else if (f.id === 'evf') {
       if (await V1.saveEvent(v)) { S.view = null; S.form = null; S.tab = 1; await refresh(); }
@@ -536,10 +565,14 @@ document.addEventListener('submit', async (e) => {
       if (m) { if (!S.msgs.some((x) => x.id === m.id)) S.msgs.push(m); S.lastMsgs.unshift(m); render(true); scrollEnd(); $('#msgf input')?.focus(); }
     } else if (f.id === 'teamf') {
       if (await run(sb.from('teams').insert({ club_id: S.clubId, name: v.name.trim() }), 'Équipe ajoutée.')) await refresh();
+    } else if (V2.FORMS[f.id]) {
+      await V2.FORMS[f.id](v, f);
     } else if (V1.FORMS[f.id]) {
       await V1.FORMS[f.id](v, f);
     } else if (f.id === 'proff') {
-      if (await run(sb.from('profiles').update({ full_name: v.full_name.trim(), nickname: (v.nickname || '').trim() || null, phone: v.phone.trim() || null }).eq('id', S.me.id), 'Profil enregistré.')) await refresh();
+      if (!v.first_name.trim() || !v.last_name.trim()) return toast('Le prénom et le nom sont obligatoires.');
+      const fn = V2.niceFirst(v.first_name), ln = V2.niceLast(v.last_name);
+      if (await run(sb.from('profiles').update({ first_name: fn, last_name: ln, full_name: fn + ' ' + ln, nickname: (v.nickname || '').trim() || null, phone: v.phone.trim() || null }).eq('id', S.me.id), 'Profil enregistré.')) await refresh();
     }
   } finally { if (btn && document.body.contains(btn)) btn.disabled = false; }
 });
@@ -558,5 +591,7 @@ sb.auth.onAuthStateChange(async (ev, session) => {
 });
 
 V1.install({ S, sb, esc, run, toast, render, refresh, name, teamName, myMem, isStaff, fmtShort, fmtDate });
+V2.install({ S, sb, esc, run, toast, render, refresh, name, teamName, myMem, ROLES, canValidate, toValidate, pendRows, crest, fmtShort });
+S.feeFor = V2.feeFor;
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 render();
