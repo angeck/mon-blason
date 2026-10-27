@@ -1,6 +1,7 @@
 // Mon Blason · alpha · application (une seule page, sans étape de compilation)
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_KEY, VERSION } from './config.js';
+import * as V1 from './v1.js';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = (s) => document.querySelector(s);
@@ -107,16 +108,21 @@ async function loadClub() {
   const [mem, teams, evs, grps] = await Promise.all([
     sb.from('memberships').select('*').eq('club_id', cid),
     sb.from('teams').select('*').eq('club_id', cid).order('name'),
-    sb.from('events').select('*').eq('club_id', cid).gte('starts_at', now).order('starts_at').limit(60),
+    sb.from('events').select('*').eq('club_id', cid).gte('starts_at', now).order('starts_at').limit(300),
     sb.from('groups').select('*').eq('club_id', cid).order('created_at', { ascending: false }),
   ]);
   S.members = mem.data || []; S.teams = teams.data || []; S.events = evs.data || []; S.groups = grps.data || [];
   const uids = [...new Set(S.members.map((m) => m.user_id))];
-  if (uids.length) { const { data: pr } = await sb.from('profiles').select('id,full_name,nickname').in('id', uids); S.nicks = S.nicks || {}; (pr || []).forEach((p) => { S.names[p.id] = p.full_name || 'Membre'; S.nicks[p.id] = p.nickname || ''; }); }
+  if (uids.length) { const { data: pr } = await sb.from('profiles').select('id,full_name,nickname,phone').in('id', uids); S.nicks = S.nicks || {}; S.phones = S.phones || {}; (pr || []).forEach((p) => { S.names[p.id] = p.full_name || 'Membre'; S.nicks[p.id] = p.nickname || ''; S.phones[p.id] = p.phone || ''; }); }
   const eids = S.events.map((e) => e.id);
   S.resp = eids.length ? ((await sb.from('event_responses').select('*').in('event_id', eids)).data || []) : [];
   const gids = S.groups.map((g) => g.id);
   S.lastMsgs = gids.length ? ((await sb.from('messages').select('*').in('group_id', gids).order('created_at', { ascending: false }).limit(8)).data || []) : [];
+  const plr = await sb.from('players').select('*').eq('club_id', cid).order('last_name'); S.players = plr.data || [];
+  const pids = S.players.map((p) => p.id);
+  S.pparents = pids.length ? ((await sb.from('player_parents').select('*').in('player_id', pids)).data || []) : [];
+  S.padmin = pids.length ? ((await sb.from('player_admin').select('*').in('player_id', pids)).data || []) : [];
+  S.att = pids.length ? ((await sb.from('attendance').select('*').in('player_id', pids)).data || []) : [];
   S.updated = hm();
 }
 async function loadGroup(gid) {
@@ -174,7 +180,7 @@ function head(title, sub, back) {
   return `<header class="hd">${back ? '<button class="back" data-act="back" aria-label="Retour">‹</button>' : ''}${c ? crest(c, 38) : ''}<div class="grow"><div class="t">${esc(title)}</div><div class="s">${esc(sub || '')}</div></div>${S.view?.type === 'account' ? '' : accountBtn()}</header>`;
 }
 function accountBtn() {
-  return `<button class="acct" data-act="account" aria-label="Mon compte" title="Mon compte"><svg width="34" height="40" viewBox="0 0 40 46" aria-hidden="true"><path d="M3 3h34v20c0 11-8 18-17 21C11 41 3 34 3 23z" fill="#0B6B3A" stroke="#FFD400" stroke-width="3"/><circle cx="20" cy="17" r="6" fill="#FFD400"/><path d="M9 33c2-6 6-9 11-9s9 3 11 9c-3 4-7 6-11 7-4-1-8-3-11-7z" fill="#FFD400"/></svg></button>`;
+  return `<button class="acct" data-act="account" aria-label="Mon compte" title="Mon compte"><svg width="34" height="40" viewBox="0 0 40 46" aria-hidden="true"><path d="M3 3h34v20c0 11-8 18-17 21C11 41 3 34 3 23z" fill="#0B6B3A" stroke="#FFD400" stroke-width="3"/><circle cx="20" cy="17" r="6" fill="#FFD400"/><path d="M9 33c2-6 6-9 11-9s9 3 11 9c-3 4-7 6-11 7-4-1-8-3-11-7z" fill="#FFD400"/></svg><span>Mon compte</span></button>`;
 }
 function brandHead(sub) { return `<header class="hd"><div class="grow"><div class="t">Mon Blason</div><div class="s">${esc(sub || 'Mon club, mes couleurs')}</div></div></header>`; }
 
@@ -228,11 +234,12 @@ function respOf(eid) { const r = S.resp.filter((x) => x.event_id === eid); retur
 function pair(eid) { const m = respOf(eid).mine; return `<div class="pair"><button class="btn oui" data-act="rsvp" data-id="${eid}" data-v="oui" aria-pressed="${m === 'oui'}">${m === 'oui' ? '✓ ' : ''}Je viens</button><button class="btn non" data-act="rsvp" data-id="${eid}" data-v="non" aria-pressed="${m === 'non'}">Je ne viens pas</button></div>`; }
 function evLine(e, withPair) {
   const r = respOf(e.id);
+  if (e.cancelled) return `<div class="card" style="opacity:.75"><button class="row" style="border:0;padding:0;min-height:44px" data-act="event" data-id="${e.id}"><span class="g" style="text-decoration:line-through">${esc(e.title)}<small>${esc(e.type)}${e.team_id ? ' · ' + esc(teamName(e.team_id)) : ''} · ${esc(fmtShort(e.starts_at))}</small></span><span class="pill ko">Annulé</span></button></div>`;
   return `<div class="card"><button class="row" style="border:0;padding:0;min-height:44px" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(e.type)}${e.team_id ? ' · ' + esc(teamName(e.team_id)) : ''} · ${esc(fmtShort(e.starts_at))}${e.place ? ' · ' + esc(e.place) : ''}</small></span><span class="chev">›</span></button>
   <div class="chips" style="margin-top:6px"><span class="pill ok">${r.oui.length} viennent</span><span class="pill">${r.non.length} ne viennent pas</span></div>${withPair ? pair(e.id) : ''}</div>`;
 }
 function home() {
-  const todo = S.events.filter((e) => !respOf(e.id).mine).slice(0, 5);
+  const todo = S.events.filter((e) => !e.cancelled && !respOf(e.id).mine).slice(0, 5);
   let h = `<div class="kick">Bonjour ${esc(S.me.nickname || (S.me.full_name || '').split(' ')[0])}</div><h1>Accueil</h1>`;
   if (!store.get('mb_hiderq_' + S.clubId)) h += `<div class="card hi"><div style="font-weight:800">Vous jouez, coachez ou êtes parent dans une autre équipe du club ?</div><p class="note" style="margin:4px 0 10px">Ajoutez vos autres rôles : chacun est validé par le club.</p><div class="chips"><button class="btn small main" data-act="rqgo">➕ Demander un autre rôle</button><button class="btn small" data-act="rqhide">Ne plus afficher</button></div></div>`;
   const vp = toValidate().length; if (vp) h += `<button class="btn main" data-act="tab" data-i="4">${vp} demande${vp > 1 ? 's' : ''} à valider</button>`;
@@ -245,7 +252,8 @@ function home() {
 function agenda() {
   let h = '<h1>Agenda</h1>';
   if (isStaff()) h += '<button class="btn main" data-act="evnew">Ajouter un rendez-vous</button>';
-  h += S.events.length ? S.events.map((e) => evLine(e, true)).join('') : '<p class="empty">Aucun rendez-vous à venir.</p>';
+  const evs = V1.agendaEvents();
+  h += V1.agendaFilter() + (evs.length ? evs.map((e) => evLine(e, true)).join('') : '<p class="empty">Aucun rendez-vous à venir.</p>');
   return h;
 }
 function eventForm() {
@@ -255,6 +263,7 @@ function eventForm() {
   <div class="field"><label for="et">Titre</label><input id="et" name="title" required value="${esc(f.title || '')}"></div>
   ${['Match', 'Plateau', 'Tournoi'].includes(f.type) ? `<div class="field"><label for="eo">${f.type === 'Match' ? 'Adversaire' : 'Adversaires (séparés par des virgules)'}</label><input id="eo" name="opponents" value="${esc(f.opponents || '')}"></div>` : ''}
   <div class="field"><label for="ed">Date et heure</label><input id="ed" name="starts_at" type="datetime-local" required value="${esc(f.starts_at || '')}"></div>
+  ${V1.repeatFields(f)}
   <div class="field"><label for="el">Lieu</label><input id="el" name="place" value="${esc(f.place || '')}"></div>
   <div class="field"><label for="eq">Équipe</label><select id="eq" name="team_id"><option value="">Tout le club</option>${S.teams.map((t) => `<option value="${t.id}" ${f.team_id === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>
   <button class="btn main" type="submit">Enregistrer</button></form>`;
@@ -262,8 +271,9 @@ function eventForm() {
 function eventPage(id) {
   const e = S.events.find((x) => x.id === id); if (!e) return '<p class="empty">Rendez-vous introuvable.</p>';
   const r = respOf(id), list = (a) => a.length ? a.map((x) => esc(name(x.user_id))).join(', ') : '—';
-  return `<h1>${esc(e.title)}</h1><div class="det">${esc(e.type)}${e.team_id ? ' · ' + esc(teamName(e.team_id)) : ''}<br>${esc(fmtDate(e.starts_at))}${e.place ? '<br>' + esc(e.place) : ''}${e.opponents ? '<br>Contre : ' + esc(e.opponents) : ''}</div>
+  return `<h1>${esc(e.title)}</h1>${e.cancelled ? '<span class="pill ko">Séance annulée</span>' : ''}<div class="det">${esc(e.type)}${e.team_id ? ' · ' + esc(teamName(e.team_id)) : ''}<br>${esc(fmtDate(e.starts_at))}${e.place ? '<br>' + esc(e.place) : ''}${e.opponents ? '<br>Contre : ' + esc(e.opponents) : ''}</div>
   ${pair(id)}<div class="card"><div class="kick">Viennent (${r.oui.length})</div><div>${list(r.oui)}</div><div class="kick" style="margin-top:10px">Ne viennent pas (${r.non.length})</div><div>${list(r.non)}</div></div>
+  ${V1.eventStaffBlock(e)}
   ${isStaff() ? `<button class="btn danger" data-act="evdel" data-id="${id}">${S.delPend === id ? 'Confirmer la suppression' : 'Supprimer ce rendez-vous'}</button>` : ''}`;
 }
 function messagesTab() {
@@ -292,9 +302,13 @@ function groupPage(id) {
   return h;
 }
 function teamPick(m) {
-  if (m.team_id || !['coach', 'joueur', 'parent'].includes(m.role)) return '';
-  const v = (S.vt || {})[m.id] || '', canNew = isStaff();
-  return `<div style="display:flex;flex-direction:column;gap:8px;padding:0 0 12px;border-bottom:1px solid var(--trait)"><div class="field"><label for="vt${m.id}">Équipe à attribuer en validant</label><select id="vt${m.id}" data-vt="${m.id}"><option value="">Aucune pour l'instant</option>${S.teams.map((t) => `<option value="${t.id}" ${v === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}${canNew ? `<option value="new" ${v === 'new' ? 'selected' : ''}>+ Créer une nouvelle équipe</option>` : ''}</select></div>${v === 'new' ? `<div class="field"><label for="vn${m.id}">Nom de la nouvelle équipe</label><input id="vn${m.id}" data-vn="${m.id}" value="${esc((S.vn || {})[m.id] || '')}" placeholder="Ex. Reines"></div>` : ''}</div>`;
+  let h = '';
+  if (!m.team_id && ['coach', 'joueur', 'parent'].includes(m.role)) {
+    const v = (S.vt || {})[m.id] || '', canNew = isStaff();
+    h += `<div class="field"><label for="vt${m.id}">Équipe à attribuer en validant</label><select id="vt${m.id}" data-vt="${m.id}"><option value="">Aucune pour l'instant</option>${S.teams.map((t) => `<option value="${t.id}" ${v === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}${canNew ? `<option value="new" ${v === 'new' ? 'selected' : ''}>+ Créer une nouvelle équipe</option>` : ''}</select></div>${v === 'new' ? `<div class="field"><label for="vn${m.id}">Nom de la nouvelle équipe</label><input id="vn${m.id}" data-vn="${m.id}" value="${esc((S.vn || {})[m.id] || '')}" placeholder="Ex. Reines"></div>` : ''}`;
+  }
+  h += V1.playerPick(m);
+  return h ? `<div style="display:flex;flex-direction:column;gap:8px;padding:0 0 12px;border-bottom:1px solid var(--trait)">${h}</div>` : '';
 }
 function myTeamIds() { return [...new Set(myMem().filter((m) => m.status === 'active' && m.team_id).map((m) => m.team_id))]; }
 function shortName(id) { const p = name(id).trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1][0].toUpperCase() + '.' : p[0]; }
@@ -310,13 +324,14 @@ function memberLine(u, ms, full, manage) {
 }
 function teamTab() {
   const ids = myTeamIds();
-  if (!ids.length) return `<h1>Équipe</h1><p class="empty">Vous n'êtes rattaché à aucune équipe dans ce club.</p><button class="btn" data-act="account">Demander un rôle dans une équipe (Mon compte)</button>`;
+  if (!ids.length) return `<h1>Équipe</h1>${V1.kidsBlock()}${V1.myPlayers().length ? '' : '<p class="empty">Vous n\'êtes rattaché à aucune équipe dans ce club.</p>'}<button class="btn" data-act="account">Demander un rôle dans une équipe (Mon compte)</button>`;
   if (!ids.includes(S.teamSel)) S.teamSel = ids[0];
   const tid = S.teamSel, coach = myMem().some((m) => m.status === 'active' && m.role === 'coach' && m.team_id === tid), full = isStaff();
-  let h = `<h1>${esc(teamName(tid))}</h1>`;
+  let h = V1.kidsBlock() + `<h1>${esc(teamName(tid))}</h1>`;
   if (ids.length > 1) h += `<div class="chips">${ids.map((i) => `<button class="chip" data-act="teamsel" data-id="${i}" aria-pressed="${i === tid}">${esc(teamName(i))}</button>`).join('')}</div>`;
   const vp = toValidate().filter((m) => m.team_id === tid);
   if (vp.length) h += `<div class="kick">Demandes à valider (${vp.length})</div><div class="card">${pendRows(vp)}</div>`;
+  h += V1.coachBlock(tid);
   const evs = S.events.filter((e) => e.team_id === tid);
   h += `<div class="kick">Prochains rendez-vous</div>` + (coach ? `<button class="btn main" data-act="evnew" data-team="${tid}">Ajouter un rendez-vous pour l'équipe</button>` : '') + (evs.length ? evs.slice(0, 5).map((e) => evLine(e, true)).join('') : '<p class="empty">Aucun rendez-vous prévu pour l\'équipe.</p>');
   const mem = S.members.filter((m) => m.status === 'active' && m.team_id === tid), order = ['coach', 'joueur', 'parent', 'supporteur'];
@@ -332,6 +347,7 @@ function clubTab() {
   h += `<div class="card hi"><div class="kick">Code pour rejoindre le club</div><div style="font-family:var(--titre);font-style:italic;font-weight:800;font-size:40px;letter-spacing:.08em">${esc(c.join_code)}</div><button class="btn small" data-act="share">Partager l'invitation</button></div>`;
   const vp = toValidate();
   if (vp.length) h += `<div class="kick">Demandes à valider (${vp.length})</div><div class="card">${pendRows(vp)}</div>`;
+  h += V1.licencesBlock();
   h += `<div class="kick">Équipes (${S.teams.length})</div><div class="card">${S.teams.length ? S.teams.map((t) => { const n = new Set(act.filter((m) => m.team_id === t.id).map((m) => m.user_id)).size; return `<div class="row" style="cursor:default"><span class="g">${esc(t.name)}<small>${n} membre${n > 1 ? 's' : ''}</small></span>${staff ? `<button class="btn small" data-act="tdel" data-id="${t.id}">${S.delPend === t.id ? 'Confirmer' : 'Supprimer'}</button>` : ''}</div>`; }).join('') : '<p class="empty" style="margin:0">Aucune équipe.</p>'}</div>`;
   if (staff) h += `<form id="teamf" style="display:flex;gap:8px"><input name="name" placeholder="Nouvelle équipe (ex. U9)" required style="flex:1;min-height:50px;padding:10px 12px;border:2px solid var(--trait);border-radius:12px"><button class="btn small main" type="submit">Ajouter</button></form>`;
   const rank = (u) => Math.min(...act.filter((m) => m.user_id === u).map((m) => ['president', 'bureau', 'coach', 'joueur', 'parent', 'supporteur'].indexOf(m.role)));
@@ -371,6 +387,8 @@ function render(keep) {
   if (v?.type === 'event') { hd = head('Rendez-vous', c.name, true); bd = eventPage(v.id); }
   else if (v?.type === 'evform') { hd = head('Agenda', c.name, true); bd = eventForm(); }
   else if (v?.type === 'gform') { hd = head('Messages', c.name, true); bd = groupForm(); }
+  else if (v?.type === 'appel') { hd = head('Appel', c.name, true); bd = V1.appelPage(v.id); }
+  else if (v?.type === 'player') { hd = head('Fiche joueur', c.name, true); bd = V1.playerPage(v.id); }
   else if (v?.type === 'account') { hd = head('Mon compte', S.me.full_name, true); bd = compte(); }
   else if (v?.type === 'group') { hd = head(grp(v.id)?.name || 'Groupe', 'Groupe d\'échange', true); bd = groupPage(v.id); }
   else { hd = head(c.name, [...new Set(myMem().filter((m) => m.status === 'active').map((m) => ROLES[m.role] + (m.team_id ? ' ' + teamName(m.team_id) : '')))].join(' · ')); bd = [home, agenda, messagesTab, teamTab, clubTab][S.tab](); }
@@ -385,7 +403,7 @@ document.addEventListener('click', async (e) => {
   if (el.tagName === 'INPUT' && a !== 'gsel') return;
   if (el.tagName === 'INPUT' && el.type === 'checkbox' && !a) return;
   if (a !== 'gsel') e.preventDefault();
-  const keepDel = ['evdel', 'gdel', 'tdel', 'mdel', 'leave'].includes(a); if (!keepDel) S.delPend = null;
+  const keepDel = ['evdel', 'gdel', 'tdel', 'mdel', 'leave', ...V1.KEEP_DEL].includes(a); if (!keepDel) S.delPend = null;
   switch (a) {
     case 'authmode': S.authMode = d.v; return render();
     case 'pwtog': { const i = $('#ap'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.textContent = show ? 'Masquer' : 'Afficher'; el.setAttribute('aria-pressed', show); el.setAttribute('aria-label', show ? 'Masquer le mot de passe' : 'Afficher le mot de passe'); return; }
@@ -460,13 +478,15 @@ document.addEventListener('click', async (e) => {
         const nm = ((S.vn || {})[d.id] || '').trim(); if (!nm) return toast('Donnez un nom à la nouvelle équipe.');
         const t = await run(sb.from('teams').insert({ club_id: S.clubId, name: nm }).select().single()); if (!t) return; team = t.id;
       }
-      if (await run(sb.rpc('validate_membership', { mid: d.id, p_team: team }), 'Demande validée.')) { if (S.vt) delete S.vt[d.id]; await refresh(); }
+      const pl = (S.vpl || {})[d.id] || null;
+      if (await run(sb.rpc('validate_membership', { mid: d.id, p_team: team, p_player: pl }), 'Demande validée.')) { if (S.vt) delete S.vt[d.id]; await refresh(); }
       return;
     }
     case 'mno': if (await run(sb.from('memberships').delete().eq('id', d.id), 'Demande refusée.')) await refresh(); return;
     case 'mdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('memberships').delete().eq('id', d.id), 'Profil retiré du club.')) await refresh(); return;
     case 'tdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('teams').delete().eq('id', d.id), 'Équipe supprimée.')) await refresh(); return;
     case 'leave': if (S.delPend !== 'leave') { S.delPend = 'leave'; return render(true); } S.delPend = null; if (await run(sb.from('memberships').delete().eq('club_id', S.clubId).eq('user_id', S.me.id), 'Vous avez quitté le club.')) { S.clubId = null; S.tab = 0; await refresh(); } return;
+    default: if (V1.ACTIONS[a]) return V1.ACTIONS[a](el, d);
   }
 });
 async function openGroup(id) { S.view = { type: 'group', id }; await loadGroup(id); render(); scrollEnd(); }
@@ -482,6 +502,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', async (e) => {
   const t = e.target; if (t.dataset.j) S.join[t.dataset.j] = t.type === 'checkbox' ? t.checked : t.value;
   if (t.dataset.r) S.rq[t.dataset.r] = t.type === 'checkbox' ? t.checked : t.value;
+  if (t.dataset.vpl) { S.vpl = S.vpl || {}; S.vpl[t.dataset.vpl] = t.value; }
   if (t.dataset.vt) { S.vt = S.vt || {}; S.vt[t.dataset.vt] = t.value; render(true); }
   if (t.dataset.logo && t.files?.[0]) {
     try {
@@ -508,14 +529,15 @@ document.addEventListener('submit', async (e) => {
       const row = { color1: v.c1.toUpperCase(), color2: v.c2.toUpperCase() }; if (S.tmpLogo !== undefined) row.logo = S.tmpLogo;
       if (await run(sb.from('clubs').update(row).eq('id', S.clubId), 'Blason enregistré.')) { S.tmpLogo = undefined; await refresh(); }
     } else if (f.id === 'evf') {
-      const row = { club_id: S.clubId, type: S.form.type, title: v.title.trim(), starts_at: new Date(v.starts_at).toISOString(), place: v.place || '', opponents: v.opponents || '', team_id: v.team_id || null, created_by: S.me.id };
-      if (await run(sb.from('events').insert(row), 'Rendez-vous ajouté.')) { S.view = null; S.form = null; S.tab = 1; await refresh(); }
+      if (await V1.saveEvent(v)) { S.view = null; S.form = null; S.tab = 1; await refresh(); }
     } else if (f.id === 'msgf') {
       const body = (v.body || '').trim(); if (!body) return;
       const m = await run(sb.from('messages').insert({ group_id: S.view.id, user_id: S.me.id, body }).select().single());
       if (m) { if (!S.msgs.some((x) => x.id === m.id)) S.msgs.push(m); S.lastMsgs.unshift(m); render(true); scrollEnd(); $('#msgf input')?.focus(); }
     } else if (f.id === 'teamf') {
       if (await run(sb.from('teams').insert({ club_id: S.clubId, name: v.name.trim() }), 'Équipe ajoutée.')) await refresh();
+    } else if (V1.FORMS[f.id]) {
+      await V1.FORMS[f.id](v, f);
     } else if (f.id === 'proff') {
       if (await run(sb.from('profiles').update({ full_name: v.full_name.trim(), nickname: (v.nickname || '').trim() || null, phone: v.phone.trim() || null }).eq('id', S.me.id), 'Profil enregistré.')) await refresh();
     }
@@ -535,5 +557,6 @@ sb.auth.onAuthStateChange(async (ev, session) => {
   setTimeout(() => refresh(), 0);
 });
 
+V1.install({ S, sb, esc, run, toast, render, refresh, name, teamName, myMem, isStaff, fmtShort, fmtDate });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 render();
