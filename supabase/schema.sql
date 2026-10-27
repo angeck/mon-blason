@@ -19,6 +19,7 @@ create table clubs (
   sport text not null default 'Basket-ball',
   color1 text not null default '#0B6B3A',
   color2 text not null default '#FFD400',
+  logo text check (logo is null or length(logo) < 400000),
   join_code text not null unique default upper(substr(md5(random()::text), 1, 6)),
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now()

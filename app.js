@@ -33,9 +33,38 @@ function isActive() { return myMem().some((m) => m.status === 'active'); }
 function name(id) { return S.names[id] || 'Membre'; }
 function teamName(id) { return (S.teams.find((t) => t.id === id) || {}).name || ''; }
 function initials(n) { return n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase(); }
+let crestN = 0;
+const SHIELD = 'M3 3h34v20c0 11-8 18-17 21C11 41 3 34 3 23z';
 function crest(c, size = 40) {
   const a = c?.color1 || '#0B6B3A', b = c?.color2 || '#FFD400', t = onColor(a);
+  if (c?.logo) { const id = 'cl' + (++crestN); return `<svg class="crest" width="${size}" height="${size * 1.15}" viewBox="0 0 40 46" aria-hidden="true"><defs><clipPath id="${id}"><path d="${SHIELD}"/></clipPath></defs><path d="${SHIELD}" fill="#fff"/><image href="${esc(c.logo)}" x="5" y="5" width="30" height="34" preserveAspectRatio="xMidYMid meet" clip-path="url(#${id})"/><path d="${SHIELD}" fill="none" stroke="${b}" stroke-width="3"/></svg>`; }
   return `<svg class="crest" width="${size}" height="${size * 1.15}" viewBox="0 0 40 46" aria-hidden="true"><path d="M3 3h34v20c0 11-8 18-17 21C11 41 3 34 3 23z" fill="${a}" stroke="${b}" stroke-width="3"/><path d="M20 3h17v20H20z" fill="${b}" opacity=".9"/><text x="20" y="31" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-style="italic" font-weight="800" font-size="15" fill="${t}" stroke="${a}" stroke-width=".6">${esc(initials(c?.name || 'MB'))}</text></svg>`;
+}
+async function readLogo(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = url; });
+    const k = Math.min(1, 256 / Math.max(img.width, img.height)), w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h);
+    let data = cv.toDataURL('image/webp', 0.9); if (!data.startsWith('data:image/webp')) data = cv.toDataURL('image/png');
+    const sm = document.createElement('canvas'); sm.width = sm.height = 32; const x = sm.getContext('2d'); x.drawImage(img, 0, 0, 32, 32);
+    const px = x.getImageData(0, 0, 32, 32).data, cnt = {};
+    for (let i = 0; i < px.length; i += 4) { if (px[i + 3] < 200) continue; const r = px[i] >> 4, g = px[i + 1] >> 4, bl = px[i + 2] >> 4, hx = '#' + [r, g, bl].map((v) => (v * 17).toString(16).padStart(2, '0')).join('').toUpperCase(); const L = lum(hx); if (L > 0.85 || L < 0.01) continue; cnt[hx] = (cnt[hx] || 0) + 1; }
+    const top = Object.keys(cnt).sort((p, q) => cnt[q] - cnt[p]), dist = (p, q) => { const A = parseInt(p.slice(1), 16), B = parseInt(q.slice(1), 16); return Math.abs((A >> 16) - (B >> 16)) + Math.abs(((A >> 8) & 255) - ((B >> 8) & 255)) + Math.abs((A & 255) - (B & 255)); };
+    const c1 = top[0], c2 = top.find((q) => dist(q, c1) > 120);
+    return { data, colors: [c1, c2].filter(Boolean) };
+  } finally { URL.revokeObjectURL(url); }
+}
+function previewHtml(nm, c1, c2, logo) {
+  return `<div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:${c1};color:${onColor(c1)};border-bottom:5px solid ${c2}">${crest({ name: nm, color1: c1, color2: c2, logo }, 44)}<div style="font-family:var(--titre);font-style:italic;font-weight:800;font-size:22px;text-transform:uppercase;line-height:1.05">${esc(nm || 'Mon club')}</div></div>`;
+}
+function updatePreview(f) {
+  const p = f?.querySelector('[data-prev]'); if (!p) return;
+  const v = Object.fromEntries(new FormData(f));
+  const cr = f.id === 'clubf'; p.innerHTML = previewHtml(cr ? v.name : club()?.name, v.c1, v.c2, S.tmpLogo === undefined ? (cr ? null : club()?.logo) : S.tmpLogo);
+}
+function logoField(hasLogo) {
+  return `<div class="field"><label for="lg">Logo du club (image, facultatif)</label><input id="lg" type="file" accept="image/*" data-logo="1"></div>${hasLogo ? '<button type="button" class="btn small" data-act="logorm">Retirer le logo</button>' : ''}<p class="note">Une image prise sur votre téléphone ou enregistrée depuis la page Facebook ou Instagram du club. Les couleurs du logo sont proposées automatiquement, vous pouvez les changer.</p>`;
 }
 function applyTheme() {
   const c = club(), r = document.documentElement.style;
@@ -140,7 +169,7 @@ function authScreen() {
   <form id="authf" class="card" style="display:flex;flex-direction:column;gap:12px">
   ${L ? '' : '<div class="field"><label for="an">Prénom et nom</label><input id="an" name="full_name" required autocomplete="name"></div>'}
   <div class="field"><label for="ae">Adresse e-mail</label><input id="ae" name="email" type="email" required autocomplete="email"></div>
-  <div class="field"><label for="ap">Mot de passe${L ? '' : ' (8 caractères minimum)'}</label><input id="ap" name="password" type="password" required minlength="${L ? 1 : 8}" autocomplete="${L ? 'current-password' : 'new-password'}"></div>
+  <div class="field"><label for="ap">Mot de passe${L ? '' : ' (8 caractères minimum)'}</label><div style="display:flex;gap:8px"><input id="ap" name="password" type="password" required minlength="${L ? 1 : 8}" autocomplete="${L ? 'current-password' : 'new-password'}" style="flex:1;min-width:0"><button type="button" class="btn small" data-act="pwtog" aria-label="Afficher le mot de passe" aria-pressed="false">Afficher</button></div></div>
   <button class="btn main" type="submit">${L ? 'Se connecter' : 'Créer mon compte'}</button></form>
   ${L ? '<button class="btn small" data-act="forgot" style="align-self:center;border:0">Mot de passe oublié ?</button>' : ''}
   <p class="note">Version ${VERSION} · données de test.</p></main>`;
@@ -159,8 +188,10 @@ function onboarding() {
       <div class="field"><label for="cn">Nom du club</label><input id="cn" name="name" required></div>
       <div class="field"><label for="cv">Ville</label><input id="cv" name="city"></div>
       <div class="field"><label for="cs">Sport</label><select id="cs" name="sport">${SPORTS.map((s) => `<option>${s}</option>`).join('')}</select></div>
+      ${logoField(!!S.tmpLogo)}
       <div class="grid2"><div class="field"><label for="c1">Couleur principale</label><input id="c1" name="c1" type="color" value="#0B6B3A"></div><div class="field"><label for="c2">Seconde couleur</label><input id="c2" name="c2" type="color" value="#FFD400"></div></div>
-      <button class="btn main" type="submit">Créer le club (j'en suis président)</button></form><button class="btn" data-act="onb" data-v="">Retour</button>`;
+      <div class="kick">Aperçu</div><div data-prev>${previewHtml('', '#0B6B3A', '#FFD400', S.tmpLogo)}</div>
+      <button class="btn main" type="submit">Valider et créer le club (j'en suis président)</button></form><button class="btn" data-act="onb" data-v="">Retour</button>`;
   } else {
     const j = S.join;
     h += `<h1>Rejoindre un club</h1><div class="card" style="display:flex;flex-direction:column;gap:12px">
@@ -244,6 +275,7 @@ function groupPage(id) {
 function clubTab() {
   const c = club(), staff = isStaff(), pend = S.members.filter((m) => m.status === 'pending'), act = S.members.filter((m) => m.status === 'active');
   let h = `<h1>${esc(c.name)}</h1><div class="det">${esc(c.sport)}${c.city ? ' · ' + esc(c.city) : ''}</div>`;
+  if (myMem().some((m) => m.status === 'active' && ['president', 'bureau'].includes(m.role))) h += `<details class="card"><summary style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">Blason et couleurs du club</summary><form id="brandf" style="display:flex;flex-direction:column;gap:12px;margin-top:10px"><div data-prev>${previewHtml(c.name, c.color1, c.color2, S.tmpLogo === undefined ? c.logo : S.tmpLogo)}</div>${logoField(S.tmpLogo === undefined ? !!c.logo : !!S.tmpLogo)}<div class="grid2"><div class="field"><label for="b1">Couleur principale</label><input id="b1" name="c1" type="color" value="${esc(c.color1.toLowerCase())}"></div><div class="field"><label for="b2">Seconde couleur</label><input id="b2" name="c2" type="color" value="${esc(c.color2.toLowerCase())}"></div></div><button class="btn main" type="submit">Enregistrer le blason</button></form></details>`;
   h += `<div class="card hi"><div class="kick">Code pour rejoindre le club</div><div style="font-family:var(--titre);font-style:italic;font-weight:800;font-size:40px;letter-spacing:.08em">${esc(c.join_code)}</div><button class="btn small" data-act="share">Partager l'invitation</button></div>`;
   if (staff && pend.length) h += `<div class="kick">Demandes à valider (${pend.length})</div><div class="card">${pend.map((m) => `<div class="row" style="cursor:default"><span class="g">${esc(name(m.user_id))}<small>${ROLES[m.role]}${m.team_id ? ' · ' + esc(teamName(m.team_id)) : ''}${m.child_name ? ' · enfant : ' + esc(m.child_name) : ''}</small></span><button class="btn small main" data-act="mok" data-id="${m.id}">Valider</button><button class="btn small" data-act="mno" data-id="${m.id}">Refuser</button></div>`).join('')}</div>`;
   h += `<div class="kick">Équipes (${S.teams.length})</div><div class="card">${S.teams.length ? S.teams.map((t) => { const n = act.filter((m) => m.team_id === t.id).length; return `<div class="row" style="cursor:default"><span class="g">${esc(t.name)}<small>${n} membre${n > 1 ? 's' : ''}</small></span>${staff ? `<button class="btn small" data-act="tdel" data-id="${t.id}">${S.delPend === t.id ? 'Confirmer' : 'Supprimer'}</button>` : ''}</div>`; }).join('') : '<p class="empty" style="margin:0">Aucune équipe.</p>'}</div>`;
@@ -286,12 +318,14 @@ document.addEventListener('click', async (e) => {
   const keepDel = ['evdel', 'gdel', 'tdel', 'mdel', 'leave'].includes(a); if (!keepDel) S.delPend = null;
   switch (a) {
     case 'authmode': S.authMode = d.v; return render();
+    case 'pwtog': { const i = $('#ap'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.textContent = show ? 'Masquer' : 'Afficher'; el.setAttribute('aria-pressed', show); el.setAttribute('aria-label', show ? 'Masquer le mot de passe' : 'Afficher le mot de passe'); return; }
+    case 'logorm': { S.tmpLogo = null; const f = el.closest('form'); el.remove(); updatePreview(f); return; }
     case 'forgot': { const em = $('#ae')?.value; if (!em) return toast('Indiquez votre adresse e-mail.'); await run(sb.auth.resetPasswordForEmail(em, { redirectTo: location.href.split('#')[0] }), 'E-mail de réinitialisation envoyé.'); return; }
     case 'logout': await sb.auth.signOut(); return;
     case 'refresh': return refresh(true);
-    case 'tab': S.tab = +d.i; S.view = null; render(); return;
+    case 'tab': S.tab = +d.i; S.view = null; S.tmpLogo = undefined; render(); return;
     case 'back': S.view = null; S.form = null; render(); return;
-    case 'onb': S.onb = d.v || null; if (!d.v && isActive()) S.onb = null; render(); return;
+    case 'onb': S.tmpLogo = undefined; S.onb = d.v || null; if (!d.v && isActive()) S.onb = null; render(); return;
     case 'onbopen': S.onb = ''; render(); return;
     case 'jrole': S.join.role = d.v; return render(true);
     case 'jcheck': {
@@ -348,8 +382,19 @@ document.addEventListener('input', (e) => {
   const t = e.target;
   if (t.dataset.j) { S.join[t.dataset.j] = t.dataset.j === 'code' ? t.value.toUpperCase() : t.value; }
   if (t.dataset.f && S.form) S.form[t.dataset.f] = t.value;
+  if (t.closest('#clubf,#brandf') && t.type !== 'file') updatePreview(t.closest('form'));
 });
-document.addEventListener('change', (e) => { const t = e.target; if (t.dataset.j) S.join[t.dataset.j] = t.value; });
+document.addEventListener('change', async (e) => {
+  const t = e.target; if (t.dataset.j) S.join[t.dataset.j] = t.value;
+  if (t.dataset.logo && t.files?.[0]) {
+    try {
+      const r = await readLogo(t.files[0]); S.tmpLogo = r.data; const f = t.closest('form');
+      if (r.colors[0]) f.querySelector('[name=c1]').value = r.colors[0].toLowerCase();
+      if (r.colors[1]) f.querySelector('[name=c2]').value = r.colors[1].toLowerCase();
+      updatePreview(f); toast(r.colors.length ? 'Logo ajouté. Couleurs proposées d\'après le logo.' : 'Logo ajouté.');
+    } catch { toast('Image illisible. Essayez une image PNG ou JPG.'); }
+  }
+});
 
 document.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -361,7 +406,10 @@ document.addEventListener('submit', async (e) => {
       else { const r = await run(sb.auth.signUp({ email: v.email, password: v.password, options: { data: { full_name: v.full_name.trim() } } })); if (r && !r.session) toast('Compte créé. Confirmez votre adresse depuis l\'e-mail reçu, puis connectez-vous.'); }
     } else if (f.id === 'clubf') {
       const cid = await run(sb.rpc('create_club', { p_name: v.name.trim(), p_city: v.city.trim(), p_sport: v.sport, p_c1: v.c1.toUpperCase(), p_c2: v.c2.toUpperCase() }), 'Club créé. Vous en êtes président.');
-      if (cid) { S.clubId = cid; store.set('mb_club', cid); S.onb = null; S.tab = 3; await refresh(); }
+      if (cid) { if (S.tmpLogo) await run(sb.from('clubs').update({ logo: S.tmpLogo }).eq('id', cid)); S.tmpLogo = undefined; S.clubId = cid; store.set('mb_club', cid); S.onb = null; S.tab = 3; await refresh(); }
+    } else if (f.id === 'brandf') {
+      const row = { color1: v.c1.toUpperCase(), color2: v.c2.toUpperCase() }; if (S.tmpLogo !== undefined) row.logo = S.tmpLogo;
+      if (await run(sb.from('clubs').update(row).eq('id', S.clubId), 'Blason enregistré.')) { S.tmpLogo = undefined; await refresh(); }
     } else if (f.id === 'evf') {
       const row = { club_id: S.clubId, type: S.form.type, title: v.title.trim(), starts_at: new Date(v.starts_at).toISOString(), place: v.place || '', opponents: v.opponents || '', team_id: v.team_id || null, created_by: S.me.id };
       if (await run(sb.from('events').insert(row), 'Rendez-vous ajouté.')) { S.view = null; S.form = null; S.tab = 1; await refresh(); }
