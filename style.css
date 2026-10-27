@@ -70,3 +70,4 @@ h2{font-size:19px;margin:6px 0 0}
 #toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:20;max-width:92vw;background:var(--encre);color:#fff;padding:12px 18px;border-radius:12px;font-weight:700}
 .empty{color:var(--doux);font-style:italic}
 a{color:inherit}
+.acct{background:transparent;border:0;min-width:48px;min-height:48px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
