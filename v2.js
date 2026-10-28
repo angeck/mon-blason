@@ -142,7 +142,7 @@ export function teamPage(tid) {
   const vp = toValidate().filter((m) => m.team_id === tid);
   if ((board || coach) && vp.length) h += `<div class="kick">Demandes à valider (${vp.length})</div><div class="card">${pendRows(vp)}</div>`;
   if (board || coach) {
-    h += `<button class="btn main" data-act="import" data-id="${tid}">Ajouter des joueurs (un par un, liste, Excel)</button>`;
+    h += `<button class="btn main" data-act="import" data-id="${tid}">Ajouter des joueurs (un par un, liste, Excel, photo)</button>`;
     h += `<details class="card"><summary style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">${board ? 'Réglages de l\'équipe' : 'Créneaux de l\'équipe'}</summary>${board ? teamForm(t, 'teamedit') : `<form id="teamslots" data-id="${tid}" style="display:flex;flex-direction:column;gap:10px;margin-top:10px"><div class="field"><label for="tsl">Créneaux et gymnase</label><input id="tsl" name="slots" value="${esc(t.slots || '')}"></div><button class="btn main" type="submit">Enregistrer</button></form>`}</details>`;
     const cands = (S.roster || []).filter((x) => x.user_id).reduce((a, x) => (a.some((y) => y.user_id === x.user_id) ? a : a.concat(x)), []);
     h += `<details class="card"><summary style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">${board ? 'Nommer un coach ou un assistant' : 'Ajouter un coach assistant'}</summary><form id="coachf" data-id="${tid}" style="display:flex;flex-direction:column;gap:10px;margin-top:10px"><div class="field"><label for="cfu">Membre du club</label><select id="cfu" name="user">${cands.map((x) => `<option value="${x.user_id}">${esc(x.first_name + ' ' + x.last_name)}</option>`).join('')}</select></div>${board ? '<label class="check"><input type="checkbox" name="assistant"><span>Coach assistant</span></label>' : '<input type="hidden" name="assistant" value="on">'}<button class="btn main" type="submit">Nommer</button><p class="note">La personne doit déjà être membre du club (elle a rejoint avec le code).</p></form></details>`;
@@ -181,6 +181,8 @@ export function importPage(tid) {
   if (!I.rows) {
     h += `<div class="card" style="display:flex;flex-direction:column;gap:10px"><div class="field"><label for="imt">Coller une liste (une ligne par joueur : Prénom, Nom, date de naissance, n° de licence)</label><textarea id="imt" data-v2="imptext" style="min-height:160px" placeholder="Prénom;Nom;Naissance;Licence&#10;Lily;Raveneau;12/03/2018;VT0012345">${esc(I.text)}</textarea></div>
     <div class="field"><label for="imf">Ou choisir un fichier Excel ou CSV</label><input id="imf" type="file" accept=".xlsx,.xls,.csv,text/csv" data-impfile="1"></div>
+    <div class="field"><label for="imo">Ou une photo ou une capture d'écran de la liste</label><input id="imo" type="file" accept="image/*" data-ocr="1"></div><p class="note" style="margin:0">Pour un meilleur résultat : liste imprimée ou capture d'écran, bien droite et nette. Peu fiable sur l'écriture à la main. L'image reste sur votre téléphone.</p>
+    <button class="btn small" data-act="impswap">Inverser prénom et nom (listes « NOM Prénom »)</button>
     <button class="btn main" data-act="impcheck">Vérifier la liste</button><p class="note">Rien n'est créé avant « Valider l'import ». Seuls le prénom et le nom sont obligatoires. Pour un seul joueur, écrivez simplement une ligne.</p></div>`;
     return h;
   }
@@ -196,7 +198,7 @@ export function importPage(tid) {
     }
     h += `<button class="btn small" data-act="impdel" data-i="${i}" style="align-self:flex-start">Retirer cette ligne</button></div>`;
   });
-  return h + `</div><button class="btn main" data-act="impok">Valider l'import</button><button class="btn" data-act="impback">Modifier la liste collée</button>`;
+  return h + `</div><button class="btn main" data-act="impok">Valider l'import</button><button class="btn" data-act="impswap">Inverser prénom et nom pour toute la liste</button><button class="btn" data-act="impback">Modifier la liste collée</button>`;
 }
 async function checkImport() {
   const I = S.imp;

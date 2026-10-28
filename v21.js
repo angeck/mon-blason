@@ -1,3 +1,4 @@
+import * as V2 from './v2.js';
 // Mon Blason · alpha 2.1 · destinataires des rendez-vous, ordre chronologique, coach encadrant, sondages supprimables, document et import des tarifs
 let S, sb, esc, run, toast, render, refresh, name, teamName, myMem, isBoard, coachTeams;
 
@@ -55,15 +56,37 @@ export function invitedCount(e) {
 
 // ---------- le coach encadre, il ne répond pas (n° 14) ----------
 export function coachOnly(e) { return !!e.team_id && TEAM_TYPES.includes(e.type) && coachTeams().includes(e.team_id) && !iPlay(e.team_id) && !myKids(e.team_id).length; }
-export function answer(e, pairHtml, counts) {
-  if (!e.team_id || !TEAM_TYPES.includes(e.type)) return pairHtml;
-  const k = myKids(e.team_id), coach = coachTeams().includes(e.team_id);
-  if (coach && !iPlay(e.team_id)) {
-    const sum = `<div class="card" style="background:#F7F9F6;margin-top:8px"><div class="kick">Vous encadrez</div><div class="det">${counts.oui} annoncés présents · ${counts.non} absents · ${Math.max(0, counts.inv - counts.oui - counts.non)} sans réponse</div><button class="btn small main" style="margin-top:8px" data-act="appel" data-id="${e.id}">Faire l'appel</button></div>`;
-    return k.length ? sum + `<div class="det" style="margin-top:8px;font-weight:800">${esc(k.map((p) => p.first_name).join(' et '))} ·</div>` + pairHtml : sum;
-  }
-  if (k.length && !iPlay(e.team_id)) return `<div class="det" style="margin-top:8px;font-weight:800">${esc(k.map((p) => p.first_name).join(' et '))} ·</div>` + pairHtml;
-  return pairHtml;
+export function answer(e, pairFn, counts) {
+  if (!e.team_id || !TEAM_TYPES.includes(e.type)) return pairFn(null);
+  const k = myKids(e.team_id), coach = coachTeams().includes(e.team_id), me = iPlay(e.team_id);
+  const kids = k.map((p) => `<div class="det" style="margin-top:8px;font-weight:800">${esc(p.first_name)} ·</div>` + pairFn(p.id)).join('');
+  if (coach && !me) return `<div class="card" style="background:#F7F9F6;margin-top:8px"><div class="kick">Vous encadrez</div><div class="det">${counts.oui} annoncés présents · ${counts.non} absents · ${Math.max(0, counts.inv - counts.oui - counts.non)} sans réponse</div><button class="btn small main" style="margin-top:8px" data-act="appel" data-id="${e.id}">Faire l'appel</button></div>` + kids;
+  return (me || !k.length ? pairFn(null) : '') + kids;
+}
+// Reste-t-il une réponse à donner (pour soi ou pour un enfant) ?
+export function needsAnswer(e, R) {
+  if (!e.team_id || !TEAM_TYPES.includes(e.type)) return !R.mine;
+  const k = myKids(e.team_id), coach = coachTeams().includes(e.team_id), me = iPlay(e.team_id);
+  if (k.some((p) => !R.kid(p.id))) return true;
+  if (me) return !R.mine;
+  return !coach && !k.length && !R.mine;
+}
+// Nom affiché pour une réponse : l'enfant, et « répondu par » pour l'encadrement
+export function respName(x) {
+  if (!x.player_id) return esc(name(x.user_id));
+  const p = (S.players || []).find((y) => y.id === x.player_id), staff = isBoard() || coachTeams().length > 0;
+  const nm = p ? p.first_name + ' ' + (p.last_name ? p.last_name[0] + '.' : '') : 'Un joueur';
+  return esc(nm.trim()) + (staff && p ? ` <span class="det">(répondu par ${esc(name(x.user_id))})</span>` : '');
+}
+
+// ---------- interrupteur « Tout le club » du président et du bureau (n° 22) ----------
+const personal = (tid) => coachTeams().includes(tid) || iPlay(tid) || myKids(tid).length > 0;
+const hiddenByToggle = (e) => isBoard() && !S.me.show_all_club && (e.audience || (e.team_id ? 'team' : 'club')) === 'team' && !personal(e.team_id);
+export const visible = (list) => list.filter((e) => !hiddenByToggle(e));
+export function clubToggle(list) {
+  if (!isBoard()) return '';
+  const n = list.filter(hiddenByToggle).length;
+  return `<label class="check" style="border:0"><input type="checkbox" data-clubtog="1" ${S.me.show_all_club ? 'checked' : ''}><span><b>Tout le club</b> · afficher les rendez-vous de toutes les équipes</span></label>${!S.me.show_all_club && n ? `<p class="note" style="margin:0">${n} rendez-vous d'autres équipes non affichés · cochez « Tout le club » pour les voir.</p>` : ''}`;
 }
 
 // ---------- ordre chronologique et regroupement par jour (n° 15) ----------
@@ -124,6 +147,19 @@ async function fileToText(f) {
 const toDataUrl = (f) => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(f); });
 
 export async function onChange(t) {
+  if (t.dataset.clubtog) { const v = t.checked; if (await run(sb.from('profiles').update({ show_all_club: v }).eq('id', S.me.id))) { S.me.show_all_club = v; } render(true); return true; }
+  if (t.name === 'repeat' && t.closest('#evf')) { const f = new FormData(t.closest('form')); Object.assign(S.form, Object.fromEntries(f)); S.form.repeat = t.checked; if (!t.checked) S.form.until = ''; render(true); return true; }
+  if (t.dataset.ocr && t.files?.[0]) {
+    toast('Lecture de l\'image… (30 secondes environ la première fois)');
+    try {
+      if (!window.Tesseract) await new Promise((ok, ko) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'; sc.onload = ok; sc.onerror = ko; document.head.appendChild(sc); });
+      const r = await window.Tesseract.recognize(t.files[0], 'fra');
+      const lines = (r.data.text || '').split(/\r?\n/).map((l) => l.replace(/[|_]+/g, ' ').replace(/\s{2,}/g, ' ').trim()).filter((l) => /[A-Za-zÀ-ÿ]{2,}/.test(l));
+      S.imp.text = (S.imp.text ? S.imp.text.trim() + '\n' : '') + lines.join('\n'); render(true);
+      toast(lines.length ? lines.length + ' lignes lues : vérifiez-les, puis « Vérifier la liste ».' : 'Aucun nom lu. Essayez une image plus nette.');
+    } catch { toast('Lecture impossible (connexion ?). Essayez le copier-coller.'); }
+    return true;
+  }
   if (t.dataset.doc && t.files?.[0]) {
     const f = t.files[0];
     if (f.size > 4 * 1024 * 1024) { toast('Fichier trop lourd (4 Mo maximum).'); return true; }
@@ -140,6 +176,11 @@ export function onInput(t) { if (t.dataset.fimp) { S.fimpText = t.value; return 
 
 // ---------- actions ----------
 export const ACTIONS = {
+  impswap: async () => {
+    const I = S.imp; if (!I) return;
+    I.text = String(I.text || '').split(/\r?\n/).map((l) => { const sep = l.includes(';') ? ';' : l.includes('\t') ? '\t' : null; if (sep) { const c = l.split(sep); if (c.length > 1) [c[0], c[1]] = [c[1], c[0]]; return c.join(sep); } const w = l.trim().split(/\s+/); if (w.length < 2) return l; const parts = l.includes(',') ? l.split(',') : null; if (parts && parts.length > 1) { [parts[0], parts[1]] = [parts[1], parts[0]]; return parts.join(','); } [w[0], w[1]] = [w[1], w[0]]; return w.join(' '); }).join('\n');
+    if (I.rows) { I.rows = null; await V2.ACTIONS.impcheck(); toast('Prénom et nom inversés.'); } else render(true);
+  },
   polldel: async (el, d) => { const k = 'poll' + d.id; if (S.delPend !== k) { S.delPend = k; return render(true); } S.delPend = null; if (await run(sb.rpc('delete_poll', { pid: d.id }), 'Sondage supprimé.')) { const p = S.polls.find((x) => x.id === d.id); if (p) { p.deleted_at = new Date().toISOString(); p.deleted_by = S.me.id; } S.votes = S.votes.filter((x) => x.poll_id !== d.id); render(true); } },
   docopen: async (el, d) => {
     const r = await run(sb.from('club_docs').select('data,file_name').eq('id', d.id).single()); if (!r) return;

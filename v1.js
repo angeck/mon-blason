@@ -53,19 +53,22 @@ export function agendaEvents() {
 export function repeatFields(f) {
   if (f.type !== 'Entraînement' || f.id) return '';
   return `<label class="check"><input type="checkbox" name="repeat" ${f.repeat ? 'checked' : ''}><span>Répéter chaque semaine (même jour, même heure)</span></label>
-  <div class="field"><label for="eu">Jusqu'au</label><input id="eu" name="until" type="date" value="${esc(f.until || '2027-06-30')}"></div>
-  <label class="check"><input type="checkbox" name="skiphol" ${f.skiphol === false ? '' : 'checked'}><span>Hors vacances scolaires (zone C : Créteil, Paris, Versailles)</span></label>`;
+  ${f.repeat ? `<div class="field"><label for="eu">Répéter jusqu'au (obligatoire)</label><input id="eu" name="until" type="date" required value="${esc(f.until || '')}"></div>
+  <label class="check"><input type="checkbox" name="skiphol" ${f.skiphol === false ? '' : 'checked'}><span>Hors vacances scolaires (zone C : Créteil, Paris, Versailles)</span></label>` : ''}`;
 }
 export async function saveEvent(v) {
   const base = { club_id: S.clubId, type: S.form.type, title: v.title.trim(), place: v.place || '', opponents: v.opponents || '', team_id: v.team_id || null, audience: v.audience || (v.team_id ? 'team' : 'club'), created_by: S.me.id };
   const start = new Date(v.starts_at);
   if (S.form.type === 'Entraînement' && v.repeat) {
-    const until = new Date((v.until || '2027-06-30') + 'T23:59'), skip = !!v.skiphol;
+    if (!v.until) { toast('Indiquez jusqu\'à quand répéter.'); return false; }
+    const until = new Date(v.until + 'T23:59'), skip = !!v.skiphol;
     if (until < start) { toast('La date de fin est avant la première séance.'); return false; }
     const rows = [];
     for (const d = new Date(start); d <= until && rows.length < 60; d.setDate(d.getDate() + 7)) { if (skip && inHolidays(localDay(d))) continue; rows.push({ ...base, starts_at: d.toISOString() }); }
     if (!rows.length) { toast('Aucune séance dans cette période (vacances ?).'); return false; }
-    const ser = await run(sb.from('event_series').insert({ club_id: S.clubId, team_id: base.team_id, title: base.title, place: base.place, weekday: start.getDay(), start_time: v.starts_at.slice(11, 16), until: v.until || '2027-06-30', skip_holidays: skip, created_by: S.me.id }).select().single());
+    const fd = (x) => new Date(x).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    if (!confirm(`${rows.length} séance${rows.length > 1 ? 's' : ''} ser${rows.length > 1 ? 'ont' : 'a'} créée${rows.length > 1 ? 's' : ''}, du ${fd(rows[0].starts_at)} au ${fd(rows[rows.length - 1].starts_at)}${skip ? ' (vacances scolaires exclues)' : ''}. Confirmer ?`)) return false;
+    const ser = await run(sb.from('event_series').insert({ club_id: S.clubId, team_id: base.team_id, title: base.title, place: base.place, weekday: start.getDay(), start_time: v.starts_at.slice(11, 16), until: v.until, skip_holidays: skip, created_by: S.me.id }).select().single());
     if (!ser) return false;
     return run(sb.from('events').insert(rows.map((r) => ({ ...r, series_id: ser.id }))), rows.length + ' séances créées, une par semaine' + (skip ? ', hors vacances scolaires.' : '.'));
   }
@@ -83,7 +86,7 @@ export function eventStaffBlock(e) {
 
 // ---------- appel ----------
 function announced(p, eid) {
-  const who = [...parentsOf(p.id), p.user_id].filter(Boolean), r = S.resp.filter((x) => x.event_id === eid && who.includes(x.user_id));
+  const who = [...parentsOf(p.id), p.user_id].filter(Boolean), own = S.resp.filter((x) => x.event_id === eid && x.player_id === p.id), r = own.length ? own : S.resp.filter((x) => x.event_id === eid && !x.player_id && who.includes(x.user_id));
   return r.some((x) => x.answer === 'oui') ? 'oui' : r.some((x) => x.answer === 'non') ? 'non' : '';
 }
 export function appelPage(eid) {

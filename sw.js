@@ -1,5 +1,5 @@
 // Mon Blason · service worker : l'application s'ouvre même sans réseau (les données viennent de Supabase quand le réseau revient)
-const CACHE = 'mb-alpha-2.1';
+const CACHE = 'mb-alpha-2.2';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'v1.js', 'v21.js', 'v2.js', 'config.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

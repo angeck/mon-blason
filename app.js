@@ -253,19 +253,20 @@ function onboarding() {
   return h + '</main>';
 }
 
-function respOf(eid) { const r = S.resp.filter((x) => x.event_id === eid); return { oui: r.filter((x) => x.answer === 'oui'), non: r.filter((x) => x.answer === 'non'), mine: (r.find((x) => x.user_id === S.me.id) || {}).answer }; }
-function pair(eid) { const m = respOf(eid).mine; return `<div class="pair"><button class="btn oui" data-act="rsvp" data-id="${eid}" data-v="oui" aria-pressed="${m === 'oui'}">${m === 'oui' ? '✓ ' : ''}Je viens</button><button class="btn non" data-act="rsvp" data-id="${eid}" data-v="non" aria-pressed="${m === 'non'}">Je ne viens pas</button></div>`; }
+function respOf(eid) { const r = S.resp.filter((x) => x.event_id === eid); return { all: r, oui: r.filter((x) => x.answer === 'oui'), non: r.filter((x) => x.answer === 'non'), mine: (r.find((x) => x.user_id === S.me.id && !x.player_id) || {}).answer, kid: (pid) => (r.find((x) => x.player_id === pid) || {}).answer }; }
+function pair(eid, pid) { const R = respOf(eid), m = pid ? R.kid(pid) : R.mine; return `<div class="pair"><button class="btn oui" data-act="rsvp" data-id="${eid}" data-p="${pid || ''}" data-v="oui" aria-pressed="${m === 'oui'}">${m === 'oui' ? '✓ ' : ''}Je viens</button><button class="btn non" data-act="rsvp" data-id="${eid}" data-p="${pid || ''}" data-v="non" aria-pressed="${m === 'non'}">Je ne viens pas</button></div>`; }
 function evLine(e, withPair) {
   const r = respOf(e.id);
   if (e.cancelled) return `<div class="card" style="opacity:.75"><button class="row" style="border:0;padding:0;min-height:44px" data-act="event" data-id="${e.id}"><span class="g" style="text-decoration:line-through">${esc(e.title)}<small>${esc(e.type)}${e.team_id ? ' · ' + esc(teamName(e.team_id)) : ''} · ${esc(fmtShort(e.starts_at))}</small></span><span class="pill ko">Annulé</span></button></div>`;
   return `<div class="card"><button class="row" style="border:0;padding:0;min-height:44px" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(e.type)}${e.team_id ? ' · ' + esc(teamName(e.team_id)) : ''} · ${esc(fmtShort(e.starts_at))}${e.place ? ' · ' + esc(e.place) : ''}</small>${V21.forLabel(e)}</span><span class="chev">›</span></button>
-  <div class="chips" style="margin-top:6px"><span class="pill ok">${r.oui.length} viennent</span><span class="pill">${r.non.length} ne viennent pas</span></div>${withPair ? V21.answer(e, pair(e.id), { oui: r.oui.length, non: r.non.length, inv: V21.invitedCount(e) }) + (V21.coachOnly(e) ? '' : V2.hideBtn(e, r.mine)) : ''}</div>`;
+  <div class="chips" style="margin-top:6px"><span class="pill ok">${r.oui.length} viennent</span><span class="pill">${r.non.length} ne viennent pas</span></div>${withPair ? V21.answer(e, (pid) => pair(e.id, pid), { oui: r.oui.length, non: r.non.length, inv: V21.invitedCount(e) }) + (V21.coachOnly(e) ? '' : V2.hideBtn(e, r.mine)) : ''}</div>`;
 }
 function home() {
-  const fut = V21.upcoming(S.events).filter((e) => !V2.isHidden(e)), todo = fut.filter((e) => !e.cancelled && !respOf(e.id).mine && !V21.coachOnly(e));
+  const fut = V21.visible(V21.upcoming(S.events)).filter((e) => !V2.isHidden(e)), todo = fut.filter((e) => !e.cancelled && V21.needsAnswer(e, respOf(e.id)));
   let h = `<div class="kick">Bonjour ${esc(S.me.nickname || (S.me.full_name || '').split(' ')[0])}</div><h1>Accueil</h1>`;
   if (!store.get('mb_hiderq_' + S.clubId)) h += `<div class="card hi"><div style="font-weight:800">Vous jouez, coachez ou êtes parent dans une autre équipe du club ?</div><p class="note" style="margin:4px 0 10px">Ajoutez vos autres rôles : chacun est validé par le club.</p><div class="chips"><button class="btn small main" data-act="rqgo">➕ Demander un autre rôle</button><button class="btn small" data-act="rqhide">Ne plus afficher</button></div></div>`;
   const vp = toValidate().length; if (vp) h += `<button class="btn main" data-act="tab" data-i="4">${vp} demande${vp > 1 ? 's' : ''} à valider</button>`;
+  h += V21.clubToggle(V21.upcoming(S.events));
   h += `<h2>Mes prochains rendez-vous${todo.length ? ` <span class="pill ko">${todo.length} à répondre</span>` : ''}</h2>` + (fut.length ? V21.byDay(fut.slice(0, 10), (e) => evLine(e, true)) : '<p class="empty">Aucun rendez-vous à venir.</p>') + (fut.length > 10 ? '<button class="btn small" data-act="tab" data-i="1">Voir tout l\'agenda</button>' : '');
   h += '<div class="kick">Dernières infos</div><div class="card">' + (S.lastMsgs.length ? S.lastMsgs.slice(0, 5).map((m) => `<button class="row" data-act="group" data-id="${m.group_id}"><span class="g">${esc(grp(m.group_id)?.name || 'Groupe')}<small>${esc(name(m.user_id))} : ${esc(m.body.slice(0, 80))}</small></span><span class="chev">›</span></button>`).join('') : '<p class="empty" style="margin:0">Aucun message.</p>') + '</div>';
   return h;
@@ -273,8 +274,8 @@ function home() {
 function agenda() {
   let h = '<h1>Agenda</h1>';
   if (isStaff()) h += '<button class="btn main" data-act="evnew">Ajouter un rendez-vous</button>';
-  const evs = V1.agendaEvents(), fut = V21.upcoming(evs), old = V21.past(evs);
-  h += V1.agendaFilter() + (fut.length ? V21.byDay(fut, (e) => evLine(e, true)) : '<p class="empty">Aucun rendez-vous à venir.</p>');
+  const evs = V21.visible(V1.agendaEvents()), fut = V21.upcoming(evs), old = V21.past(evs);
+  h += V21.clubToggle(V21.upcoming(V1.agendaEvents())) + V1.agendaFilter() + (fut.length ? V21.byDay(fut, (e) => evLine(e, true)) : '<p class="empty">Aucun rendez-vous à venir.</p>');
   if (old.length) h += `<details class="card"><summary style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">Passés (${old.length}, 30 derniers jours)</summary>${V21.byDay(old, (e) => evLine(e, false))}</details>`;
   return h;
 }
@@ -292,10 +293,10 @@ function eventForm() {
 }
 function eventPage(id) {
   const e = S.events.find((x) => x.id === id); if (!e) return '<p class="empty">Rendez-vous introuvable.</p>';
-  const r = respOf(id), list = (a) => a.length ? a.map((x) => esc(name(x.user_id))).join(', ') : '—';
+  const r = respOf(id), list = (a) => a.length ? a.map((x) => V21.respName(x)).join(', ') : '—';
   return `<h1>${esc(e.title)}</h1>${e.cancelled ? '<span class="pill ko">Séance annulée</span>' : ''}<div class="det">${esc(e.type)}${e.team_id ? ' · ' + esc(teamName(e.team_id)) : ''}<br>${esc(fmtDate(e.starts_at))}${e.place ? '<br>' + esc(e.place) : ''}${e.opponents ? '<br>Contre : ' + esc(e.opponents) : ''}</div>
   ${V21.forLabel(e)}${isStaff() ? `<div class="det">${V21.invitedCount(e)} personnes prévenues</div>` : ''}
-  ${V21.answer(e, pair(id), { oui: r.oui.length, non: r.non.length, inv: V21.invitedCount(e) })}<div class="card"><div class="kick">Viennent (${r.oui.length})</div><div>${list(r.oui)}</div><div class="kick" style="margin-top:10px">Ne viennent pas (${r.non.length})</div><div>${list(r.non)}</div></div>
+  ${V21.answer(e, (pid) => pair(id, pid), { oui: r.oui.length, non: r.non.length, inv: V21.invitedCount(e) })}<div class="card"><div class="kick">Viennent (${r.oui.length})</div><div>${list(r.oui)}</div><div class="kick" style="margin-top:10px">Ne viennent pas (${r.non.length})</div><div>${list(r.non)}</div></div>
   <button class="btn" data-act="ics" data-id="${id}">📅 Ajouter à mon agenda</button>${V2.hideBtn(e, r.mine)}
   ${V1.eventStaffBlock(e)}
   ${V2.isBoard() || V2.coachTeams().includes(e.team_id) ? `<button class="btn danger" data-act="evdel" data-id="${id}">${S.delPend === id ? 'Confirmer la suppression' : 'Supprimer ce rendez-vous'}</button>` : ''}`;
@@ -475,14 +476,13 @@ document.addEventListener('click', async (e) => {
     }
     case 'club': S.clubId = d.id; store.set('mb_club', d.id); S.tab = 0; S.view = null; S.names = {}; await refresh(); return;
     case 'rsvp': {
-      const mine = respOf(d.id).mine;
-      if (mine === d.v) { await run(sb.from('event_responses').delete().eq('event_id', d.id).eq('user_id', S.me.id)); S.resp = S.resp.filter((x) => !(x.event_id === d.id && x.user_id === S.me.id)); }
-      else if (await run(sb.from('event_responses').upsert({ event_id: d.id, user_id: S.me.id, answer: d.v, updated_at: new Date().toISOString() }))) { S.resp = S.resp.filter((x) => !(x.event_id === d.id && x.user_id === S.me.id)); S.resp.push({ event_id: d.id, user_id: S.me.id, answer: d.v }); }
+      const R0 = respOf(d.id), pid = d.p || null, cur = pid ? R0.kid(pid) : R0.mine;
+      if (await run(sb.rpc('respond_event', { p_event: d.id, p_player: pid, p_answer: cur === d.v ? null : d.v }))) { const rr = await sb.from('event_responses').select('*').eq('event_id', d.id); S.resp = S.resp.filter((x) => x.event_id !== d.id).concat(rr.data || []); }
       return render(true);
     }
     case 'event': S.view = { type: 'event', id: d.id }; return render();
     case 'evnew': { const t = new Date(Date.now() + 864e5); t.setMinutes(0); S.form = { type: 'Entraînement', team_id: d.team || '', starts_at: new Date(t - t.getTimezoneOffset() * 6e4).toISOString().slice(0, 16) }; S.view = { type: 'evform' }; return render(); }
-    case 'evtype': { const f = new FormData($('#evf')); Object.assign(S.form, Object.fromEntries(f)); S.form.type = d.v; return render(true); }
+    case 'evtype': { const f = new FormData($('#evf')); Object.assign(S.form, Object.fromEntries(f)); S.form.repeat = !!f.get('repeat'); S.form.skiphol = !!f.get('skiphol'); S.form.type = d.v; return render(true); }
     case 'evdel': if (S.delPend !== d.id) { S.delPend = d.id; return render(true); } S.delPend = null; if (await run(sb.from('events').delete().eq('id', d.id), 'Rendez-vous supprimé.')) { S.view = null; await refresh(); } return;
     case 'gnew': S.form = { name: '', sel: new Set() }; S.view = { type: 'gform' }; return render();
     case 'gsel': { S.form.sel[el.checked ? 'add' : 'delete'](d.id); return render(true); }
