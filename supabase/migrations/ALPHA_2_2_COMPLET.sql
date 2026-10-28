@@ -797,3 +797,43 @@ begin
     perform activate_membership(m.id, null, null);
   end loop;
 end $$;
+
+-- Correctif (tests « vie de club ») : un second parent validé sans choisir la fiche est relié à la fiche existante
+-- de l'enfant (même prénom et même nom, accents et majuscules ignorés, même équipe) au lieu d'en créer une seconde.
+create or replace function activate_membership(mid uuid, p_team uuid, p_player uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare m memberships; pid uuid; fn text; ln text;
+begin
+  select * into m from memberships where id = mid;
+  if m.id is null then raise exception 'Demande introuvable'; end if;
+  if p_team is not null and not exists(select 1 from teams where id = p_team and club_id = m.club_id) then raise exception 'Équipe inconnue dans ce club'; end if;
+  m.team_id := coalesce(p_team, m.team_id);
+  pid := p_player;
+  if pid is not null and not exists(select 1 from players where id = pid and club_id = m.club_id) then raise exception 'Fiche joueur inconnue'; end if;
+  if pid is null and m.role in ('parent','joueur') then
+    if m.role = 'parent' then
+      fn := coalesce(nullif(trim(m.child_first), ''), split_part(coalesce(nullif(trim(m.child_name), ''), 'Enfant'), ' ', 1));
+      ln := coalesce(nullif(trim(m.child_last), ''), trim(substr(coalesce(m.child_name, ''), length(split_part(coalesce(m.child_name, ''), ' ', 1)) + 1)));
+      select p.id into pid from players p where p.club_id = m.club_id and p.user_id is null
+        and norm_name(p.first_name) = norm_name(fn) and norm_name(p.last_name) = norm_name(ln)
+        and (m.team_id is null or p.team_id = m.team_id or exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = m.team_id))
+        order by p.created_at limit 1;
+    else
+      select first_name, last_name into fn, ln from profiles where id = m.user_id;
+      select p.id into pid from players p where p.club_id = m.club_id and p.user_id = m.user_id limit 1;
+    end if;
+    if pid is null then
+      insert into players(club_id, team_id, user_id, first_name, last_name, created_by)
+        values (m.club_id, m.team_id, case when m.role = 'joueur' then m.user_id end, coalesce(nullif(fn, ''), 'Joueur'), coalesce(ln, ''), auth.uid()) returning id into pid;
+      insert into player_admin(player_id) values (pid) on conflict do nothing;
+    end if;
+  end if;
+  if m.role = 'parent' and pid is not null then insert into player_parents values (pid, m.user_id) on conflict do nothing; end if;
+  if m.role = 'joueur' and pid is not null then update players set user_id = m.user_id where id = pid and user_id is null; end if;
+  update memberships set status = 'active', team_id = m.team_id, player_id = pid,
+    child_name = case when pid is not null then null else child_name end,
+    child_first = case when pid is not null then null else child_first end,
+    child_last = case when pid is not null then null else child_last end
+    where id = mid;
+end $$;
+revoke execute on function activate_membership(uuid, uuid, uuid) from public, anon, authenticated;
