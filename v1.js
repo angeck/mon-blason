@@ -57,7 +57,7 @@ export function repeatFields(f) {
   <label class="check"><input type="checkbox" name="skiphol" ${f.skiphol === false ? '' : 'checked'}><span>Hors vacances scolaires (zone C : Créteil, Paris, Versailles)</span></label>`;
 }
 export async function saveEvent(v) {
-  const base = { club_id: S.clubId, type: S.form.type, title: v.title.trim(), place: v.place || '', opponents: v.opponents || '', team_id: v.team_id || null, created_by: S.me.id };
+  const base = { club_id: S.clubId, type: S.form.type, title: v.title.trim(), place: v.place || '', opponents: v.opponents || '', team_id: v.team_id || null, audience: v.audience || (v.team_id ? 'team' : 'club'), created_by: S.me.id };
   const start = new Date(v.starts_at);
   if (S.form.type === 'Entraînement' && v.repeat) {
     const until = new Date((v.until || '2027-06-30') + 'T23:59'), skip = !!v.skiphol;
