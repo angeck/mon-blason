@@ -380,7 +380,8 @@ function clubTab() {
 function roleRequest() {
   const r = S.rq, c = club(), mine = myMem();
   return `<details id="rqbox" class="card hi" ${r.open ? 'open' : ''}><summary data-act="rqopen" style="font-weight:800;min-height:44px;display:flex;align-items:center;cursor:pointer">Demander un autre rôle dans ${esc(c.name)}</summary><div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">
-  <div class="det">Mes rôles : ${mine.map((m) => ROLES[m.role] + (m.team_id ? ' ' + esc(teamName(m.team_id)) : '') + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</div>
+  <div class="det">Mes rôles : ${mine.filter((m) => m.status === 'active').map((m) => ROLES[m.role] + (m.team_id ? ' ' + esc(teamName(m.team_id)) : '')).join(', ') || '—'}</div>
+  ${mine.filter((m) => m.status === 'pending').map((m) => `<div class="row" style="cursor:default"><span class="g">Demande en attente<small>${ROLES[m.role]}${m.team_id ? ' ' + esc(teamName(m.team_id)) : ''}</small></span><button class="btn small" data-act="mcancel" data-id="${m.id}">Annuler la demande</button></div>`).join('')}
   <div class="chips">${JOIN_ROLES.map((x) => `<button class="chip" data-act="rqrole" data-v="${x}" aria-pressed="${r.role === x}">${ROLES[x]}</button>`).join('')}</div>
   ${r.role === 'parent' ? `<div class="grid2"><div class="field"><label for="rk">Prénom de l'enfant</label><input id="rk" data-r="childf" value="${esc(r.childf || '')}"></div><div class="field"><label for="rk2">Nom de l'enfant</label><input id="rk2" data-r="childl" value="${esc(r.childl || '')}"></div></div>` : ''}
   ${r.role === 'joueur' ? `<label class="check"><input type="checkbox" data-r="age" ${r.age ? 'checked' : ''}><span>J'ai 15 ans ou plus</span></label>` : ''}
@@ -451,11 +452,13 @@ document.addEventListener('click', async (e) => {
     case 'teamsel': S.teamSel = d.id; return render(true);
     case 'rqopen': S.rq.open = !S.rq.open; return render(true);
     case 'rqrole': S.rq.role = d.v; return render(true);
+    case 'mcancel': if (await run(sb.from('memberships').delete().eq('id', d.id).eq('user_id', S.me.id).eq('status', 'pending'), 'Demande annulée. Vous pouvez en faire une nouvelle.')) await refresh(); return;
     case 'rqsend': {
       const r = S.rq;
       if (r.role === 'parent' && (!(r.childf || '').trim() || !(r.childl || '').trim())) return toast("Indiquez le prénom et le nom de l'enfant.");
       if (r.role === 'joueur' && !r.age) return toast('Le compte joueur est réservé aux 15 ans et plus.');
-      if (myMem().some((m) => m.role === r.role && (m.team_id || '') === (r.team || '') && r.role !== 'parent')) return toast('Vous avez déjà ce rôle (ou une demande en cours).');
+      const same = r.role !== 'parent' && myMem().find((m) => m.role === r.role && (m.team_id || '') === (r.team || ''));
+      if (same) return toast(same.status === 'active' ? `Vous êtes déjà ${ROLES[r.role].toLowerCase()}${r.team ? ' ' + teamName(r.team) : ''}.` : `Une demande est déjà en attente pour ${ROLES[r.role].toLowerCase()}${r.team ? ' ' + teamName(r.team) : ''} : vous pouvez l'annuler juste au-dessus.`);
       if (await run(sb.rpc('join_club', { p_code: club().join_code, p_role: r.role, p_team: r.team || null, p_child: null, p_child_first: r.childf || null, p_child_last: r.childl || null }), r.role === 'supporteur' || V2.isPresident() || (r.role === 'coach' && V2.isBoard()) ? 'Rôle ajouté.' : 'Demande envoyée.')) { S.rq = { role: 'joueur', team: '', child: '', age: false, open: false }; await refresh(); }
       return;
     }
