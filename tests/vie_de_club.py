@@ -337,6 +337,13 @@ AS("s99")
 for _ in range(11): w("select join_club('ZZZZZZZZ', 'supporteur', null, null);")
 fails("après 10 codes faux en une heure, les essais sont bloqués", "select join_club((select 'ZZZZZZZY'), 'supporteur', null, null)")
 
+section("Import d'une liste de joueurs")
+AS("cU11")
+works("coach U11 importe une liste avec e-mail et téléphone des parents", f"select import_players((select id from clubs where name = 'AS Test Basket'), {T('U11')}, '[{{\"first_name\":\"Anna\",\"last_name\":\"LE BRAS\",\"birth_date\":\"2018-08-16\",\"email\":\"parent.un@exemple.fr\",\"phone\":\"06 11 22 33 44\"}},{{\"first_name\":\"Bruno\",\"last_name\":\"DA SILVA COSTA\",\"birth_date\":\"2018-08-03\"}}]'::jsonb)")
+ok("les fiches importées gardent le contact du parent", "exists(select 1 from players where last_name = 'LE BRAS' and parent_email = 'parent.un@exemple.fr' and parent_phone = '06 11 22 33 44')")
+fails("coach U11 n'importe pas dans l'équipe U9", f"select import_players((select id from clubs where name = 'AS Test Basket'), {T('U9')}, '[{{\"first_name\":\"X\",\"last_name\":\"Y\"}}]'::jsonb)")
+AS("s30"); ok("un supporteur ne voit pas les contacts importés", "not exists(select 1 from players where parent_email is not null)")
+
 section("Départs et redemandes")
 AS("j1"); works("un joueur quitte son profil", "delete from memberships where user_id = auth.uid() and role = 'joueur'")
 AS("j1"); works("et peut redemander le même rôle", f"select join_club({CODE}, 'joueur', {T('Seniors')}, null)")

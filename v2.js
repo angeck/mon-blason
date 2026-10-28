@@ -1,3 +1,4 @@
+import { smartParse } from './importer.js';
 // Mon Blason · alpha 2.0 · membres, fiche équipe, import et doublons, tarifs, événements masqués,
 // agenda du téléphone, mentions légales et conditions, couleurs de la marque dans Mon compte.
 let S, sb, esc, run, toast, render, refresh, name, teamName, myMem, ROLES, canValidate, toValidate, pendRows, crest, fmtShort;
@@ -190,7 +191,7 @@ export function importPage(tid) {
   h += `<div class="card"><div class="kick">Vérification · ${I.rows.length} ligne${I.rows.length > 1 ? 's' : ''}</div>`;
   I.rows.forEach((r, i) => {
     const dups = M[i] || [], inFile = I.rows.findIndex((x, j) => j < i && norm(x.first_name) === norm(r.first_name) && norm(x.last_name) === norm(r.last_name)) >= 0;
-    h += `<div style="border-bottom:1px solid var(--trait);padding:10px 0;display:flex;flex-direction:column;gap:6px${r.action === 'skip' ? ';opacity:.6' : ''}"><div class="grid2"><div class="field"><label for="ir${i}f">Prénom</label><input id="ir${i}f" data-imp="${i}" data-k="first_name" value="${esc(r.first_name)}"></div><div class="field"><label for="ir${i}l">Nom</label><input id="ir${i}l" data-imp="${i}" data-k="last_name" value="${esc(r.last_name)}"></div></div><div class="grid2"><div class="field"><label for="ir${i}b">Naissance</label><input id="ir${i}b" type="date" data-imp="${i}" data-k="birth_date" value="${esc(r.birth_date)}"></div><div class="field"><label for="ir${i}c">N° de licence</label><input id="ir${i}c" data-imp="${i}" data-k="licence" value="${esc(r.licence)}"></div></div>`;
+    h += `<div style="border-bottom:1px solid var(--trait);padding:10px 0;display:flex;flex-direction:column;gap:6px${r.action === 'skip' ? ';opacity:.6' : ''}"><div class="grid2"><div class="field"><label for="ir${i}f">Prénom</label><input id="ir${i}f" data-imp="${i}" data-k="first_name" value="${esc(r.first_name)}"></div><div class="field"><label for="ir${i}l">Nom</label><input id="ir${i}l" data-imp="${i}" data-k="last_name" value="${esc(r.last_name)}"></div></div><div class="grid2"><div class="field"><label for="ir${i}b">Naissance</label><input id="ir${i}b" type="date" data-imp="${i}" data-k="birth_date" value="${esc(r.birth_date)}"></div><div class="field"><label for="ir${i}c">N° de licence</label><input id="ir${i}c" data-imp="${i}" data-k="licence" value="${esc(r.licence)}"></div></div>${r.email || r.phone ? `<div class="grid2"><div class="field"><label for="ir${i}m">E-mail du parent</label><input id="ir${i}m" type="email" data-imp="${i}" data-k="email" value="${esc(r.email || '')}"></div><div class="field"><label for="ir${i}t">Téléphone du parent</label><input id="ir${i}t" type="tel" data-imp="${i}" data-k="phone" value="${esc(r.phone || '')}"></div></div>` : ''}`;
     if (inFile) h += '<div class="pill ko">Doublon dans la liste elle-même</div>';
     if (dups.length) {
       const d = dups[0];
@@ -268,11 +269,11 @@ export const ACTIONS = {
   tstate: async (el, d) => { if (await run(sb.from('teams').update({ state: d.v }).eq('id', d.id), d.v === 'Visible' ? 'Équipe visible.' : 'Équipe en mode fantôme.')) await refresh(); },
   trenew: async (el, d) => { if (S.delPend !== 'rn' + d.id) { S.delPend = 'rn' + d.id; toast('Touchez encore pour confirmer : l\'équipe est archivée et recréée pour 2027-2028 avec ses coachs.'); return; } S.delPend = null; const n = await run(sb.rpc('renew_team', { p_team: d.id, p_season: '2027-2028' }), 'Équipe reconduite pour 2027-2028 (mode fantôme).'); if (n) { S.view = { type: 'team', id: n }; await refresh(); } },
   import: (el, d) => { S.imp = { tid: d.id, text: '', rows: null, matches: {} }; S.view = { type: 'import', id: d.id }; render(); },
-  impcheck: async () => { const I = S.imp; I.rows = parseRows(I.text.split(/\r?\n/).map((l) => l.split(/\t|;|,(?!\d)/))); await checkImport(); },
+  impcheck: async () => { const I = S.imp; I.rows = smartParse(I.text); await checkImport(); },
   impdel: (el, d) => { S.imp.rows.splice(+d.i, 1); const M = {}; Object.keys(S.imp.matches).forEach((k) => { const n = +k > +d.i ? +k - 1 : +k; if (+k !== +d.i) M[n] = S.imp.matches[k]; }); S.imp.matches = M; render(true); },
   impback: () => { S.imp.rows = null; render(); },
   impok: async () => {
-    const I = S.imp, rows = I.rows.map((r) => ({ first_name: niceFirst(r.first_name), last_name: niceLast(r.last_name), birth_date: r.birth_date || null, licence: r.licence || null, action: r.action || 'create', existing: r.existing || null }));
+    const I = S.imp, rows = I.rows.map((r) => ({ first_name: niceFirst(r.first_name), last_name: niceLast(r.last_name), birth_date: r.birth_date || null, licence: r.licence || null, action: r.action || 'create', existing: r.existing || null, email: r.email || null, phone: r.phone || null }));
     if (rows.some((r) => !r.first_name || !r.last_name)) return toast('Chaque ligne doit avoir un prénom et un nom.');
     const n = await run(sb.rpc('import_players', { p_club: S.clubId, p_team: I.tid, p_rows: rows }));
     if (n !== null) { toast(n + ' joueur' + (n > 1 ? 's' : '') + ' ajouté' + (n > 1 ? 's' : '') + ' ou complété' + (n > 1 ? 's' : '') + '.'); S.imp = null; S.view = { type: 'team', id: I.tid }; await refresh(); }
@@ -322,9 +323,9 @@ export async function onChange(t) {
     const file = t.files[0];
     try {
       let table;
-      if (/\.csv$/i.test(file.name) || file.type === 'text/csv') table = (await file.text()).split(/\r?\n/).map((l) => l.split(/\t|;|,(?!\d)/));
-      else { await loadJs(XLSX_URL); const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array' }); table = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false }); }
-      S.imp.rows = parseRows(table); await checkImport();
+      if (/\.csv$/i.test(file.name) || file.type === 'text/csv') table = await file.text();
+      else { await loadJs(XLSX_URL); const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true }); const sh = wb.SheetNames.map((n) => wb.Sheets[n]).find((x) => x['!ref']) || wb.Sheets[wb.SheetNames[0]]; table = window.XLSX.utils.sheet_to_json(sh, { header: 1, raw: true, defval: '' }); }
+      S.imp.rows = smartParse(table); await checkImport();
     } catch { toast('Fichier illisible. Essayez un fichier .xlsx ou .csv.'); }
     return true;
   }
