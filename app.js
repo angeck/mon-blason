@@ -12,7 +12,7 @@ import { agendaTab, eventForm, eventPage, appelPage } from './js/agenda.js';
 import { messagesTab, groupForm, groupPage, grp, scrollEnd } from './js/messages.js';
 import { teamTab, teamPage, importPage } from './js/equipe.js';
 import { playerPage } from './js/joueur.js';
-import { clubTab } from './js/club.js';
+import { clubTab, memberPage } from './js/club.js';
 import { accountScreen, deletedScreen } from './js/compte.js';
 
 const TAB_TITLES = ['', 'Agenda', 'Messages', 'Équipe', 'Le club'];
@@ -31,6 +31,7 @@ function viewScreen(v) {
     case 'group': return [header({ back: true, kicker: "Groupe d'échange", title: esc(grp(v.id)?.name || 'Groupe') }), groupPage(v.id)];
     case 'player': { const p = pl(v.id); return [header({ back: true, kicker: 'Fiche joueur', title: esc(p ? pname(p) : 'Fiche') }), playerPage(v.id)]; }
     case 'team': { const t = team(v.id); return [header({ back: true, kicker: 'Équipe', title: esc(t?.name || 'Équipe'), tags: t ? [t.category !== t.name ? t.category : '', t.gender, 'Saison ' + t.season].filter(Boolean) : [] }), teamPage(v.id)]; }
+    case 'member': return [header({ back: true, kicker: 'Fiche du membre', title: esc(S.names[v.id] || 'Membre') }), memberPage(v.id)];
     case 'import': return [header({ back: true, kicker: 'Ajouter des joueurs', title: esc(teamName(v.id)) }), importPage(v.id)];
     default: return null;
   }
@@ -79,8 +80,8 @@ function subscribe() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
       const m = p.new; if (!S.groups.some((g) => g.id === m.group_id)) return;
       S.lastMsgs.unshift(m);
-      if (S.view?.type === 'group' && S.view.id === m.group_id && !S.msgs.some((x) => x.id === m.id)) { S.msgs.push(m); render(true); scrollEnd(); }
-      else if (m.user_id !== S.me.id) { toast((grp(m.group_id)?.name || 'Groupe') + ' : nouveau message'); if (!S.view) render(true); }
+      if (S.view?.type === 'group' && S.view.id === m.group_id) { if (!S.msgs.some((x) => x.id === m.id)) { S.msgs.push(m); render(true); scrollEnd(); } sb.from('group_members').update({ last_read_at: new Date().toISOString() }).eq('group_id', m.group_id).eq('user_id', S.me.id).then(() => {}, () => {}); }
+      else if (m.user_id !== S.me.id) { S.unread[m.group_id] = (S.unread[m.group_id] || 0) + 1; toast((grp(m.group_id)?.name || 'Groupe') + ' : nouveau message'); render(true); }
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'poll_votes' }, async () => { if (S.view?.type === 'group') { await loadGroup(S.view.id); render(true); } })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'event_responses' }, async () => {

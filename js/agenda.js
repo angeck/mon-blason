@@ -2,7 +2,7 @@
 import {
   S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, CHANGES, INPUTS, TEAM_TYPES, club, active, isBoard, coachOf, coachTeams,
   teamName, teamsLabel, evTeams, name, pl, pname, parentsOf, myKidsIn, iPlayIn, inTeam, playersOfTeam, fmtDate, hm, localDay, inHolidays,
-  toLocalInput, fmtDay, plural, download, norm,
+  toLocalInput, fmtDay, plural, download, norm, follows,
 } from './core.js';
 import { icon, dayBadge, delBtn, field } from './ui.js';
 
@@ -17,6 +17,10 @@ export function respOf(eid) {
   return { all: r, oui: r.filter((x) => x.answer === 'oui'), non: r.filter((x) => x.answer === 'non'), mine: (r.find((x) => x.user_id === S.me.id && !x.player_id) || {}).answer, kid: (pid) => (r.find((x) => x.player_id === pid) || {}).answer };
 }
 const isTeamType = (e) => evTeams(e).length && TEAM_TYPES.includes(e.type);
+// N° 41 : rendez-vous vu seulement parce qu'on suit l'équipe (pas de réponse : suivre n'est pas être convoqué)
+// créateur d'un rendez-vous pour des personnes choisies sans lui : il le voit, sans y répondre
+const notInvited = (e) => e.audience === 'people' && !(e.people || []).includes(S.me.id);
+export const followOnly = (e) => isTeamType(e) && !evTeams(e).some(coachOf) && !iPlayIn(evTeams(e)) && !myKidsIn(evTeams(e)).length && evTeams(e).some(follows) && !isBoard();
 // Le coach d'une équipe concernée encadre : il ne répond pas pour lui-même (sauf joueur-entraîneur)
 export const coachOnly = (e) => isTeamType(e) && evTeams(e).some(coachOf) && !iPlayIn(evTeams(e));
 export function needsAnswer(e) {
@@ -26,6 +30,7 @@ export function needsAnswer(e) {
   const k = myKidsIn(evTeams(e)), me = iPlayIn(evTeams(e));
   if (k.some((p) => !R.kid(p.id))) return true;
   if (me) return !R.mine;
+  if (followOnly(e) || notInvited(e)) return false;
   return !coachOnly(e) && !k.length && !R.mine;
 }
 function pair(e, pid) {
@@ -46,7 +51,9 @@ export function invitedCount(e) {
 const playersOf = (e) => { const m = new Map(); evTeams(e).forEach((t) => playersOfTeam(t).forEach((p) => m.set(p.id, p))); return [...m.values()]; };
 export function answerBlock(e) {
   if (e.cancelled) return '';
+  if (notInvited(e)) return '<p class="note">Tu as créé ce rendez-vous pour des personnes choisies : tu n’en fais pas partie.</p>';
   if (!isTeamType(e)) return pair(e, null);
+  if (followOnly(e)) return '<p class="note">Tu suis cette équipe : pas de réponse à donner.</p>';
   const k = myKidsIn(evTeams(e)), me = iPlayIn(evTeams(e)), kids = k.map((p) => pair(e, p.id)).join('');
   if (coachOnly(e)) {
     const R = respOf(e.id), n = playersOf(e).length, oui = R.oui.filter((x) => x.player_id || !k.length).length, non = R.non.length;
@@ -81,7 +88,8 @@ function reason(e) {
 
 // ---------- liste ----------
 const hiddenByMe = (e) => S.hidden.some((h) => h.event_id === e.id && new Date(h.hidden_at) >= new Date(e.updated_at || 0));
-const personal = (e) => evTeams(e).some((t) => coachOf(t) || iPlayIn([t]) || myKidsIn([t]).length);
+// n° 35 : le créateur voit toujours son rendez-vous ; n° 41 : les matchs des équipes suivies comptent comme les miens
+const personal = (e) => e.created_by === S.me.id || evTeams(e).some((t) => coachOf(t) || iPlayIn([t]) || myKidsIn([t]).length || (follows(t) && ['Match', 'Plateau', 'Tournoi'].includes(e.type)));
 // n° 22 : sans « Tout le club », le président et le bureau ne voient pas les rendez-vous des équipes où ils n'ont aucun rôle
 const hiddenByToggle = (e) => isBoard() && !S.me.show_all_club && e.audience === 'team' && !personal(e);
 export const sortEvents = (l) => l.slice().sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at) || teamsLabel(evTeams(a)).localeCompare(teamsLabel(evTeams(b))));
@@ -105,6 +113,7 @@ function statusPill(e) {
   if (e.cancelled) return '<span class="pill ko">Annulé</span>';
   const R = respOf(e.id), k = isTeamType(e) ? myKidsIn(evTeams(e)) : [];
   if (needsAnswer(e)) return '<span class="pill wait">À répondre</span>';
+  if (followOnly(e)) return '<span class="pill blue">Suivie</span>';
   if (coachOnly(e) && !k.length) return `<span class="pill blue">${R.oui.length} oui</span>`;
   const a = k.length ? R.kid(k[0].id) : R.mine;
   return a === 'oui' ? '<span class="pill ok">Oui</span>' : a === 'non' ? '<span class="pill ko">Non</span>' : '';

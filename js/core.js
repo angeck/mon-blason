@@ -26,7 +26,7 @@ export const S = {
   session: null, me: null, mems: [], clubs: {}, clubId: store.get('pc_club'), tab: 0, view: null,
   members: [], names: {}, nicks: {}, phones: {}, teams: [], events: [], resp: [], groups: [], lastMsgs: [],
   msgs: [], polls: [], votes: [], gmembers: [], roster: [], players: [], pparents: [], padmin: [], att: [], pteams: [],
-  docs: [], fees: [], discounts: [], hidden: [], trash: [],
+  docs: [], fees: [], discounts: [], hidden: [], trash: [], payments: [], follows: [], cteams: [], unread: {}, myGroups: [], contacts: [], myContact: null,
   authMode: 'login', onb: null, join: { code: '', role: 'supporteur', teams: [] },
   rq: { role: 'joueur', team: '', open: false }, form: null, del: null, sel: null,
   updated: null, online: navigator.onLine, channel: null,
@@ -115,6 +115,13 @@ export function canValidate(m) {
     || (x.role === 'coach' && ['joueur', 'parent'].includes(m.role) && m.team_id && m.team_id === x.team_id));
 }
 export const toValidate = () => S.members.filter((m) => m.status === 'pending' && canValidate(m));
+// N° 32 : rang dans le club (président 3, bureau 2, coach 1, autres 0), comme dans la base
+const RANKS = { president: 3, bureau: 2, coach: 1 };
+export const rankOf = (u) => Math.max(0, ...S.members.filter((m) => m.user_id === u && m.status === 'active').map((m) => RANKS[m.role] || 0));
+export const myRank = () => Math.max(0, ...active().map((m) => RANKS[m.role] || 0));
+export const outranks = (u) => !u || u === S.me.id || rankOf(u) < myRank();
+export const canAdminPlayer = (p) => isBoard() && (!p.user_id || p.user_id === S.me.id || rankOf(p.user_id) < myRank());
+export const follows = (tid) => S.follows.includes(tid);
 export const evTeams = (e) => e.team_ids || [];
 
 // ---------- chargement ----------
@@ -153,7 +160,7 @@ export async function loadClub() {
   S.roster = roster.data || []; S.players = plr.data || []; S.docs = docs.data || []; S.fees = fees.data || []; S.hidden = hid.data || [];
   S.roster.forEach((x) => { if (x.user_id) S.names[x.user_id] = (x.first_name + ' ' + (x.last_name || '')).trim(); });
   const pids = S.players.map((p) => p.id), eids = S.events.map((e) => e.id), gids = S.groups.map((g) => g.id);
-  const [pp, pa, at, pt, rs, lm, dc] = await Promise.all([
+  const [pp, pa, at, pt, rs, lm, dc, pay, fol, ct, mg, cl, mc] = await Promise.all([
     inList(sb.from('player_parents').select('*'), 'player_id', pids),
     inList(sb.from('player_admin').select('*'), 'player_id', pids),
     inList(sb.from('attendance').select('*'), 'player_id', pids),
@@ -161,7 +168,22 @@ export async function loadClub() {
     inList(sb.from('event_responses').select('*'), 'event_id', eids),
     gids.length ? sb.from('messages').select('*').in('group_id', gids).order('created_at', { ascending: false }).limit(10) : Promise.resolve({ data: [] }),
     isBoard() ? inList(sb.from('player_discount').select('*'), 'player_id', pids) : Promise.resolve({ data: [] }),
+    inList(sb.from('player_payments').select('*').order('paid_at'), 'player_id', pids),
+    sb.from('team_follows').select('team_id').eq('user_id', S.me.id),
+    sb.rpc('club_teams', { p_club: cid }),
+    gids.length ? sb.from('group_members').select('*').eq('user_id', S.me.id).in('group_id', gids) : Promise.resolve({ data: [] }),
+    sb.rpc('club_contacts_list', { p_club: cid }),
+    sb.from('club_contacts').select('*').eq('club_id', cid).eq('user_id', S.me.id).maybeSingle(),
   ]);
+  S.payments = pay.data || []; S.follows = (fol.data || []).map((x) => x.team_id); S.cteams = ct.data || []; S.myGroups = mg.data || [];
+  S.contacts = cl.data || []; S.myContact = mc.data || null;
+  // n° 36 : messages non lus par groupe (depuis la dernière ouverture)
+  S.unread = {};
+  if (S.myGroups.length) {
+    const since = S.myGroups.map((g) => g.last_read_at).sort()[0];
+    const un = await sb.from('messages').select('id,group_id,created_at,user_id').in('group_id', S.myGroups.map((g) => g.group_id)).gt('created_at', since).neq('user_id', S.me.id).limit(500);
+    (un.data || []).forEach((m) => { const g = S.myGroups.find((x) => x.group_id === m.group_id); if (g && m.created_at > g.last_read_at) S.unread[m.group_id] = (S.unread[m.group_id] || 0) + 1; });
+  }
   S.pparents = pp.data || []; S.padmin = pa.data || []; S.att = at.data || []; S.pteams = pt.data || [];
   S.resp = rs.data || []; S.lastMsgs = lm.data || []; S.discounts = dc.data || [];
   const uids = S.members.map((m) => m.user_id).concat(S.pparents.map((x) => x.user_id), S.lastMsgs.map((m) => m.user_id), S.resp.map((r) => r.user_id));

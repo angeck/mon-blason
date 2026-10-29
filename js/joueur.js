@@ -1,12 +1,14 @@
 // Pocket Club · fiche joueur : informations, parents, autorisations datées, licence et cotisation, corbeille.
 import { BRAND } from '../config.js';
-import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, club, isBoard, team, teamName, pl, pname, adminOf, parentsOf, isParentOf, canManagePlayer, isMajor, name, num } from './core.js';
+import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, club, isBoard, team, teamName, pl, pname, adminOf, parentsOf, isParentOf, canManagePlayer, canAdminPlayer, outranks, isMajor, name, num, plural } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 
 const CONSENTS = [['image', "Droit à l'image (photos et vidéos du club)"], ['alone', 'Rentre seul après la séance'], ['care', "Soins d'urgence autorisés en cas d'accident"], ['transport', 'Covoiturage par les parents'], ['rgpd', 'Politique de confidentialité acceptée']];
 const LIC = ['Préinscrit club', 'Préinscrit fédé', 'Licencié'];
-const PAY = ['Chèque', 'Espèces', 'Virement', 'HelloAsso', 'Carte', 'Autre'];
-const canEdit = (p) => isParentOf(p.id) || p.user_id === S.me.id || canManagePlayer(p);
+const PAY = ['Chèque', 'Espèces', 'Virement', 'HelloAsso', 'Carte', "Pass'Sport", 'Autre'];
+const eur = (x) => (x == null ? '—' : (+x).toFixed(2).replace('.00', '').replace('.', ',') + ' €');
+// n° 32 : l'encadrement ne modifie que les fiches de ceux qui sont sous lui dans la pyramide
+const canEdit = (p) => isParentOf(p.id) || p.user_id === S.me.id || (canManagePlayer(p) && outranks(p.user_id));
 // n° 9 : un majeur donne ses autorisations lui-même ; un mineur, par un parent (mineur par défaut sans date de naissance)
 const canConsent = (p) => (isMajor(p) ? p.user_id === S.me.id : isParentOf(p.id)) || isBoard();
 
@@ -51,7 +53,7 @@ export function playerPage(pid) {
     h += `<div class="card"><div class="kick">Contact du parent (importé)</div><div class="det">${esc(p.parent_email || '')}${p.parent_email && p.parent_phone ? ' · ' : ''}${esc(p.parent_phone || '')}</div>${par.length ? '' : `<div class="btns">${p.parent_email ? `<a class="btn small ghost" href="mailto:${esc(p.parent_email)}?subject=${encodeURIComponent(BRAND.name + ' · ' + c0.name)}&body=${encodeURIComponent(inv)}">${icon('mail', 18)}Inviter par e-mail</a>` : ''}${p.parent_phone ? `<a class="btn small ghost" href="sms:${esc(tel(p.parent_phone))}?body=${encodeURIComponent(inv)}">${icon('sms', 18)}Inviter par SMS</a><a class="btn small ghost" href="tel:${esc(tel(p.parent_phone))}">${icon('phone', 18)}Appeler</a>` : ''}</div>`}</div>`;
   }
   // parents
-  h += `<div class="sec"><h2>Parents reliés</h2><span class="det">${par.length}</span></div><div class="card"><div class="list">${par.length ? par.map((u) => { const t = S.phones[u]; return `<div class="row static"><span class="g">${esc(name(u))}<small>${esc(t || 'Téléphone non renseigné')}</small></span>${t && u !== S.me.id ? `<a class="btn small ghost" href="tel:${esc(tel(t))}">${icon('phone', 18)}Appeler</a>` : ''}</div>`; }).join('') : '<p class="empty">Aucun parent relié.</p>'}</div>${par.length < 2 && !p.user_id ? '<p class="note">Second parent : il rejoint le club avec le rôle « Parent de joueur » et le nom de l’enfant ; à la validation, sa demande est reliée à cette fiche.</p>' : ''}</div>`;
+  h += `<div class="sec"><h2>Parents reliés</h2><span class="det">${par.length}</span></div><div class="card"><div class="list">${par.length ? par.map((u) => { const t = S.phones[u]; return `<div class="row static"><span class="g">${esc(name(u))}<small>${esc(t || 'Téléphone non renseigné')}</small></span>${t && u !== S.me.id ? `<a class="btn small ghost" href="tel:${esc(tel(t))}">${icon('phone', 18)}Appeler</a>` : ''}${isBoard() && u !== S.me.id ? `<button class="btn small ghost" data-act="member" data-id="${u}">Fiche</button>` : ''}</div>`; }).join('') : '<p class="empty">Aucun parent relié.</p>'}</div>${par.length < 2 && !p.user_id ? '<p class="note">Second parent : il rejoint le club avec le rôle « Parent de joueur » et le nom de l’enfant ; à la validation, sa demande est reliée à cette fiche.</p>' : ''}</div>`;
   // autorisations
   h += `<div class="sec"><h2>Autorisations</h2></div><div class="card"><div class="list">${CONSENTS.filter(([k]) => !(isMajor(p) && k === 'alone')).map(([k, l]) => {
     if (k === 'transport' && isMajor(p)) l = 'Covoiturage';
@@ -60,19 +62,23 @@ export function playerPage(pid) {
   }).join('')}</div></div>${cons ? '<p class="note">Touche une ligne pour accorder ou retirer. La date est enregistrée.</p>' : ''}<p class="note">${isMajor(p) ? 'Joueur majeur : il donne lui-même ses autorisations.' : 'Joueur mineur : les autorisations sont données par un parent' + (p.birth_date ? '.' : ' (date de naissance à compléter).')}</p>`;
   // licence et cotisation
   h += '<div class="sec"><h2>Licence et cotisation</h2></div>';
-  if (board) {
-    const A = a || {}, D = S.discounts.find((x) => x.player_id === pid) || {}, g = feeFor(p);
-    h += `<form id="padminf" data-id="${pid}" class="card">${field('g1', 'Licence', `<select id="g1" name="licence_state">${LIC.map((x) => `<option ${A.licence_state === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}${field('g2', 'Numéro de licence', `<input id="g2" name="licence_number" value="${esc(A.licence_number || '')}">`)}
+  // n° 33 : montant dû calculé (grille − réduction), versements, pastille « Payé »
+  const A = a || {}, due = A.fee_amount, paid = +A.fee_paid || 0, rest = due == null ? null : Math.max(0, due - paid), pays = S.payments.filter((x) => x.player_id === pid);
+  h += `<div class="card"><div class="chips">${statusPills(p)}</div>${A.licence_number ? `<div class="det">Licence n° ${esc(A.licence_number)}</div>` : ''}
+  <div class="grid2" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div><div class="kick">Dû</div><b class="big" style="font-size:24px">${eur(due)}</b></div><div><div class="kick">Réglé</div><b class="big" style="font-size:24px">${eur(paid)}</b></div><div><div class="kick">Reste</div><b class="big" style="font-size:24px">${eur(rest)}</b></div></div>
+  ${due == null ? '<p class="note">Montant dû inconnu : le tarif de la catégorie ou de l’équipe n’est pas encore dans la grille du club.</p>' : ''}
+  ${pays.length ? `<div class="list">${pays.map((x) => `<div class="row static"><span class="g">${eur(x.amount)}<small>${new Date(x.paid_at).toLocaleDateString('fr-FR')}${x.method ? ' · ' + esc(x.method) : ''}</small></span>${canAdminPlayer(p) ? `<button class="pill ${isArmed('pay' + x.id) ? 'armed' : ''}" data-act="paydel" data-id="${x.id}">${isArmed('pay' + x.id) ? 'Confirmer le retrait' : 'Retirer'}</button>` : ''}</div>`).join('')}</div>` : ''}</div>`;
+  if (canAdminPlayer(p)) {
+    const D = S.discounts.find((x) => x.player_id === pid) || {};
+    h += `<form id="payf" data-id="${pid}" class="card"><div class="kick">Ajouter un versement</div><div class="grid2">${field('pa1', 'Montant (€)', `<input id="pa1" name="amount" type="number" step="0.01" min="0.01" inputmode="decimal" required value="${rest ? rest : ''}">`)}${field('pa2', 'Moyen', `<select id="pa2" name="method"><option value="">—</option>${PAY.map((x) => `<option>${x}</option>`).join('')}</select>`)}</div><button class="btn main" type="submit">Ajouter le versement</button>
+    ${due != null && rest > 0 ? `<button type="button" class="btn ghost ${isArmed('paid' + pid) ? 'ink' : ''}" data-act="paid" data-id="${pid}">${isArmed('paid' + pid) ? `Confirmer : payé (${eur(rest)} enregistrés)` : 'Valider « Payé » en une fois'}</button>` : ''}
+    ${pays.length ? `<button type="button" class="btn danger ${isArmed('unpaid' + pid) ? 'armed' : ''}" data-act="unpaid" data-id="${pid}">${isArmed('unpaid' + pid) ? 'Confirmer : retirer tous les versements' : 'Repasser en « À payer »'}</button>` : ''}</form>
+    <form id="padminf" data-id="${pid}" class="card"><div class="kick">Licence et réduction</div>${field('g1', 'Licence', `<select id="g1" name="licence_state">${LIC.map((x) => `<option ${A.licence_state === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}${field('g2', 'Numéro de licence', `<input id="g2" name="licence_number" value="${esc(A.licence_number || '')}">`)}
     <label class="check"><input type="checkbox" name="health_doc" ${A.health_doc ? 'checked' : ''}><span>Certificat ou questionnaire de santé fourni</span></label>
-    <div class="grid2">${field('g6', `Tarif de base (€)${g != null ? ' · grille : ' + g + ' €' : ''}`, `<input id="g6" name="base_amount" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(D.base_amount ?? g ?? '')}">`)}${field('g7', 'Réduction (€)', `<input id="g7" name="disc" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(D.amount ?? '')}">`)}</div>
-    ${field('g8', 'Motif de la réduction (visible du bureau seulement)', `<input id="g8" name="disc_reason" value="${esc(D.reason || '')}" placeholder="Fratrie, Pass'Sport, aide de la mairie…">`)}
-    <div class="grid2">${field('g3', 'Montant dû (€)', `<input id="g3" name="fee_amount" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(A.fee_amount ?? '')}">`)}${field('g4', 'Déjà payé (€)', `<input id="g4" name="fee_paid" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(A.fee_paid ?? 0)}">`)}</div>
-    ${field('g5', 'Moyen de paiement', `<select id="g5" name="fee_method"><option value="">—</option>${PAY.map((x) => `<option ${A.fee_method === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
-    <button class="btn main" type="submit">Enregistrer licence et cotisation</button></form><p class="note">Saisi par le bureau. Visible du joueur ou de ses parents et du coach de l'équipe. Aucune donnée de santé : seulement « fourni » ou non.</p>`;
-  } else if (a) {
-    h += `<div class="card"><div class="det">${a.licence_number ? 'Licence n° ' + esc(a.licence_number) + '<br>' : ''}${a.fee_amount != null ? `Montant dû : ${esc(a.fee_amount)} € · payé : ${esc(a.fee_paid)} € · reste : ${Math.max(0, a.fee_amount - a.fee_paid).toFixed(2).replace('.00', '')} €${a.fee_method ? ' (' + esc(a.fee_method) + ')' : ''}` : 'Montant de la cotisation à définir par le club'}</div></div>`;
-  } else h += '<p class="empty">Pas encore de dossier.</p>';
-  if (board) h += delBtn('pdel', pid, 'Mettre la fiche à la corbeille', 'Confirmer : la fiche part à la corbeille (30 jours)', isArmed('p' + pid));
+    <div class="grid2">${field('g7', 'Réduction (€)', `<input id="g7" name="disc" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(D.amount ?? '')}">`)}${field('g8', 'Motif (bureau seulement)', `<input id="g8" name="disc_reason" value="${esc(D.reason || '')}" placeholder="Fratrie, aide de la mairie…">`)}</div>
+    <button class="btn main" type="submit">Enregistrer</button></form><p class="note">Le montant dû vient de la grille des tarifs du club, moins la réduction. Aucune donnée de santé : seulement « fourni » ou non.</p>`;
+  } else if (board) h += '<p class="note">Cette fiche appartient à quelqu’un de ton niveau ou au-dessus : seul un rang supérieur peut la modifier.</p>';
+  if (canAdminPlayer(p)) h += delBtn('pdel', pid, 'Mettre la fiche à la corbeille', 'Confirmer : la fiche part à la corbeille (30 jours)', isArmed('p' + pid));
   return h;
 }
 
@@ -83,6 +89,9 @@ Object.assign(ACTIONS, {
     c[d.k] = { ok: !cur, at: new Date().toISOString(), by: S.me.id };
     if (await run(sb.from('players').update({ consents: c }).eq('id', p.id))) { p.consents = c; render(true); }
   },
+  paydel: async (el, d) => { if (!armed('pay' + d.id)) return; if (await run(sb.from('player_payments').delete().eq('id', d.id), 'Versement retiré.')) await refresh(); },
+  paid: async (el, d) => { if (!armed('paid' + d.id)) return; if (await run(sb.rpc('mark_paid', { p_player: d.id, p_paid: true }), 'Cotisation payée.')) await refresh(); },
+  unpaid: async (el, d) => { if (!armed('unpaid' + d.id)) return; if (await run(sb.rpc('mark_paid', { p_player: d.id, p_paid: false }), 'Cotisation repassée en « À payer ».')) await refresh(); },
   pdel: async (el, d) => { if (!armed('p' + d.id)) return; if (await run(sb.rpc('trash_item', { p_kind: 'player', p_id: d.id }), 'Fiche mise à la corbeille. Restaurable pendant 30 jours (onglet Club).')) { S.view = null; await refresh(); } },
 });
 Object.assign(FORMS, {
@@ -94,10 +103,14 @@ Object.assign(FORMS, {
     if (await run(sb.from('players').update(row).eq('id', f.dataset.id), 'Informations enregistrées.')) await refresh();
   },
   padminf: async (v, f) => {
-    const base = num(v.base_amount), disc = num(v.disc) || 0, due = base != null ? Math.max(0, base - disc) : num(v.fee_amount);
-    const row = { player_id: f.dataset.id, licence_state: v.licence_state, licence_number: (v.licence_number || '').trim() || null, health_doc: !!v.health_doc, fee_amount: due, fee_paid: num(v.fee_paid) || 0, fee_method: v.fee_method || null, updated_by: S.me.id, updated_at: new Date().toISOString() };
+    const pid = f.dataset.id, row = { player_id: pid, licence_state: v.licence_state, licence_number: (v.licence_number || '').trim() || null, health_doc: !!v.health_doc, updated_by: S.me.id, updated_at: new Date().toISOString() };
     if (!await run(sb.from('player_admin').upsert(row))) return;
-    if (base != null || disc || (v.disc_reason || '').trim()) { if (!await run(sb.from('player_discount').upsert({ player_id: f.dataset.id, base_amount: base, amount: disc, reason: (v.disc_reason || '').trim() || null, updated_by: S.me.id, updated_at: new Date().toISOString() }))) return; }
-    toast('Licence et cotisation enregistrées.'); await refresh();
+    const disc = num(v.disc) || 0, had = S.discounts.find((x) => x.player_id === pid);
+    if (disc || (v.disc_reason || '').trim() || had) { if (!await run(sb.from('player_discount').upsert({ player_id: pid, amount: disc, reason: (v.disc_reason || '').trim() || null, updated_by: S.me.id, updated_at: new Date().toISOString() }))) return; }
+    toast('Licence et réduction enregistrées.'); await refresh();
   },
+  payf: async (v, f) => {
+    const amount = num(v.amount); if (!amount || amount <= 0) return toast('Indique un montant.');
+    if (await run(sb.from('player_payments').insert({ player_id: f.dataset.id, amount, method: v.method || null, created_by: S.me.id }), 'Versement de ' + eur(amount) + ' ajouté.')) await refresh();
+},
 });

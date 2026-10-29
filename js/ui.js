@@ -1,6 +1,6 @@
 // Pocket Club · éléments d'interface communs : logos, icônes, blason du club, en-tête, onglets, thème.
 import { BRAND } from '../config.js';
-import { S, esc, club, onColor, contrast, initials, isActive, toValidate, myTeamIds } from './core.js';
+import { S, esc, club, onColor, contrast, lum, initials, isActive, toValidate, myTeamIds } from './core.js';
 
 // ---------- Ballon (identique dans les deux logos ; seules les coutures changent selon le sport) ----------
 const SEAMS = {
@@ -43,11 +43,21 @@ const P = {
 export const icon = (n, size = 22, stroke = 'currentColor', w = 2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ''}</svg>`;
 
 // ---------- Blason du club : logo dans l'écu, ou initiales aux couleurs du club ----------
-export function crest(c, size = 44) {
+// N° 37 : contour noir ou blanc pour faire ressortir le blason ; automatique selon le fond, ou choisi par le bureau
+export function outlineColor(c, bg) {
+  const m = c?.crest_outline || 'auto';
+  if (m === 'aucun') return null; if (m === 'noir') return '#11162E'; if (m === 'blanc') return '#FFFFFF';
+  const base = c?.logo ? c.crest_bg || '#FFFFFF' : '#FFFFFF';
+  return lum(bg || '#2F5BFF') < 0.35 || lum(base) < 0.35 ? '#FFFFFF' : '#11162E';
+}
+export function crest(c, size = 44, bg) {
   const h = Math.round(size * 1.14), clip = 'clip-path:polygon(0 0,100% 0,100% 62%,50% 100%,0 62%)';
-  if (c?.logo) return `<span class="ecu" style="width:${size}px;height:${h}px;background:${esc(c.crest_bg || '#FFFFFF')};${clip}" aria-hidden="true"><img src="${esc(c.logo)}" alt="" style="width:78%;height:66%;object-fit:contain;margin-top:-10%"></span>`;
-  const a = c?.color1 || '#2F5BFF';
-  return `<span class="ecu" style="width:${size}px;height:${h}px;background:#FFFFFF;${clip};color:${esc(contrast(a, '#FFFFFF') >= 3 ? a : '#11162E')};font-size:${Math.round(size * 0.36)}px" aria-hidden="true"><span style="margin-top:-14%">${esc(initials(c?.name || 'PC'))}</span></span>`;
+  let inner;
+  if (c?.logo) inner = `<span class="ecu" style="width:${size}px;height:${h}px;background:${esc(c.crest_bg || '#FFFFFF')};${clip}"><img src="${esc(c.logo)}" alt="" style="width:78%;height:66%;object-fit:contain;margin-top:-10%"></span>`;
+  else { const a = c?.color1 || '#2F5BFF'; inner = `<span class="ecu" style="width:${size}px;height:${h}px;background:#FFFFFF;${clip};color:${esc(contrast(a, '#FFFFFF') >= 3 ? a : '#11162E')};font-size:${Math.round(size * 0.36)}px"><span style="margin-top:-14%">${esc(initials(c?.name || 'PC'))}</span></span>`; }
+  const o = outlineColor(c, bg || S.headerBg);
+  if (!o) return `<span aria-hidden="true" style="flex:none;display:flex">${inner}</span>`;
+  return `<span aria-hidden="true" style="flex:none;display:flex;align-items:center;justify-content:center;width:${size + 6}px;height:${h + 7}px;background:${o};${clip}">${inner}</span>`;
 }
 
 // ---------- Thème : en-tête Pocket Club, ou aux couleurs du club si le président l'a activé ----------
@@ -55,7 +65,7 @@ export function brandMode() { return !S.session || !S.me || !S.clubId || !isActi
 export function applyTheme() {
   const c = club(), r = document.documentElement.style, perso = !brandMode() && c?.custom_header;
   const bg = perso ? c.color1 : '#2F5BFF';
-  r.setProperty('--pc-entete', bg); r.setProperty('--pc-entete-texte', onColor(bg));
+  S.headerBg = bg; r.setProperty('--pc-entete', bg); r.setProperty('--pc-entete-texte', onColor(bg));
   const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = bg;
   document.title = BRAND.name;
 }
@@ -63,25 +73,26 @@ export function applyTheme() {
 // ---------- En-tête ----------
 export const accountBtn = () => `<button class="roundbtn" data-act="account" aria-label="Mon compte">${icon('user', 22, '#11162E')}</button>`;
 export const backBtn = () => `<button class="roundbtn" data-act="back" aria-label="Retour">${icon('back', 22, '#11162E', 2.4)}</button>`;
-// opts : { title, kicker, sub, back, tags[], brand, home }
+// opts : { title, kicker, sub, back, tags[], brand }
+// N° 27 : même en-tête partout. Bande du haut : (retour) · logo C · Mon compte, alignés ; dessous le club ; dessous le titre.
 export function header(o = {}) {
   const c = club(), br = o.brand || brandMode(), sport = c?.sport;
-  let top = '';
-  if (o.back) top = `<div class="top">${backBtn()}<span class="kicker" style="flex:1">${esc(o.kicker || '')}</span><span class="roundbtn" aria-hidden="true">${symbol(28, sport)}</span></div>`;
-  else if (br) top = `<div class="top"><span style="flex:1">${wordmark(26, sport)}</span>${S.session && S.me && S.view?.type !== 'account' && S.me.cgu_version ? accountBtn() : ''}</div>`;
-  else top = (o.home ? `<div>${wordmark(24, sport)}</div>` : '') + `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.sub || '')}</span></div>${accountBtn()}</div>`;
+  const acc = S.session && S.me && S.view?.type !== 'account' && S.me.cgu_version && !S.me.deleted_at;
+  let h = `<div class="band">${o.back ? backBtn() : ''}<span class="logo">${wordmark(22, sport)}</span>${acc ? accountBtn() : '<span style="width:44px"></span>'}</div>`;
+  if (!br && c) h += `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.kicker || o.sub || '')}</span></div></div>`;
+  else if (o.kicker) h += `<div class="kicker">${esc(o.kicker)}</div>`;
   const tags = o.tags?.length ? `<div class="tags">${o.tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : '';
-  return `<header class="hd">${top}${o.title ? `<h1>${o.title}</h1>` : ''}${tags}</header>`;
+  return `<header class="hd">${h}${o.title ? `<h1>${o.title}</h1>` : ''}${tags}</header>`;
 }
 
 // ---------- Onglets ----------
 const TABS = [['Accueil', 'home'], ['Agenda', 'cal'], ['Messages', 'msg'], ['Équipe', 'team'], ['Club', 'shield']];
 export function tabBar() {
   const v = toValidate(), mine = myTeamIds();
-  const counts = { Club: v.length, Équipe: v.filter((m) => mine.includes(m.team_id)).length };
+  const counts = { Club: v.length, Équipe: v.filter((m) => mine.includes(m.team_id)).length, Messages: Object.values(S.unread || {}).reduce((a, b) => a + b, 0) };
   return `<div class="tb"><nav aria-label="Onglets">${TABS.map(([t, ic], i) => {
     const cur = i === S.tab && !S.view, n = counts[t] || 0;
-    return `<button data-act="tab" data-i="${i}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${icon(ic, 24, 'currentColor', cur ? 2.2 : 2)}</span><span>${t}</span>${n ? `<span class="n" aria-label="${n} à valider">${n}</span>` : ''}</button>`;
+    return `<button data-act="tab" data-i="${i}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${icon(ic, 24, 'currentColor', cur ? 2.2 : 2)}</span><span>${t}</span>${n ? `<span class="n" aria-label="${n} ${t === 'Messages' ? 'non lus' : 'à valider'}">${n > 99 ? '99+' : n}</span>` : ''}</button>`;
   }).join('')}</nav></div>`;
 }
 

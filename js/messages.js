@@ -9,7 +9,7 @@ export function messagesTab() {
   let h = `<button class="btn main" data-act="gnew">${icon('plus', 20)}Créer un groupe d'échange</button>`;
   h += `<div class="card"><div class="list">${S.groups.length ? S.groups.map((g) => {
     const last = S.lastMsgs.find((m) => m.group_id === g.id);
-    return `<button class="row" data-act="group" data-id="${g.id}"><span class="avatar">${icon('msg', 20)}</span><span class="g">${esc(g.name)}<small>${last ? esc(nick(last.user_id)) + ' : ' + esc(last.body.slice(0, 60)) : 'Pas encore de message'}</small></span><span class="chev"></span></button>`;
+    return `<button class="row" data-act="group" data-id="${g.id}"><span class="avatar">${icon('msg', 20)}</span><span class="g">${esc(g.name)}<small>${last ? esc(nick(last.user_id)) + ' : ' + esc(last.body.slice(0, 60)) : 'Pas encore de message'}</small></span>${S.unread[g.id] ? `<span class="unread" aria-label="${S.unread[g.id]} non lus">${S.unread[g.id]}</span>` : '<span class="chev"></span>'}</button>`;
   }).join('') : '<p class="empty">Tu ne fais partie d’aucun groupe pour l’instant.</p>'}</div></div>`;
   return h + '<p class="note">Les groupes remplacent WhatsApp : covoiturage, organisation, sondages. Seuls les membres invités les voient.</p>';
 }
@@ -48,7 +48,12 @@ export function groupPage(id) {
   return h;
 }
 
-export async function openGroup(id) { S.view = { type: 'group', id }; await loadGroup(id); render(); scrollEnd(); }
+export async function openGroup(id) {
+  S.view = { type: 'group', id }; await loadGroup(id);
+  // n° 36 : le groupe ouvert est lu
+  { S.unread[id] = 0; sb.from('group_members').update({ last_read_at: new Date().toISOString() }).eq('group_id', id).eq('user_id', S.me.id).then(() => {}, () => {}); }
+  render(); scrollEnd();
+}
 
 Object.assign(ACTIONS, {
   gnew: () => { S.form = { name: '', sel: new Set(), q: '' }; S.view = { type: 'gform' }; render(); },

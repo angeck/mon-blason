@@ -27,6 +27,11 @@ export function accountScreen() {
   <label class="check"><input type="checkbox" name="optin" ${me.optin_emails ? 'checked' : ''}><span>Recevoir les e-mails d'information de ${esc(BRAND.name)}</span></label>
   <button class="btn main" type="submit">Enregistrer mon profil</button></form>`;
   h += roleRequest();
+  // n° 42 : le président et les membres du bureau peuvent se déclarer contacts du club
+  if (c && isBoard()) {
+    const k = S.myContact || {}, box = (n, l) => `<label class="check"><input type="checkbox" data-contact="${n}" ${k[n] ? 'checked' : ''}><span>${l}</span></label>`;
+    h += `<details class="card" ${k.for_licence || k.for_matches ? 'open' : ''}><summary>Contact du club (${esc(c.name)})</summary>${box('for_licence', 'Contact pour les demandes de licence')}${box('for_matches', 'Contact pour la planification des matchs')}<div class="kick">Moyens visibles</div>${box('show_phone', 'Mon téléphone')}${box('show_email', 'Mon adresse e-mail')}<p class="note">Tes coordonnées seront visibles des membres et des autres clubs connectés. Tu peux les retirer à tout moment.</p></details>`;
+  }
   h += `<div class="sec"><h2>Mes clubs et profils</h2></div><div class="card"><div class="list">${clubs.map((x) => `<button class="row" data-act="club" data-id="${x.id}">${crest(x, 30)}<span class="g">${esc(x.name)}<small>${S.mems.filter((m) => m.club_id === x.id).map((m) => ROLES[m.role] + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</small></span>${x.id === S.clubId ? '<span class="pill ok">Affiché</span>' : '<span class="chev"></span>'}</button>`).join('') || '<p class="empty">Aucun club pour l’instant.</p>'}</div></div>
   <button class="btn ghost" data-act="onbopen">Rejoindre ou créer un autre club</button>`;
   if (c) h += `<button class="btn ghost ${isArmed('leave') ? 'danger armed' : ''}" data-act="leave">${isArmed('leave') ? `Confirmer : quitter ${esc(c.name)}` : `Quitter ${esc(c.name)}`}</button>`;
@@ -71,4 +76,10 @@ FORMS.proff = async (v) => {
   if (await run(sb.from('profiles').update({ first_name: niceFirst(v.first_name), last_name: niceLast(v.last_name), nickname: (v.nickname || '').trim() || null, phone: (v.phone || '').trim() || null, optin_emails: !!v.optin }).eq('id', S.me.id), 'Profil enregistré.')) await refresh();
 };
 INPUTS.push((t) => { if (t.dataset.r && t.type !== 'checkbox') { S.rq[t.dataset.r] = t.value; return true; } return false; });
+CHANGES.push(async (t) => {
+  if (!t.dataset.contact) return false;
+  const row = { ...(S.myContact || { for_licence: false, for_matches: false, show_phone: false, show_email: false }), club_id: S.clubId, user_id: S.me.id, [t.dataset.contact]: t.checked, updated_at: new Date().toISOString() };
+  if (await run(sb.from('club_contacts').upsert(row), t.checked ? 'Enregistré.' : 'Retiré.')) S.myContact = row; else t.checked = !t.checked;
+  return true;
+});
 CHANGES.push((t) => { if (t.dataset.r) { S.rq[t.dataset.r] = t.type === 'checkbox' ? t.checked : t.value; return true; } return false; });

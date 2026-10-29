@@ -5,5 +5,5 @@ export const BRAND = { name: 'Pocket Club', word1: 'p', word2: 'cket', word3: 'c
 // les données sont protégées par les règles d'accès (RLS) de la base.
 export const SUPABASE_URL = 'https://rmdszovbpmagtvugfrpr.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_KsSQGA_bD3QSpX1vjnYjUw_eYBXXJ2u';
-export const VERSION = 'alpha 3.0';
+export const VERSION = 'alpha 3.0.1';
 export const CGU_VERSION = 'alpha-3.0-2026-10';

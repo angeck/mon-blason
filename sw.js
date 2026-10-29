@@ -1,5 +1,5 @@
 // Pocket Club · l'application s'ouvre même sans réseau (les données reviennent de Supabase avec le réseau)
-const CACHE = 'pc-alpha-3.0';
+const CACHE = 'pc-alpha-3.0.1';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'js/core.js', 'js/ui.js', 'js/auth.js', 'js/accueil.js', 'js/agenda.js', 'js/messages.js', 'js/equipe.js', 'js/joueur.js', 'js/club.js', 'js/compte.js', 'js/importer.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

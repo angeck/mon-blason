@@ -10,6 +10,7 @@ const D = {
   teams: [
     { id: T9, club_id: C, name: 'U9', category: 'U9', gender: 'Mixte', state: 'Visible', season: '2026-2027', slots: 'Mercredi 17 h 30, gymnase', deleted_at: null },
     { id: T11, club_id: C, name: 'U11', category: 'U11', gender: 'Mixte', state: 'Visible', season: '2026-2027', slots: '', deleted_at: null },
+    { id: 't-u15', club_id: C, name: 'U15', category: 'U15', gender: 'Masculine', state: 'Visible', season: '2026-2027', slots: 'Jeudi 18 h', deleted_at: null },
     { id: T13, club_id: C, name: 'U13 F', category: 'U13', gender: 'Féminine', state: 'Fantôme', season: '2026-2027', slots: '', deleted_at: null },
   ],
   memberships: [
@@ -28,7 +29,7 @@ const D = {
     { id: 'p-ana', club_id: C, team_id: T9, first_name: 'Ana', last_name: 'Leroy', birth_date: '2018-07-01', consents: {}, deleted_at: null, created_at: at(-30) },
   ],
   player_parents: [{ player_id: 'p-lily', user_id: ME }, { player_id: 'p-tom', user_id: 'u-p1' }],
-  player_admin: [{ player_id: 'p-lily', licence_state: 'Licencié', licence_number: 'VT123456', health_doc: true, fee_amount: 160, fee_paid: 160, fee_method: 'Chèque' }, { player_id: 'p-tom', licence_state: 'Préinscrit club', health_doc: false, fee_amount: 150, fee_paid: 0 }, { player_id: 'p-ana', licence_state: 'Préinscrit fédé', health_doc: true, fee_amount: null, fee_paid: 0 }],
+  player_admin: [{ player_id: 'p-lily', licence_state: 'Licencié', licence_number: 'VT123456', health_doc: true, fee_amount: 160, fee_paid: 160, fee_method: 'Chèque' }, { player_id: 'p-tom', licence_state: 'Préinscrit club', health_doc: false, fee_amount: 150, fee_paid: 50 }, { player_id: 'p-ana', licence_state: 'Préinscrit fédé', health_doc: true, fee_amount: null, fee_paid: 0 }],
   player_teams: [], player_discount: [], fee_grid: [{ id: 'f1', club_id: C, category: 'U9', amount: 150, fed_part: 45, team_id: null }], club_docs: [],
   event_series: [{ id: 's1', club_id: C }],
   events: [
@@ -42,7 +43,8 @@ const D = {
   event_responses: [{ id: 'r1', event_id: 'e1', user_id: 'u-p1', player_id: 'p-tom', answer: 'oui' }],
   event_hidden: [], attendance: [],
   groups: [{ id: 'g1', club_id: C, name: 'U9 · Parents et coachs', created_by: ME, created_at: at(-20) }],
-  group_members: [{ group_id: 'g1', user_id: ME, muted: false }, { group_id: 'g1', user_id: 'u-p1', muted: false }],
+  group_members: [{ group_id: 'g1', user_id: ME, muted: false, last_read_at: at(-2) }, { group_id: 'g1', user_id: 'u-p1', muted: false, last_read_at: at(-2) }],
+  team_follows: [], player_payments: [{ id: 'pay1', player_id: 'p-tom', amount: 50, method: 'Chèque', paid_at: at(-3) }], club_contacts: [],
   messages: [{ id: 1, group_id: 'g1', user_id: 'u-p1', body: 'Qui peut faire le covoiturage samedi ?', created_at: at(-1, 9) }],
   polls: [{ id: 'q1', group_id: 'g1', question: 'Présent au plateau ?', created_by: ME, created_at: at(-1), deleted_at: null }],
   poll_votes: [{ poll_id: 'q1', user_id: 'u-p1', answer: 'Présent' }],
@@ -55,6 +57,8 @@ class Q {
   eq(k, v) { this.f.push((r) => r[k] === v); return this; }
   in(k, v) { this.f.push((r) => v.includes(r[k])); return this; }
   gte(k, v) { this.f.push((r) => r[k] >= v); return this; }
+  gt(k, v) { this.f.push((r) => r[k] > v); return this; }
+  neq(k, v) { this.f.push((r) => r[k] !== v); return this; }
   order() { return this; } limit() { return this; }
   single() { this.one = true; return this; } maybeSingle() { this.one = true; return this; }
   insert(v) { this.op = 'insert'; this.v = v; return this; }
@@ -87,6 +91,12 @@ const RPC = {
   delete_event_list: ({ p_ids }) => { const n = D.events.filter((e) => p_ids.includes(e.id)).length; D.events = D.events.filter((e) => !p_ids.includes(e.id)); return n; },
   trash_item: ({ p_kind, p_id }) => { if (p_kind === 'player') D.players.find((p) => p.id === p_id).deleted_at = new Date().toISOString(); if (p_kind === 'poll') { const q = D.polls.find((p) => p.id === p_id); q.deleted_at = new Date().toISOString(); q.deleted_by = ME; } return null; },
   restore_item: ({ p_kind, p_id }) => { if (p_kind === 'player') D.players.find((p) => p.id === p_id).deleted_at = null; if (p_kind === 'poll') D.polls.find((p) => p.id === p_id).deleted_at = null; return null; },
+  club_teams: () => D.teams.filter((t) => !t.deleted_at).map((t) => ({ ...t, coach: t.id === 't-u9' ? 'Gaël T.' : null, coaches: 1, players: D.players.filter((p) => p.team_id === t.id && !p.deleted_at).length, followed: D.team_follows.some((f) => f.team_id === t.id) })),
+  club_contacts_list: () => [{ kind: 'president', user_id: 'u-pres', name: 'Céline P.', fonction: 'Président' }].concat(D.club_contacts.filter((c) => c.for_licence || c.for_matches).map((c) => ({ kind: 'contact', user_id: c.user_id, name: 'Gaël Test', fonction: 'Membre du bureau', for_licence: c.for_licence, for_matches: c.for_matches, phone: c.show_phone ? '06 00 00 00 00' : null, email: null }))),
+  mark_paid: ({ p_player, p_paid }) => { const a = D.player_admin.find((x) => x.player_id === p_player); if (p_paid) { D.player_payments.push({ id: uid(), player_id: p_player, amount: a.fee_amount - a.fee_paid, method: 'Solde validé à la main', paid_at: new Date().toISOString() }); a.fee_paid = a.fee_amount; } else { D.player_payments = D.player_payments.filter((x) => x.player_id !== p_player); a.fee_paid = 0; } return null; },
+  import_fee_grid: ({ p_rows }) => { let up = 0, ad = 0; p_rows.forEach((r) => { const g = D.fee_grid.find((x) => (r.team_id ? x.team_id === r.team_id : (x.category || '').toLowerCase() === (r.category || '').toLowerCase())); if (g) { if (+g.amount !== +r.amount) up++; g.amount = r.amount; } else { ad++; D.fee_grid.push({ id: uid(), club_id: C, category: r.category, team_id: r.team_id, amount: r.amount, fed_part: r.fed }); } }); return { updated: up, added: ad, deleted: 0 }; },
+  update_member_profile: ({ p_user, p_first, p_last }) => { const p = D.profiles.find((x) => x.id === p_user); p.first_name = p_first; p.last_name = p_last; p.full_name = p_first + ' ' + p_last; return null; },
+  message_president: () => { D.groups.push({ id: 'g-pres', club_id: C, name: 'Message au président · Gaël Test', created_by: ME }); D.group_members.push({ group_id: 'g-pres', user_id: ME, last_read_at: new Date().toISOString() }); return 'g-pres'; },
   match_players: () => [], import_players: ({ p_rows }) => { p_rows.filter((r) => r.action !== 'skip').forEach((r) => D.players.push({ id: uid(), club_id: C, team_id: T9, first_name: r.first_name, last_name: r.last_name, birth_date: r.birth_date, consents: {}, created_at: new Date().toISOString() })); return p_rows.filter((r) => r.action !== 'skip').length; },
   export_my_data: () => ({ profil: D.profiles[0] }), validate_membership: ({ mid }) => { D.memberships.find((m) => m.id === mid).status = 'active'; return null; },
 };

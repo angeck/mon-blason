@@ -2,7 +2,7 @@
 import {
   S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, BCATS, GENRES, SEASON, NEXT_SEASON, XLSX_URL,
   active, isBoard, isPresident, coachOf, team, teamName, myTeamIds, myPlayers, playersOfTeam, pname, adminOf, toValidate, niceFirst, niceLast, norm,
-  loadJs, plural, fmtShort, evTeams,
+  loadJs, plural, fmtShort, evTeams, follows,
 } from './core.js';
 import { smartParse, analyse, fromMapping, doubts, COLS } from './importer.js';
 import { icon, delBtn, field } from './ui.js';
@@ -23,11 +23,23 @@ function people(rows) {
   rows.forEach((x) => { const key = x.user_id || 'p:' + x.ref; if (!map.has(key)) map.set(key, { name: (x.first_name + ' ' + (x.last_name || '')).trim(), first: x.first_name, tags: [], player: null }); const p = map.get(key); if (x.kind === 'joueur') p.player = x.ref; p.tags.push(x); });
   return [...map.values()];
 }
+// N° 31 : coachs et joueurs comptés à part (un joueur-entraîneur apparaît dans les deux)
 export function teamRoster(tid) {
-  const ps = people(S.roster.filter((x) => x.team_id === tid && (x.kind === 'joueur' || x.role === 'coach')))
-    .sort((a, b) => (b.tags.some((x) => x.role === 'coach') ? 1 : 0) - (a.tags.some((x) => x.role === 'coach') ? 1 : 0) || a.first.localeCompare(b.first, 'fr'));
-  return `<div class="sec"><h2>Effectif</h2><span class="det">${ps.length}</span></div><div class="card"><div class="list">${ps.length ? ps.map((p) => `<div class="row static"><span class="avatar">${esc(p.name.split(' ').map((w) => w[0]).slice(0, 2).join(''))}</span><span class="g">${esc(p.name)}<small>${p.tags.map((x) => (x.kind === 'joueur' ? 'Joueur' : 'Coach' + (x.assistant ? ' assistant' : ''))).join(', ')}</small></span></div>`).join('') : '<p class="empty">Personne pour l’instant.</p>'}</div></div><p class="note">Les parents figurent sur la fiche de leur enfant.</p>`;
+  const rows = S.roster.filter((x) => x.team_id === tid), coaches = people(rows.filter((x) => x.role === 'coach')), players = people(rows.filter((x) => x.kind === 'joueur')).sort((a, b) => a.first.localeCompare(b.first, 'fr'));
+  if (!coaches.length && !players.length && !isBoard() && !coachOf(tid)) return '';
+  const line = (p, sub) => `<div class="row static"><span class="avatar">${esc(p.name.split(' ').map((w) => w[0]).slice(0, 2).join(''))}</span><span class="g">${esc(p.name)}<small>${sub}</small></span></div>`;
+  return `<div class="sec"><h2>Coachs</h2><span class="det">${coaches.length}</span></div><div class="card"><div class="list">${coaches.length ? coaches.map((p) => line(p, p.tags.some((x) => x.assistant) ? 'Coach assistant' : 'Coach')).join('') : '<p class="empty">Pas encore de coach.</p>'}</div></div>
+  <div class="sec"><h2>Effectif</h2><span class="det">${plural(players.length, 'joueur')}</span></div><div class="card"><div class="list">${players.length ? players.map((p) => line(p, 'Joueur')).join('') : '<p class="empty">Aucun joueur pour l’instant.</p>'}</div></div><p class="note">Les parents figurent sur la fiche de leur enfant.</p>`;
 }
+const cteam = (tid) => S.cteams.find((x) => x.id === tid);
+// Vue d'une équipe suivie ou d'une autre équipe du club (sans les joueurs ni leur nombre, n° 41)
+function followView(tid) {
+  const t = cteam(tid) || team(tid); if (!t) return '<p class="empty">Équipe introuvable.</p>';
+  const evs = upcoming(S.events.filter((e) => evTeams(e).includes(tid) && ['Match', 'Plateau', 'Tournoi'].includes(e.type)));
+  return `<div class="card lift"><div class="kick">Coach</div><b>${esc(t.coach || 'Pas encore de coach')}</b><div class="kick">Créneaux et gymnase</div><div>${esc(t.slots || 'Non renseignés')}</div>${followBtn(tid)}</div>
+  <div class="sec"><h2>Prochains matchs</h2></div>${evs.length ? evs.slice(0, 6).map((e) => evCard(e)).join('') : `<p class="empty">${follows(tid) ? 'Aucun match prévu pour l’instant.' : 'Suis l’équipe pour voir ses matchs dans ton agenda.'}</p>`}`;
+}
+export const followBtn = (tid) => (team(tid)?.state === 'Fantôme' ? '' : follows(tid) ? `<button class="btn small ghost" data-act="unfollow" data-id="${tid}">Ne plus suivre</button>` : `<button class="btn small main" data-act="follow" data-id="${tid}">Suivre cette équipe</button>`);
 function coachBlock(tid) {
   if (!coachOf(tid) && !isBoard()) return '';
   const ps = playersOfTeam(tid).sort((a, b) => pname(a).localeCompare(pname(b), 'fr'));
@@ -41,12 +53,13 @@ function coachBlock(tid) {
   return h + `<button class="btn ghost" data-act="import" data-id="${tid}">${icon('plus', 20)}Ajouter des joueurs</button>`;
 }
 export function teamTab() {
-  const ids = myTeamIds().filter((t) => team(t));
-  if (!ids.length) return kidsBlock() + (myPlayers().length ? '' : '<div class="card"><p class="empty">Tu n’es rattaché à aucune équipe dans ce club.</p></div>') + '<button class="btn ghost" data-act="rqgo">Demander un rôle dans une équipe</button>';
+  const mine = myTeamIds().filter((t) => team(t)), fol = S.follows.filter((t) => team(t) && !mine.includes(t)), ids = mine.concat(fol);
+  if (!ids.length) return kidsBlock() + (myPlayers().length ? '' : '<div class="card"><p class="empty">Tu n’es rattaché à aucune équipe dans ce club.</p></div>') + '<button class="btn ghost" data-act="rqgo">Demander un rôle dans une équipe</button><button class="btn ghost" data-act="tab" data-i="4">Suivre une équipe du club</button>';
   if (!ids.includes(S.teamSel)) S.teamSel = ids[0];
   const tid = S.teamSel, coach = coachOf(tid);
   let h = kidsBlock();
-  if (ids.length > 1) h += `<div class="chips">${ids.map((i) => `<button class="chip" data-act="teamsel" data-id="${i}" aria-pressed="${i === tid}">${esc(teamName(i))}</button>`).join('')}</div>`;
+  if (ids.length > 1) h += `<div class="chips">${ids.map((i) => `<button class="chip" data-act="teamsel" data-id="${i}" aria-pressed="${i === tid}">${esc(teamName(i))}${fol.includes(i) ? ' · Suivie' : ''}</button>`).join('')}</div>`;
+  if (fol.includes(tid)) return h + '<span class="pill blue">Équipe suivie</span>' + followView(tid);
   const vp = toValidate().filter((m) => m.team_id === tid);
   if (vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card">${pendRows(vp)}</div>`;
   h += coachBlock(tid);
@@ -58,15 +71,16 @@ export function teamTab() {
 // ---------- fiche d'équipe ----------
 export function teamForm(t, id) {
   const cat = t.category || '', gen = t.gender || '';
-  return `<form id="${id}" data-id="${t.id || ''}" class="stack"><div class="grid2">${field(id + 'c', 'Catégorie', `<select id="${id}c" name="category"><option value="">—</option>${BCATS.map((x) => `<option ${cat === x ? 'selected' : ''}>${x}</option>`).join('')}${cat && !BCATS.includes(cat) ? `<option selected>${esc(cat)}</option>` : ''}</select>`)}${field(id + 'g', 'Genre', `<select id="${id}g" name="gender"><option value="">—</option>${GENRES.map((x) => `<option ${gen === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}</div>
-  ${field(id + 'n', "Nom de l'équipe (proposé d'après la catégorie)", `<input id="${id}n" name="name" value="${esc(t.name || '')}" maxlength="60" placeholder="Ex. U13 F, Reines">`)}
+  return `<form id="${id}" data-id="${t.id || ''}" class="stack"><div class="grid2">${field(id + 'c', 'Catégorie', `<select id="${id}c" name="category" data-teamauto="1"><option value="">—</option>${BCATS.map((x) => `<option ${cat === x ? 'selected' : ''}>${x}</option>`).join('')}${cat && !BCATS.includes(cat) ? `<option selected>${esc(cat)}</option>` : ''}</select>`)}${field(id + 'g', 'Genre', `<select id="${id}g" name="gender" data-teamauto="1"><option value="">—</option>${GENRES.map((x) => `<option ${gen === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}</div>
+  ${field(id + 'n', "Nom de l'équipe (proposé d'après la catégorie)", `<input id="${id}n" name="name" value="${esc(t.name || '')}" maxlength="60" placeholder="Ex. U13 F, Reines" data-teamname="1" ${t.id ? 'data-manual="1"' : ''}>`)}
   ${field(id + 's', 'Créneaux et gymnase', `<input id="${id}s" name="slots" value="${esc(t.slots || '')}" placeholder="Ex. Mercredi 14 h – 15 h 30, gymnase Jean-Moulin">`)}
   <button class="btn main" type="submit">${t.id ? 'Enregistrer' : "Créer l'équipe"}</button></form>`;
 }
 export function teamPage(tid) {
   const t = team(tid); if (!t) return '<p class="empty">Équipe introuvable.</p>';
-  const board = isBoard(), coach = coachOf(tid), coaches = S.roster.filter((x) => x.team_id === tid && x.role === 'coach');
-  let h = `<div class="card lift"><div class="kick">Coachs</div>${coaches.length ? coaches.map((x) => `<b>${esc(x.first_name + ' ' + x.last_name)}${x.assistant ? ' <span class="det">· assistant</span>' : ''}</b>`).join('') : '<p class="empty">Pas encore de coach.</p>'}<div class="kick">Créneaux et gymnase</div><div>${esc(t.slots || 'Non renseignés')}</div>${t.state !== 'Visible' ? `<span class="pill wait">${esc(t.state)}${t.state === 'Fantôme' ? ' : visible du bureau et des coachs seulement, aucune notification' : ''}</span>` : ''}</div>`;
+  const board = isBoard(), coach = coachOf(tid), ct = cteam(tid);
+  if (!board && !coach && !myTeamIds().includes(tid)) return followView(tid);
+  let h = `<div class="card lift">${ct && ct.coaches != null ? `<div class="chips"><span class="pill blue">Coachs : ${ct.coaches}</span><span class="pill blue">Effectif : ${plural(ct.players, 'joueur')}</span></div>` : ''}<div class="kick">Créneaux et gymnase</div><div>${esc(t.slots || 'Non renseignés')}</div>${t.state === 'Fantôme' ? `<span class="pill wait">Fantôme · en attente de validation</span><p class="note">Visible du bureau et de ses coachs seulement, aucune notification. Les familles la verront une fois validée.</p><button class="btn main ${isArmed('tv' + tid) ? 'ink' : ''}" data-act="tvisible" data-id="${tid}">${isArmed('tv' + tid) ? "Confirmer : l'équipe devient visible des familles" : "Rendre l'équipe visible"}</button>` : t.state === 'Archivée' ? '<span class="pill">Archivée</span>' : ''}${!myTeamIds().includes(tid) ? followBtn(tid) : ''}</div>`;
   const vp = toValidate().filter((m) => m.team_id === tid);
   if ((board || coach) && vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card">${pendRows(vp)}</div>`;
   if (board || coach) {
@@ -77,7 +91,7 @@ export function teamPage(tid) {
       .reduce((a, x) => (a.some((y) => y.user_id === x.user_id) ? a : a.concat(x)), []);
     h += `<details class="card"><summary>${board ? 'Nommer un coach ou un assistant' : 'Ajouter un coach assistant'}</summary><form id="coachf" data-id="${tid}" class="stack">${field('cfu', 'Membre du club', `<select id="cfu" name="user">${cands.map((x) => `<option value="${x.user_id}">${esc((x.first_name + ' ' + x.last_name).trim())}</option>`).join('')}</select>`)}${board ? '<label class="check"><input type="checkbox" name="assistant"><span>Coach assistant</span></label>' : '<input type="hidden" name="assistant" value="on">'}<button class="btn main" type="submit">Nommer</button><p class="note">La personne doit déjà être membre du club (elle a rejoint avec le code).</p></form></details>`;
   }
-  if (board) h += `<div class="btns">${t.state === 'Fantôme' ? `<button class="btn ghost small" data-act="tstate" data-id="${tid}" data-v="Visible">Rendre visible</button>` : t.state === 'Visible' ? `<button class="btn ghost small" data-act="tstate" data-id="${tid}" data-v="Fantôme">Passer en mode fantôme</button>` : ''}${t.state !== 'Archivée' ? `<button class="btn ghost small ${isArmed('rn' + tid) ? 'danger armed' : ''}" data-act="trenew" data-id="${tid}">${isArmed('rn' + tid) ? `Confirmer : archiver et recréer pour ${NEXT_SEASON}` : `Archiver et reconduire pour ${NEXT_SEASON}`}</button>` : ''}</div>`;
+  if (board) h += `<div class="btns">${t.state === 'Visible' ? `<button class="btn ghost small" data-act="tstate" data-id="${tid}" data-v="Fantôme">Repasser en mode fantôme</button>` : ''}${t.state !== 'Archivée' ? `<button class="btn ghost small ${isArmed('rn' + tid) ? 'danger armed' : ''}" data-act="trenew" data-id="${tid}">${isArmed('rn' + tid) ? `Confirmer : archiver et recréer pour ${NEXT_SEASON}` : `Archiver et reconduire pour ${NEXT_SEASON}`}</button>` : ''}</div>`;
   if (isPresident()) h += delBtn('tdel', tid, "Mettre l'équipe à la corbeille", "Confirmer : l'équipe part à la corbeille (30 jours)", isArmed('t' + tid));
   return h + teamRoster(tid);
 }
@@ -113,7 +127,8 @@ export function importPage(tid) {
     <p class="note">Une ligne par joueur. Colonnes acceptées dans n'importe quel ordre : nom, prénom, date de naissance, n° de licence, e-mail ou téléphone du parent. Pour un seul joueur, écris simplement une ligne.</p>
     ${field('imf', 'Ou choisir un fichier Excel ou CSV (le plus fiable)', '<input id="imf" type="file" accept=".xlsx,.xls,.csv,text/csv" data-impfile="1">')}
     ${field('imo', "Ou une photo ou une capture d'écran de la liste", '<input id="imo" type="file" accept="image/*" data-ocr="1">')}
-    <p class="note">Pour la photo : liste imprimée ou capture d'écran, bien droite et nette. Peu fiable sur l'écriture à la main. L'image reste sur ton téléphone. Si tu as le fichier Excel d'origine, préfère-le.</p>
+    <div class="card pale"><b>Le plus simple avec une photo</b><p class="note" style="color:var(--pc-encre)">Ouvre la photo avec l'appareil photo du téléphone, touche « Copier le texte » (Google Lens sur Android, « Texte en direct » sur iPhone), puis colle le texte dans la zone ci-dessus. C'est gratuit et bien plus fiable que la lecture ci-dessous.</p></div>
+    <p class="note">La lecture directe de l'image est peu fiable sur les tableaux et l'écriture à la main ; l'image reste sur ton téléphone. Si tu as le fichier Excel d'origine, préfère-le.</p>
     <label class="check"><input type="checkbox" data-impswap="1" ${I.swap ? 'checked' : ''}><span>Inverser prénom et nom (listes « NOM Prénom » sans capitales)</span></label>
     <button class="btn main" data-act="impcheck">Vérifier la liste</button><p class="note">Rien n'est créé avant « Valider l'import ».</p></div>`;
   }
@@ -138,6 +153,9 @@ export function importPage(tid) {
 Object.assign(ACTIONS, {
   teamsel: (el, d) => { S.teamSel = d.id; render(true); },
   team: (el, d) => { S.view = { type: 'team', id: d.id }; render(); },
+  tvisible: async (el, d) => { if (!armed('tv' + d.id)) return; if (await run(sb.from('teams').update({ state: 'Visible' }).eq('id', d.id), 'Équipe visible : les familles peuvent la voir et la rejoindre.')) await refresh(); },
+  follow: async (el, d) => { if (await run(sb.from('team_follows').insert({ user_id: S.me.id, team_id: d.id }), 'Équipe suivie : ses matchs apparaissent dans ton agenda.')) await refresh(); },
+  unfollow: async (el, d) => { if (await run(sb.from('team_follows').delete().eq('user_id', S.me.id).eq('team_id', d.id), 'Tu ne suis plus cette équipe.')) await refresh(); },
   tstate: async (el, d) => { if (await run(sb.from('teams').update({ state: d.v }).eq('id', d.id), d.v === 'Visible' ? 'Équipe visible.' : 'Équipe en mode fantôme.')) await refresh(); },
   trenew: async (el, d) => { if (!armed('rn' + d.id)) return; const n = await run(sb.rpc('renew_team', { p_team: d.id, p_season: NEXT_SEASON }), `Équipe reconduite pour ${NEXT_SEASON} (mode fantôme).`); if (n) { S.view = { type: 'team', id: n }; await refresh(); } },
   tdel: async (el, d) => { if (!armed('t' + d.id)) return; if (await run(sb.rpc('trash_item', { p_kind: 'team', p_id: d.id }), 'Équipe mise à la corbeille. Le bureau peut la restaurer pendant 30 jours.')) { S.view = null; await refresh(); } },
@@ -156,20 +174,24 @@ Object.assign(ACTIONS, {
 });
 Object.assign(FORMS, {
   teamnew: async (v) => {
-    const nm = (v.name || '').trim() || ((v.category || '').replace(' (baby)', '') + (v.gender && v.gender !== 'Mixte' ? ' ' + v.gender[0] : '')).trim();
+    const nm = (v.name || '').trim() || autoName(v.category, v.gender);
     if (!nm) return toast('Choisis une catégorie ou donne un nom.');
-    if (await run(sb.from('teams').insert({ club_id: S.clubId, name: nm, category: v.category || nm, gender: v.gender || '', slots: v.slots || '', season: SEASON }), 'Équipe créée.')) await refresh();
+    if (await run(sb.from('teams').insert({ club_id: S.clubId, name: nm, category: v.category || nm, gender: v.gender || '', slots: v.slots || '', season: SEASON }), 'Équipe créée en mode fantôme : rends-la visible quand elle est prête.')) await refresh();
   },
   teamedit: async (v, f) => { if (await run(sb.from('teams').update({ name: (v.name || '').trim() || teamName(f.dataset.id), category: v.category || '', gender: v.gender || '', slots: v.slots || '' }).eq('id', f.dataset.id), 'Équipe enregistrée.')) await refresh(); },
   teamslots: async (v, f) => { if (await run(sb.from('teams').update({ slots: v.slots || '' }).eq('id', f.dataset.id), 'Créneaux enregistrés.')) await refresh(); },
   coachf: async (v, f) => { if (await run(sb.rpc('set_team_coach', { p_team: f.dataset.id, p_user: v.user, p_assistant: !!v.assistant }), 'Coach nommé.')) await refresh(); },
 });
+// N° 28 : nom proposé d'après la catégorie et le genre (« U13 F », « U13 M », « U13 »), tant qu'il n'est pas modifié à la main
+export const autoName = (cat, gen) => ((cat || '').replace(' (baby)', '') + (gen === 'Féminine' ? ' F' : gen === 'Masculine' ? ' M' : '')).trim();
 INPUTS.push((t) => {
+  if (t.dataset.teamname) { t.dataset.manual = t.value ? '1' : ''; return true; }
   if (t.dataset.imptext) { S.imp.text = t.value; return true; }
   if (t.dataset.imp) { S.imp.rows[+t.dataset.imp][t.dataset.k] = t.value; return true; }
   return false;
 });
 CHANGES.push(async (t) => {
+  if (t.dataset.teamauto) { const f = t.closest('form'), n = f.querySelector('[data-teamname]'); if (n && !n.dataset.manual) n.value = autoName(f.querySelector('[name=category]').value, f.querySelector('[name=gender]').value); return true; }
   if (t.dataset.impact) { S.imp.rows[+t.dataset.impact].action = t.value; render(true); return true; }
   if (t.dataset.impcol) { S.imp.map.columns[+t.dataset.impcol].k = t.value; S.imp.map.columns[+t.dataset.impcol].sure = true; render(true); return true; }
   if (t.dataset.impnocontact) { S.imp.noContacts = t.checked; render(true); return true; }
