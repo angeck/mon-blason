@@ -1,4 +1,4 @@
-// Mon Blason · lecture « intelligente » d'une liste de joueurs (copier-coller, Excel/CSV, texte lu sur une photo)
+// Pocket Club · lecture « intelligente » d'une liste de joueurs (copier-coller, Excel/CSV, texte lu sur une photo)
 // Reconnaît : en-tête n'importe où dans les 10 premières lignes, colonne « Nom, prénom » combinée ou colonnes séparées,
 // « Prénom NOM » comme « NOM Prénom » (le nom en capitales), noms composés (LE LAY, DA COSTA MOREIRA),
 // annotations entre parenthèses, dates jj/mm/aaaa ou aa ou nombres Excel, e-mail et téléphone du parent.
@@ -101,4 +101,73 @@ export function smartParse(input, opts = {}) {
     });
   }
   return out.filter((x) => x.first_name || x.last_name);
+}
+
+
+// ---------- n° 26 : « Quelle colonne est quoi ? » ----------
+export const COLS = [['first', 'Prénom'], ['last', 'Nom'], ['name', 'Nom et prénom ensemble'], ['birth', 'Date de naissance'], ['licence', 'N° de licence'], ['email', 'E-mail du parent'], ['phone', 'Téléphone du parent'], ['skip', 'Ignorer']];
+const toRows = (input) => {
+  const cell = (c) => (c instanceof Date ? new Date(c.getTime() + 12 * 3600e3).toISOString().slice(0, 10) : typeof c === 'number' && /^\d{9}$/.test(String(c)) ? '0' + c : String(c ?? '').trim());
+  const rows = Array.isArray(input) ? input.map((r) => (Array.isArray(r) ? r : [r]).map(cell)) : String(input ?? '').split(/\r?\n/).map((l) => (/[;\t]/.test(l) ? l.split(/[;\t]/) : [l]).map((c) => c.trim()));
+  return rows.filter((r) => r.some((c) => String(c).trim()));
+};
+// Devine le contenu d'une colonne d'après ses valeurs
+function guessByValues(vals) {
+  const v = vals.filter(Boolean); if (!v.length) return { k: 'skip', sure: true };
+  const share = (f) => v.filter(f).length / v.length;
+  if (share((x) => RX_MAIL.test(x)) > 0.6) return { k: 'email', sure: true };
+  if (share((x) => !!parseDate(x)) > 0.6) return { k: 'birth', sure: true };
+  if (share((x) => RX_PHONE.test(x) || /^0?\d{9}$/.test(x.replace(/\D/g, ''))) > 0.6) return { k: 'phone', sure: true };
+  if (share((x) => RX_LIC.test(x)) > 0.6) return { k: 'licence', sure: true };
+  if (share((x) => /\p{L}{2,}\s+\p{L}{2,}/u.test(x)) > 0.6) return { k: 'name', sure: false };
+  if (share((x) => /^\p{L}[\p{L}' -]*$/u.test(x)) > 0.6) return { k: 'last', sure: false };
+  return { k: 'skip', sure: false };
+}
+// Analyse d'un tableau : colonnes, proposition et degré de certitude. Les textes sur une seule colonne (photo) n'en ont pas besoin.
+export function analyse(input) {
+  const rows = toRows(input).filter((r) => r.some((c) => /\p{L}{2,}|\d/u.test(c)));
+  const width = Math.max(0, ...rows.map((r) => r.length));
+  if (width < 2) return null;
+  const h = findHeader(rows), start = h ? h.i + 1 : 0, body = rows.slice(start);
+  const columns = [];
+  for (let j = 0; j < width; j++) {
+    const vals = body.map((r) => String(r[j] ?? '').trim()).filter(Boolean);
+    if (!vals.length) continue;
+    const head = h ? rows[h.i][j] || '' : '';
+    const byHead = h && Object.entries(h.map).find(([, idx]) => idx === j)?.[0];
+    const g = byHead ? { k: byHead, sure: true } : h && head ? { k: 'skip', sure: true } : guessByValues(vals);
+    columns.push({ idx: j, head, sample: vals.slice(0, 3), k: g.k, sure: g.sure });
+  }
+  // deux colonnes de « nom » sans en-tête : la première est le nom, la seconde le prénom (ordre des listes du club), à confirmer
+  const lasts = columns.filter((c) => c.k === 'last' && !c.sure);
+  if (lasts.length >= 2) { lasts[0].k = 'last'; lasts[1].k = 'first'; lasts.slice(2).forEach((c) => (c.k = 'skip')); }
+  const hasName = columns.some((c) => ['name', 'first', 'last'].includes(c.k));
+  return { body, columns, unsure: !hasName || columns.some((c) => !c.sure) };
+}
+export function fromMapping(body, columns, swap) {
+  const get = (r, k) => { const c = columns.find((x) => x.k === k); return c ? String(r[c.idx] ?? '').trim() : ''; };
+  return body.map((r) => {
+    let first = get(r, 'first'), last = get(r, 'last');
+    if (columns.some((c) => c.k === 'name')) { const n = splitName(get(r, 'name'), swap); if (n) { first = n.first; last = n.last; } }
+    else { const f = splitName(first, false); first = f ? (f.last ? f.first + ' ' + f.last : f.first) : ''; last = isUpperWord(last.replace(/[\s'-]/g, '')) ? last : cap(last.replace(/\([^)]*\)/g, '').trim()); if (swap) [first, last] = [last, first]; }
+    const mail = get(r, 'email').match(RX_MAIL);
+    return { first_name: first, last_name: last, birth_date: parseDate(get(r, 'birth')), licence: get(r, 'licence'), email: mail ? mail[0].toLowerCase() : '', phone: normPhone(get(r, 'phone')) };
+  }).filter((x) => /\p{L}/u.test(x.first_name + x.last_name));
+}
+// Cases douteuses après une photo : mot sans voyelle, nom collé, e-mail sans point, date impossible
+export function doubts(r, fromPhoto) {
+  const d = new Set(), vowel = /[aeiouyàâäéèêëîïôöùûüÿæœ]/i;
+  const word = (s) => String(s || '').split(/[\s'-]+/).filter(Boolean);
+  ['first_name', 'last_name'].forEach((k) => {
+    const v = String(r[k] || '');
+    if (!v.trim()) { if (k === 'last_name') d.add(k); return; }
+    if (word(v).some((w) => w.length > 2 && !vowel.test(w))) d.add(k);
+    if (/[a-zà-ÿ][A-ZÀ-Ý]/.test(v) || word(v).some((w) => w.length > 15)) d.add(k);
+    if (/[^\p{L}\s'-]/u.test(v)) d.add(k);
+  });
+  if (r.email && !/@[^@]+\.[a-z]{2,}$/i.test(r.email)) d.add('email');
+  if (r.phone && !/^0\d( \d{2}){4}$/.test(r.phone)) d.add('phone');
+  if (r.birth_date) { const y = +r.birth_date.slice(0, 4), now = new Date().getFullYear(); if (y < 1930 || y > now) d.add('birth_date'); }
+  if (!fromPhoto) d.delete('first_name');
+  return d;
 }

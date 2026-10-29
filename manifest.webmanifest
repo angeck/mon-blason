@@ -1,13 +1,12 @@
 {
-  "name": "Mon Blason",
-  "short_name": "Mon Blason",
-  "description": "Mon club, mes couleurs",
+  "name": "Pocket Club",
+  "short_name": "Pocket Club",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#F4F6F1",
-  "theme_color": "#0B6B3A",
+  "background_color": "#F7F8FC",
+  "theme_color": "#2F5BFF",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
