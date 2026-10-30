@@ -26,9 +26,10 @@ const D = {
   players: [
     { id: 'p-lily', club_id: C, team_id: T11, first_name: 'Lily', last_name: 'Test', birth_date: '2016-03-12', consents: {}, deleted_at: null, created_at: at(-50) },
     { id: 'p-tom', club_id: C, team_id: T9, first_name: 'Tom', last_name: 'Dupont', birth_date: null, consents: { image: { ok: true, at: at(-5) } }, parent_email: 'parent@exemple.fr', parent_phone: '06 12 34 56 78', deleted_at: null, created_at: at(-30) },
+    { id: 'p-me', club_id: C, team_id: T11, user_id: ME, first_name: 'Gaël', last_name: 'Test', birth_date: '1985-05-05', consents: {}, deleted_at: null, created_at: at(-50) },
     { id: 'p-ana', club_id: C, team_id: T9, first_name: 'Ana', last_name: 'Leroy', birth_date: '2018-07-01', consents: {}, deleted_at: null, created_at: at(-30) },
   ],
-  player_parents: [{ player_id: 'p-lily', user_id: ME }, { player_id: 'p-tom', user_id: 'u-p1' }],
+  player_parents: [{ player_id: 'p-me', user_id: ME }, { player_id: 'p-lily', user_id: ME }, { player_id: 'p-tom', user_id: 'u-p1' }],
   player_admin: [{ player_id: 'p-lily', licence_state: 'Licencié', licence_number: 'VT123456', health_doc: true, fee_amount: 160, fee_paid: 160, fee_method: 'Chèque' }, { player_id: 'p-tom', licence_state: 'Préinscrit club', health_doc: false, fee_amount: 150, fee_paid: 50 }, { player_id: 'p-ana', licence_state: 'Préinscrit fédé', health_doc: true, fee_amount: null, fee_paid: 0 }],
   player_teams: [], player_discount: [], fee_grid: [{ id: 'f1', club_id: C, category: 'U9', amount: 150, fed_part: 45, team_id: null }], club_docs: [],
   event_series: [{ id: 's1', club_id: C }],

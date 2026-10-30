@@ -108,7 +108,10 @@ export const isParentOf = (pid) => parentsOf(pid).includes(S.me.id);
 export const teamsOfPlayer = (p) => [p.team_id, ...S.pteams.filter((x) => x.player_id === p.id).map((x) => x.team_id)].filter(Boolean);
 export const inTeam = (p, tid) => teamsOfPlayer(p).includes(tid);
 export const myPlayers = () => S.players.filter((p) => isParentOf(p.id) || p.user_id === S.me.id);
-export const myKidsIn = (tids) => S.players.filter((p) => tids.some((t) => inTeam(p, t)) && isParentOf(p.id));
+// n° 51 : ma propre fiche n'est jamais « un enfant », même si un lien parent existe par erreur
+export const myKids = () => S.players.filter((p) => isParentOf(p.id) && p.user_id !== S.me.id);
+export const mySelf = () => S.players.filter((p) => p.user_id === S.me.id);
+export const myKidsIn = (tids) => myKids().filter((p) => tids.some((t) => inTeam(p, t)));
 export const iPlayIn = (tids) => active().some((m) => m.role === 'joueur' && tids.includes(m.team_id)) || S.players.some((p) => p.user_id === S.me.id && tids.some((t) => inTeam(p, t)));
 export const playersOfTeam = (tid) => S.players.filter((p) => inTeam(p, tid));
 export const canManagePlayer = (p) => isBoard() || teamsOfPlayer(p).some(coachOf);

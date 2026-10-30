@@ -555,6 +555,13 @@ ok("le groupe au dernier message le plus récent est en tête", "(select name fr
 ok("aperçu : le dernier message ou sondage de chaque groupe", "(select count(*) from group_previews((select id from clubs where name = 'AS Test Basket'))) = 2 and exists(select 1 from group_previews((select id from clubs where name = 'AS Test Basket')) where kind = 'sondage' and body = 'Covoiturage ?')")
 AS(f"pa{fam_u13}"); ok("aperçu : rien des groupes dont on n'est pas membre", "(select count(*) from group_previews((select id from clubs where name = 'AS Test Basket'))) = 0")
 
+section("3.0.2 · Ma fiche n'est pas « mon enfant » (n° 51)")
+AS("j2"); w(f"select join_club(:'code', 'parent', {T('Seniors')}, {q(adults[1][1])}, {q(adults[1][2])});")
+AS("b1"); w(f"select validate_membership(m.id, null, (select id from players where user_id = '{people['j2'][0]}')) from memberships m where m.user_id = '{people['j2'][0]}' and m.role = 'parent' and m.status = 'pending';")
+w("reset role;")
+ok("un adulte qui se déclare parent de lui-même n'est pas relié comme parent", f"not exists(select 1 from player_parents pp join players x on x.id = pp.player_id where x.user_id = pp.user_id)")
+w("set role authenticated;")
+
 section("Départs et redemandes")
 AS("j1"); works("un joueur quitte son profil", "delete from memberships where user_id = auth.uid() and role = 'joueur'")
 AS("j1"); works("et peut redemander le même rôle", f"select join_club({CODE}, 'joueur', {T('Seniors')}, null)")

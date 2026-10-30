@@ -190,6 +190,9 @@ with sync_playwright() as p:
         check(f'n° 47 : import {f} lu (4 joueurs, accents gardés)', len(vals) == 4 and vals[0] == first)
     act('[data-act=impok]')
     check('n° 47 : import validé', pg.evaluate("window.__CALLS.filter(c => c[1] === 'import_players').length >= 2"))
+    act('[data-act=tab][data-i="3"]')
+    check('n° 51 : « Moi » et « Mon enfant » séparés', has('Moi') and has('Mon enfant') and not has('Mes enfants'))
+    shot('17-moi-et-enfant')
     # ordinateur
     pg.set_viewport_size({'width': 1280, 'height': 900}); act('[data-act=tab][data-i="0"]')
     shot('11-ordinateur')

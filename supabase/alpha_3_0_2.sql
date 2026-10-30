@@ -116,3 +116,15 @@ language sql stable security definer set search_path = public as $$
   where g.club_id = p_club and is_group_member(g.id)
   order by x.group_id, x.created_at desc;
 $$;
+
+-- =====================================================================
+-- N° 51 · une personne n'est jamais « parent » de sa propre fiche de joueur
+-- =====================================================================
+delete from player_parents pp using players x where x.id = pp.player_id and x.user_id = pp.user_id;
+create or replace function player_parents_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if exists(select 1 from players where id = new.player_id and user_id = new.user_id) then return null; end if;
+  return new;
+end $$;
+drop trigger if exists player_parents_guard on player_parents;
+create trigger player_parents_guard before insert on player_parents for each row execute function player_parents_guard();

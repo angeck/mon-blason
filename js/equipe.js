@@ -2,7 +2,7 @@
 import {
   S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, BCATS, GENRES, SEASON, NEXT_SEASON, XLSX_URL,
   active, isBoard, isPresident, coachOf, team, teamName, myTeamIds, myPlayers, playersOfTeam, pname, adminOf, toValidate, niceFirst, niceLast, norm,
-  loadJs, plural, fmtShort, evTeams, follows,
+  loadJs, plural, fmtShort, evTeams, follows, mySelf, myKids,
 } from './core.js';
 export { importFile };
 import { smartParse, analyse, fromMapping, doubts, COLS, decodeText, bestSheet } from './importer.js';
@@ -12,10 +12,11 @@ import { pendRows } from './club.js';
 import { statusPills, presence } from './joueur.js';
 
 // ---------- mes enfants / ma fiche ----------
+// n° 51 : « Moi » (ma fiche de joueur) puis « Mes enfants », séparés
 export function kidsBlock() {
-  const mine = myPlayers(); if (!mine.length) return '';
-  const self = mine.length === 1 && mine[0].user_id === S.me.id;
-  return `<div class="sec"><h2>${self ? 'Ma fiche' : mine.length > 1 ? 'Mes enfants' : 'Mon enfant'}</h2></div>` + mine.map((p) => `<div class="card"><button class="row" style="border:0;padding:0" data-act="player" data-id="${p.id}"><span class="avatar">${esc((p.first_name[0] || '') + (p.last_name[0] || ''))}</span><span class="g">${esc(pname(p))}<small>${esc(teamName(p.team_id) || 'Sans équipe')} · fiche, autorisations, licence</small></span><span class="chev"></span></button><div class="chips">${statusPills(p)}</div></div>`).join('');
+  const card = (p) => `<div class="card"><button class="row" style="border:0;padding:0" data-act="player" data-id="${p.id}"><span class="avatar">${esc((p.first_name[0] || '') + (p.last_name[0] || ''))}</span><span class="g">${esc(pname(p))}<small>${esc(teamName(p.team_id) || 'Sans équipe')} · fiche, autorisations, licence</small></span><span class="chev"></span></button><div class="chips">${statusPills(p)}</div></div>`;
+  const me = mySelf(), kids = myKids();
+  return (me.length ? `<div class="sec"><h2>Moi</h2></div>` + me.map(card).join('') : '') + (kids.length ? `<div class="sec"><h2>${kids.length > 1 ? 'Mes enfants' : 'Mon enfant'}</h2></div>` + kids.map(card).join('') : '');
 }
 
 // ---------- effectif ----------

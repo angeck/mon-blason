@@ -24,8 +24,8 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 ## Tests (jamais sur la base réelle)
 
 `PGHOST=… PGPORT=… PGUSER=postgres sh tests/lancer.sh` : base PostgreSQL 16 locale (`tests/prelude.sql` imite Supabase), puis
-- `tests/vie_de_club.py` : faux club complet et saison simulée, 211 vérifications des droits (visiteur non connecté compris) ;
+- `tests/vie_de_club.py` : faux club complet et saison simulée, 212 vérifications des droits (visiteur non connecté compris) ;
 - `tests/import.test.mjs` : lecture de listes de joueurs (14 tests) ;
-- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (79 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
+- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (80 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
 
 Toutes les personnes des tests sont fictives.
