@@ -3,7 +3,16 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_KEY, VERSION } from '../config.js';
 
-export const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+// N° 44 « Rester connecté » : la session est gardée sur l'appareil (localStorage) ou seulement le temps de l'onglet (sessionStorage)
+export const remember = { get: () => { try { return localStorage.getItem('pc_remember') !== '0'; } catch { return true; } }, set: (v) => { try { localStorage.setItem('pc_remember', v ? '1' : '0'); } catch { /* */ } } };
+const area = () => { try { return remember.get() ? localStorage : sessionStorage; } catch { return null; } };
+const mem = {};
+const authStorage = {
+  getItem: (k) => { try { return area()?.getItem(k) ?? localStorage.getItem(k) ?? sessionStorage.getItem(k) ?? mem[k] ?? null; } catch { return mem[k] ?? null; } },
+  setItem: (k, v) => { mem[k] = v; try { const a = area(); a.setItem(k, v); (a === localStorage ? sessionStorage : localStorage).removeItem(k); } catch { /* navigation privée */ } },
+  removeItem: (k) => { delete mem[k]; try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch { /* */ } },
+};
+export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storage: authStorage } });
 export const $ = (s) => document.querySelector(s);
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const store = {
@@ -26,7 +35,7 @@ export const S = {
   session: null, me: null, mems: [], clubs: {}, clubId: store.get('pc_club'), tab: 0, view: null,
   members: [], names: {}, nicks: {}, phones: {}, teams: [], events: [], resp: [], groups: [], lastMsgs: [],
   msgs: [], polls: [], votes: [], gmembers: [], roster: [], players: [], pparents: [], padmin: [], att: [], pteams: [],
-  docs: [], fees: [], discounts: [], hidden: [], trash: [], payments: [], follows: [], cteams: [], unread: {}, myGroups: [], contacts: [], myContact: null,
+  docs: [], fees: [], discounts: [], hidden: [], trash: [], previews: {}, payments: [], follows: [], cteams: [], unread: {}, myGroups: [], contacts: [], myContact: null,
   authMode: 'login', onb: null, join: { code: '', role: 'supporteur', teams: [] },
   rq: { role: 'joueur', team: '', open: false }, form: null, del: null, sel: null,
   updated: null, online: navigator.onLine, channel: null,
@@ -160,7 +169,7 @@ export async function loadClub() {
   S.roster = roster.data || []; S.players = plr.data || []; S.docs = docs.data || []; S.fees = fees.data || []; S.hidden = hid.data || [];
   S.roster.forEach((x) => { if (x.user_id) S.names[x.user_id] = (x.first_name + ' ' + (x.last_name || '')).trim(); });
   const pids = S.players.map((p) => p.id), eids = S.events.map((e) => e.id), gids = S.groups.map((g) => g.id);
-  const [pp, pa, at, pt, rs, lm, dc, pay, fol, ct, mg, cl, mc] = await Promise.all([
+  const [pp, pa, at, pt, rs, lm, dc, pay, fol, ct, mg, cl, gp, mc] = await Promise.all([
     inList(sb.from('player_parents').select('*'), 'player_id', pids),
     inList(sb.from('player_admin').select('*'), 'player_id', pids),
     inList(sb.from('attendance').select('*'), 'player_id', pids),
@@ -173,10 +182,13 @@ export async function loadClub() {
     sb.rpc('club_teams', { p_club: cid }),
     gids.length ? sb.from('group_members').select('*').eq('user_id', S.me.id).in('group_id', gids) : Promise.resolve({ data: [] }),
     sb.rpc('club_contacts_list', { p_club: cid }),
+    sb.rpc('group_previews', { p_club: cid }),
     sb.from('club_contacts').select('*').eq('club_id', cid).eq('user_id', S.me.id).maybeSingle(),
   ]);
   S.payments = pay.data || []; S.follows = (fol.data || []).map((x) => x.team_id); S.cteams = ct.data || []; S.myGroups = mg.data || [];
   S.contacts = cl.data || []; S.myContact = mc.data || null;
+  S.previews = {}; (gp.data || []).forEach((x) => (S.previews[x.group_id] = x));
+  await loadNames((gp.data || []).map((x) => x.user_id));
   // n° 36 : messages non lus par groupe (depuis la dernière ouverture)
   S.unread = {};
   if (S.myGroups.length) {

@@ -199,3 +199,6 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
   .selbar{bottom:20px;padding-left:256px}
   #toast{bottom:32px}
 }
+.pwmeter{font-size:14px;font-weight:700;min-height:0}
+.pwmeter.faible{color:var(--pc-non-texte)}.pwmeter.correct{color:var(--pc-attente-texte)}.pwmeter.solide{color:var(--pc-oui-texte)}
+.ts{min-height:0}

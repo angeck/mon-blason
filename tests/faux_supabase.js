@@ -42,10 +42,10 @@ const D = {
   ],
   event_responses: [{ id: 'r1', event_id: 'e1', user_id: 'u-p1', player_id: 'p-tom', answer: 'oui' }],
   event_hidden: [], attendance: [],
-  groups: [{ id: 'g1', club_id: C, name: 'U9 · Parents et coachs', created_by: ME, created_at: at(-20) }],
-  group_members: [{ group_id: 'g1', user_id: ME, muted: false, last_read_at: at(-2) }, { group_id: 'g1', user_id: 'u-p1', muted: false, last_read_at: at(-2) }],
+  groups: [{ id: 'g1', club_id: C, name: 'U9 · Parents et coachs', created_by: ME, created_at: at(-20), last_message_at: at(-1, 9) }, { id: 'g2', club_id: C, name: 'Bureau · trésorerie', created_by: ME, created_at: at(-10), last_message_at: at(-5, 9) }],
+  group_members: [{ group_id: 'g2', user_id: ME, muted: false, last_read_at: at(-1) }, { group_id: 'g1', user_id: ME, muted: false, last_read_at: at(-2) }, { group_id: 'g1', user_id: 'u-p1', muted: false, last_read_at: at(-2) }],
   team_follows: [], player_payments: [{ id: 'pay1', player_id: 'p-tom', amount: 50, method: 'Chèque', paid_at: at(-3) }], club_contacts: [],
-  messages: [{ id: 1, group_id: 'g1', user_id: 'u-p1', body: 'Qui peut faire le covoiturage samedi ?', created_at: at(-1, 9) }],
+  messages: [{ id: 1, group_id: 'g1', user_id: 'u-p1', body: 'Qui peut faire le covoiturage samedi ?', created_at: at(-1, 9) }, { id: 2, group_id: 'g2', user_id: 'u-pres', body: 'Point sur les cotisations jeudi', created_at: at(-5, 9) }],
   polls: [{ id: 'q1', group_id: 'g1', question: 'Présent au plateau ?', created_by: ME, created_at: at(-1), deleted_at: null }],
   poll_votes: [{ poll_id: 'q1', user_id: 'u-p1', answer: 'Présent' }],
 };
@@ -97,13 +97,17 @@ const RPC = {
   import_fee_grid: ({ p_rows }) => { let up = 0, ad = 0; p_rows.forEach((r) => { const g = D.fee_grid.find((x) => (r.team_id ? x.team_id === r.team_id : (x.category || '').toLowerCase() === (r.category || '').toLowerCase())); if (g) { if (+g.amount !== +r.amount) up++; g.amount = r.amount; } else { ad++; D.fee_grid.push({ id: uid(), club_id: C, category: r.category, team_id: r.team_id, amount: r.amount, fed_part: r.fed }); } }); return { updated: up, added: ad, deleted: 0 }; },
   update_member_profile: ({ p_user, p_first, p_last }) => { const p = D.profiles.find((x) => x.id === p_user); p.first_name = p_first; p.last_name = p_last; p.full_name = p_first + ' ' + p_last; return null; },
   message_president: () => { D.groups.push({ id: 'g-pres', club_id: C, name: 'Message au président · Gaël Test', created_by: ME }); D.group_members.push({ group_id: 'g-pres', user_id: ME, last_read_at: new Date().toISOString() }); return 'g-pres'; },
+  group_previews: () => { const r = {}; D.messages.forEach((m) => { if (!r[m.group_id] || r[m.group_id].created_at < m.created_at) r[m.group_id] = { group_id: m.group_id, user_id: m.user_id, body: m.body, created_at: m.created_at, kind: 'message' }; }); return Object.values(r); },
+  public_search_clubs: ({ p_query, p_sport }) => D.clubs.filter((c) => c.public_listed !== false && (!p_sport || c.sport === p_sport) && (c.name + ' ' + c.city).toLowerCase().includes(String(p_query).toLowerCase())).map((c) => ({ id: c.id, name: c.name, city: c.city, postal_code: c.postal_code || '', sport: c.sport, logo: c.logo, crest_bg: c.crest_bg, color1: c.color1, crest_outline: 'auto' })),
+  public_club: ({ p_club }) => { const c = D.clubs.find((x) => x.id === p_club); return c && { id: c.id, name: c.name, city: c.city, postal_code: c.postal_code || '', sport: c.sport, logo: c.logo, color1: c.color1, teams: D.teams.filter((t) => t.state === 'Visible').map((t) => ({ id: t.id, name: t.name, category: t.category, gender: t.gender, slots: t.slots })) }; },
+  join_club_by_id: ({ p_club, p_role }) => { D.memberships.push({ id: uid(), club_id: p_club, user_id: ME, role: p_role, status: 'active', created_at: new Date().toISOString() }); return p_club; },
   match_players: () => [], import_players: ({ p_rows }) => { p_rows.filter((r) => r.action !== 'skip').forEach((r) => D.players.push({ id: uid(), club_id: C, team_id: T9, first_name: r.first_name, last_name: r.last_name, birth_date: r.birth_date, consents: {}, created_at: new Date().toISOString() })); return p_rows.filter((r) => r.action !== 'skip').length; },
   export_my_data: () => ({ profil: D.profiles[0] }), validate_membership: ({ mid }) => { D.memberships.find((m) => m.id === mid).status = 'active'; return null; },
 };
 export function createClient() {
   let cb = null; const session = { user: { id: ME, email: 'gael@exemple.fr' } };
   return {
-    auth: { onAuthStateChange: (f) => { cb = f; setTimeout(() => f('SIGNED_IN', window.__LOGGED_OUT ? null : session), 0); return { data: { subscription: { unsubscribe() {} } } }; }, signInWithPassword: async () => { cb('SIGNED_IN', session); return { data: {}, error: null }; }, signUp: async () => ({ data: {}, error: null }), signOut: async () => { cb('SIGNED_OUT', null); return { error: null }; }, resetPasswordForEmail: async () => ({ error: null }), updateUser: async () => ({ error: null }) },
+    auth: { onAuthStateChange: (f) => { cb = f; setTimeout(() => f('SIGNED_IN', window.__LOGGED_OUT ? null : session), 0); return { data: { subscription: { unsubscribe() {} } } }; }, signInWithPassword: async () => { cb('SIGNED_IN', session); return { data: {}, error: null }; }, signUp: async (a) => { window.__SIGNUP = a; return { data: { session: null }, error: null }; }, signOut: async () => { cb('SIGNED_OUT', null); return { error: null }; }, resetPasswordForEmail: async () => ({ error: null }), updateUser: async () => ({ error: null }) },
     from: (t) => new Q(t),
     rpc: async (n, a) => { window.__CALLS.push(['rpc', n, a]); return RPC[n] ? { data: clone(RPC[n](a || {}) ?? null), error: null } : { data: true, error: null }; },
     channel: () => { const c = { on: () => c, subscribe: () => c }; return c; }, removeChannel: () => {},

@@ -46,7 +46,7 @@ const HEAD = {
   name: (c) => (c.includes('prenom') && c.replace('prenom', '').includes('nom')) || c === 'joueur' || c === 'enfant' || c === 'identite',
   first: (c) => c.includes('prenom') && !c.replace('prenom', '').includes('nom'),
   last: (c) => (c === 'nom' || c.startsWith('nomde') || c === 'nomdefamille' || c === 'lastname' || (c.startsWith('nom') && !c.includes('prenom'))),
-  birth: (c) => c.includes('naiss') || c.includes('birth') || c === 'ddn' || c === 'nele' || c === 'nee',
+  birth: (c) => c.includes('naiss') || c.includes('birth') || c === 'ddn' || /^nee?(e)?le$/.test(c) || c === 'nee' || c === 'ne',
   email: (c) => c.includes('mail') || c.includes('courriel'),
   phone: (c) => c.includes('tel') || c.includes('portable') || c.includes('mobile'),
   licence: (c) => c.includes('licence') || c.includes('license') || c.includes('numlic'),
@@ -170,4 +170,22 @@ export function doubts(r, fromPhoto) {
   if (r.birth_date) { const y = +r.birth_date.slice(0, 4), now = new Date().getFullYear(); if (y < 1930 || y > now) d.add('birth_date'); }
   if (!fromPhoto) d.delete('first_name');
   return d;
+}
+
+
+// ---------- n° 47 : lecture d'un fichier (Excel, OpenDocument, CSV) ----------
+// Texte : UTF-8 si possible, sinon Windows-1252 (CSV enregistré par Excel en France)
+export function decodeText(buf) {
+  const u8 = new Uint8Array(buf);
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(u8).replace(/^﻿/, ''); } catch { return new TextDecoder('windows-1252').decode(u8); }
+}
+// Feuille la plus remplie (la première peut être vide ou servir de page de garde)
+export function bestSheet(X, wb) {
+  let best = null, score = -1;
+  for (const n of wb.SheetNames) {
+    const rows = X.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' });
+    const sc = rows.filter((r) => r.some((c) => /\p{L}{2,}/u.test(String(c ?? '')))).length;
+    if (sc > score) { score = sc; best = rows; }
+  }
+  return best || [];
 }

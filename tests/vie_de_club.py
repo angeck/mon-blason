@@ -70,10 +70,11 @@ create function tests.fails(nm text, s text) returns void language plpgsql as $$
   exception when others then perform tests.log(nm, true, sqlerrm); end $$;
 create function tests.works(nm text, s text) returns void language plpgsql as $$ begin execute s; perform tests.log(nm, true, '');
   exception when others then perform tests.log(nm, false, sqlerrm); end $$;""")
-w("grant usage on schema tests to authenticated; grant execute on all functions in schema tests to authenticated;")
+w("grant usage on schema tests to authenticated, anon; grant execute on all functions in schema tests to authenticated, anon; grant select on tests.kv to anon;")
 w("grant usage on schema public, auth to authenticated; grant select, insert, update, delete on all tables in schema public to authenticated; grant execute on all functions in schema public, auth to authenticated;")
 w("revoke select on profiles from authenticated; grant select (id, full_name, first_name, last_name, nickname, created_at, show_all_club) on profiles to authenticated;")
 w("revoke execute on function activate_membership(uuid, uuid, uuid) from authenticated;")
+w("grant usage on schema public to anon; grant execute on all functions in schema public to anon; grant select on all tables in schema public to anon; revoke select on profiles from anon;")  # comme Supabase
 
 # ---------- comptes ----------
 TEAMS = [("U9", "U9", "Mixte"), ("U11", "U11", "Mixte"), ("U13F", "U13", "Féminine"), ("U15", "U15", "Masculine"),
@@ -509,6 +510,50 @@ ok("un supporteur voit le contact, avec téléphone et sans e-mail", "exists(sel
 works("un supporteur écrit au président", "select message_president((select id from clubs where name = 'AS Test Basket'))")
 AS("pres"); ok("le message arrive chez la présidente", "exists(select 1 from groups where name like 'Message au président%')")
 AS("pres2"); ok("un autre club ne voit pas les contacts", "not exists(select 1 from club_contacts_list((select c.id from clubs c where c.name = 'AS Test Basket')))")
+
+section("3.0.2 · Import dans une équipe fantôme (n° 47)")
+AS("cU9b")
+works("le coach d'une équipe fantôme importe une liste", f"select import_players((select id from clubs where name = 'AS Test Basket'), {T('U7')}, '[{{\"first_name\":\"Léo\",\"last_name\":\"DURAND\",\"birth_date\":\"2020-03-12\"}},{{\"first_name\":\"Zoé\",\"last_name\":\"MARTIN\",\"birth_date\":null,\"licence\":null,\"email\":null,\"phone\":null}}]'::jsonb)")
+ok("les 2 fiches sont dans l'équipe fantôme", f"(select count(*) from players where team_id = {T('U7')}) = 2")
+
+section("3.0.2 · Page publique et recherche de clubs (n° 49)")
+ANON = "reset role; select set_config('request.uid', '', false); set role anon;"
+w(ANON)
+ok("visiteur : trouve le club par son nom", "exists(select 1 from public_search_clubs('test basket', null) where name = 'AS Test Basket')")
+ok("visiteur : trouve le club par sa ville, sans accent ni majuscule", "exists(select 1 from public_search_clubs('TESTVILLE', null))")
+ok("visiteur : filtre par sport", "not exists(select 1 from public_search_clubs('test', 'Volley-ball') where name = 'AS Test Basket') and exists(select 1 from public_search_clubs('test', 'Volley-ball') where name = 'Volley Test')")
+ok("visiteur : la page du club montre les équipes visibles, pas l'équipe fantôme", "(select public_club(id) from public_search_clubs('test basket', null) limit 1)->'teams' @> '[{\"name\":\"U9\"}]' and not ((select public_club(id) from public_search_clubs('test basket', null) limit 1)->'teams' @> '[{\"name\":\"U7\"}]')")
+ok("visiteur : aucun nombre, aucune personne, aucun code", "not exists(select 1 from jsonb_object_keys((select public_club(id) from public_search_clubs('test basket', null) limit 1)) k where k in ('join_code','players','members','coach','contacts','events'))")
+ok("visiteur : aucun club lisible directement", "(select count(*) from clubs) = 0")
+ok("visiteur : aucune équipe, aucun membre, aucun rendez-vous lisibles directement", "(select count(*) from teams) + (select count(*) from memberships) + (select count(*) from events) + (select count(*) from players) + (select count(*) from fee_grid) = 0")
+w("set role authenticated;")
+AS("b1"); fails("le bureau ne retire pas le club de la recherche", "update clubs set public_listed = false where name = 'AS Test Basket'")
+AS("pres"); works("la présidente retire le club de la recherche", "update clubs set public_listed = false where name = 'AS Test Basket'")
+w(ANON); ok("le club n'apparaît plus", "not exists(select 1 from public_search_clubs('test basket', null))")
+ok("sa page publique est vide", "(select public_club(v::uuid) from tests.kv where k = 'club1id') is null")
+w("reset role; insert into tests.kv select 'club1id', id::text from clubs where name = 'AS Test Basket' on conflict do nothing;")
+user("nv", "Noé", "Nouveau")
+w("set role authenticated;")
+AS("nv"); fails("sans recherche, on ne rejoint pas sans le code", "select join_club_by_id((select v::uuid from tests.kv where k = 'club1id'), 'supporteur', null)")
+AS("pres"); works("la présidente remet le club dans la recherche", "update clubs set public_listed = true where name = 'AS Test Basket'")
+AS("nv"); works("un nouveau compte rejoint le club trouvé, sans le code", "select join_club_by_id((select v::uuid from tests.kv where k = 'club1id'), 'supporteur', null)")
+ok("il est supporteur tout de suite", "exists(select 1 from memberships where user_id = auth.uid() and role = 'supporteur' and status = 'active')")
+works("il demande à être parent par la même voie", f"select join_club_by_id((select v::uuid from tests.kv where k = 'club1id'), 'parent', {T('U9')}, 'Mia', 'Nouveau')")
+ok("la demande de parent attend la validation", "exists(select 1 from memberships where user_id = auth.uid() and role = 'parent' and status = 'pending')")
+w(ANON); fails("visiteur : ne rejoint pas sans compte", "select join_club_by_id((select v::uuid from tests.kv where k = 'club1id'), 'supporteur', null)")
+for _ in range(30): w("select count(*) from public_search_clubs('zz', null);")
+fails("visiteur : plus de 30 recherches par minute bloquées", "select * from public_search_clubs('test', null)")
+w("set role authenticated;")
+
+section("3.0.2 · Groupes triés par dernier message (n° 50)")
+AS("cU9")
+ok("le groupe garde la date de son dernier message", "(select last_message_at from groups where name = 'U9 · Parents et coachs') is not null")
+w("insert into groups(club_id, name, created_by) values (:'c1', 'Groupe vide', auth.uid()) returning id as gvide \\gset")
+w("insert into group_members(group_id, user_id) values (:'gvide', auth.uid());")
+works("un sondage fait remonter le groupe vide", "insert into polls(group_id, question, created_by) select id, 'Covoiturage ?', auth.uid() from groups where name = 'Groupe vide'")
+ok("le groupe au dernier message le plus récent est en tête", "(select name from groups order by coalesce(last_message_at, created_at) desc limit 1) = 'Groupe vide'")
+ok("aperçu : le dernier message ou sondage de chaque groupe", "(select count(*) from group_previews((select id from clubs where name = 'AS Test Basket'))) = 2 and exists(select 1 from group_previews((select id from clubs where name = 'AS Test Basket')) where kind = 'sondage' and body = 'Covoiturage ?')")
+AS(f"pa{fam_u13}"); ok("aperçu : rien des groupes dont on n'est pas membre", "(select count(*) from group_previews((select id from clubs where name = 'AS Test Basket'))) = 0")
 
 section("Départs et redemandes")
 AS("j1"); works("un joueur quitte son profil", "delete from memberships where user_id = auth.uid() and role = 'joueur'")

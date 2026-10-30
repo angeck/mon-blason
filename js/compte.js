@@ -2,7 +2,7 @@
 import { BRAND, VERSION } from '../config.js';
 import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, JOIN_ROLES, club, myMem, isBoard, isPresident, teamName, niceFirst, niceLast, download, fmtDay, store } from './core.js';
 import { header, crest, icon, delBtn, field } from './ui.js';
-import { roleExtra, checkRole } from './auth.js';
+import { roleExtra, checkRole, newPwdFields } from './auth.js';
 
 function roleRequest() {
   const r = S.rq, c = club(); if (!c) return '';
@@ -30,15 +30,17 @@ export function accountScreen() {
   // n° 42 : le président et les membres du bureau peuvent se déclarer contacts du club
   if (c && isBoard()) {
     const k = S.myContact || {}, box = (n, l) => `<label class="check"><input type="checkbox" data-contact="${n}" ${k[n] ? 'checked' : ''}><span>${l}</span></label>`;
-    h += `<details class="card" ${k.for_licence || k.for_matches ? 'open' : ''}><summary>Contact du club (${esc(c.name)})</summary>${box('for_licence', 'Contact pour les demandes de licence')}${box('for_matches', 'Contact pour la planification des matchs')}<div class="kick">Moyens visibles</div>${box('show_phone', 'Mon téléphone')}${box('show_email', 'Mon adresse e-mail')}<p class="note">Tes coordonnées seront visibles des membres et des autres clubs connectés. Tu peux les retirer à tout moment.</p></details>`;
+    h += `<details class="card" ${k.for_licence || k.for_matches ? 'open' : ''}><summary>Contact du club (${esc(c.name)})</summary>${box('for_licence', 'Contact pour les demandes de licence')}${box('for_matches', 'Contact pour la planification des matchs')}<div class="kick">Moyens visibles</div>${box('show_phone', 'Mon téléphone' + (S.me.phone ? ' · ' + esc(S.me.phone) : ''))}${box('show_email', 'Mon adresse e-mail · ' + esc(S.session.user.email))}${(k.for_licence || k.for_matches) && k.show_phone && !S.me.phone ? '<div class="card warn"><b>Ajoute ton téléphone dans « Mon profil » ci-dessus pour qu’il apparaisse.</b></div>' : ''}<p class="note">Tes coordonnées seront visibles des membres et des autres clubs connectés. Tu peux les retirer à tout moment.</p></details>`;
   }
   h += `<div class="sec"><h2>Mes clubs et profils</h2></div><div class="card"><div class="list">${clubs.map((x) => `<button class="row" data-act="club" data-id="${x.id}">${crest(x, 30)}<span class="g">${esc(x.name)}<small>${S.mems.filter((m) => m.club_id === x.id).map((m) => ROLES[m.role] + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</small></span>${x.id === S.clubId ? '<span class="pill ok">Affiché</span>' : '<span class="chev"></span>'}</button>`).join('') || '<p class="empty">Aucun club pour l’instant.</p>'}</div></div>
   <button class="btn ghost" data-act="onbopen">Rejoindre ou créer un autre club</button>`;
   if (c) h += `<button class="btn ghost ${isArmed('leave') ? 'danger armed' : ''}" data-act="leave">${isArmed('leave') ? `Confirmer : quitter ${esc(c.name)}` : `Quitter ${esc(c.name)}`}</button>`;
+  h += `<details class="card"><summary>Changer mon mot de passe</summary><form id="npwf" class="stack">${newPwdFields('cp')}<button class="btn main" type="submit">Changer le mot de passe</button></form></details>
+  <button class="btn" data-act="logout">${icon('back', 20)}Me déconnecter</button>`;
   h += `<div class="sec"><h2>Mes données</h2></div><div class="card"><button class="btn ghost" data-act="export">${icon('down', 20)}Télécharger mes données</button><p class="note">Un fichier avec ton profil, tes rôles, les fiches de tes enfants, tes réponses, tes messages et tes votes.</p>
   ${delBtn('delacc', 'me', 'Supprimer mon compte', 'Confirmer : supprimer mon compte dans 30 jours', isArmed('delacc'))}<p class="note">Tu es retiré tout de suite de tes clubs et groupes. Pendant 30 jours, tu peux annuler en te reconnectant ; ensuite tout est effacé. Les fiches de joueurs restent au club.</p></div>
   <button class="btn ghost" data-act="legal">Mentions légales, confidentialité et conditions</button>
-  <button class="btn ghost" data-act="logout">Me déconnecter</button><p class="note" style="text-align:center">${esc(S.session.user.email)} · ${esc(BRAND.name)} ${esc(VERSION)}</p></main>`;
+  <p class="note" style="text-align:center">${esc(S.session.user.email)} · ${esc(BRAND.name)} ${esc(VERSION)}</p></main>`;
   return h;
 }
 // Compte dont la suppression est demandée
@@ -78,8 +80,11 @@ FORMS.proff = async (v) => {
 INPUTS.push((t) => { if (t.dataset.r && t.type !== 'checkbox') { S.rq[t.dataset.r] = t.value; return true; } return false; });
 CHANGES.push(async (t) => {
   if (!t.dataset.contact) return false;
-  const row = { ...(S.myContact || { for_licence: false, for_matches: false, show_phone: false, show_email: false }), club_id: S.clubId, user_id: S.me.id, [t.dataset.contact]: t.checked, updated_at: new Date().toISOString() };
-  if (await run(sb.from('club_contacts').upsert(row), t.checked ? 'Enregistré.' : 'Retiré.')) S.myContact = row; else t.checked = !t.checked;
+  const k = t.dataset.contact, first = !S.myContact || (!S.myContact.for_licence && !S.myContact.for_matches);
+  const row = { ...(S.myContact || { for_licence: false, for_matches: false, show_phone: false, show_email: false }), club_id: S.clubId, user_id: S.me.id, [k]: t.checked, updated_at: new Date().toISOString() };
+  // n° 48 : téléphone et e-mail visibles par défaut quand on devient contact (décochables)
+  if (t.checked && first && ['for_licence', 'for_matches'].includes(k) && !row.show_phone && !row.show_email) { row.show_phone = true; row.show_email = true; }
+  if (await run(sb.from('club_contacts').upsert(row), t.checked ? 'Enregistré.' : 'Retiré.')) { S.myContact = row; const cl = await sb.rpc('club_contacts_list', { p_club: S.clubId }); if (!cl.error) S.contacts = cl.data || []; render(true); if (t.checked && row.show_phone && !S.me.phone) toast('Ajoute ton téléphone dans « Mon profil » pour qu’il apparaisse.'); } else t.checked = !t.checked;
   return true;
 });
 CHANGES.push((t) => { if (t.dataset.r) { S.rq[t.dataset.r] = t.type === 'checkbox' ? t.checked : t.value; return true; } return false; });

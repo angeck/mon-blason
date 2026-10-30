@@ -1,7 +1,7 @@
 // Pocket Club · connexion, inscription, conditions, premier club (créer ou rejoindre), textes légaux.
-import { BRAND, VERSION, CGU_VERSION } from '../config.js';
-import { S, sb, esc, run, toast, render, refresh, store, ROLES, JOIN_ROLES, SPORTS, niceFirst, niceLast, lum, onColor, isActive, club, ACTIONS, FORMS, INPUTS, CHANGES } from './core.js';
-import { header, wordmark, crest, field } from './ui.js';
+import { BRAND, VERSION, CGU_VERSION, TURNSTILE_SITEKEY } from '../config.js';
+import { S, sb, esc, run, toast, render, refresh, store, remember, ROLES, JOIN_ROLES, SPORTS, niceFirst, niceLast, lum, onColor, isActive, club, ACTIONS, FORMS, INPUTS, CHANGES } from './core.js';
+import { header, wordmark, crest, field, icon } from './ui.js';
 
 // ---------- Textes légaux (vouvoiement, provisoires : à relire par un juriste) ----------
 export function legalText() {
@@ -28,20 +28,118 @@ function signupExtras() {
   <label class="check"><input type="checkbox" name="optin"><span>J'accepte de recevoir des e-mails d'information de ${esc(BRAND.name)} (facultatif)</span></label>`;
 }
 
+// ---------- Mots de passe (n° 45) ----------
+export function pwdIssues(p) { const r = []; if ((p || '').length < 8) r.push('8 caractères au moins'); if (!/\p{L}/u.test(p || '')) r.push('une lettre'); if (!/\d/.test(p || '')) r.push('un chiffre'); return r; }
+export function pwdStrength(p) {
+  if (!p) return ['', ''];
+  if (pwdIssues(p).length) return ['faible', 'Faible · il faut ' + pwdIssues(p).join(', ')];
+  return p.length >= 12 && ((/[a-z]/.test(p) && /[A-Z]/.test(p)) || /[^\p{L}\d]/u.test(p)) ? ['solide', 'Solide'] : ['correct', 'Correct · plus long ou avec un symbole, il serait solide'];
+}
+const pwdInput = (id, name, label, auto, hint) => `<div class="field"><label for="${id}">${label}</label><div class="pwd"><input id="${id}" name="${name}" type="password" required autocomplete="${auto}" ${hint ? `data-pw="${hint}"` : ''}><button type="button" class="btn small ghost" data-act="pwtog" data-for="${id}" aria-pressed="false">Afficher</button></div>${hint ? `<div class="pwmeter" id="${id}m" aria-live="polite"></div>` : ''}</div>`;
+// Nouveau mot de passe saisi deux fois (inscription, changement, mot de passe oublié)
+export const newPwdFields = (p = 'np') => `${pwdInput(p + '1', 'password', 'Mot de passe (8 caractères au moins, avec des lettres et des chiffres)', 'new-password', 'strength')}${pwdInput(p + '2', 'password2', 'Confirmer le mot de passe', 'new-password', 'confirm')}`;
+export function checkNewPwd(v) {
+  const iss = pwdIssues(v.password); if (iss.length) { toast('Mot de passe trop faible : il faut ' + iss.join(', ') + '.'); return false; }
+  if (v.password !== v.password2) { toast('Les deux mots de passe ne sont pas identiques.'); return false; }
+  return true;
+}
+// Messages de connexion en français
+export function authMessage(e) {
+  const m = String(e?.message || e || '');
+  if (/invalid login/i.test(m)) return 'Adresse e-mail ou mot de passe incorrect.';
+  if (/not confirmed/i.test(m)) return "Confirme d'abord ton adresse e-mail avec le lien reçu, puis reconnecte-toi.";
+  if (/already registered|already been registered/i.test(m)) return 'Un compte existe déjà avec cette adresse : connecte-toi, ou utilise « Mot de passe oublié ».';
+  if (/captcha/i.test(m)) return 'La vérification anti-robot a échoué : réessaie.';
+  if (/pwned|leaked|compromised/i.test(m)) return 'Ce mot de passe est trop courant (il a déjà circulé sur internet) : choisis-en un autre.';
+  if (/password/i.test(m) && /(weak|should|least|characters)/i.test(m)) return 'Mot de passe trop faible : 8 caractères au moins, avec des lettres et des chiffres.';
+  if (/rate limit|too many|security purposes/i.test(m)) return "Trop d'essais : réessaie dans quelques minutes.";
+  if (/same.*password|different from the old/i.test(m)) return "Le nouveau mot de passe doit être différent de l'ancien.";
+  return m || 'Action impossible.';
+}
+async function authRun(p, ok) {
+  if (!navigator.onLine) { toast('Hors connexion : réessaie quand le réseau revient.'); return null; }
+  const { data, error } = await p; resetCaptcha();
+  if (error) { console.error(error); toast(authMessage(error)); return null; }
+  if (ok) toast(ok); return data ?? true;
+}
+
+// ---------- Anti-robots : Cloudflare Turnstile (n° 46), actif seulement si la clé est dans config.js ----------
+let tsWidget = null;
+const captchaBox = () => (TURNSTILE_SITEKEY ? '<div id="ts" class="ts"></div>' : '');
+const captcha = () => (TURNSTILE_SITEKEY ? S.captcha || undefined : undefined);
+function resetCaptcha() { S.captcha = null; try { if (window.turnstile && tsWidget !== null) window.turnstile.reset(tsWidget); } catch { /* */ } }
+export async function mountCaptcha() {
+  const box = document.getElementById('ts'); if (!TURNSTILE_SITEKEY || !box || box.dataset.on) return;
+  box.dataset.on = '1';
+  if (!window.turnstile) await new Promise((ok) => { const sc = document.createElement('script'); sc.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; sc.async = true; sc.onload = ok; sc.onerror = ok; document.head.appendChild(sc); });
+  if (!window.turnstile || !document.body.contains(box)) return;
+  S.captcha = null;
+  tsWidget = window.turnstile.render(box, { sitekey: TURNSTILE_SITEKEY, language: 'fr', appearance: 'interaction-only', callback: (t) => { S.captcha = t; }, 'expired-callback': () => { S.captcha = null; } });
+}
+const needCaptcha = () => { if (TURNSTILE_SITEKEY && !S.captcha) { toast('Vérification anti-robot en cours : patiente une seconde, puis réessaie.'); return true; } return false; };
+
+// ---------- Accueil public : recherche de clubs (n° 49) ----------
+const pubHeader = (o = {}) => header({ brand: true, back: o.back, kicker: o.kicker, title: o.title });
+function searchBlock() {
+  const P = S.ps || (S.ps = { q: '', sport: '', res: null });
+  return `<form id="psf" class="card lift" role="search">${field('psq', 'Chercher un club', `<input id="psq" type="search" data-psq="1" value="${esc(P.q)}" placeholder="Nom du club, ville ou code postal" autocomplete="off" minlength="2">`)}
+  <div class="chips">${[['', 'Tous les sports'], ['Basket-ball', 'Basket'], ['Volley-ball', 'Volley']].map(([v, l]) => `<button type="button" class="chip" data-act="pssport" data-v="${v}" aria-pressed="${P.sport === v}">${l}</button>`).join('')}</div>
+  <button class="btn main" type="submit">Chercher</button></form>
+  ${P.res === null ? '' : P.res.length ? `<div class="stack">${P.res.map((c) => `<button class="card" data-act="pclub" data-id="${c.id}" style="flex-direction:row;align-items:center;gap:14px;border:0;text-align:left;font:inherit;color:inherit">${crest(c, 40, '#FFFFFF')}<span style="display:flex;flex-direction:column;min-width:0;flex:1"><b>${esc(c.name)}</b><span class="det">${esc([c.city, c.postal_code].filter(Boolean).join(' · '))}${c.city || c.postal_code ? ' · ' : ''}${esc(c.sport)}</span></span><span class="chev"></span></button>`).join('')}</div>` : '<p class="empty">Aucun club trouvé. Essaie la ville, ou demande le code du club à ton coach.</p>'}`;
+}
+export function publicHome() {
+  return `<div class="splash" style="flex:none;padding:44px 20px 4px">${wordmark(46, 'Basket-ball')}<p>L'agenda, les messages et la vie de ton club, au même endroit.</p></div><main class="bd" style="padding-top:8px">
+  <div class="btns"><button class="btn main" data-act="auth" data-v="login">Se connecter</button><button class="btn" data-act="auth" data-v="signup">Créer un compte</button></div>
+  ${searchBlock()}
+  <button class="btn link" data-act="legal" style="align-self:center">Mentions légales et données</button><p class="note" style="text-align:center">${esc(BRAND.name)} ${esc(VERSION)} · version de test</p></main>`;
+}
+export function publicClubScreen(id) {
+  const c = (S.pclubs || {})[id];
+  if (c === undefined) return pubHeader({ back: true, kicker: 'Club' }) + '<main class="bd"><p class="empty">Chargement…</p></main>';
+  if (!c) return pubHeader({ back: true, kicker: 'Club' }) + '<main class="bd"><p class="empty">Ce club n’est pas visible dans la recherche. Demande son code au club pour le rejoindre.</p></main>';
+  const teams = c.teams || [];
+  return pubHeader({ back: true, kicker: c.sport, title: esc(c.name) }) + `<main class="bd"><div class="card lift" style="flex-direction:row;align-items:center;gap:14px">${crest(c, 52, '#FFFFFF')}<span style="display:flex;flex-direction:column"><b style="font-size:18px">${esc(c.name)}</b><span class="det">${esc([c.city, c.postal_code].filter(Boolean).join(' · ') || 'Ville non renseignée')} · ${esc(c.sport)}</span></span></div>
+  <button class="btn main" data-act="pjoin" data-id="${c.id}">Rejoindre ce club</button>
+  <div class="sec"><h2>Équipes</h2></div><div class="card"><div class="list">${teams.length ? teams.map((t) => `<div class="row static"><span class="g">${esc(t.name)}<small>${esc([t.category !== t.name ? t.category : '', t.gender].filter(Boolean).join(' · '))}</small>${t.slots ? `<small>${icon('cal', 14)} ${esc(t.slots)}</small>` : ''}</span></div>`).join('') : '<p class="empty">Pas encore d’équipe affichée.</p>'}</div></div>
+  <p class="note">${S.session ? '' : 'Les matchs, les messages et les contacts du club sont réservés aux membres connectés.'}</p></main>`;
+}
+
 // ---------- Connexion et inscription ----------
 export function authScreen() {
-  const L = S.authMode === 'login';
-  return `<div class="splash" style="flex:none;padding:48px 20px 8px">${wordmark(46, 'Basket-ball')}<p>${L ? 'Content de te revoir.' : 'Crée ton compte en une minute.'}</p></div><main class="bd" style="padding-top:8px">
+  const L = S.authMode === 'login', pj = pendingJoin();
+  return pubHeader({ back: true, kicker: L ? 'Connexion' : 'Nouveau compte', title: L ? 'Content de te revoir.' : 'Crée ton compte.' }) + `<main class="bd">
+  ${pj ? `<div class="card pale"><b>${L ? 'Connecte-toi' : 'Crée ton compte'} pour rejoindre ${esc(pj.name)}.</b><span class="note">Ta demande s'ouvrira juste après, sans code à taper.</span></div>` : ''}
   <div class="chips" role="tablist"><button class="chip" data-act="authmode" data-v="login" aria-pressed="${L}">J'ai un compte</button><button class="chip" data-act="authmode" data-v="signup" aria-pressed="${!L}">Créer un compte</button></div>
   <form id="authf" class="card lift">
   ${L ? '' : `<div class="grid2">${field('an', 'Prénom', '<input id="an" name="first_name" required autocomplete="given-name">')}${field('an2', 'Nom', '<input id="an2" name="last_name" required autocomplete="family-name">')}</div>`}
-  ${field('ae', 'Adresse e-mail', '<input id="ae" name="email" type="email" required autocomplete="email">')}
-  <div class="field"><label for="ap">Mot de passe${L ? '' : ' (8 caractères minimum)'}</label><div class="pwd"><input id="ap" name="password" type="password" required minlength="${L ? 1 : 8}" autocomplete="${L ? 'current-password' : 'new-password'}"><button type="button" class="btn small ghost" data-act="pwtog" aria-pressed="false">Afficher</button></div></div>
+  ${field('ae', 'Adresse e-mail', `<input id="ae" name="email" type="email" required autocomplete="email" value="${esc(S.authEmail || '')}" data-authmail="1">`)}
+  ${L ? pwdInput('ap', 'password', 'Mot de passe', 'current-password') : newPwdFields('ap')}
+  <label class="check"><input type="checkbox" name="remember" ${remember.get() ? 'checked' : ''}><span><b>Rester connecté</b><br><span class="det">Décoche sur un téléphone ou un ordinateur partagé.</span></span></label>
   ${L ? '' : signupExtras()}
+  ${captchaBox()}
   <button class="btn main" type="submit">${L ? 'Me connecter' : 'Créer mon compte'}</button></form>
   ${L ? '<button class="btn link" data-act="forgot" style="align-self:center">Mot de passe oublié ?</button>' : ''}
-  <button class="btn link" data-act="legal" style="align-self:center">Mentions légales et données</button><p class="note" style="text-align:center">${esc(BRAND.name)} ${esc(VERSION)} · version de test</p></main>`;
+  <button class="btn link" data-act="legal" style="align-self:center">Mentions légales et données</button></main>`;
 }
+// Nouveau mot de passe après le lien « Mot de passe oublié »
+export function recoveryScreen() {
+  return header({ title: 'Choisis un nouveau mot de passe', brand: true }) + `<main class="bd"><form id="npwf" class="card lift">${newPwdFields('np')}<button class="btn main" type="submit">Enregistrer le mot de passe</button></form></main>`;
+}
+const pendingJoin = () => { try { return JSON.parse(store.get('pc_join') || 'null'); } catch { return null; } };
+export async function loadPublicClub(id) {
+  S.pclubs = S.pclubs || {};
+  const { data, error } = await sb.rpc('public_club', { p_club: id });
+  if (error) { toast(error.message || 'Club introuvable.'); S.pclubs[id] = null; } else S.pclubs[id] = data || null;
+}
+// Après connexion : ouvrir la demande d'adhésion au club choisi dans la recherche
+export async function openPendingJoin() {
+  const pj = pendingJoin(); if (!pj || !S.me) return;
+  if (S.mems.some((m) => m.club_id === pj.id)) { store.set('pc_join', ''); return; }
+  if (!(S.pclubs || {})[pj.id]) await loadPublicClub(pj.id);
+  const c = S.pclubs[pj.id]; if (!c) { store.set('pc_join', ''); return; }
+  S.join = { byId: c.id, clubName: c.name, role: 'supporteur', teams: c.teams || [] }; S.onb = 'join'; S.view = null;
+}
+
 export function cguScreen() {
   return header({ title: 'Avant de continuer', brand: true }) + `<main class="bd"><p style="margin:0">L'application a évolué : lis et accepte les conditions de la version ${esc(VERSION)} pour continuer.</p>${legalText()}<form id="cguf" class="card lift"><label class="check"><input type="checkbox" name="cgu" required><span>J'ai lu et j'accepte les conditions d'utilisation</span></label><label class="check"><input type="checkbox" name="optin"><span>J'accepte de recevoir des e-mails d'information (facultatif)</span></label><button class="btn main" type="submit">Continuer</button></form></main>`;
 }
@@ -89,16 +187,19 @@ export function updatePreview(f) {
 // ---------- Premier club : rejoindre ou créer ----------
 export function onboarding() {
   const o = S.onb, pend = S.mems.filter((m) => m.status === 'pending');
-  let h = header({ title: o === 'create' ? 'Créer mon club' : o === 'join' ? 'Rejoindre un club' : `Salut ${esc(S.me.first_name || '')} !`, brand: true }) + '<main class="bd">';
+  let h = header({ title: o === 'create' ? 'Créer mon club' : o === 'join' ? (S.join.byId ? 'Rejoindre ' + esc(S.join.clubName) : 'Rejoindre un club') : o === 'search' ? 'Chercher un club' : `Salut ${esc(S.me.first_name || '')} !`, brand: true }) + '<main class="bd">';
   if (!o) {
     if (pend.length) h += `<div class="card warn"><div class="kick">Demande en attente</div>${pend.map((m) => `<b>${esc(S.clubs[m.club_id]?.name || 'Club')} · ${ROLES[m.role]}</b>`).join('')}<p class="note">Le club doit valider ta demande. Touche « Actualiser » ensuite.</p><button class="btn small ghost" data-act="refresh">Actualiser</button></div>`;
-    h += `<div class="card yellow"><h3>Ton club t'a donné un code ?</h3><p class="note">8 caractères, demandés au coach ou au bureau.</p><button class="btn ink" data-act="onb" data-v="join">Rejoindre un club avec son code</button></div>
+    h += `<div class="card"><h3>Chercher ton club</h3><p class="note">Par son nom, sa ville ou son code postal.</p><button class="btn main" data-act="onb" data-v="search">Chercher un club</button></div>
+    <div class="card yellow"><h3>Ton club t'a donné un code ?</h3><p class="note">8 caractères, demandés au coach ou au bureau.</p><button class="btn ink" data-act="onb" data-v="join">Rejoindre un club avec son code</button></div>
     <div class="card"><h3>Tu es président d'un club ?</h3><p class="note">Crée l'espace du club : tu pourras ensuite ajouter les équipes et inviter les membres.</p><button class="btn" data-act="onb" data-v="create">Créer mon club</button></div>
     <button class="btn link" data-act="account" style="align-self:center">Mon compte</button><button class="btn link" data-act="logout" style="align-self:center">Me déconnecter</button>`;
+  } else if (o === 'search') {
+    h += searchBlock() + '<button class="btn ghost" data-act="onb" data-v="">Retour</button>';
   } else if (o === 'create') {
     h += `<form id="clubf" class="card lift">
       ${field('cn', 'Nom du club', '<input id="cn" name="name" required maxlength="80">')}
-      ${field('cv', 'Ville', '<input id="cv" name="city">')}
+      <div class="grid2">${field('cv', 'Ville', '<input id="cv" name="city">')}${field('cp', 'Code postal', '<input id="cp" name="postal_code" inputmode="numeric" pattern="[0-9]{5}" maxlength="5">')}</div>
       ${field('cs', 'Sport', `<select id="cs" name="sport">${SPORTS.map((s) => `<option>${s}</option>`).join('')}</select>`)}
       ${logoFields(!!S.tmpLogo)}
       <div class="grid2">${field('c1', 'Couleur principale', '<input id="c1" name="c1" type="color" value="#2f5bff">')}${field('c2', 'Seconde couleur', '<input id="c2" name="c2" type="color" value="#ffc93c">')}</div>
@@ -107,13 +208,12 @@ export function onboarding() {
   } else {
     const j = S.join;
     h += `<div class="card lift">
-      ${field('jc', 'Code du club (8 caractères)', `<input id="jc" data-j="code" value="${esc(j.code)}" autocapitalize="characters" maxlength="8" autocomplete="off">`)}
-      <button class="btn small ghost" data-act="jcheck">Vérifier le code</button>
+      ${j.byId ? '' : `${field('jc', 'Code du club (8 caractères)', `<input id="jc" data-j="code" value="${esc(j.code || '')}" autocapitalize="characters" maxlength="8" autocomplete="off">`)}<button class="btn small ghost" data-act="jcheck">Vérifier le code</button>`}
       ${j.clubName ? `<div class="pill ok">Club : ${esc(j.clubName)}</div>` : ''}
       <div class="kick">Je rejoins comme</div><div class="chips">${JOIN_ROLES.map((r) => `<button class="chip" data-act="jrole" data-v="${r}" aria-pressed="${j.role === r}">${ROLES[r]}</button>`).join('')}</div>
       ${roleExtra(j, 'j', j.teams)}
       <p class="note">${j.role === 'supporteur' ? 'Accès immédiat.' : "Le club valide ta demande. En attendant, tu n'as pas encore accès."}</p>
-      <button class="btn main" data-act="jsend">Envoyer</button></div><button class="btn ghost" data-act="onb" data-v="">Retour</button>`;
+      <button class="btn main" data-act="jsend">Envoyer</button></div><button class="btn ghost" data-act="joincancel">Retour</button>`;
   }
   return h + '</main>';
 }
@@ -134,8 +234,21 @@ export function checkRole(st) {
 // ---------- Actions ----------
 Object.assign(ACTIONS, {
   authmode: (el, d) => { S.authMode = d.v; render(); },
-  pwtog: (el) => { const i = document.getElementById('ap'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.textContent = show ? 'Masquer' : 'Afficher'; el.setAttribute('aria-pressed', show); },
-  forgot: async () => { const em = document.getElementById('ae')?.value; if (!em) return toast('Indique ton adresse e-mail.'); await run(sb.auth.resetPasswordForEmail(em, { redirectTo: location.href.split('#')[0] }), 'E-mail de réinitialisation envoyé.'); },
+  pwtog: (el) => { const i = document.getElementById(el.dataset.for || 'ap'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.textContent = show ? 'Masquer' : 'Afficher'; el.setAttribute('aria-pressed', show); },
+  forgot: async () => {
+    const em = document.getElementById('ae')?.value; if (!em) return toast('Indique ton adresse e-mail.'); if (needCaptcha()) return;
+    // même message que l'adresse ait un compte ou non
+    await authRun(sb.auth.resetPasswordForEmail(em, { redirectTo: location.href.split('#')[0], captchaToken: captcha() }), "Si un compte existe avec cette adresse, un e-mail vient d'être envoyé.");
+  },
+  auth: (el, d) => { S.authMode = d.v; S.view = { type: 'auth' }; render(); },
+  pssport: (el, d) => { S.ps.sport = d.v; if ((S.ps.q || '').trim().length >= 2) doSearch(); else render(true); },
+  pclub: async (el, d) => { S.view = { type: 'pclub', id: d.id }; render(); await loadPublicClub(d.id); render(true); },
+  pjoin: async (el, d) => {
+    const c = (S.pclubs || {})[d.id]; store.set('pc_join', JSON.stringify({ id: d.id, name: c?.name || 'ce club' }));
+    if (!S.session) { S.authMode = 'signup'; S.view = { type: 'auth' }; return render(); }
+    await openPendingJoin(); render();
+  },
+  joincancel: () => { store.set('pc_join', ''); S.join = { code: '', role: 'supporteur', teams: [] }; S.onb = isActive() ? null : ''; render(); },
   logout: async () => { await sb.auth.signOut(); },
   legal: () => { S.prevView = S.view; S.view = { type: 'legal' }; render(); },
   onb: (el, d) => { S.tmpLogo = undefined; S.onb = d.v || null; if (!d.v && isActive()) S.onb = null; render(); },
@@ -148,9 +261,11 @@ Object.assign(ACTIONS, {
     S.join.teams = r.filter((x) => x.id); S.join.clubName = r[0].club_name; render(true);
   },
   jsend: async () => {
-    const j = S.join; if (!j.code) return toast('Indique le code du club.');
+    const j = S.join; if (!j.byId && !j.code) return toast('Indique le code du club.');
     if (!checkRole(j)) return;
-    const cid = await run(sb.rpc('join_club', { p_code: j.code, p_role: j.role, p_team: j.team || null, p_child_first: j.childf || null, p_child_last: j.childl || null }));
+    const args = { p_role: j.role, p_team: j.team || null, p_child_first: j.childf || null, p_child_last: j.childl || null };
+    const cid = await run(j.byId ? sb.rpc('join_club_by_id', { p_club: j.byId, ...args }) : sb.rpc('join_club', { p_code: j.code, ...args }));
+    if (j.byId && cid) store.set('pc_join', '');
     if (cid === null) return;
     if (cid === true || !cid) return toast('Code inconnu. Vérifie les 8 caractères.');
     toast(j.role === 'supporteur' ? 'Bienvenue dans le club !' : 'Demande envoyée au club.');
@@ -159,21 +274,45 @@ Object.assign(ACTIONS, {
 });
 Object.assign(FORMS, {
   authf: async (v) => {
-    if (S.authMode === 'login') return run(sb.auth.signInWithPassword({ email: v.email, password: v.password }));
+    remember.set(!!v.remember);
+    if (needCaptcha()) return;
+    if (S.authMode === 'login') return authRun(sb.auth.signInWithPassword({ email: v.email, password: v.password, options: { captchaToken: captcha() } }));
+    if (!checkNewPwd(v)) return;
     if (!v.cgu) return toast("Merci d'accepter les conditions d'utilisation.");
     const fn = niceFirst(v.first_name), ln = niceLast(v.last_name);
-    const r = await run(sb.auth.signUp({ email: v.email, password: v.password, options: { data: { first_name: fn, last_name: ln, cgu_version: CGU_VERSION, optin_emails: !!v.optin } } }));
-    if (r && !r.session) toast("Compte créé. Confirme ton adresse depuis l'e-mail reçu, puis connecte-toi.");
+    const r = await authRun(sb.auth.signUp({ email: v.email, password: v.password, options: { captchaToken: captcha(), emailRedirectTo: location.href.split('#')[0], data: { first_name: fn, last_name: ln, cgu_version: CGU_VERSION, optin_emails: !!v.optin } } }));
+    if (r && !r.session) { S.authMode = 'login'; render(); toast("Compte créé. Ouvre le lien reçu par e-mail pour confirmer ton adresse, puis connecte-toi."); }
+  },
+  npwf: async (v, f) => {
+    if (!checkNewPwd(v)) return;
+    if (await authRun(sb.auth.updateUser({ password: v.password }), 'Mot de passe changé.')) { S.recovery = false; f.reset(); await refresh(); }
   },
   cguf: async (v) => { if (await run(sb.rpc('accept_cgu', { p_version: CGU_VERSION, p_optin: !!v.optin }), 'Merci, conditions acceptées.')) await refresh(); },
   clubf: async (v) => {
     const cid = await run(sb.rpc('create_club', { p_name: v.name.trim(), p_city: v.city.trim(), p_sport: v.sport, p_c1: v.c1.toUpperCase(), p_c2: v.c2.toUpperCase() }), 'Club créé. Tu en es président.');
     if (!cid) return;
-    if (S.tmpLogo) await run(sb.from('clubs').update({ logo: S.tmpLogo, crest_bg: (v.bg || '#ffffff').toUpperCase() }).eq('id', cid));
+    const extra = { postal_code: /^\d{5}$/.test(v.postal_code || '') ? v.postal_code : '' };
+    if (S.tmpLogo) Object.assign(extra, { logo: S.tmpLogo, crest_bg: (v.bg || '#ffffff').toUpperCase() });
+    await run(sb.from('clubs').update(extra).eq('id', cid));
     S.tmpLogo = undefined; S.clubId = cid; store.set('pc_club', cid); S.onb = null; S.tab = 4; await refresh();
   },
 });
+async function doSearch() {
+  const P = S.ps, q = (P.q || '').trim(); if (q.length < 2) return toast('Tape au moins 2 lettres ou chiffres.');
+  const { data, error } = await sb.rpc('public_search_clubs', { p_query: q, p_sport: P.sport || null });
+  if (error) return toast(error.message || 'Recherche impossible pour le moment.');
+  P.res = data || []; render(true);
+}
+FORMS.psf = () => doSearch();
 INPUTS.push((t) => {
+  if (t.dataset.psq) { S.ps.q = t.value; return true; }
+  if (t.dataset.authmail) { S.authEmail = t.value; return true; }
+  if (t.dataset.pw) {
+    const f = t.closest('form'), p1 = f.querySelector('[data-pw=strength]'), p2 = f.querySelector('[data-pw=confirm]'), m1 = document.getElementById(p1.id + 'm'), m2 = document.getElementById(p2.id + 'm'), [k, txt] = pwdStrength(p1.value);
+    m1.className = 'pwmeter ' + k; m1.textContent = txt;
+    m2.className = 'pwmeter ' + (p2.value && p2.value !== p1.value ? 'faible' : p2.value ? 'solide' : ''); m2.textContent = p2.value ? (p2.value === p1.value ? 'Identiques' : 'Les deux mots de passe ne sont pas identiques') : '';
+    return true;
+  }
   if (t.dataset.j && t.type !== 'checkbox') { S.join[t.dataset.j] = t.dataset.j === 'code' ? t.value.toUpperCase() : t.value; return true; }
   if (t.closest('#clubf,#brandf') && t.type !== 'file') { updatePreview(t.closest('form')); return true; }
   return false;

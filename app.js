@@ -6,10 +6,10 @@ import {
   loadMe, loadClub, loadGroup, checkVersion, fmtShort, hm, esc,
 } from './js/core.js';
 import { header, tabBar, applyTheme, wordmark, icon } from './js/ui.js';
-import { authScreen, cguScreen, onboarding, legalScreen } from './js/auth.js';
+import { authScreen, cguScreen, onboarding, legalScreen, publicHome, publicClubScreen, recoveryScreen, mountCaptcha, openPendingJoin } from './js/auth.js';
 import { homeTab, homeTitle } from './js/accueil.js';
 import { agendaTab, eventForm, eventPage, appelPage } from './js/agenda.js';
-import { messagesTab, groupForm, groupPage, grp, scrollEnd } from './js/messages.js';
+import { messagesTab, groupForm, groupPage, grp, scrollEnd, bump } from './js/messages.js';
 import { teamTab, teamPage, importPage } from './js/equipe.js';
 import { playerPage } from './js/joueur.js';
 import { clubTab, memberPage } from './js/club.js';
@@ -40,9 +40,12 @@ function render(keep) {
   const y = keep ? window.scrollY : 0, app = $('#app');
   applyTheme();
   let html;
-  if (!S.session) html = S.view?.type === 'legal' ? legalScreen() : authScreen();
+  const vt = S.view?.type;
+  if (!S.session) html = vt === 'legal' ? legalScreen() : vt === 'auth' ? authScreen() : vt === 'pclub' ? publicClubScreen(S.view.id) : publicHome();
+  else if (S.recovery) html = recoveryScreen();
   else if (!S.me) html = `<div class="splash">${wordmark(52, 'Basket-ball')}<p>Chargement…</p></div>`;
-  else if (S.view?.type === 'legal') html = legalScreen();
+  else if (vt === 'legal') html = legalScreen();
+  else if (vt === 'pclub') html = publicClubScreen(S.view.id);
   else if (S.me.deleted_at) html = deletedScreen();
   else if (!S.me.cgu_version) html = cguScreen();
   else if (S.view?.type === 'account') html = accountScreen();
@@ -60,11 +63,13 @@ function render(keep) {
   }
   app.innerHTML = html;
   window.scrollTo(0, y);
+  mountCaptcha();
 }
 async function refresh(msg) {
   if (await checkVersion()) return;
   if (!navigator.onLine) { toast('Pas de réseau : tu vois les dernières données chargées.'); render(true); return; }
   await loadMe();
+  if (!S.joinChecked) { S.joinChecked = true; await openPendingJoin(); }
   if (!S.purged) { S.purged = true; sb.rpc('purge_trash').then(() => {}, () => {}); }
   await loadClub();
   if (S.view?.type === 'group') await loadGroup(S.view.id);
@@ -79,9 +84,10 @@ function subscribe() {
   S.channel = sb.channel('club-' + S.clubId)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
       const m = p.new; if (!S.groups.some((g) => g.id === m.group_id)) return;
-      S.lastMsgs.unshift(m);
+      if (!S.lastMsgs.some((x) => x.id === m.id)) S.lastMsgs.unshift(m); bump(m);
       if (S.view?.type === 'group' && S.view.id === m.group_id) { if (!S.msgs.some((x) => x.id === m.id)) { S.msgs.push(m); render(true); scrollEnd(); } sb.from('group_members').update({ last_read_at: new Date().toISOString() }).eq('group_id', m.group_id).eq('user_id', S.me.id).then(() => {}, () => {}); }
       else if (m.user_id !== S.me.id) { S.unread[m.group_id] = (S.unread[m.group_id] || 0) + 1; toast((grp(m.group_id)?.name || 'Groupe') + ' : nouveau message'); render(true); }
+      else render(true);
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'poll_votes' }, async () => { if (S.view?.type === 'group') { await loadGroup(S.view.id); render(true); } })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'event_responses' }, async () => {
@@ -126,8 +132,9 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 sb.auth.onAuthStateChange(async (ev, session) => {
   if (ev === 'TOKEN_REFRESHED') { S.session = session; return; }
   S.session = session;
-  if (!session) { S.me = null; S.mems = []; S.clubs = {}; S.view = null; if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } render(); return; }
-  if (ev === 'PASSWORD_RECOVERY') { const np = prompt('Nouveau mot de passe (8 caractères minimum)'); if (np) await run(sb.auth.updateUser({ password: np }), 'Mot de passe changé.'); }
+  if (!session) { S.me = null; S.mems = []; S.clubs = {}; S.view = null; S.joinChecked = false; S.recovery = false; if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } render(); return; }
+  if (ev === 'PASSWORD_RECOVERY') S.recovery = true;   // n° 45 : nouveau mot de passe saisi deux fois
+  if (ev === 'SIGNED_IN' && ['auth', 'pclub'].includes(S.view?.type)) S.view = null;
   setTimeout(() => refresh(), 0);
 });
 document.title = BRAND.name;

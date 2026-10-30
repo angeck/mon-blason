@@ -6,7 +6,8 @@ import {
 } from './core.js';
 import { icon, field } from './ui.js';
 import { brandPreview, logoFields, updatePreview } from './auth.js';
-import { teamForm } from './equipe.js';
+import { teamForm, loadXlsx } from './equipe.js';
+import { decodeText, bestSheet } from './importer.js';
 import { statusPills, feeState } from './joueur.js';
 
 // ---------- validations ----------
@@ -97,7 +98,7 @@ function feesBlock() {
   <form id="feef" class="stack">${field('ffc', 'Pour', `<select id="ffc" name="target">${[...new Set(S.teams.map((t) => t.category || t.name).filter(Boolean).concat(BCATS))].map((c) => `<option value="cat:${esc(c)}">Catégorie ${esc(c)}</option>`).join('')}${S.teams.map((t) => `<option value="team:${t.id}">Équipe ${esc(t.name)} (tarif particulier)</option>`).join('')}</select>`)}<div class="grid2">${field('ffa', 'Montant (€)', '<input id="ffa" name="amount" type="number" step="0.01" min="0" required inputmode="decimal">')}${field('fff', 'dont part fédération (€)', '<input id="fff" name="fed" type="number" step="0.01" min="0" inputmode="decimal">')}</div><button class="btn main" type="submit">Ajouter ce tarif</button></form>
   <p class="note">Le montant dû de chaque joueur se calcule tout seul : tarif de son équipe principale (ou de sa catégorie), moins sa réduction. Une cotisation déjà payée ne change plus.</p>
   <div class="kick">Document et import</div>${field('fdoc', `${d ? 'Remplacer' : 'Joindre'} la fiche des tarifs (PDF ou image, 4 Mo maximum)`, '<input id="fdoc" type="file" accept="application/pdf,image/*" data-doc="tarifs">')}${d ? `<button class="btn small ghost ${isArmed('doc' + d.id) ? 'danger armed' : ''}" data-act="docdel" data-id="${d.id}">${isArmed('doc' + d.id) ? 'Confirmer le retrait' : 'Retirer le document'}</button>` : ''}
-  ${field('fimp', 'Importer une grille : colle un tableau (Catégorie ou « Équipe Nom » ; Prix ; Part fédération facultative)', `<textarea id="fimp" data-fimp="1" placeholder="U9;150;45&#10;U11;160;45&#10;Équipe Reines;200">${esc(S.fimpText || '')}</textarea>`)}${field('fimpf', 'ou un fichier Excel / CSV', '<input id="fimpf" type="file" accept=".csv,.xlsx,.xls,text/csv" data-fimpfile="1">')}<button class="btn small ghost" data-act="fimpcheck">Vérifier</button>
+  ${field('fimp', 'Importer une grille : colle un tableau (Catégorie ou « Équipe Nom » ; Prix ; Part fédération facultative)', `<textarea id="fimp" data-fimp="1" placeholder="U9;150;45&#10;U11;160;45&#10;Équipe Reines;200">${esc(S.fimpText || '')}</textarea>`)}${field('fimpf', 'ou un fichier Excel / CSV', '<input id="fimpf" type="file" accept=".csv,.xlsx,.xls,.ods,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet" data-fimpfile="1">')}<button class="btn small ghost" data-act="fimpcheck">Vérifier</button>
   ${imp ? `<div class="card flat"><div class="kick">Changements</div><div class="list">${imp.map((r, i) => `<div class="row static"><span class="g">${esc(r.label)}<small>${r.err ? '<b style="color:var(--pc-non-texte)">' + esc(r.err) + '</b>' : esc(gridDiff(r))}</small></span><button class="btn small ghost" data-act="fimprm" data-i="${i}">Retirer</button></div>`).join('') || '<p class="empty">Aucune ligne lisible.</p>'}</div><label class="check"><input type="checkbox" data-fimpdel="1" ${S.fimpDel ? 'checked' : ''}><span>Supprimer les tarifs absents du fichier (repartir de zéro)</span></label>${imp.some((r) => !r.err) ? `<button class="btn main" data-act="fimpok">Valider l'import (${imp.filter((r) => !r.err).length} lignes)</button>` : ''}</div>` : ''}</details>`;
   return h + `<button class="btn ghost" data-act="xlsxlic">${icon('down', 20)}Exporter la liste pour le trésorier (Excel)</button>`;
 }
@@ -113,7 +114,7 @@ async function exportLicences() {
   try { await buildExport(); } catch (e) { console.error(e); toast("L'export a échoué. Réessaie, ou actualise l'application."); }
 }
 async function buildExport() {
-  if (!window.XLSX) { try { await loadJs(XLSX_URL); } catch { return toast('Export impossible sans connexion.'); } }
+  try { await loadXlsx(); } catch { return toast('Export impossible pour l’instant (connexion ?). Réessaie.'); }
   const X = window.XLSX, c = (club()?.color1 || '#2F5BFF').replace('#', '').toUpperCase(), di = (id) => S.discounts.find((a) => a.player_id === id) || {};
   const rows = [[BRAND.name + ' · ' + (club()?.name || '') + ' · licences et cotisations ' + SEASON], [], ['Équipe', 'Prénom', 'Nom', 'Naissance', 'Licence', 'N° de licence', 'Certificat', 'Montant dû (€)', 'Payé (€)', 'Reste (€)', 'Moyen', 'Réduction (€)', 'Motif']];
   S.players.slice().sort((a, b) => teamName(a.team_id).localeCompare(teamName(b.team_id)) || a.last_name.localeCompare(b.last_name)).forEach((p) => {
@@ -144,12 +145,13 @@ function teamsBlock() {
 // ---------- contacts du club (n° 42) ----------
 function contactsBlock() {
   const L = S.contacts.filter((x) => x.kind === 'contact'), pres = S.contacts.find((x) => x.kind === 'president');
-  const one = (c) => `<div class="row static" style="flex-wrap:wrap"><span class="g">${esc(c.name)}<small>${esc(c.fonction)}</small></span><div class="btns" style="flex:none">${c.phone ? `<a class="btn small ghost" href="tel:${esc(c.phone.replace(/\s/g, ''))}">${icon('phone', 18)}Appeler</a>` : ''}${c.email ? `<a class="btn small ghost" href="mailto:${esc(c.email)}">${icon('mail', 18)}Écrire</a>` : ''}</div></div>`;
+  const one = (c) => `<div class="row static" style="flex-direction:column;align-items:stretch;gap:8px"><span class="g">${esc(c.name)}<small>${esc(c.fonction)}${c.phone ? ' · ' + esc(c.phone) : ''}${c.email ? ' · ' + esc(c.email) : ''}</small></span>${c.phone || c.email ? `<div class="btns">${c.phone ? `<a class="btn small ghost" href="tel:${esc(c.phone.replace(/\s/g, ''))}">${icon('phone', 18)}Appeler</a>` : ''}${c.email ? `<a class="btn small ghost" href="mailto:${esc(c.email)}">${icon('mail', 18)}Écrire un e-mail</a>` : ''}</div>` : '<span class="det">Pas de coordonnées publiées : écris-lui depuis Messages.</span>'}</div>`;
   const part = (lab, arr) => (arr.length ? `<div class="kick">${lab}</div><div class="list">${arr.map(one).join('')}</div>` : '');
   let h = `<details class="card"><summary>${icon('phone', 18)} Contacter le club</summary>`;
-  if (L.length) h += part('Demandes de licence', L.filter((c) => c.for_licence)) + part('Planification des matchs', L.filter((c) => c.for_matches));
+  if (L.length) h += part('Pour une licence', L.filter((c) => c.for_licence)) + part('Pour organiser un match', L.filter((c) => c.for_matches));
   else h += `<p class="note">Contact : président du club${pres ? ' (' + esc(pres.name) + ')' : ''}.</p>`;
   if (pres && pres.user_id !== S.me.id) h += `<button class="btn small ghost" data-act="msgpres">${icon('msg', 18)}Envoyer un message au président</button>`;
+  if (isBoard() && !L.length) h += '<p class="note">Président et bureau : cochez « Contact du club » dans Mon compte pour apparaître ici.</p>';
   return h + '</details>';
 }
 
@@ -175,7 +177,9 @@ function trashBlock() {
 function brandBlock() {
   if (!isBoard()) return '';
   const c = club(), logo = S.tmpLogo === undefined ? c.logo : S.tmpLogo;
-  return `<details class="card"><summary>Blason, couleurs et en-tête</summary><form id="brandf" class="stack"><div data-prev>${brandPreview(c.name, c.color1, logo, c.crest_bg, c.custom_header)}</div>
+  return `<details class="card"><summary>Blason, couleurs et réglages du club</summary><form id="brandf" class="stack"><div data-prev>${brandPreview(c.name, c.color1, logo, c.crest_bg, c.custom_header)}</div>
+  ${field('bcp', 'Code postal du club', `<input id="bcp" name="postal_code" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" value="${esc(c.postal_code || '')}">`)}
+  ${isPresident() ? `<label class="switch"><input type="checkbox" name="listed" ${c.public_listed !== false ? 'checked' : ''}><span><b>Apparaître dans la recherche des clubs</b><br><span class="det">Le nom, la ville, le blason, les équipes et leurs créneaux sont visibles de tous. Sinon, on rejoint le club seulement avec son code.</span></span></label>` : `<p class="note">${c.public_listed !== false ? 'Le club apparaît dans la recherche des clubs.' : 'Le club n’apparaît pas dans la recherche.'} Seul le président change ce réglage.</p>`}
   ${isPresident() ? `<label class="switch"><input type="checkbox" name="perso" ${c.custom_header ? 'checked' : ''}><span><b>En-tête aux couleurs du club</b><br><span class="det">Sinon, l'en-tête reste bleu ${esc(BRAND.name)}. Le texte passe en blanc ou en encre pour rester lisible.</span></span></label>` : `<p class="note">${c.custom_header ? "L'en-tête est aux couleurs du club." : `L'en-tête est aux couleurs de ${esc(BRAND.name)}.`} Seul le président change ce réglage.</p>`}
   ${logoFields(!!logo, c.crest_bg)}${field('bo', 'Contour du blason', `<select id="bo" name="outline">${[['auto', 'Automatique (selon le fond)'], ['noir', 'Noir'], ['blanc', 'Blanc'], ['aucun', 'Aucun']].map(([k, l]) => `<option value="${k}" ${(c.crest_outline || 'auto') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}<div class="grid2">${field('b1', 'Couleur principale', `<input id="b1" name="c1" type="color" value="${esc(c.color1.toLowerCase())}">`)}${field('b2', 'Seconde couleur', `<input id="b2" name="c2" type="color" value="${esc(c.color2.toLowerCase())}">`)}</div>
   <button class="btn main" type="submit">Enregistrer</button></form></details>`;
@@ -226,7 +230,9 @@ Object.assign(FORMS, {
   brandf: async (v) => {
     const row = { color1: v.c1.toUpperCase(), color2: v.c2.toUpperCase(), crest_bg: (v.bg || '#ffffff').toUpperCase() };
     if (S.tmpLogo !== undefined) row.logo = S.tmpLogo;
-    if (isPresident()) row.custom_header = !!v.perso;
+    if (isPresident()) { row.custom_header = !!v.perso; row.public_listed = !!v.listed; }
+    if ((v.postal_code || '') !== '' && !/^\d{5}$/.test(v.postal_code)) return toast('Le code postal doit avoir 5 chiffres.');
+    row.postal_code = v.postal_code || '';
     row.crest_outline = v.outline || 'auto';
     if (await run(sb.from('clubs').update(row).eq('id', S.clubId), 'Blason enregistré.')) { S.tmpLogo = undefined; await refresh(); }
   },
@@ -261,7 +267,7 @@ CHANGES.push(async (t) => {
     return true;
   }
   if (t.dataset.fimpfile && t.files?.[0]) {
-    try { const f = t.files[0]; if (/\.xlsx?$/i.test(f.name)) { await loadJs(XLSX_URL); const wb = window.XLSX.read(await f.arrayBuffer()); S.fimpText = window.XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]], { FS: ';' }); } else S.fimpText = await f.text(); S.fimp = parseGrid(S.fimpText); render(true); } catch { toast('Fichier illisible.'); }
+    try { const f = t.files[0]; t.value = ''; const buf = await f.arrayBuffer(); if (/\.(xlsx?|ods)$/i.test(f.name)) { const X = await loadXlsx(); S.fimpText = bestSheet(X, X.read(buf, { type: 'array' })).map((r) => r.join(';')).join('\n'); } else S.fimpText = decodeText(buf); S.fimp = parseGrid(S.fimpText); render(true); } catch { toast('Fichier illisible : choisis un fichier Excel ou CSV.'); }
     return true;
   }
   return false;

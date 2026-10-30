@@ -5,11 +5,26 @@ import { icon, delBtn, field } from './ui.js';
 export const grp = (id) => S.groups.find((g) => g.id === id);
 export function scrollEnd() { setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 30); }
 
+// N° 50 : groupes triés par dernier message (ou sondage), le plus récent en haut
+const lastAt = (g) => g.last_message_at || g.created_at;
+export const sortedGroups = () => S.groups.slice().sort((a, b) => (lastAt(a) < lastAt(b) ? 1 : lastAt(a) > lastAt(b) ? -1 : 0));
+function when(iso) {
+  const d = new Date(iso), t = new Date();
+  if (d.toDateString() === t.toDateString()) return d.getHours() + ' h ' + String(d.getMinutes()).padStart(2, '0');
+  const y = new Date(t); y.setDate(t.getDate() - 1); if (d.toDateString() === y.toDateString()) return 'Hier';
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+// Le groupe remonte en haut dès qu'un message y arrive (reçu ou envoyé)
+export function bump(m, kind = 'message') {
+  const g = grp(m.group_id); if (!g) return;
+  g.last_message_at = m.created_at; S.previews[m.group_id] = { group_id: m.group_id, user_id: m.user_id ?? m.created_by, body: m.body ?? m.question, created_at: m.created_at, kind };
+}
 export function messagesTab() {
   let h = `<button class="btn main" data-act="gnew">${icon('plus', 20)}Créer un groupe d'échange</button>`;
-  h += `<div class="card"><div class="list">${S.groups.length ? S.groups.map((g) => {
-    const last = S.lastMsgs.find((m) => m.group_id === g.id);
-    return `<button class="row" data-act="group" data-id="${g.id}"><span class="avatar">${icon('msg', 20)}</span><span class="g">${esc(g.name)}<small>${last ? esc(nick(last.user_id)) + ' : ' + esc(last.body.slice(0, 60)) : 'Pas encore de message'}</small></span>${S.unread[g.id] ? `<span class="unread" aria-label="${S.unread[g.id]} non lus">${S.unread[g.id]}</span>` : '<span class="chev"></span>'}</button>`;
+  h += `<div class="card"><div class="list">${S.groups.length ? sortedGroups().map((g) => {
+    const p = S.previews[g.id], n = S.unread[g.id] || 0;
+    const line = p ? (p.kind === 'sondage' ? 'Sondage : ' : (p.user_id === S.me.id ? 'Toi' : esc(nick(p.user_id)).split(' ')[0]) + ' : ') + esc(String(p.body).slice(0, 70)) : 'Pas encore de message';
+    return `<button class="row" data-act="group" data-id="${g.id}"><span class="avatar">${icon('msg', 20)}</span><span class="g"><span style="display:flex;gap:8px;align-items:baseline"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap${n ? ';font-weight:800' : ''}">${esc(g.name)}</span><small style="flex:none">${esc(when(lastAt(g)))}</small></span><small style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${line}</small></span>${n ? `<span class="unread" aria-label="${n} non lus">${n}</span>` : '<span class="chev"></span>'}</button>`;
   }).join('') : '<p class="empty">Tu ne fais partie d’aucun groupe pour l’instant.</p>'}</div></div>`;
   return h + '<p class="note">Les groupes remplacent WhatsApp : covoiturage, organisation, sondages. Seuls les membres invités les voient.</p>';
 }
@@ -71,7 +86,8 @@ Object.assign(ACTIONS, {
   group: (el, d) => openGroup(d.id),
   pollnew: async () => {
     const q = prompt('Question du sondage (ex. Plateau samedi 7 novembre ?)'); if (!q || !q.trim()) return;
-    if (await run(sb.from('polls').insert({ group_id: S.view.id, question: q.trim().slice(0, 200), created_by: S.me.id }), 'Sondage publié.')) { await loadGroup(S.view.id); render(true); }
+    const pl = await run(sb.from('polls').insert({ group_id: S.view.id, question: q.trim().slice(0, 200), created_by: S.me.id }).select().single(), 'Sondage publié.');
+    if (pl) { bump(pl, 'sondage'); await loadGroup(S.view.id); render(true); }
   },
   vote: async (el, d) => { if (await run(sb.from('poll_votes').upsert({ poll_id: d.id, user_id: S.me.id, answer: d.v }))) { await loadGroup(S.view.id); render(true); } },
   polldel: async (el, d) => { if (!armed('poll' + d.id)) return; if (await run(sb.rpc('trash_item', { p_kind: 'poll', p_id: d.id }), 'Sondage supprimé (restaurable pendant 30 jours).')) { await loadGroup(S.view.id); render(true); } },
@@ -83,7 +99,7 @@ Object.assign(ACTIONS, {
 FORMS.msgf = async (v) => {
   const body = (v.body || '').trim(); if (!body) return;
   const m = await run(sb.from('messages').insert({ group_id: S.view.id, user_id: S.me.id, body }).select().single());
-  if (m) { if (!S.msgs.some((x) => x.id === m.id)) S.msgs.push(m); S.lastMsgs.unshift(m); render(true); scrollEnd(); document.querySelector('#msgf input')?.focus(); }
+  if (m) { if (!S.msgs.some((x) => x.id === m.id)) S.msgs.push(m); S.lastMsgs.unshift(m); bump(m); render(true); scrollEnd(); document.querySelector('#msgf input')?.focus(); }
 };
 INPUTS.push((t) => {
   if (t.dataset.f && S.form) { S.form[t.dataset.f] = t.value; return true; }

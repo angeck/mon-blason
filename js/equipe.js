@@ -4,7 +4,8 @@ import {
   active, isBoard, isPresident, coachOf, team, teamName, myTeamIds, myPlayers, playersOfTeam, pname, adminOf, toValidate, niceFirst, niceLast, norm,
   loadJs, plural, fmtShort, evTeams, follows,
 } from './core.js';
-import { smartParse, analyse, fromMapping, doubts, COLS } from './importer.js';
+export { importFile };
+import { smartParse, analyse, fromMapping, doubts, COLS, decodeText, bestSheet } from './importer.js';
 import { icon, delBtn, field } from './ui.js';
 import { evCard, upcoming } from './agenda.js';
 import { pendRows } from './club.js';
@@ -99,7 +100,7 @@ export function teamPage(tid) {
 // ---------- ajout et import de joueurs ----------
 async function checkImport() {
   const I = S.imp;
-  if (!I.rows.length) { toast('Aucun joueur reconnu dans la liste.'); I.rows = null; return render(); }
+  if (!I.rows.length) { toast('Aucune ligne reconnue : vérifie que la liste contient bien des noms (un joueur par ligne).'); I.rows = null; return render(); }
   const r = await run(sb.rpc('match_players', { p_club: S.clubId, p_rows: I.rows.map((x) => ({ first_name: x.first_name, last_name: x.last_name, birth_date: x.birth_date || null, licence: x.licence || null, team_id: I.tid })) }));
   I.matches = {}; (r || []).forEach((m) => { (I.matches[m.idx] = I.matches[m.idx] || []).push(m); });
   I.rows.forEach((x, i) => {
@@ -107,6 +108,22 @@ async function checkImport() {
     x.action = I.matches[i] || inFile ? 'skip' : 'create'; x.existing = I.matches[i]?.[0]?.player_id || null;
   });
   render();
+}
+// N° 47 : lecture d'un fichier, avec un message précis à chaque étape
+export const XLSX_LOCAL = 'js/vendor/xlsx.bundle.js';
+export async function loadXlsx() { if (window.XLSX) return window.XLSX; await loadJs(XLSX_LOCAL); if (!window.XLSX) throw new Error('xlsx'); return window.XLSX; }
+async function importFile(file) {
+  let table;
+  try {
+    const buf = await file.arrayBuffer();
+    if (/\.(csv|txt)$/i.test(file.name) || /^text\//.test(file.type)) table = decodeText(buf);
+    else {
+      let X; try { X = await loadXlsx(); } catch { return toast("Lecture d'Excel impossible pour l'instant (connexion ?). Réessaie, ou enregistre le fichier en .csv."); }
+      table = bestSheet(X, X.read(buf, { type: 'array', cellDates: true }));
+    }
+  } catch (e) { console.error(e); return toast("Fichier illisible : choisis un fichier Excel (.xlsx, .xls), OpenDocument (.ods) ou CSV."); }
+  S.imp.photo = false; S.imp.fileName = file.name;
+  await readInput(table);
 }
 // Lecture d'une entrée (texte collé ou tableau Excel) : écran « Quelle colonne est quoi ? » seulement si la reconnaissance est incertaine
 async function readInput(input) {
@@ -125,7 +142,7 @@ export function importPage(tid) {
   if (!I.rows) {
     return `<div class="card lift">${field('imt', 'Coller une liste', `<textarea id="imt" data-imptext="1" style="min-height:160px" placeholder="Une ligne par joueur&#10;Lily RAVENEAU;12/03/2018">${esc(I.text)}</textarea>`)}
     <p class="note">Une ligne par joueur. Colonnes acceptées dans n'importe quel ordre : nom, prénom, date de naissance, n° de licence, e-mail ou téléphone du parent. Pour un seul joueur, écris simplement une ligne.</p>
-    ${field('imf', 'Ou choisir un fichier Excel ou CSV (le plus fiable)', '<input id="imf" type="file" accept=".xlsx,.xls,.csv,text/csv" data-impfile="1">')}
+    ${field('imf', 'Ou choisir un fichier Excel ou CSV (le plus fiable)', '<input id="imf" type="file" accept=".xlsx,.xls,.ods,.csv,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet" data-impfile="1">')}
     ${field('imo', "Ou une photo ou une capture d'écran de la liste", '<input id="imo" type="file" accept="image/*" data-ocr="1">')}
     <div class="card pale"><b>Le plus simple avec une photo</b><p class="note" style="color:var(--pc-encre)">Ouvre la photo avec l'appareil photo du téléphone, touche « Copier le texte » (Google Lens sur Android, « Texte en direct » sur iPhone), puis colle le texte dans la zone ci-dessus. C'est gratuit et bien plus fiable que la lecture ci-dessous.</p></div>
     <p class="note">La lecture directe de l'image est peu fiable sur les tableaux et l'écriture à la main ; l'image reste sur ton téléphone. Si tu as le fichier Excel d'origine, préfère-le.</p>
@@ -168,7 +185,8 @@ Object.assign(ACTIONS, {
   impok: async () => {
     const I = S.imp, rows = I.rows.map((r) => ({ first_name: niceFirst(r.first_name), last_name: niceLast(r.last_name), birth_date: r.birth_date || null, licence: r.licence || null, action: r.action || 'create', existing: r.existing || null, email: I.noContacts ? null : r.email || null, phone: I.noContacts ? null : r.phone || null }));
     if (rows.some((r) => r.action !== 'skip' && (!r.first_name || !r.last_name))) return toast('Chaque ligne doit avoir un prénom et un nom.');
-    const n = await run(sb.rpc('import_players', { p_club: S.clubId, p_team: I.tid, p_rows: rows }));
+    const { data: n, error } = navigator.onLine ? await sb.rpc('import_players', { p_club: S.clubId, p_team: I.tid, p_rows: rows }) : { error: { message: 'pas de réseau' } };
+    if (error) { console.error(error); return toast('Enregistrement refusé : ' + (error.message || 'erreur inconnue').replace(/^.*?: /, '') + '. Rien n’a été importé.'); }
     if (n !== null) { toast(plural(n, 'joueur ajouté ou complété', 'joueurs ajoutés ou complétés') + '.'); S.imp = null; S.view = { type: 'team', id: I.tid }; await refresh(); }
   },
 });
@@ -197,13 +215,8 @@ CHANGES.push(async (t) => {
   if (t.dataset.impnocontact) { S.imp.noContacts = t.checked; render(true); return true; }
   if (t.dataset.impswap) { S.imp.swap = t.checked; return true; }
   if (t.dataset.impfile && t.files?.[0]) {
-    const file = t.files[0];
-    try {
-      let table;
-      if (/\.csv$/i.test(file.name) || file.type === 'text/csv') table = await file.text();
-      else { await loadJs(XLSX_URL); const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true }); const sh = wb.SheetNames.map((n) => wb.Sheets[n]).find((x) => x['!ref']) || wb.Sheets[wb.SheetNames[0]]; table = window.XLSX.utils.sheet_to_json(sh, { header: 1, raw: true, defval: '' }); }
-      S.imp.photo = false; await readInput(table);
-    } catch { toast('Fichier illisible. Essaie un fichier .xlsx ou .csv.'); }
+    const file = t.files[0]; t.value = '';   // permet de choisir à nouveau le même fichier
+    await importFile(file);
     return true;
   }
   if (t.dataset.ocr && t.files?.[0]) {
