@@ -10,6 +10,7 @@ import { icon, delBtn, field } from './ui.js';
 import { evCard, upcoming } from './agenda.js';
 import { pendRows } from './club.js';
 import { statusPills, presence } from './joueur.js';
+import { coachEntry } from './coach.js';
 
 // ---------- mes enfants / ma fiche ----------
 // n° 51 : « Moi » (ma fiche de joueur) puis « Mes enfants », séparés
@@ -56,10 +57,10 @@ function coachBlock(tid) {
 }
 export function teamTab() {
   const mine = myTeamIds().filter((t) => team(t)), fol = S.follows.filter((t) => team(t) && !mine.includes(t)), ids = mine.concat(fol);
-  if (!ids.length) return kidsBlock() + (myPlayers().length ? '' : '<div class="card"><p class="empty">Tu n’es rattaché à aucune équipe dans ce club.</p></div>') + '<button class="btn ghost" data-act="rqgo">Demander un rôle dans une équipe</button><button class="btn ghost" data-act="tab" data-i="4">Suivre une équipe du club</button>';
+  if (!ids.length) return kidsBlock() + coachEntry() + (myPlayers().length ? '' : '<div class="card"><p class="empty">Tu n’es rattaché à aucune équipe dans ce club.</p></div>') + '<button class="btn ghost" data-act="rqgo">Demander un rôle dans une équipe</button><button class="btn ghost" data-act="tab" data-i="4">Suivre une équipe du club</button>';
   if (!ids.includes(S.teamSel)) S.teamSel = ids[0];
   const tid = S.teamSel, coach = coachOf(tid);
-  let h = kidsBlock();
+  let h = kidsBlock() + coachEntry();
   if (ids.length > 1) h += `<div class="chips">${ids.map((i) => `<button class="chip" data-act="teamsel" data-id="${i}" aria-pressed="${i === tid}">${esc(teamName(i))}${fol.includes(i) ? ' · Suivie' : ''}</button>`).join('')}</div>`;
   if (fol.includes(tid)) return h + '<span class="pill blue">Équipe suivie</span>' + followView(tid);
   const vp = toValidate().filter((m) => m.team_id === tid);

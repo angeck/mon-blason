@@ -32,13 +32,17 @@ const D = {
   player_parents: [{ player_id: 'p-me', user_id: ME }, { player_id: 'p-lily', user_id: ME }, { player_id: 'p-tom', user_id: 'u-p1' }],
   player_admin: [{ player_id: 'p-lily', licence_state: 'Licencié', licence_number: 'VT123456', health_doc: true, fee_amount: 160, fee_paid: 160, fee_method: 'Chèque' }, { player_id: 'p-tom', licence_state: 'Préinscrit club', health_doc: false, fee_amount: 150, fee_paid: 50 }, { player_id: 'p-ana', licence_state: 'Préinscrit fédé', health_doc: true, fee_amount: null, fee_paid: 0 }],
   player_teams: [], player_discount: [], fee_grid: [{ id: 'f1', club_id: C, category: 'U9', amount: 150, fed_part: 45, team_id: null }], club_docs: [],
-  event_series: [{ id: 's1', club_id: C }],
+  event_series: [{ id: 's1', club_id: C }, { id: 's2', club_id: C }],
   events: [
     { id: 'e1', club_id: C, audience: 'team', team_ids: [T9], people: [], type: 'Entraînement', title: 'Entraînement U9', starts_at: at(1, 17), place: 'Gymnase de Testville', opponents: '', series_id: 's1', cancelled: false, created_by: ME, updated_at: at(-2) },
     { id: 'e1b', club_id: C, audience: 'team', team_ids: [T9], people: [], type: 'Entraînement', title: 'Entraînement U9', starts_at: at(8, 17), place: 'Gymnase de Testville', opponents: '', series_id: 's1', cancelled: false, created_by: ME, updated_at: at(-2) },
     { id: 'e2', club_id: C, audience: 'team', team_ids: [T11], people: [], type: 'Match', title: 'Match contre Val Vert', starts_at: at(3, 10), place: 'Gymnase de Testville', opponents: 'Val Vert', series_id: null, cancelled: false, created_by: 'u-c11', updated_at: at(-2) },
     { id: 'e3', club_id: C, audience: 'club', team_ids: [], people: [], type: 'AG', title: 'Assemblée générale', starts_at: at(10, 19), place: 'Salle des fêtes', opponents: '', series_id: null, cancelled: false, created_by: 'u-pres', updated_at: at(-2) },
     { id: 'e4', club_id: C, audience: 'team', team_ids: [T9, T11], people: [], type: 'Événement', title: 'Photo U9 et U11', starts_at: at(5, 14), place: '', opponents: '', series_id: null, cancelled: false, created_by: 'u-pres', updated_at: at(-2) },
+    { id: 'e6', club_id: C, audience: 'team', team_ids: [T11], people: [], type: 'Entraînement', title: 'Entraînement U11', starts_at: at(2, 18), place: 'Gymnase', opponents: '', series_id: 's2', cancelled: false, created_by: 'u-c11', updated_at: at(-2) },
+    { id: 'e6b', club_id: C, audience: 'team', team_ids: [T11], people: [], type: 'Entraînement', title: 'Entraînement U11', starts_at: at(16, 18), place: 'Gymnase', opponents: '', series_id: 's2', cancelled: false, created_by: 'u-c11', updated_at: at(-2) },
+    { id: 'e7', club_id: C, audience: 'team', team_ids: [T9], people: [], type: 'Entraînement', title: 'Entraînement U9 passé', starts_at: at(-6, 17), place: 'Gymnase', opponents: '', series_id: null, cancelled: false, created_by: ME, updated_at: at(-8) },
+    { id: 'e8', club_id: C, audience: 'team', team_ids: [T9], people: [], type: 'Entraînement', title: 'Entraînement U9 spécial', starts_at: at(4, 17), place: 'Gymnase', opponents: '', series_id: null, cancelled: false, created_by: ME, updated_at: at(-2) },
     { id: 'e5', club_id: C, audience: 'board', team_ids: [], people: [], type: 'Réunion', title: 'Réunion de bureau', starts_at: at(-3, 20), place: '', opponents: '', series_id: null, cancelled: false, created_by: 'u-pres', updated_at: at(-5) },
   ],
   event_responses: [{ id: 'r1', event_id: 'e1', user_id: 'u-p1', player_id: 'p-tom', answer: 'oui' }],
@@ -49,16 +53,26 @@ const D = {
   messages: [{ id: 1, group_id: 'g1', user_id: 'u-p1', body: 'Qui peut faire le covoiturage samedi ?', created_at: at(-1, 9) }, { id: 2, group_id: 'g2', user_id: 'u-pres', body: 'Point sur les cotisations jeudi', created_at: at(-5, 9) }],
   polls: [{ id: 'q1', group_id: 'g1', question: 'Présent au plateau ?', created_by: ME, created_at: at(-1), deleted_at: null }],
   poll_votes: [{ poll_id: 'q1', user_id: 'u-p1', answer: 'Présent' }],
+  exercises: [
+    { id: 'x1', club_id: C, created_by: 'u-c11', sport: 'Basket-ball', title: 'Tirs en ligne', category: 'Technique', duration_min: 15, level: 'U11', description: 'Deux files, tir après dribble.', diagram: [{ k: 'a', x: 30, y: 40 }, { k: 'p', x: 30, y: 40, x2: 50, y2: 20 }], sharing: 'club', public_state: 'none', origin: 'perso', source: '', certified: true, up_count: 1, down_count: 5, deleted_at: null, updated_at: at(-3) },
+    { id: 'x2', club_id: 'c-autre', created_by: 'u-autre', sport: 'Tous les sports', title: 'Échauffement en musique', category: 'Échauffement', duration_min: 10, level: '', description: 'Course libre, arrêt au signal.', diagram: [], sharing: 'public', public_state: 'validated', origin: 'ia', source: '', certified: true, up_count: 4, down_count: 0, deleted_at: null, updated_at: at(-9) },
+    { id: 'x3', club_id: C, created_by: 'u-c11', sport: 'Basket-ball', title: 'Défense 1 contre 1', category: 'Tactique', duration_min: 20, level: '', description: 'Défense en glissés.', diagram: [], sharing: 'public', public_state: 'pending', origin: 'adapte', source: 'Formation fédérale', certified: true, up_count: 0, down_count: 0, deleted_at: null, updated_at: at(-1) },
+  ],
+  exercise_votes: [], exercise_reports: [], training_plans: [], coach_hours: [{ id: 'h0', club_id: C, user_id: 'u-c11', team_id: T11, day: at(-4).slice(0, 10), minutes: 90, kind: 'Entraînement', note: '' }],
+  coach_statements: [{ id: 'st1', club_id: C, user_id: 'u-c11', month: (() => { const d = new Date(); return d.toLocaleDateString('sv-SE').slice(0, 8) + '01'; })(), status: 'submitted', total_minutes: 90 }],
 };
 window.__FAKE = D; window.__CALLS = [];
 const clone = (x) => JSON.parse(JSON.stringify(x));
 class Q {
   constructor(t) { this.t = t; this.f = []; this.op = 'select'; this.one = false; }
-  select() { if (this.op === 'insert' || this.op === 'update') this.ret = true; return this; }
+  select(c, o) { if (this.op === 'insert' || this.op === 'update') this.ret = true; if (o?.head) this.head = true; return this; }
   eq(k, v) { this.f.push((r) => r[k] === v); return this; }
   in(k, v) { this.f.push((r) => v.includes(r[k])); return this; }
   gte(k, v) { this.f.push((r) => r[k] >= v); return this; }
   gt(k, v) { this.f.push((r) => r[k] > v); return this; }
+  lt(k, v) { this.f.push((r) => r[k] < v); return this; }
+  is(k, v) { this.f.push((r) => (r[k] ?? null) === v); return this; }
+  not(k, op, v) { this.f.push((r) => (r[k] ?? null) !== v); return this; }
   neq(k, v) { this.f.push((r) => r[k] !== v); return this; }
   order() { return this; } limit() { return this; }
   single() { this.one = true; return this; } maybeSingle() { this.one = true; return this; }
@@ -70,13 +84,13 @@ class Q {
   exec() {
     const T = (D[this.t] = D[this.t] || []), m = (r) => this.f.every((f) => f(r));
     window.__CALLS.push([this.t, this.op, this.v]);
-    if (this.op === 'select') { const r = T.filter(m).map(clone); return { data: this.one ? r[0] || null : r, error: null }; }
+    if (this.op === 'select') { const r = T.filter(m).map(clone); if (this.head) return { data: null, count: r.length, error: null }; return { data: this.one ? r[0] || null : r, error: null }; }
     if (this.op === 'insert' || this.op === 'upsert') {
-      const rows = (Array.isArray(this.v) ? this.v : [this.v]).map((r) => ({ id: r.id || uid(), created_at: new Date().toISOString(), ...r }));
+      const rows = (Array.isArray(this.v) ? this.v : [this.v]).map((r) => ({ id: r.id || uid(), created_at: new Date().toISOString(), ...(this.t === 'exercises' ? { created_by: ME, up_count: 0, down_count: 0, deleted_at: null, public_state: r.sharing === 'public' ? 'pending' : 'none' } : {}), ...r }));
       rows.forEach((r) => { const i = this.op === 'upsert' ? T.findIndex((x) => (r.player_id && x.player_id === r.player_id && (!r.event_id || x.event_id === r.event_id) && (!r.poll_id || x.poll_id === r.poll_id)) || (r.poll_id && x.poll_id === r.poll_id && x.user_id === r.user_id)) : -1; if (i >= 0) T[i] = { ...T[i], ...r }; else T.push(r); });
       return { data: this.one ? clone(rows[0]) : clone(rows), error: null };
     }
-    if (this.op === 'update') { T.filter(m).forEach((r) => Object.assign(r, this.v)); return { data: null, error: null }; }
+    if (this.op === 'update') { const u = T.filter(m); u.forEach((r) => Object.assign(r, this.v, this.t === 'exercises' && this.v.sharing === 'public' ? { public_state: 'pending' } : {})); return { data: this.ret ? (this.one ? clone(u[0] || null) : clone(u)) : null, error: null }; }
     if (this.op === 'delete') { D[this.t] = T.filter((r) => !m(r)); return { data: null, error: null }; }
   }
 }
@@ -103,6 +117,14 @@ const RPC = {
   public_club: ({ p_club }) => { const c = D.clubs.find((x) => x.id === p_club); return c && { id: c.id, name: c.name, city: c.city, postal_code: c.postal_code || '', sport: c.sport, logo: c.logo, color1: c.color1, teams: D.teams.filter((t) => t.state === 'Visible').map((t) => ({ id: t.id, name: t.name, category: t.category, gender: t.gender, slots: t.slots })) }; },
   join_club_by_id: ({ p_club, p_role }) => { D.memberships.push({ id: uid(), club_id: p_club, user_id: ME, role: p_role, status: 'active', created_at: new Date().toISOString() }); return p_club; },
   match_players: () => [], import_players: ({ p_rows }) => { p_rows.filter((r) => r.action !== 'skip').forEach((r) => D.players.push({ id: uid(), club_id: C, team_id: T9, first_name: r.first_name, last_name: r.last_name, birth_date: r.birth_date, consents: {}, created_at: new Date().toISOString() })); return p_rows.filter((r) => r.action !== 'skip').length; },
+  exercise_authors: ({ p_ids }) => p_ids.map((id) => ({ id, author: id === 'x2' ? 'Paul R.' : 'Karim C.', club_name: id === 'x2' ? 'Volley Ailleurs' : 'BC Testville' })),
+  validate_exercise: ({ p_id, p_ok }) => { D.exercises.find((e) => e.id === p_id).public_state = p_ok ? 'validated' : 'refused'; return null; },
+  trash_exercise: ({ p_id, p_restore }) => { D.exercises.find((e) => e.id === p_id).deleted_at = p_restore ? null : new Date().toISOString(); return null; },
+  team_stats: () => [{ player_id: 'p-tom', first_name: 'Tom', last_name: 'Dupont', sessions: 1, present: 0, late: 0, absent: 1, answered: 1, yes_absent: 1, no_present: 0 }, { player_id: 'p-ana', first_name: 'Ana', last_name: 'Leroy', sessions: 1, present: 1, late: 0, absent: 0, answered: 0, yes_absent: 0, no_present: 0 }],
+  team_attendance: () => [{ event_id: 'e7', starts_at: at(-6, 17), title: 'Entraînement U9 passé', type: 'Entraînement', player_id: 'p-tom', first_name: 'Tom', last_name: 'Dupont', status: 'absent', answer: 'oui' }, { event_id: 'e7', starts_at: at(-6, 17), title: 'Entraînement U9 passé', type: 'Entraînement', player_id: 'p-ana', first_name: 'Ana', last_name: 'Leroy', status: 'present', answer: null }],
+  fill_coach_hours: () => { D.coach_hours.push({ id: uid(), club_id: C, user_id: ME, team_id: T9, event_id: 'e7', day: at(-6).slice(0, 10), minutes: 90, kind: 'Entraînement', note: '' }); return 1; },
+  submit_coach_month: ({ p_month }) => { D.coach_statements.push({ id: uid(), club_id: C, user_id: ME, month: p_month, status: 'submitted', total_minutes: 90 }); return null; },
+  decide_coach_month: ({ p_statement, p_ok, p_comment }) => { const s = D.coach_statements.find((x) => x.id === p_statement); s.status = p_ok ? 'validated' : 'refused'; s.comment = p_comment; s.decided_by = ME; s.decided_at = new Date().toISOString(); return null; },
   export_my_data: () => ({ profil: D.profiles[0] }), validate_membership: ({ mid }) => { D.memberships.find((m) => m.id === mid).status = 'active'; return null; },
 };
 export function createClient() {

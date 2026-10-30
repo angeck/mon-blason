@@ -1,4 +1,4 @@
-# Pocket Club (nom provisoire) · alpha 3.0.2
+# Pocket Club (nom provisoire) · alpha 3.1
 
 Application web installable (PWA) pour les clubs sportifs : agenda avec réponses « Je viens / Je ne viens pas », appel, fiches joueurs, licences et cotisations, groupes d'échange (messages en direct, sondages), équipes, membres, corbeille de 30 jours.
 

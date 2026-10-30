@@ -9,6 +9,7 @@ import { brandPreview, logoFields, updatePreview } from './auth.js';
 import { teamForm, loadXlsx } from './equipe.js';
 import { decodeText, bestSheet } from './importer.js';
 import { statusPills, feeState } from './joueur.js';
+import { coachClubBlock } from './coach.js';
 
 // ---------- validations ----------
 function teamPick(m) {
@@ -169,7 +170,7 @@ export function memberPage(u) {
 async function loadTrash() { const r = await sb.rpc('club_trash', { p_club: S.clubId }); S.trash = r.data || []; }
 function trashBlock() {
   if (!isBoard()) return '';
-  const K = { team: 'Équipe', player: 'Fiche joueur', poll: 'Sondage' };
+  const K = { team: 'Équipe', player: 'Fiche joueur', poll: 'Sondage', exercise: 'Exercice' };
   return `<details class="card" data-trash="1" ${S.trashOpen ? 'open' : ''}><summary>${icon('trash', 18)} Corbeille${S.trash.length ? ' (' + S.trash.length + ')' : ''}</summary>${S.trash.length ? `<div class="list">${S.trash.map((x) => `<div class="row static"><span class="g">${esc(x.label)}<small>${K[x.kind]} · supprimé le ${new Date(x.deleted_at).toLocaleDateString('fr-FR')}${x.deleted_by ? ' par ' + esc(x.deleted_by) : ''} · effacé le ${new Date(x.purge_at).toLocaleDateString('fr-FR')}</small></span><button class="btn small ghost" data-act="restore" data-k="${x.kind}" data-id="${x.id}">Restaurer</button></div>`).join('')}</div>` : '<p class="empty">La corbeille est vide.</p>'}<p class="note">Ce qui est supprimé reste ici 30 jours, puis est effacé définitivement.</p></details>`;
 }
 
@@ -190,7 +191,7 @@ export function clubTab() {
   let h = '';
   if (vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>`;
   h += `<div class="card yellow" style="transform:none"><span class="kick" style="color:var(--pc-encre)">Code pour rejoindre le club</span><span class="codebox">${esc(c.join_code)}</span><button class="btn ink small" data-act="share">${icon('share', 18, '#FFFFFF')}Partager l'invitation</button></div>`;
-  h += contactsBlock() + brandBlock() + feesBlock() + licencesBlock() + namesToCheck() + teamsBlock() + membersBlock() + trashBlock();
+  h += contactsBlock() + brandBlock() + feesBlock() + licencesBlock() + namesToCheck() + teamsBlock() + coachClubBlock() + membersBlock() + trashBlock();
   return h;
 }
 

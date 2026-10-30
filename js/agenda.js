@@ -23,8 +23,19 @@ const notInvited = (e) => e.audience === 'people' && !(e.people || []).includes(
 export const followOnly = (e) => isTeamType(e) && !evTeams(e).some(coachOf) && !iPlayIn(evTeams(e)) && !myKidsIn(evTeams(e)).length && evTeams(e).some(follows) && !isBoard();
 // Le coach d'une équipe concernée encadre : il ne répond pas pour lui-même (sauf joueur-entraîneur)
 export const coachOnly = (e) => isTeamType(e) && evTeams(e).some(coachOf) && !iPlayIn(evTeams(e));
+// N° 52 : une séance d'une série n'entre dans « À répondre » que si c'est la prochaine séance de la série, ou 7 jours avant sa date
+export const OPEN_DAYS = 7;
+export function isOpen(e) {
+  if (!e.series_id) return true;
+  const t = new Date(e.starts_at).getTime();
+  if (t <= Date.now() + OPEN_DAYS * 864e5) return true;
+  const next = S.events.filter((x) => x.series_id === e.series_id && !x.cancelled && new Date(x.starts_at).getTime() >= Date.now() - 2 * 3600e3)
+    .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))[0];
+  return !next || next.id === e.id;
+}
+export const opensOn = (e) => new Date(new Date(e.starts_at).getTime() - OPEN_DAYS * 864e5);
 export function needsAnswer(e) {
-  if (e.cancelled || new Date(e.starts_at) < Date.now() - 2 * 3600e3) return false;
+  if (e.cancelled || new Date(e.starts_at) < Date.now() - 2 * 3600e3 || !isOpen(e)) return false;
   const R = respOf(e.id);
   if (!isTeamType(e)) return !R.mine;
   const k = myKidsIn(evTeams(e)), me = iPlayIn(evTeams(e));
@@ -57,7 +68,8 @@ export function answerBlock(e) {
   const k = myKidsIn(evTeams(e)), me = iPlayIn(evTeams(e)), kids = k.map((p) => pair(e, p.id)).join('');
   if (coachOnly(e)) {
     const R = respOf(e.id), n = playersOf(e).length, oui = R.oui.filter((x) => x.player_id || !k.length).length, non = R.non.length;
-    return `<div class="card pale"><div class="kick">Tu encadres</div><div class="chips"><span class="pill ok">${oui} oui</span><span class="pill ko">${non} non</span><span class="pill">${Math.max(0, n - oui - non)} sans réponse</span></div><button class="btn main small" data-act="appel" data-id="${e.id}">Faire l'appel</button></div>` + kids;
+    const rest = isOpen(e) ? `<span class="pill">${Math.max(0, n - oui - non)} sans réponse</span>` : `<span class="det">Réponses demandées à partir du ${esc(fmtDay(opensOn(e)))}</span>`;
+    return `<div class="card pale"><div class="kick">Tu encadres</div><div class="chips"><span class="pill ok">${oui} oui</span><span class="pill ko">${non} non</span>${rest}</div><button class="btn main small" data-act="appel" data-id="${e.id}">Faire l'appel</button></div>` + kids;
   }
   return (me || !k.length ? pair(e, null) : '') + kids;
 }
@@ -184,12 +196,14 @@ export function eventPage(id) {
   const e = S.events.find((x) => x.id === id); if (!e) return '<p class="empty">Rendez-vous introuvable (supprimé ?).</p>';
   const R = respOf(id), list = (a) => (a.length ? a.map(respName).join(', ') : '—'), man = canManageEvent(e);
   let h = `<div class="card lift">${e.cancelled ? '<span class="pill ko">Rendez-vous annulé</span>' : ''}<div>${forLabel(e)}</div>${e.opponents ? `<div class="det">Contre : ${esc(e.opponents)}</div>` : ''}${man ? `<div class="det">${plural(invitedCount(e), 'personne prévenue', 'personnes prévenues')}${isTeamType(e) ? ' · ' + plural(playersOf(e).length, 'joueur concerné', 'joueurs concernés') : ''}</div>` : ''}
-  ${e.cancelled ? '' : `<b style="font-family:var(--pc-titre);font-size:22px">${coachOnly(e) && !myKidsIn(evTeams(e)).length ? 'Ton équipe' : 'Tu viens ?'}</b>${answerBlock(e)}`}</div>`;
+  ${e.cancelled ? '' : `<b style="font-family:var(--pc-titre);font-size:22px">${coachOnly(e) && !myKidsIn(evTeams(e)).length ? 'Ton équipe' : 'Tu viens ?'}</b>${answerBlock(e)}${!isOpen(e) && !coachOnly(e) && !followOnly(e) ? `<p class="note">Tu peux répondre dès maintenant. Sinon, cette séance arrivera dans « À répondre » le ${esc(fmtDay(opensOn(e)))}.</p>` : ''}`}</div>`;
   const tot = R.oui.length + R.non.length, base = Math.max(tot, isTeamType(e) ? playersOf(e).length : invitedCount(e));
   h += `<div class="card"><div class="sec"><h2>Qui vient ?</h2><span class="det">${plural(R.all.length, 'réponse')}</span></div>${base ? `<div class="bar"><span style="width:${(100 * R.oui.length) / base}%"></span><span style="width:${(100 * R.non.length) / base}%"></span></div>` : ''}
-  <div class="chips"><span class="pill ok">${R.oui.length} oui</span><span class="pill ko">${R.non.length} non</span>${base > tot ? `<span class="pill">${base - tot} sans réponse</span>` : ''}</div><div><b>Viennent :</b> ${list(R.oui)}</div><div><b>Ne viennent pas :</b> ${list(R.non)}</div></div>`;
+  <div class="chips"><span class="pill ok">${R.oui.length} oui</span><span class="pill ko">${R.non.length} non</span>${base > tot && isOpen(e) ? `<span class="pill">${base - tot} sans réponse</span>` : ''}</div><div><b>Viennent :</b> ${list(R.oui)}</div><div><b>Ne viennent pas :</b> ${list(R.non)}</div></div>`;
   h += `<div class="btns"><button class="btn" data-act="ics" data-id="${id}">${icon('calplus', 20)}Ajouter à mon agenda</button>${e.place ? `<a class="btn small" style="flex:none;width:52px;padding:0" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.place)}" target="_blank" rel="noopener" aria-label="Itinéraire">${icon('pin', 22)}</a>` : ''}</div>`;
   if (!coachOnly(e) && e.type !== 'Entraînement' && R.mine === 'non') h += `<button class="btn ghost" data-act="${hiddenByMe(e) ? 'unhide' : 'hide'}" data-id="${id}">${hiddenByMe(e) ? 'Réafficher dans mon agenda' : 'Ne plus afficher dans mon agenda'}</button>`;
+  const plans = (S.evPlans || []).filter((p) => p.event_id === id);
+  if (plans.length) h += `<div class="card pale"><div class="kick">Séance prévue</div>${plans.map((p) => `<button class="row" data-act="pview" data-id="${p.id}"><span class="g">${esc(p.title)}<small>${plural(p.items.length, 'exercice')} · ${p.items.reduce((a, x) => a + (+x.minutes || 0), 0)} min · imprimer ou PDF</small></span></button>`).join('')}</div>`;
   if (man) {
     if (isTeamType(e) && !e.cancelled && !coachOnly(e)) h += `<button class="btn main" data-act="appel" data-id="${id}">Faire l'appel</button>`;
     h += `<div class="btns"><button class="btn ghost" data-act="evedit" data-id="${id}">Modifier</button><button class="btn ghost" data-act="evcancel" data-id="${id}">${e.cancelled ? 'Rétablir' : 'Annuler le rendez-vous'}</button></div>`;

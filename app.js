@@ -1,4 +1,4 @@
-// Pocket Club (nom provisoire) · alpha 3.0 · point d'entrée : affichage des écrans, aiguillage des actions, connexion, temps réel.
+// Pocket Club (nom provisoire) · alpha 3.1 · point d'entrée : affichage des écrans, aiguillage des actions, connexion, temps réel.
 // Organisation : js/core.js (état, données, droits), js/ui.js (logos, en-tête, onglets), puis un module par onglet.
 import { BRAND, VERSION } from './config.js';
 import {
@@ -14,6 +14,7 @@ import { teamTab, teamPage, importPage } from './js/equipe.js';
 import { playerPage } from './js/joueur.js';
 import { clubTab, memberPage } from './js/club.js';
 import { accountScreen, deletedScreen } from './js/compte.js';
+import { COACH_VIEWS, loadCoachCounts, loadEvPlans } from './js/coach.js';
 
 const TAB_TITLES = ['', 'Agenda', 'Messages', 'Équipe', 'Le club'];
 function profileLine() { return [...new Set(active().map((m) => ROLES[m.role] + (m.team_id ? ' ' + teamName(m.team_id) : '')))].join(' · '); }
@@ -33,7 +34,7 @@ function viewScreen(v) {
     case 'team': { const t = team(v.id); return [header({ back: true, kicker: 'Équipe', title: esc(t?.name || 'Équipe'), tags: t ? [t.category !== t.name ? t.category : '', t.gender, 'Saison ' + t.season].filter(Boolean) : [] }), teamPage(v.id)]; }
     case 'member': return [header({ back: true, kicker: 'Fiche du membre', title: esc(S.names[v.id] || 'Membre') }), memberPage(v.id)];
     case 'import': return [header({ back: true, kicker: 'Ajouter des joueurs', title: esc(teamName(v.id)) }), importPage(v.id)];
-    default: return null;
+    default: { const cv = COACH_VIEWS[v.type]; if (!cv) return null; const [k, t, fn] = cv(v); return [header({ back: true, kicker: k, title: t }), fn()]; }
   }
 }
 function render(keep) {
@@ -72,6 +73,7 @@ async function refresh(msg) {
   if (!S.joinChecked) { S.joinChecked = true; await openPendingJoin(); }
   if (!S.purged) { S.purged = true; sb.rpc('purge_trash').then(() => {}, () => {}); }
   await loadClub();
+  await Promise.all([loadCoachCounts(), loadEvPlans()]).catch(() => {});
   if (S.view?.type === 'group') await loadGroup(S.view.id);
   render(true); subscribe(); if (msg) toast('À jour.');
 }
