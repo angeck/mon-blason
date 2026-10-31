@@ -2,7 +2,8 @@
 // Visible seulement quand on est connecté avec un des comptes de la liste SWITCH_PROFILES (config.js).
 // Les comptes restent de vrais comptes : la base applique leurs vrais droits. Les connexions sont gardées sur CET appareil seulement.
 import { SWITCH_PROFILES } from '../config.js';
-import { S, sb, esc, toast, render, CHANGES, ACTIONS } from './core.js';
+import { S, sb, esc, toast, render, CHANGES } from './core.js';
+import { unlinkPush } from './notif.js';
 
 const KEY = (email) => 'pc_sw_' + email.toLowerCase();
 const mail = () => (S.session?.user?.email || '').toLowerCase();
@@ -38,6 +39,7 @@ export async function switchTo(email) {
   const e = email.toLowerCase();
   if (e === mail()) return;
   saveSwitch(S.session);
+  await Promise.race([unlinkPush(), new Promise((r) => setTimeout(r, 1500))]);                        // le téléphone cesse de recevoir les notifications de l'ancien profil ; il sera rattaché au nouveau à l'ouverture
   const saved = read(e);
   if (saved) {
     const { error } = await sb.auth.setSession(saved);
