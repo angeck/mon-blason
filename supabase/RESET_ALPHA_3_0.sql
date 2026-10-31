@@ -2879,7 +2879,8 @@ $$;
 -- Lecture : qui voit l'exercice voit sa vidéo ; ajout, remplacement, retrait : l'auteur seulement
 drop policy if exists "video d'exercice lisible" on storage.objects;
 create policy "video d'exercice lisible" on storage.objects for select to authenticated
-  using (bucket_id = 'exercise-videos' and can_see_exercise(exercise_of_path(name)));
+  using (bucket_id = 'exercise-videos' and (can_see_exercise(exercise_of_path(name))
+         or exists(select 1 from exercises e where e.video_path = name and can_see_exercise(e.id))));
 drop policy if exists "video d'exercice ajoutee par l'auteur" on storage.objects;
 create policy "video d'exercice ajoutee par l'auteur" on storage.objects for insert to authenticated
   with check (bucket_id = 'exercise-videos' and exists(select 1 from exercises e where e.id = exercise_of_path(name) and e.created_by = auth.uid() and e.deleted_at is null));
