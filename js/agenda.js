@@ -26,12 +26,25 @@ export const followOnly = (e) => isTeamType(e) && !evTeams(e).some(coachOf) && !
 export const coachOnly = (e) => isTeamType(e) && evTeams(e).some(coachOf) && !iPlayIn(evTeams(e));
 // N° 52 : une séance d'une série n'entre dans « À répondre » que si c'est la prochaine séance de la série, ou 7 jours avant sa date
 export const OPEN_DAYS = 7;
+// N° 57 : une « série » = les séances liées par series_id ; pour les entraînements sans lien (recopiés, importés, anciens),
+// les séances identiques (mêmes équipes, même titre, même jour de la semaine, même heure, même créateur) comptent comme une série.
+export function serieKey(e) {
+  if (e.series_id) return 's:' + e.series_id;
+  if (e.type !== 'Entraînement') return null;
+  const d = new Date(e.starts_at);
+  return ['t', [...(e.team_ids || [])].sort().join(','), (e.title || '').trim().toLowerCase(), d.getDay(), d.getHours() + ':' + d.getMinutes(), e.created_by || ''].join('|');
+}
 export function isOpen(e) {
-  if (!e.series_id) return true;
-  const t = new Date(e.starts_at).getTime();
-  if (t <= Date.now() + OPEN_DAYS * 864e5) return true;
-  const next = S.events.filter((x) => x.series_id === e.series_id && !x.cancelled && new Date(x.starts_at).getTime() >= Date.now() - 2 * 3600e3)
-    .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))[0];
+  const key = serieKey(e);
+  if (!key) return true;
+  const now = Date.now(), t = new Date(e.starts_at).getTime();
+  if (t <= now + OPEN_DAYS * 864e5) return true;
+  let next = null;
+  for (const x of S.events) {
+    if (x.cancelled || serieKey(x) !== key) continue;
+    const tx = new Date(x.starts_at).getTime();
+    if (tx >= now - 2 * 3600e3 && (!next || tx < new Date(next.starts_at).getTime())) next = x;
+  }
   return !next || next.id === e.id;
 }
 export const opensOn = (e) => new Date(new Date(e.starts_at).getTime() - OPEN_DAYS * 864e5);
@@ -317,6 +330,11 @@ Object.assign(ACTIONS, {
     if (rows.length && await run(sb.from('attendance').upsert(rows), 'Appel enregistré.')) { S.view = { type: 'event', id: e.id }; await refresh(); }
   },
 });
+// N° 58 : garde-fou — le titre cite une heure (« exceptionnellement à 12h », « 18h30 ») différente de l'heure choisie dans le formulaire
+export function titleHour(t) {
+  const m = /(?:^|[^\d])([01]?\d|2[0-3])\s*(?:h|H|:)\s*([0-5]\d)?(?!\d)/.exec(t || '');
+  return m ? { h: +m[1], mi: m[2] ? +m[2] : 0 } : null;
+}
 FORMS.evf = async (v) => {
   const f = S.form, aud = f.aud;
   if (aud === 'team' && !f.teams.size) return toast('Choisis au moins une équipe.');
@@ -324,7 +342,8 @@ FORMS.evf = async (v) => {
   const conv = ['Match', 'Plateau', 'Tournoi'].includes(f.type) && aud === 'team' && f.teams.size === 1 && f.convMode === 'some' ? [...f.conv] : [];
   if (f.convMode === 'some' && conv.length === 0 && ['Match', 'Plateau', 'Tournoi'].includes(f.type) && aud === 'team' && f.teams.size === 1) return toast('Choisis au moins un joueur à convoquer.');
   const base = { club_id: S.clubId, audience: aud, team_ids: aud === 'team' ? [...f.teams] : [], people: aud === 'people' ? [...f.people] : [], convoked: conv, type: f.type, title: v.title.trim(), place: (v.place || '').trim(), opponents: (v.opponents || '').trim() };
-  const start = new Date(v.starts_at);
+  const start = new Date(v.starts_at), th = titleHour(v.title);
+  if (th && (th.h !== start.getHours() || th.mi !== start.getMinutes()) && !confirm(`Le titre parle de ${th.h} h ${String(th.mi).padStart(2, '0')}, mais l’heure choisie est ${hm(start)}. Enregistrer quand même ?`)) return;
   if (f.id) {
     if (await run(sb.from('events').update({ ...base, starts_at: start.toISOString() }).eq('id', f.id), 'Rendez-vous modifié.')) { S.view = { type: 'event', id: f.id }; S.form = null; await refresh(); }
     return;

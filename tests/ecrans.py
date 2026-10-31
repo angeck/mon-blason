@@ -38,10 +38,36 @@ with sync_playwright() as p:
 
     check('accueil : salutation et rendez-vous à répondre', has('Salut Gaël') and has('À répondre'))
     check('accueil : demande à valider visible', has('1 demande à valider'))
-    check('n° 52 : la prochaine séance de la série compte, pas celle dans 16 jours', has('4 réponses à donner') and has('1 sur 4'))
+    check('n° 52 : la prochaine séance de la série compte, pas celle dans 16 jours', has('5 réponses à donner') and has('1 sur 5'))
     shot('01-accueil')
     act('[data-act=tab][data-i="1"]')
     check('n° 52 : séance lointaine sans « À répondre » dans l’agenda', pg.evaluate("!document.querySelector('[data-act=event][data-id=e6b] .pill.wait') && !!document.querySelector('[data-act=event][data-id=e6] .pill.wait')"))
+    check('n° 57 : trois entraînements identiques sans lien de série : seul le premier est « À répondre »', pg.evaluate("!!document.querySelector('[data-act=event][data-id=e9a] .pill.wait') && !document.querySelector('[data-act=event][data-id=e9b] .pill.wait') && !document.querySelector('[data-act=event][data-id=e9c] .pill.wait')"))
+
+    # n° 57 : scénarios de contrôle sur des séances fictives (série de 9 séances, deux séries, séances sans lien), en avançant l'horloge
+    ctl = pg.evaluate("""async () => {
+      const { S } = await import('/js/core.js'); const A = await import('/js/agenda.js');
+      const saved = S.events, realNow = Date.now, base = realNow(), D = 864e5;
+      const mk = (id, d, series, title) => ({ id, series_id: series, type: 'Entraînement', title, team_ids: ['t-x'], created_by: 'u-x', starts_at: new Date(base + d * D).toISOString(), cancelled: false });
+      const weekly = (pfx, first, series, title, n = 9) => Array.from({ length: n }, (_, i) => mk(pfx + i, first + 7 * i, series, title));
+      const open = (at) => { Date.now = () => base + at * D; try { return S.events.filter((e) => new Date(e.starts_at).getTime() >= Date.now() - 2 * 3600e3 && A.isOpen(e)).map((e) => e.id).join(','); } finally { Date.now = realNow; } };
+      const out = {};
+      S.events = weekly('a', 8, 'sA', 'Série A');
+      out.serie_0 = open(0); out.serie_8 = open(8); out.serie_8h = open(8.2);
+      S.events = [...weekly('b', 8, 'sB', 'Mardi'), ...weekly('c', 10, 'sC', 'Jeudi')];
+      out.deux_series = open(0);
+      S.events = weekly('d', 8, null, 'Sans lien');
+      out.sans_lien_0 = open(0); out.sans_lien_8 = open(8);
+      S.events = [mk('e0', 8, null, 'Libre'), { ...mk('e1', 15, null, 'Libre'), created_by: 'u-y' }, { ...mk('e2', 22, null, 'Libre'), type: 'Match' }];
+      out.pas_un_groupe = open(0);
+      S.events = saved;
+      return out;
+    }""")
+    check('n° 57 : série de 9 séances → une seule séance à répondre', ctl['serie_0'] == 'a0')
+    check('n° 57 : 8 jours plus tard → la deuxième séance apparaît', ctl['serie_8'] == 'a0,a1' and ctl['serie_8h'] == 'a1')
+    check('n° 57 : deux séries (mardi et jeudi) → deux séances au plus', ctl['deux_series'] == 'b0,c0')
+    check('n° 57 : séances identiques sans lien de série → même résultat qu’une série', ctl['sans_lien_0'] == 'd0' and ctl['sans_lien_8'] == 'd0,d1')
+    check('n° 57 : créateur différent ou match → pas du même groupe', ctl['pas_un_groupe'] == 'e0,e1,e2')
     act('[data-act=event][data-id=e6b]')
     check('n° 52 : on peut répondre en avance, date d’entrée annoncée', has('Tu peux répondre dès maintenant') and pg.locator('[data-act=rsvp][data-p=p-lily]').count() >= 1)
     act('[data-act=back]')
@@ -74,6 +100,18 @@ with sync_playwright() as p:
     shot('04-nouveau-rendez-vous')
     pg.fill('#et', 'Commission buvette'); pg.click('#evf [type=submit]'); pg.wait_for_timeout(400)
     check('création pour des personnes choisies', pg.evaluate("window.__FAKE.events.some(e => e.title === 'Commission buvette' && e.audience === 'people' && e.people[0] === 'u-s1')"))
+    # n° 58 : l'heure choisie est celle qui est enregistrée (aucun décalage), et un titre qui cite une autre heure déclenche un avertissement
+    msgs = []
+    pg.once('dialog', lambda dlg: (msgs.append(dlg.message), dlg.dismiss()))
+    act('[data-act=evnew]')
+    act('[data-act=evaud][data-v=club]')
+    pg.fill('#et', 'Samedi exceptionnellement à 12h')
+    pg.evaluate("(() => { const i = document.querySelector('#evf [name=starts_at]'); i.value = '2026-11-07T20:00'; i.dispatchEvent(new Event('input', { bubbles: true })); })()")
+    pg.click('#evf [type=submit]'); pg.wait_for_timeout(400)
+    check('n° 58 : titre « à 12h » avec heure 20 h : avertissement, rien d’enregistré', len(msgs) == 1 and 'parle de 12 h' in msgs[0] and '20 h 00' in msgs[0] and not pg.evaluate("window.__FAKE.events.some(e => e.title === 'Samedi exceptionnellement à 12h')"))
+    pg.evaluate("(() => { const i = document.querySelector('#evf [name=starts_at]'); i.value = '2026-11-07T12:00'; i.dispatchEvent(new Event('input', { bubbles: true })); })()")
+    pg.click('#evf [type=submit]'); pg.wait_for_timeout(400)
+    check('n° 58 : titre et heure cohérents : enregistré, 12 h à l’affichage comme à la saisie', pg.evaluate("(() => { const e = window.__FAKE.events.find(x => x.title === 'Samedi exceptionnellement à 12h'); const d = e && new Date(e.starts_at); return !!d && d.getHours() === 12 && d.getMinutes() === 0 && d.getDate() === 7; })()"))
     act('[data-act=selmode]')
     pg.check('[data-evsel=e4]'); pg.wait_for_timeout(200)
     check('sélection multiple : barre de suppression', has('1 rendez-vous sélectionné'))
@@ -245,6 +283,33 @@ with sync_playwright() as p:
     shot('19-seance')
     pg.click('#planf [type=submit]'); pg.wait_for_timeout(400)
     check('3.1 : séance enregistrée et reliée à l’entraînement', pg.evaluate("window.__FAKE.training_plans.some(p => p.event_id === 'e8' && p.items.length === 3 && p.items[0].exercise_id === 'x3')"))
+    # n° 58 : bouton « Ajouter un exercice » et sélecteur par-dessus la séance
+    check('n° 58 : gros bouton « Ajouter un exercice » dans la séance', pg.locator('[data-act=padd]').count() == 1 and pg.evaluate("document.querySelector('[data-act=padd]').getBoundingClientRect().height >= 48"))
+    act('[data-act=padd]')
+    check('n° 58 : sélecteur : onglets Ma banque, Club, Libre et « Terminer »', pg.locator('[data-act=pktab]').count() == 3 and has('Terminer') and has('Ajouter un exercice'))
+    act('[data-act=pktab][data-v=club]')
+    check('n° 58 : club : « Ajouter » proposé pour un exercice pas encore dans la séance', pg.locator('[data-act=cadd][data-id=x1]').inner_text().strip().endswith('Ajouter'))
+    act('[data-act=cadd][data-id=x1]')
+    check('n° 58 : bouton devenu « Ajouté ✓ », total mis à jour', 'Ajouté ✓' in pg.locator('[data-act=cadd][data-id=x1]').inner_text() and has('4 exercices'))
+    shot('21-selecteur')
+    act('[data-act=back]')
+    check('n° 58 : « Terminer » ramène à la séance avec 4 exercices', pg.locator('#planf').count() == 1 and has('4 exercices') and has('Tirs en ligne'))
+    # banques vides : message clair et création directe dans la séance
+    act('[data-act=padd]')
+    pg.evaluate("import('/js/core.js').then((m) => { window.__exSaved = m.S.exos; m.S.exos = []; })")
+    act('[data-act=pktab][data-v=mine]')
+    check('n° 58 : banque vide : message et bouton « Créer un exercice »', has('Aucun exercice pour l’instant') and pg.locator('[data-act=pkcreate]').count() == 1)
+    act('[data-act=pkcreate]')
+    pg.fill('#exn', 'Exercice express'); pg.fill('#exd', '8')
+    pg.click('#exf [type=submit]'); pg.wait_for_timeout(500)
+    check('n° 58 : exercice créé et ajouté directement à la séance, retour au sélecteur', pg.evaluate("(async () => { const m = await import('/js/core.js'); const e = window.__FAKE.exercises.find((x) => x.title === 'Exercice express'); return !!e && m.S.plan.items.some((x) => x.exercise_id === e.id) && m.S.view.type === 'expick'; })()") and has('Terminer'))
+    act('[data-act=back]')
+    check('n° 58 : la séance compte maintenant 5 exercices', has('5 exercices') and has('Exercice express'))
+    pg.evaluate("import('/js/core.js').then((m) => { if (window.__exSaved) m.S.exos = window.__exSaved; })")
+    # sur chaque exercice de la banque, le bouton porte le nom de la séance en cours
+    act('[data-act=ctab][data-v=club]')
+    check('n° 58 : bouton « Ajouter à … » avec le nom de la séance', pg.evaluate("[...document.querySelectorAll('[data-act=cadd]')].some((b) => /Ajouter à « /.test(b.innerText) || /Dans ma séance/.test(b.innerText))"))
+    act('[data-act=ctab][data-v=seance]')
     act('[data-act=tab][data-i="3"]'); act('[data-act=cstats]')
     check('3.1 : statistiques : assiduité et « oui mais absent »', has('assiduité') and has('Oui mais absent') and has('Tom'))
     shot('20-statistiques')

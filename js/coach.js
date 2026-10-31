@@ -171,11 +171,13 @@ function sharePill(e) {
   if (e.sharing === 'club') return '<span class="pill blue">Club</span>';
   return { pending: '<span class="pill wait">Public · en attente du bureau</span>', validated: '<span class="pill ok">Public</span>', refused: '<span class="pill ko">Public refusé</span>' }[e.public_state] || '';
 }
-function exCard(e) {
+const shortTitle = (t) => { const s = String(t || '').trim(); return s.length > 26 ? s.slice(0, 25) + '…' : s; };
+const addLabel = () => (S.plan?.title ? `Ajouter à « ${esc(shortTitle(S.plan.title))} »` : 'Ajouter à ma séance');
+function exCard(e, pick) {
   const inPlan = (S.plan?.items || []).some((x) => x.exercise_id === e.id), a = S.exAuthors?.[e.id];
   const sub = [e.category, fmtMin(e.duration_min), e.sport === 'Tous les sports' ? 'Tous sports' : e.sport, e.level, a ? a.author + (a.club_name !== club()?.name ? ' · ' + a.club_name : '') : ''].filter(Boolean).join(' · ');
   return `<div class="ev"><button class="head" data-act="cexo" data-id="${e.id}">${thumb(e)}<span class="info"><span class="t">${esc(e.title)}</span><span class="s">${esc(sub)}</span><span class="chips" style="gap:6px;margin-top:4px">${sharePill(e)}${e.up_count || e.down_count ? `<span class="pill">👍 ${e.up_count} · 👎 ${e.down_count}</span>` : ''}${tooNegative(e) ? '<span class="pill ko">À revoir</span>' : ''}</span></span></button>
-  <button class="btn small ${inPlan ? 'ghost' : 'main'}" data-act="cadd" data-id="${e.id}">${inPlan ? 'Dans ma séance ✓' : icon('plus', 18) + 'Ajouter à ma séance'}</button></div>`;
+  <button class="btn small ${inPlan ? 'ghost' : 'main'}" data-act="cadd" data-id="${e.id}" aria-pressed="${inPlan}">${inPlan ? (pick ? 'Ajouté ✓' : 'Dans ma séance ✓') : icon('plus', 18) + (pick ? 'Ajouter' : addLabel())}</button></div>`;
 }
 function filters(list) {
   const f = S.cf || (S.cf = { sport: '', cat: '', q: '' });
@@ -209,12 +211,32 @@ export function exosPage() {
   else if (tab === 'club') { h += boardTodo(); list = list.filter((e) => e.club_id === S.clubId && e.sharing !== 'me'); }
   else list = list.filter((e) => e.sharing === 'public' && e.public_state === 'validated');
   const [fh, out] = filters(list);
-  h += fh + (out.length ? out.map(exCard).join('') : `<p class="empty">${tab === 'mine' ? 'Ta banque est vide : ajoute ton premier exercice.' : tab === 'club' ? 'Aucun exercice partagé au club pour l’instant.' : 'Aucun exercice public validé pour l’instant.'}</p>`);
+  h += fh + (out.length ? out.map((e) => exCard(e)).join('') : `<p class="empty">${tab === 'mine' ? 'Ta banque est vide : ajoute ton premier exercice.' : tab === 'club' ? 'Aucun exercice partagé au club pour l’instant.' : 'Aucun exercice public validé pour l’instant.'}</p>`);
   if (tab === 'libre') h += '<p class="note">Banque libre : exercices proposés par des coachs de tous les clubs, chacun validé par le bureau de son club. Un exercice signalé est retiré jusqu’à une nouvelle validation.</p>';
   if (tab === 'mine') {
     const del = S.exos.filter((e) => e.deleted_at && e.created_by === S.me.id);
     if (del.length) h += `<details class="card"><summary>Corbeille (${del.length})</summary><div class="list">${del.map((e) => `<div class="row static"><span class="g">${esc(e.title)}<small>Effacé définitivement 30 jours après la suppression</small></span><button class="btn small ghost" style="flex:none" data-act="cexrest" data-id="${e.id}">Restaurer</button></div>`).join('')}</div></details>`;
   }
+  return h;
+}
+// N° 58 : sélecteur d'exercices par-dessus la séance (Ma banque · Club · Libre, recherche et filtres, « Ajouter » / « Ajouté ✓ », « Terminer »)
+export function pickPage() {
+  const p = ensurePlan(), tab = S.pk?.tab || 'mine', tot = planTotal(p);
+  const sum = `${plural(p.items.length, 'exercice')} · ${fmtMin(tot)}`;
+  let h = `<div class="card lift" style="flex-direction:row;align-items:center;justify-content:space-between;gap:10px"><span style="display:flex;flex-direction:column;min-width:0"><b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.title)}</b><span class="det">${sum}</span></span><button class="btn main small" style="flex:none" data-act="back">Terminer</button></div>`;
+  h += `<div class="chips">${[['mine', 'Ma banque'], ['club', 'Club'], ['libre', 'Libre']].map(([k, l]) => `<button class="chip" data-act="pktab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
+  if (!S.exos) return h + loading();
+  let list = S.exos.filter((e) => !e.deleted_at);
+  if (tab === 'mine') list = list.filter((e) => e.created_by === S.me.id);
+  else if (tab === 'club') list = list.filter((e) => e.club_id === S.clubId && e.sharing !== 'me');
+  else list = list.filter((e) => e.sharing === 'public' && e.public_state === 'validated');
+  if (!list.length) {
+    const why = { mine: 'Ta banque est vide.', club: 'Aucun exercice n’est partagé au club.', libre: 'Aucun exercice public validé.' }[tab];
+    return h + `<div class="card pale"><b>Aucun exercice pour l’instant</b><p class="note">${why} Crée ton premier exercice : il sera ajouté tout de suite à ta séance.</p><button class="btn main" data-act="pkcreate">${icon('plus', 20)}Créer un exercice</button></div>`;
+  }
+  const [fh, out] = filters(list);
+  h += fh + (out.length ? out.map((e) => exCard(e, true)).join('') : '<p class="empty">Aucun exercice ne correspond à ta recherche.</p>');
+  h += `<button class="btn main" data-act="back">Terminer · ${sum}</button>`;
   return h;
 }
 export function exoPage(id) {
@@ -226,7 +248,7 @@ export function exoPage(id) {
   ${e.description ? `<div style="white-space:pre-wrap">${esc(e.description)}</div>` : '<p class="note">Pas de description.</p>'}
   <p class="note">${esc(ORIGINS[e.origin])}${e.source ? ' · Source : ' + esc(e.source) : ''}${mine ? ' · par toi' : a ? ' · par ' + esc(a.author) + ' (' + esc(a.club_name) + ')' : ''}</p></div>`;
   const inPlan = (S.plan?.items || []).some((x) => x.exercise_id === e.id);
-  h += `<button class="btn ${inPlan ? 'ghost' : 'main'}" data-act="cadd" data-id="${e.id}">${inPlan ? 'Déjà dans ma séance ✓' : icon('plus', 20) + 'Ajouter à ma séance'}</button>`;
+  h += `<button class="btn ${inPlan ? 'ghost' : 'main'}" data-act="cadd" data-id="${e.id}">${inPlan ? 'Déjà dans ma séance ✓' : icon('plus', 20) + addLabel()}</button>`;
   if (!mine) h += `<div class="card"><div class="kick">Ton avis</div><div class="pair"><button class="btn yes" data-act="cvote" data-id="${e.id}" data-v="1" aria-pressed="${my === true}">👍 Utile (${e.up_count})</button><button class="btn no" data-act="cvote" data-id="${e.id}" data-v="0" aria-pressed="${my === false}">👎 À revoir (${e.down_count})</button></div></div>`;
   if (isBoard() && e.club_id === S.clubId && e.sharing === 'public' && e.public_state !== 'validated') {
     h += `<div class="card warn"><b>Partage à tous les clubs : décision du bureau</b><p class="note" style="color:var(--pc-encre)">Vérifie que le texte et le schéma ne sont pas copiés d'un livre, d'un site ou d'une vidéo, et que la source est citée.</p><div class="btns"><button class="btn main small" data-act="cexval" data-id="${e.id}" data-v="1">Valider</button><button class="btn ghost small" data-act="cexval" data-id="${e.id}" data-v="0">Refuser</button></div></div>`;
@@ -299,11 +321,12 @@ export function planEditor() {
   ${field('pt', 'Nom de la séance', `<input id="pt" name="title" required maxlength="80" value="${esc(p.title)}">`)}
   <div class="grid2">${field('pte', 'Équipe', `<select id="pte" name="team_id" data-planre="1"><option value="">—</option>${teams.map((t) => `<option value="${t}" ${p.team_id === t ? 'selected' : ''}>${esc(teamName(t))}</option>`).join('')}</select>`)}
   ${field('pev', 'Pour l’entraînement du', `<select id="pev" name="event_id"><option value="">Aucun pour l’instant</option>${trainingsOf(p.team_id).map((e) => `<option value="${e.id}" ${p.event_id === e.id ? 'selected' : ''}>${esc(fmtShort(e.starts_at))}</option>`).join('')}</select>`)}</div>
-  <div class="sec"><h2>Exercices</h2><span class="det">${plural(p.items.length, 'exercice')} · ${fmtMin(tot)}</span></div>`;
+  <div class="sec"><h2>Exercices</h2><span class="det">${plural(p.items.length, 'exercice')} · ${fmtMin(tot)}</span></div>
+  <button type="button" class="btn main" data-act="padd" style="min-height:48px">${icon('plus', 20)}Ajouter un exercice</button>`;
   h += p.items.length ? `<div class="list">${p.items.map((x, i) => `<div class="row static" style="flex-wrap:wrap"><span class="g" style="flex:1 1 60%">${i + 1}. ${esc(x.title)}<small>${esc(x.category || '')}</small></span>
     <input type="number" min="1" max="120" value="${esc(x.minutes)}" data-pmin="${i}" aria-label="Durée de ${esc(x.title)} en minutes" style="width:76px;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 8px"> min
     <button type="button" class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="pmove" data-i="${i}" data-v="-1" aria-label="Monter" ${i ? '' : 'disabled'}>↑</button><button type="button" class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="pmove" data-i="${i}" data-v="1" aria-label="Descendre" ${i < p.items.length - 1 ? '' : 'disabled'}>↓</button><button type="button" class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="prm" data-i="${i}" aria-label="Retirer">${icon('trash', 18)}</button></div>`).join('')}</div>`
-    : '<p class="empty">Ajoute des exercices depuis « Ma banque », « Club » ou « Libre ».</p>';
+    : '<p class="empty">Aucun exercice dans cette séance pour l’instant.</p>';
   h += `${field('pn', 'Notes (matériel, consignes)', `<textarea id="pn" name="notes" maxlength="2000" rows="3">${esc(p.notes)}</textarea>`)}
   <div class="btns"><button class="btn main" type="submit">${p.id ? 'Enregistrer la séance' : 'Enregistrer la séance'}</button>${p.items.length ? '<button type="button" class="btn ghost" data-act="pprint">Imprimer / PDF</button>' : ''}</div>
   <div class="btns"><button type="button" class="btn ghost small" data-act="pnew">Nouvelle séance vide</button><button type="button" class="btn ghost small" data-act="cplans">Mes séances enregistrées</button></div></form>`;
@@ -469,6 +492,7 @@ export const COACH_VIEWS = {
   exos: () => ['Espace coach', 'Exercices', exosPage],
   exo: (v) => ['Exercice', esc((S.exos || []).find((x) => x.id === v.id)?.title || 'Exercice'), () => exoPage(v.id)],
   exoform: () => ['Exercices', S.exf?.id ? 'Modifier l’exercice' : 'Nouvel exercice', exoForm],
+  expick: () => ['Ma séance', 'Ajouter un exercice', pickPage],
   plans: () => ['Espace coach', 'Mes séances', plansPage],
   stats: () => ['Espace coach', 'Statistiques', statsPage],
   hours: () => ['Espace coach', 'Mes heures', hoursPage],
@@ -490,6 +514,9 @@ Object.assign(ACTIONS, {
   cfcat: (el, d) => { S.cf.cat = d.v; render(true); },
   cexo: (el, d) => { S.exRep = null; S.view = { type: 'exo', id: d.id }; render(); },
   cadd: (el, d) => { const e = exById(d.id); if (e) addToPlan(e); },
+  padd: () => { keepPlan(); S.pk = { tab: 'mine' }; return open({ type: 'expick' }, async () => { if (!S.exos) await loadExos(); }); },
+  pktab: async (el, d) => { S.pk = { tab: d.v }; render(true); if (!S.exos) { await loadExos(); render(true); } },
+  pkcreate: () => { ACTIONS.cexnew(); S.exf.pickAdd = true; },
   cexnew: () => { S.exVid = null; S.exVidRm = false; S.exf = { sport: club()?.sport || 'Basket-ball', category: 'Technique', duration_min: 10, origin: 'perso', sharing: 'me', diagram: [], certified: false }; S.dg = { tool: 'a', from: null }; S.view = { type: 'exoform' }; render(); },
   cexedit: (el, d) => { S.exVid = null; S.exVidRm = false; const e = exById(d.id); S.exf = { ...e, diagram: (e.diagram || []).slice() }; S.dg = { tool: 'a', from: null }; S.view = { type: 'exoform', id: d.id }; render(); },
   dgtool: (el, d) => { keepEx(); S.dg = { tool: d.v, from: null }; render(true); },
@@ -545,7 +572,15 @@ FORMS.exf = async () => {
   else if (S.exVidRm && f.video_path) await removeVideo(r);
   S.exVid = null; S.exVidRm = false;
   toast(r.public_state === 'pending' ? 'Enregistré. Le bureau de ton club doit valider le partage à tous les clubs.' : 'Exercice enregistré.');
-  S.exf = null; await loadExos(); S.stack = (S.stack || []).filter((v) => v.type !== 'exoform'); S.view = { type: 'exo', id: r.id }; render();
+  S.exf = null; await loadExos(); S.stack = (S.stack || []).filter((v) => v.type !== 'exoform');
+  if (f.pickAdd && !f.id) {   // créé depuis le sélecteur de la séance : ajouté directement, retour au sélecteur
+    const ex = exById(r.id) || r, pl = ensurePlan();
+    if (!pl.items.some((x) => x.exercise_id === ex.id)) pl.items.push({ exercise_id: ex.id, title: ex.title, category: ex.category, minutes: ex.duration_min, sport: ex.sport, description: ex.description, diagram: ex.diagram });
+    savePlanLocal(); toast('Exercice créé et ajouté à ta séance.');
+    if (S.stack.length && S.stack[S.stack.length - 1].type === 'expick') S.stack.pop();
+    S.pk = S.pk || { tab: 'mine' }; S.view = { type: 'expick' }; render(); return;
+  }
+  S.view = { type: 'exo', id: r.id }; render();
 };
 FORMS.exrepf = async (v) => { if (await run(sb.from('exercise_reports').insert({ exercise_id: S.exRep, user_id: S.me.id, reason: v.reason.trim() }), 'Signalement envoyé au bureau du club de l’auteur. Merci.')) { S.exRep = null; await loadExos(); render(true); } };
 FORMS.planf = async () => {

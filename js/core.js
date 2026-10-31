@@ -124,14 +124,14 @@ export function isMajor(p) {
 }
 // N° 55 : rubriques du bureau (tresorerie, secretariat, technique, communication, evenements), calculées par la base
 export const hasArea = (a) => (S.areas || []).includes(a);
-export const AREAS = { tresorerie: 'Trésorerie', secretariat: 'Secrétariat', technique: 'Technique', communication: 'Communication', evenements: 'Événements et buvette' };
-export const FONCTIONS = ['Vice-président', 'Secrétaire', 'Secrétaire adjoint', 'Trésorier', 'Trésorier adjoint', 'Directeur sportif', 'Coordinateur', 'Correspondant licences', 'Chargé de communication', 'Responsable sponsoring', 'Responsable événements et buvette', 'Membre du bureau'];
+export const AREAS = { tresorerie: 'Trésorerie', secretariat: 'Secrétariat', technique: 'Technique', communication: 'Communication', evenements: 'Événements' };
+export const FONCTIONS = ['Vice-président', 'Secrétaire', 'Secrétaire adjoint', 'Trésorier', 'Trésorier adjoint', 'Directeur sportif', 'Coordinateur', 'Correspondant licences', 'Chargé de communication', 'Responsable sponsoring', 'Membre du bureau'];
 // Casquettes de l'espace (charte du 31 octobre) : Coach, Président, chaque fonction du bureau
 export function casquettes() {
   const l = [], ct = coachTeams().filter((t) => S.teams.some((x) => x.id === t));
   if (ct.length) l.push({ k: 'coach', label: 'Coach' + (ct.length === 1 ? ' ' + (S.teams.find((x) => x.id === ct[0])?.name || '') : ''), pill: 'Coach' });
   if (isPresident()) l.push({ k: 'president', label: 'Président', pill: 'Président' });
-  active().filter((m) => m.role === 'bureau').forEach((m) => { const f = m.fonction || 'Membre du bureau'; if (!l.some((x) => x.k === 'f:' + f)) l.push({ k: 'f:' + f, label: f, pill: f === 'Membre du bureau' ? 'Bureau' : f.replace(/ (adjoint|et buvette)$/, '').replace('Responsable ', '').replace('Chargé de ', '') }); });
+  active().filter((m) => m.role === 'bureau').forEach((m) => { const f = m.fonction || 'Membre du bureau'; if (!l.some((x) => x.k === 'f:' + f)) l.push({ k: 'f:' + f, label: f, pill: f === 'Membre du bureau' ? 'Bureau' : f.replace(/ adjoint$/, '').replace('Responsable ', '').replace('Chargé de ', '') }); });
   return l;
 }
 export const myFonctions = () => active().filter((m) => m.role === 'bureau').map((m) => m.fonction || 'Membre du bureau');

@@ -15,7 +15,7 @@ import { searchBlock } from './auth.js';
 const FONCTION_AREAS = {
   'Vice-président': Object.keys(AREAS), 'Trésorier': ['tresorerie'], 'Trésorier adjoint': ['tresorerie'], 'Secrétaire': ['secretariat'], 'Secrétaire adjoint': ['secretariat'],
   'Correspondant licences': ['secretariat'], 'Directeur sportif': ['technique'], 'Coordinateur': ['technique', 'evenements'], 'Chargé de communication': ['communication'],
-  'Responsable sponsoring': ['communication'], 'Responsable événements et buvette': ['evenements'], 'Membre du bureau': [],
+  'Responsable sponsoring': ['communication'], 'Membre du bureau': [],
 };
 const AREA_ICON = { tresorerie: 'doc', secretariat: 'user', technique: 'team', communication: 'msg', evenements: 'cal', commun: 'shield' };
 const TITLES = {

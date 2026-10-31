@@ -115,7 +115,7 @@ $$;
 create function simu.installer(p_email text, p_club text) returns text language plpgsql as $$
 declare
   gael uuid; club uuid; created_club boolean := false;
-  t record; tid uuid; cid uuid; u uuid; u2 uuid; p uuid; g uuid; e uuid; poll uuid; n int; i int; k int; d date;
+  t record; tid uuid; cid uuid; u uuid; u2 uuid; p uuid; g uuid; e uuid; sid uuid; poll uuid; n int; i int; k int; d date;
   equipes jsonb := '[
     {"n":"U7","cat":"U7","g":"Mixte","nes":[2020,2021],"jours":[3],"h":"14:00","comp":false},
     {"n":"U9 F","cat":"U9","g":"Féminine","nes":[2018,2019],"jours":[3,5],"h":"17:30","comp":false},
@@ -283,14 +283,19 @@ begin
     where a.fee_amount > 0 and random() < 0.65;
 
   -- Agenda : entraînements de 2 semaines passées à 3 semaines à venir
+  -- (une vraie série par équipe et par jour, comme le fait l'application : sans cela, chaque séance entrerait seule dans « À répondre »)
   for t in select x from jsonb_array_elements(equipes) x loop
     tid := (v_teams->>(t.x->>'n'))::uuid;
-    for k in -2..2 loop
-      for jd in select (j::int) from jsonb_array_elements_text(t.x->'jours') j loop
+    for jd in select (j::int) from jsonb_array_elements_text(t.x->'jours') j loop
+      insert into event_series(club_id, title, weekday, start_time, until, skip_holidays, created_by)
+        values (club, 'Entraînement ' || (t.x->>'n'), jd, t.x->>'h', lundi + 2 * 7 + (jd + 6) % 7, true, (coach_of->>(t.x->>'n'))::uuid)
+        returning id into sid;
+      perform simu.reg('event_series', sid);
+      for k in -2..2 loop
         d := lundi + k * 7 + (jd + 6) % 7;
-        insert into events(club_id, audience, team_ids, type, title, starts_at, place, created_by, created_at)
+        insert into events(club_id, audience, team_ids, type, title, starts_at, place, series_id, created_by, created_at)
           values (club, 'team', array[tid], 'Entraînement', 'Entraînement ' || (t.x->>'n'), simu.paris(d, t.x->>'h'),
-                  gymnases[1 + (length(t.x->>'n') % 3)], (coach_of->>(t.x->>'n'))::uuid, now() - interval '14 days')
+                  gymnases[1 + (length(t.x->>'n') % 3)], sid, (coach_of->>(t.x->>'n'))::uuid, now() - interval '14 days')
           returning id into e;
         perform simu.reg('events', e);
       end loop;
@@ -557,6 +562,7 @@ begin
   select id into club_simu from simu.objets where tbl = 'clubs' limit 1;
   delete from events where id in (select id from simu.objets where tbl = 'events')
      or (audience = 'team' and team_ids <@ array(select id from simu.objets where tbl = 'teams') and cardinality(team_ids) > 0);
+  delete from event_series where id in (select id from simu.objets where tbl = 'event_series');
   delete from groups where id in (select id from simu.objets where tbl = 'groups');
   delete from memberships where id in (select id from simu.objets where tbl = 'memberships');
   delete from players where id in (select id from simu.objets where tbl = 'players');
