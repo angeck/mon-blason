@@ -45,8 +45,8 @@ async function loadVideoUrls() {
 }
 function thumb(e) {
   const p = e.poster_path && S.vurl?.[e.poster_path], v = e.video_path && S.vurl?.[e.video_path];
-  if (p) return `<span class="vthumb"><img src="${esc(p)}" alt="" loading="lazy"><span class="vplay" aria-hidden="true">▶</span></span>`;
-  if (v) return `<span class="vthumb"><video src="${esc(v)}#t=1" muted playsinline preload="metadata"></video><span class="vplay" aria-hidden="true">▶</span></span>`;
+  if (v) return `<span class="vthumb"><video src="${esc(v)}#t=1" ${p ? `poster="${esc(p)}" preload="none"` : 'preload="metadata"'} muted loop playsinline></video><span class="vplay" aria-hidden="true">▶</span></span>`;
+  if (p) return `<span class="vthumb"><img src="${esc(p)}" alt="" loading="lazy"></span>`;
   return '<span class="vthumb none"><small>Pas de vidéo</small></span>';
 }
 async function makePoster(file) {
@@ -575,4 +575,7 @@ CHANGES.push(async (t) => {
   if (t.dataset.pmin) { render(true); return true; }
   return false;
 });
+// Survol d'une vignette (souris) : la vidéo se lit sans le son ; elle s'arrête quand la souris s'en va
+document.addEventListener('mouseover', (ev) => { const v = ev.target.closest?.('.vthumb')?.querySelector('video'); if (v && v.paused) { v.closest('.vthumb').classList.add('on'); v.play().catch(() => {}); } });
+document.addEventListener('mouseout', (ev) => { const t = ev.target.closest?.('.vthumb'); if (!t || t.contains(ev.relatedTarget)) return; const v = t.querySelector('video'); if (v) { v.pause(); t.classList.remove('on'); } });
 export { coachOf };
