@@ -3,6 +3,7 @@ import { BRAND, VERSION } from '../config.js';
 import { S, sb, esc, roleLabel, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, JOIN_ROLES, club, myMem, isBoard, isPresident, teamName, niceFirst, niceLast, download, fmtDay, store } from './core.js';
 import { header, crest, icon, delBtn, field } from './ui.js';
 import { roleExtra, checkRole, newPwdFields } from './auth.js';
+import { pushCard } from './notif.js';
 
 function roleRequest() {
   const r = S.rq, c = club(); if (!c) return '';
@@ -27,6 +28,7 @@ export function accountScreen() {
   <label class="check"><input type="checkbox" name="optin" ${me.optin_emails ? 'checked' : ''}><span>Recevoir les e-mails d'information de ${esc(BRAND.name)}</span></label>
   <button class="btn main" type="submit">Enregistrer mon profil</button></form>`;
   h += roleRequest();
+  h += pushCard();
   // n° 42 : le président et les membres du bureau peuvent se déclarer contacts du club
   if (c && isBoard()) {
     const k = S.myContact || {}, box = (n, l) => `<label class="check"><input type="checkbox" data-contact="${n}" ${k[n] ? 'checked' : ''}><span>${l}</span></label>`;

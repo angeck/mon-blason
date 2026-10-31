@@ -2,6 +2,7 @@
 import { BRAND, VERSION, CGU_VERSION, TURNSTILE_SITEKEY } from '../config.js';
 import { S, sb, esc, run, toast, render, refresh, store, remember, ROLES, JOIN_ROLES, SPORTS, FONCTIONS, niceFirst, niceLast, lum, onColor, isActive, club, ACTIONS, FORMS, INPUTS, CHANGES } from './core.js';
 import { header, wordmark, crest, field, icon } from './ui.js';
+import { unlinkPush } from './notif.js';
 
 // ---------- Textes légaux (vouvoiement, provisoires : à relire par un juriste) ----------
 export function legalText() {
@@ -251,7 +252,7 @@ Object.assign(ACTIONS, {
     await openPendingJoin(); render();
   },
   joincancel: () => { store.set('pc_join', ''); S.join = { code: '', role: 'supporteur', teams: [] }; S.onb = isActive() ? null : ''; render(); },
-  logout: async () => { await sb.auth.signOut(); },
+  logout: async () => { await unlinkPush(); await sb.auth.signOut(); },
   legal: () => { S.prevView = S.view; S.view = { type: 'legal' }; render(); },
   onb: (el, d) => { S.tmpLogo = undefined; S.onb = d.v || null; if (!d.v && isActive()) S.onb = null; render(); },
   onbopen: () => { S.onb = ''; S.view = null; render(); },

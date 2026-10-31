@@ -151,6 +151,29 @@ with sync_playwright() as p:
     check('import sans les coordonnées', pg.evaluate("window.__CALLS.some(c => c[1] === 'import_players' && c[2].p_rows[0].email === null)"))
     act('[data-act=tab][data-i="0"]'); act('[data-act=account]')
     check('mon compte : données et suppression', has('Télécharger mes données') and has('Supprimer mon compte'))
+    # ---------- alpha 3.3 · notifications (étape B, partie application) ----------
+    pg.evaluate("""async () => {
+      const sub = { endpoint: 'https://push.exemple.invalid/abc123456789012345678901234', toJSON() { return { endpoint: this.endpoint, keys: { p256dh: 'cle-publique-fictive', auth: 'secret-fictif' } }; }, unsubscribe: async () => true };
+      let cur = null;
+      const reg = { pushManager: { getSubscription: async () => cur, subscribe: async (o) => { window.__PUSHOPT = o; cur = sub; return sub; } } };
+      Object.defineProperty(navigator.serviceWorker, 'ready', { configurable: true, get: () => Promise.resolve(reg) });
+      window.PushManager = window.PushManager || function () {};
+      let perm = 'default';
+      Object.defineProperty(Notification, 'permission', { configurable: true, get: () => perm });
+      Notification.requestPermission = async () => (perm = 'granted');
+      const { pushState } = await import('/js/notif.js'); await pushState();
+      const { render } = await import('/js/core.js'); render(true);
+    }"""); pg.wait_for_timeout(200)
+    check('notifications : encadré « Activer » dans Mon compte', has('Activer les notifications') and has('pour tous tes clubs'))
+    act('[data-act=back]')
+    check('notifications : rappel discret sur l’Accueil', pg.evaluate("!!document.querySelector('.card.pale [data-act=pushon]')"))
+    act('.card.pale [data-act=pushon]'); pg.wait_for_timeout(300)
+    check('notifications : appareil inscrit avec la clé publique et rangé dans la base', pg.evaluate("window.__PUSHOPT && window.__PUSHOPT.applicationServerKey.length === 65 && window.__CALLS.some(c => c[1] === 'push_subscribe' && c[2].p_endpoint.endsWith('901234') && c[2].p_auth === 'secret-fictif')"))
+    check('notifications : rappel retiré une fois activé', pg.evaluate("!document.querySelector('[data-act=pushon]')"))
+    act('[data-act=account]')
+    check('notifications : « Activées sur cet appareil » dans Mon compte', has('Activées sur cet appareil'))
+    act('[data-act=pushoff]'); pg.wait_for_timeout(300)
+    check('notifications : couper retire l’appareil de la base', pg.evaluate("window.__CALLS.some(c => c[1] === 'push_unsubscribe')") and has('Activer les notifications'))
     shot('10-compte')
     act('[data-act=legal]')
     check('mentions légales : adresse de contact', has('gael.monblason@gmail.com'))

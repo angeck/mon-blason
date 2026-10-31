@@ -16,6 +16,7 @@ import { clubTab, memberPage } from './js/club.js';
 import { accountScreen, deletedScreen } from './js/compte.js';
 import { COACH_VIEWS, loadCoachCounts, loadEvPlans } from './js/coach.js';
 import { VIE_VIEWS } from './js/vie.js';
+import { syncPush } from './js/notif.js';
 
 const TAB_TITLES = ['', 'Agenda', 'Messages', 'Équipe', 'Le club'];
 function profileLine() { return [...new Set(active().map((m) => roleLabel(m) + (m.team_id ? ' ' + teamName(m.team_id) : '')))].join(' · '); }
@@ -77,6 +78,7 @@ async function refresh(msg) {
   await Promise.all([loadCoachCounts(), loadEvPlans()]).catch(() => {});
   if (S.view?.type === 'group') await loadGroup(S.view.id);
   render(true); subscribe(); if (msg) toast('À jour.');
+  syncPush().then(() => render(true), () => {});
 }
 hooks.render = render; hooks.refresh = refresh;
 
