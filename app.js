@@ -17,6 +17,7 @@ import { accountScreen, deletedScreen } from './js/compte.js';
 import { COACH_VIEWS, loadCoachCounts, loadEvPlans } from './js/coach.js';
 import { VIE_VIEWS } from './js/vie.js';
 import { syncPush } from './js/notif.js';
+import './js/convoc.js';
 import { switchBar, saveSwitch, resetUser } from './js/profils.js';
 
 const TAB_TITLES = ['', 'Agenda', 'Messages', 'Équipe', 'Le club'];

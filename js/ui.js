@@ -14,8 +14,13 @@ export function wordmark(px, sport) {
   const b = Math.round(px * 0.62);
   return `<span class="wordmark" role="img" aria-label="${esc(BRAND.name)}" style="font-size:${px}px">${esc(BRAND.word1)}${ball(b, sport)}${esc(BRAND.word2)}<span style="width:${Math.round(px * 0.22)}px"></span><span class="club">${esc(BRAND.word3)}</span></span>`;
 }
-// Logo E (symbole « P ballon ») : en-têtes serrés, icône, onglet
-export const symbol = (size, sport, stem = '#11162E') => `<svg width="${size}" height="${size}" viewBox="0 0 56 56" role="img" aria-label="${esc(BRAND.name)}"><rect x="10" y="6" width="13" height="44" rx="6.5" fill="${stem}"/><svg x="17" y="6" width="32" height="32" viewBox="0 0 56 56">${ballInner(sport)}</svg></svg>`;
+// Petit logo p●c (charte du 31 octobre, remplace le logo E) : en-têtes serrés, espaces, icône, onglet.
+// Carré bleu et lettres blanches ; carré blanc et lettres encre quand le fond est déjà bleu (ou trop proche).
+const PC_ARC = 'M88.35 37.55A8 8 0 1 0 88.35 49.45';
+export const symbol = (size, sport, onBg) => {
+  const white = onBg && contrast(onBg, '#2F5BFF') < 1.6, bg = white ? '#FFFFFF' : '#2F5BFF', fg = white ? '#11162E' : '#FFFFFF';
+  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="${esc(BRAND.name)}"><rect width="100" height="100" rx="22" fill="${bg}"/><g fill="none" stroke="${fg}" stroke-width="9" stroke-linecap="round"><path d="M18 35.5V71"/><circle cx="27" cy="43.5" r="8"/><path d="${PC_ARC}"/></g><svg x="43.5" y="29" width="23" height="23" viewBox="0 0 56 56">${ballInner(sport)}</svg></svg>`;
+};
 
 // ---------- Icônes au trait ----------
 const P = {
@@ -82,13 +87,13 @@ export const espaceBtn = () => `<button class="roundbtn" data-act="espace" aria-
 export const searchBtn = () => `<button class="roundbtn" data-act="csearch" aria-label="Chercher un club">${icon('search', 22, '#11162E', 2.2)}</button>`;
 // opts : { title, kicker, sub, back, tags[], brand, role }
 // N° 27 : même en-tête partout. Bande du haut : (retour) · logo C · loupe (n° 56) · Espace · Mon compte ;
-// dans un espace : (retour) · pastille du rôle · logo E · Mon compte (charte : logo E quand la place manque)
+// dans un espace : (retour) · pastille du rôle · petit logo p●c · Mon compte (charte : p●c quand la place manque)
 export function header(o = {}) {
   const c = club(), br = o.brand || brandMode(), sport = c?.sport;
   const acc = S.session && S.me && S.view?.type !== 'account' && S.me.cgu_version && !S.me.deleted_at;
   const inClub = acc && S.clubId && isActive() && S.onb === null;
   let h;
-  if (o.role) h = `<div class="band">${o.back ? backBtn() : ''}<span class="rolepill">${esc(o.role)}</span><span style="flex:1"></span><span class="roundbtn" style="cursor:default">${symbol(28, sport)}</span>${acc ? accountBtn() : ''}</div>`;
+  if (o.role) h = `<div class="band">${o.back ? backBtn() : ''}<span class="rolepill">${esc(o.role)}</span><span style="flex:1"></span><span class="roundbtn" style="cursor:default">${symbol(30, sport, S.headerBg || '#2F5BFF')}</span>${acc ? accountBtn() : ''}</div>`;
   else h = `<div class="band">${o.back ? backBtn() : ''}<span class="logo">${wordmark(22, sport)}</span>${acc && S.view?.type !== 'csearch' ? searchBtn() : ''}${inClub && !o.back && casquettes().length ? espaceBtn() : ''}${acc ? accountBtn() : '<span style="width:44px"></span>'}</div>`;
   if (!br && c && !o.role) h += `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.kicker || o.sub || '')}</span></div></div>`;
   else if (o.kicker) h += `<div class="kicker">${esc(o.kicker)}</div>`;

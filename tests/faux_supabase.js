@@ -67,6 +67,8 @@ const D = {
   exercise_votes: [], exercise_reports: [], training_plans: [], coach_hours: [{ id: 'h0', club_id: C, user_id: 'u-c11', team_id: T11, day: at(-4).slice(0, 10), minutes: 90, kind: 'Entraînement', note: '' }],
   coach_statements: [{ id: 'st1', club_id: C, user_id: 'u-c11', month: (() => { const d = new Date(); return d.toLocaleDateString('sv-SE').slice(0, 8) + '01'; })(), status: 'submitted', total_minutes: 90 }],
 };
+// Le relevé de Karim porte sur le mois des dernières séances passées (le test ne dépend pas du jour où il tourne)
+{ const p = D.events.filter((e) => e.type === 'Entraînement' && new Date(e.starts_at) < Date.now()).map((e) => new Date(e.starts_at)).sort((a, b) => b - a)[0]; if (p) D.coach_statements[0].month = p.toLocaleDateString('sv-SE').slice(0, 8) + '01'; }
 window.__FAKE = D; window.__CALLS = [];
 const clone = (x) => JSON.parse(JSON.stringify(x));
 class Q {
@@ -131,6 +133,10 @@ const RPC = {
   fill_coach_hours: () => { D.coach_hours.push({ id: uid(), club_id: C, user_id: ME, team_id: T9, event_id: 'e7', day: at(-6).slice(0, 10), minutes: 90, kind: 'Entraînement', note: '' }); return 1; },
   submit_coach_month: ({ p_month }) => { D.coach_statements.push({ id: uid(), club_id: C, user_id: ME, month: p_month, status: 'submitted', total_minutes: 90 }); return null; },
   decide_coach_month: ({ p_statement, p_ok, p_comment }) => { const s = D.coach_statements.find((x) => x.id === p_statement); s.status = p_ok ? 'validated' : 'refused'; s.comment = p_comment; s.decided_by = ME; s.decided_at = new Date().toISOString(); return null; },
+  convocation_data: ({ p_event }) => { const e = D.events.find((x) => x.id === p_event); const d = new Date(e.starts_at).toLocaleDateString('sv-SE');
+    return { club: { id: C, name: 'BC Testville', city: 'Testville', sport: 'Basket-ball', color1: '#C2410C', color2: '#FFD400', logo: null }, from: d, to: d, correspondent: null,
+      events: [{ id: e.id, type: e.type, title: e.title, starts_at: e.starts_at, place: e.place, opponents: e.opponents, cancelled: false, team: { name: 'U11', category: 'U11' }, coach: { name: 'Karim Coach', phone: '0600000001', email: 'karim@exemple.invalid' } },
+        { id: 'x9', type: 'Plateau', title: 'Plateau U9', starts_at: e.starts_at, place: '', opponents: 'Étampes', cancelled: false, team: { name: 'U9', category: 'U9' }, coach: null }] }; },
   my_areas: () => window.__AREAS || ['communication', 'evenements', 'secretariat', 'technique', 'tresorerie'],
   my_clubs_overview: () => [{ club_id: C, name: 'BC Testville', sport: 'Basket-ball', color1: '#C2410C', roles: ['bureau'], next_events: [], unread: 0 }, { club_id: 'c-2', name: 'Volley Ailleurs', sport: 'Volley-ball', color1: '#0F1A3A', roles: ['joueur'], next_events: [{ id: 'v1', title: 'Match 4x4', type: 'Match', starts_at: at(2, 20) }], unread: 2 }],
   add_default_missions: ({ p_event }) => { const c = D.clubs.find((x) => x.id === C); c.default_missions.forEach((m, i) => D.event_missions.push({ id: uid(), event_id: p_event, label: m.label, slots: m.slots, position: i + 1, created_at: new Date().toISOString() })); return c.default_missions.length; },
