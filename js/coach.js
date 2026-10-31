@@ -33,6 +33,63 @@ async function loadExos() {
   const others = S.exos.filter((e) => e.created_by !== S.me.id).map((e) => e.id);
   S.exAuthors = {};
   if (others.length) { const a = await sb.rpc('exercise_authors', { p_ids: others }); (a.data || []).forEach((x) => (S.exAuthors[x.id] = x)); }
+  await loadVideoUrls();
+}
+// ---------- vidéos des exercices (stockage privé, liens temporaires d'une heure) ----------
+const VB = 'exercise-videos', VMAX = 50 * 1024 * 1024;
+async function loadVideoUrls() {
+  const paths = [...new Set(S.exos.filter((e) => !e.deleted_at).flatMap((e) => [e.poster_path, e.video_path]).filter(Boolean))];
+  S.vurl = {};
+  if (!paths.length) return;
+  try { const r = await sb.storage.from(VB).createSignedUrls(paths, 3600); (r.data || []).forEach((x) => { if (x.signedUrl) S.vurl[x.path] = x.signedUrl; }); } catch { /* vidéos indisponibles : la liste reste utilisable */ }
+}
+function thumb(e) {
+  const p = e.poster_path && S.vurl?.[e.poster_path], v = e.video_path && S.vurl?.[e.video_path];
+  if (p) return `<span class="vthumb"><img src="${esc(p)}" alt="" loading="lazy"><span class="vplay" aria-hidden="true">▶</span></span>`;
+  if (v) return `<span class="vthumb"><video src="${esc(v)}#t=1" muted playsinline preload="metadata"></video><span class="vplay" aria-hidden="true">▶</span></span>`;
+  return '<span class="vthumb none"><small>Pas de vidéo</small></span>';
+}
+async function makePoster(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
+    await new Promise((ok, ko) => { v.onloadeddata = ok; v.onerror = ko; setTimeout(ko, 10000); });
+    v.currentTime = Math.min(1.5, (v.duration || 2) / 2);
+    await new Promise((ok) => { v.onseeked = ok; setTimeout(ok, 4000); });
+    const w = 360, h = Math.round((w * (v.videoHeight || 360)) / (v.videoWidth || 360)), c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(v, 0, 0, w, h);
+    return await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.8));
+  } catch { return null; } finally { URL.revokeObjectURL(url); }
+}
+async function uploadVideo(e, file) {
+  if (!/^video\//.test(file.type) && !/\.(mp4|mov|m4v|webm)$/i.test(file.name)) { toast(`« ${file.name} » n'est pas une vidéo.`); return false; }
+  if (file.size > VMAX) { toast(`« ${file.name} » dépasse 50 Mo : raccourcis-la ou compresse-la.`); return false; }
+  const ext = /\.webm$/i.test(file.name) || file.type === 'video/webm' ? 'webm' : /\.mov$/i.test(file.name) || file.type === 'video/quicktime' ? 'mov' : 'mp4';
+  const type = { mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' }[ext], path = `${e.id}/video.${ext}`;
+  const up = await sb.storage.from(VB).upload(path, file, { upsert: true, contentType: type, cacheControl: '3600' });
+  if (up.error) { toast('Envoi de la vidéo impossible : ' + up.error.message); return false; }
+  let poster = '';
+  const blob = await makePoster(file);
+  if (blob) { const pr = await sb.storage.from(VB).upload(`${e.id}/poster.jpg`, blob, { upsert: true, contentType: 'image/jpeg', cacheControl: '3600' }); if (!pr.error) poster = `${e.id}/poster.jpg`; }
+  if (e.video_path && e.video_path !== path) await sb.storage.from(VB).remove([e.video_path]);
+  return !!(await run(sb.from('exercises').update({ video_path: path, poster_path: poster }).eq('id', e.id).select('id').single()));
+}
+async function removeVideo(e) {
+  const paths = [e.video_path, e.poster_path].filter(Boolean);
+  if (paths.length) await sb.storage.from(VB).remove(paths);
+  return !!(await run(sb.from('exercises').update({ video_path: '', poster_path: '' }).eq('id', e.id).select('id').single()));
+}
+// Ajout en lot : chaque fichier va sur l'exercice de Ma banque qui porte le même nom (ponctuation et accents ignorés)
+async function bulkVideos(files) {
+  const mine = S.exos.filter((e) => !e.deleted_at && e.created_by === S.me.id), ok = [], ko = [];
+  for (const [i, f] of [...files].entries()) {
+    const k = norm(f.name.replace(/\.[^.]+$/, '')), e = mine.find((x) => norm(x.title) === k);
+    if (!e) { ko.push(f.name); continue; }
+    toast(`Envoi ${i + 1} sur ${files.length} : ${e.title}…`);
+    if (await uploadVideo(e, f)) ok.push(e.title); else ko.push(f.name);
+  }
+  await loadExos(); render(true);
+  toast(`${plural(ok.length, 'vidéo ajoutée', 'vidéos ajoutées')}.${ko.length ? ' Sans exercice du même nom : ' + ko.join(', ') + '.' : ''}`, ko.length ? 9000 : undefined);
 }
 export async function loadEvPlans() { S.evPlans = canCoachSpace() ? ((await sb.from('training_plans').select('id,title,event_id,team_id,items,notes').not('event_id', 'is', null).is('deleted_at', null).limit(300)).data || []) : []; }
 export async function ensureExos() { if (!S.exos) await loadExos(); }
@@ -117,7 +174,7 @@ function sharePill(e) {
 function exCard(e) {
   const inPlan = (S.plan?.items || []).some((x) => x.exercise_id === e.id), a = S.exAuthors?.[e.id];
   const sub = [e.category, fmtMin(e.duration_min), e.sport === 'Tous les sports' ? 'Tous sports' : e.sport, e.level, a ? a.author + (a.club_name !== club()?.name ? ' · ' + a.club_name : '') : ''].filter(Boolean).join(' · ');
-  return `<div class="ev"><button class="head" data-act="cexo" data-id="${e.id}"><span class="info"><span class="t">${esc(e.title)}</span><span class="s">${esc(sub)}</span><span class="chips" style="gap:6px;margin-top:4px">${sharePill(e)}${e.up_count || e.down_count ? `<span class="pill">👍 ${e.up_count} · 👎 ${e.down_count}</span>` : ''}${tooNegative(e) ? '<span class="pill ko">À revoir</span>' : ''}</span></span></button>
+  return `<div class="ev"><button class="head" data-act="cexo" data-id="${e.id}">${thumb(e)}<span class="info"><span class="t">${esc(e.title)}</span><span class="s">${esc(sub)}</span><span class="chips" style="gap:6px;margin-top:4px">${sharePill(e)}${e.up_count || e.down_count ? `<span class="pill">👍 ${e.up_count} · 👎 ${e.down_count}</span>` : ''}${tooNegative(e) ? '<span class="pill ko">À revoir</span>' : ''}</span></span></button>
   <button class="btn small ${inPlan ? 'ghost' : 'main'}" data-act="cadd" data-id="${e.id}">${inPlan ? 'Dans ma séance ✓' : icon('plus', 18) + 'Ajouter à ma séance'}</button></div>`;
 }
 function filters(list) {
@@ -148,7 +205,7 @@ export function exosPage() {
   if (!S.exos) return h + loading();
   h += `<button class="btn main" data-act="cexnew">${icon('plus', 20)}Nouvel exercice</button>`;
   let list = S.exos.filter((e) => !e.deleted_at);
-  if (tab === 'mine') list = list.filter((e) => e.created_by === S.me.id);
+  if (tab === 'mine') { list = list.filter((e) => e.created_by === S.me.id); if (list.length) h += `<label class="btn ghost">Ajouter des vidéos en lot<input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" multiple data-exbulk="1" hidden></label><p class="note">Nomme chaque fichier comme l'exercice (ex. « Relais en dribble.mp4 ») : il ira sur le bon exercice.</p>`; }
   else if (tab === 'club') { h += boardTodo(); list = list.filter((e) => e.club_id === S.clubId && e.sharing !== 'me'); }
   else list = list.filter((e) => e.sharing === 'public' && e.public_state === 'validated');
   const [fh, out] = filters(list);
@@ -164,6 +221,7 @@ export function exoPage(id) {
   const e = (S.exos || []).find((x) => x.id === id); if (!e) return loading() || '<p class="empty">Exercice introuvable (supprimé ?).</p>';
   const mine = e.created_by === S.me.id, a = S.exAuthors?.[e.id], my = S.myVotes?.[e.id];
   let h = `<div class="card lift"><div class="chips">${sharePill(e)}<span class="pill blue">${esc(e.category)}</span><span class="pill">${fmtMin(e.duration_min)}</span>${e.level ? `<span class="pill">${esc(e.level)}</span>` : ''}${tooNegative(e) ? '<span class="pill ko">À revoir</span>' : ''}</div>
+  ${e.video_path && S.vurl?.[e.video_path] ? `<video class="vplayer" src="${esc(S.vurl[e.video_path])}" ${e.poster_path && S.vurl[e.poster_path] ? `poster="${esc(S.vurl[e.poster_path])}"` : ''} controls playsinline preload="metadata"></video>` : ''}
   ${e.diagram?.length ? courtSvg(e.sport === 'Tous les sports' ? club()?.sport : e.sport, e.diagram, false) : ''}
   ${e.description ? `<div style="white-space:pre-wrap">${esc(e.description)}</div>` : '<p class="note">Pas de description.</p>'}
   <p class="note">${esc(ORIGINS[e.origin])}${e.source ? ' · Source : ' + esc(e.source) : ''}${mine ? ' · par toi' : a ? ' · par ' + esc(a.author) + ' (' + esc(a.club_name) + ')' : ''}</p></div>`;
@@ -212,6 +270,9 @@ export function exoForm() {
   ${field('exd', 'Durée (minutes)', `<input id="exd" name="duration_min" type="number" min="1" max="120" required value="${esc(f.duration_min || 10)}">`)}
   ${field('exl', 'Niveau (facultatif)', `<input id="exl" name="level" maxlength="40" value="${esc(f.level || '')}" placeholder="Ex. U9 à U13">`)}</div>
   ${field('exde', 'Description', `<textarea id="exde" name="description" maxlength="4000" rows="7" placeholder="Mise en place, déroulement, consignes, variantes">${esc(f.description || '')}</textarea>`)}
+  <div class="field"><span class="lab">Vidéo (facultatif, 50 Mo maximum)</span>
+  ${S.exVid ? `<p class="note">Nouvelle vidéo choisie : ${esc(S.exVid.name)} (envoyée à l'enregistrement)</p>` : f.video_path && !S.exVidRm ? '<p class="note">Une vidéo est jointe.</p>' : S.exVidRm ? '<p class="note">La vidéo sera retirée à l’enregistrement.</p>' : ''}
+  <div class="btns"><label class="btn small">${f.video_path || S.exVid ? 'Remplacer la vidéo' : 'Choisir une vidéo'}<input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" data-exvid="1" hidden></label>${(f.video_path && !S.exVidRm) || S.exVid ? '<button type="button" class="btn small ghost" data-act="cexvrm">Retirer la vidéo</button>' : ''}</div></div>
   ${diagramEditor(f)}
   <div class="field"><span class="lab">Origine</span><div class="chips">${Object.entries(ORIGINS).map(([k, l]) => `<label class="chip" style="display:flex;align-items:center;gap:6px"><input type="radio" name="origin" value="${k}" data-exre="1" ${f.origin === k ? 'checked' : ''}>${l}</label>`).join('')}</div></div>
   ${f.origin === 'adapte' ? field('exso', 'Source (livre, site, formation, auteur)', `<input id="exso" name="source" required maxlength="300" value="${esc(f.source || '')}">`) : ''}
@@ -429,8 +490,8 @@ Object.assign(ACTIONS, {
   cfcat: (el, d) => { S.cf.cat = d.v; render(true); },
   cexo: (el, d) => { S.exRep = null; S.view = { type: 'exo', id: d.id }; render(); },
   cadd: (el, d) => { const e = exById(d.id); if (e) addToPlan(e); },
-  cexnew: () => { S.exf = { sport: club()?.sport || 'Basket-ball', category: 'Technique', duration_min: 10, origin: 'perso', sharing: 'me', diagram: [], certified: false }; S.dg = { tool: 'a', from: null }; S.view = { type: 'exoform' }; render(); },
-  cexedit: (el, d) => { const e = exById(d.id); S.exf = { ...e, diagram: (e.diagram || []).slice() }; S.dg = { tool: 'a', from: null }; S.view = { type: 'exoform', id: d.id }; render(); },
+  cexnew: () => { S.exVid = null; S.exVidRm = false; S.exf = { sport: club()?.sport || 'Basket-ball', category: 'Technique', duration_min: 10, origin: 'perso', sharing: 'me', diagram: [], certified: false }; S.dg = { tool: 'a', from: null }; S.view = { type: 'exoform' }; render(); },
+  cexedit: (el, d) => { S.exVid = null; S.exVidRm = false; const e = exById(d.id); S.exf = { ...e, diagram: (e.diagram || []).slice() }; S.dg = { tool: 'a', from: null }; S.view = { type: 'exoform', id: d.id }; render(); },
   dgtool: (el, d) => { keepEx(); S.dg = { tool: d.v, from: null }; render(true); },
   dgundo: () => { keepEx(); S.exf.diagram.pop(); S.dg.from = null; render(true); },
   dgclear: () => { keepEx(); S.exf.diagram = []; S.dg.from = null; render(true); },
@@ -441,6 +502,7 @@ Object.assign(ACTIONS, {
     const q = cur === up ? sb.from('exercise_votes').delete().eq('exercise_id', d.id).eq('user_id', S.me.id) : sb.from('exercise_votes').upsert({ exercise_id: d.id, user_id: S.me.id, up, at: new Date().toISOString() });
     if (await run(q)) { await loadExos(); render(true); }
   },
+  cexvrm: () => { keepEx(); if (S.exVid) S.exVid = null; else S.exVidRm = true; render(true); },
   cexrep: (el, d) => { S.exRep = d.id; render(true); },
   cexval: async (el, d) => { if (await run(sb.rpc('validate_exercise', { p_id: d.id, p_ok: d.v === '1' }), d.v === '1' ? 'Exercice validé : visible de tous les clubs.' : 'Partage public refusé.')) { await loadExos(); await loadCoachCounts(); render(true); } },
   cexdel: async (el, d) => { if (!armed('ex' + d.id)) return; if (await run(sb.rpc('trash_exercise', { p_id: d.id }), 'Exercice supprimé (corbeille 30 jours).')) { await loadExos(); S.view = { type: 'exos' }; S.stack = (S.stack || []).filter((v) => v.type !== 'exo'); render(); } },
@@ -479,6 +541,9 @@ FORMS.exf = async () => {
   if (f.sharing !== 'me' && !row.certified) return toast('Coche la case sur tes droits pour partager.');
   const r = f.id ? await run(sb.from('exercises').update(row).eq('id', f.id).select().single()) : await run(sb.from('exercises').insert({ ...row, club_id: S.clubId }).select().single());
   if (!r) return;
+  if (S.exVid) { toast('Envoi de la vidéo…'); await uploadVideo(r, S.exVid); }
+  else if (S.exVidRm && f.video_path) await removeVideo(r);
+  S.exVid = null; S.exVidRm = false;
   toast(r.public_state === 'pending' ? 'Enregistré. Le bureau de ton club doit valider le partage à tous les clubs.' : 'Exercice enregistré.');
   S.exf = null; await loadExos(); S.stack = (S.stack || []).filter((v) => v.type !== 'exoform'); S.view = { type: 'exo', id: r.id }; render();
 };
@@ -504,6 +569,8 @@ INPUTS.push((t) => {
 });
 CHANGES.push(async (t) => {
   if (t.dataset.exre) { keepEx(); render(true); return true; }
+  if (t.dataset.exvid) { const fl = t.files?.[0]; if (fl) { if (fl.size > VMAX) return toast('Vidéo trop lourde : 50 Mo maximum.'), true; keepEx(); S.exVid = fl; S.exVidRm = false; render(true); } return true; }
+  if (t.dataset.exbulk) { if (t.files?.length) await bulkVideos(t.files); return true; }
   if (t.dataset.planre) { keepPlan(); S.plan.event_id = ''; savePlanLocal(); render(true); return true; }
   if (t.dataset.pmin) { render(true); return true; }
   return false;

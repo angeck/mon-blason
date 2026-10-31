@@ -50,7 +50,7 @@ export const render = (keep) => hooks.render(keep);
 export const refresh = (msg) => hooks.refresh(msg);
 
 // ---------- outils ----------
-export function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => (t.hidden = true), 3200); }
+export function toast(m, ms = 3200) { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => (t.hidden = true), ms); }
 export async function run(p, ok) {
   if (!navigator.onLine) { toast('Hors connexion : réessaie quand le réseau revient.'); return null; }
   const { data, error } = await p;
