@@ -17,6 +17,7 @@ import { accountScreen, deletedScreen } from './js/compte.js';
 import { COACH_VIEWS, loadCoachCounts, loadEvPlans } from './js/coach.js';
 import { VIE_VIEWS } from './js/vie.js';
 import { syncPush } from './js/notif.js';
+import { switchBar, saveSwitch, resetUser } from './js/profils.js';
 
 const TAB_TITLES = ['', 'Agenda', 'Messages', 'Équipe', 'Le club'];
 function profileLine() { return [...new Set(active().map((m) => roleLabel(m) + (m.team_id ? ' ' + teamName(m.team_id) : '')))].join(' · '); }
@@ -64,7 +65,7 @@ function render(keep) {
     }
     html = hd + `<main class="bd">${S.view ? '' : syncBar()}${bd}</main>` + tabBar();
   }
-  app.innerHTML = html;
+  app.innerHTML = switchBar() + html;
   window.scrollTo(0, y);
   mountCaptcha();
 }
@@ -136,6 +137,7 @@ window.addEventListener('online', () => { S.online = true; refresh(); });
 window.addEventListener('offline', () => { S.online = false; render(true); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.session && navigator.onLine) refresh(); });
 sb.auth.onAuthStateChange(async (ev, session) => {
+  if (session) { saveSwitch(session); if (S.uid && S.uid !== session.user.id) resetUser(); S.uid = session.user.id; } else S.uid = null;
   if (ev === 'TOKEN_REFRESHED') { S.session = session; return; }
   S.session = session;
   if (!session) { S.me = null; S.mems = []; S.clubs = {}; S.view = null; S.joinChecked = false; S.recovery = false; if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } render(); return; }

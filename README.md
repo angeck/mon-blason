@@ -1,4 +1,4 @@
-# Pocket Club (nom provisoire) · alpha 3.2.4
+# Pocket Club (nom provisoire) · alpha 3.3.1
 
 Application web installable (PWA) pour les clubs sportifs : agenda avec réponses « Je viens / Je ne viens pas », appel, fiches joueurs, licences et cotisations, groupes d'échange (messages en direct, sondages), équipes, membres, corbeille de 30 jours.
 
@@ -9,7 +9,7 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 ## Fichiers
 
 - `app.js` : affichage des écrans, aiguillage des actions, connexion, temps réel.
-- `js/core.js` (état, données, droits vus à l'écran) · `js/ui.js` (logos, en-tête, onglets) · un module par partie : `auth`, `accueil`, `agenda`, `messages`, `equipe`, `joueur`, `club`, `compte`, `coach` (espace coach), `vie` (espaces, rubriques, annonces, bénévoles), `importer` (lecture des listes).
+- `js/core.js` (état, données, droits vus à l'écran) · `js/ui.js` (logos, en-tête, onglets) · un module par partie : `auth`, `accueil`, `agenda`, `messages`, `equipe`, `joueur`, `club`, `compte`, `coach` (espace coach), `vie` (espaces, rubriques, annonces, bénévoles), `importer` (lecture des listes), `profils` (liste déroulante « Profil de test », alpha 3.3.1).
 - `js/vendor/xlsx.bundle.js` : lecture et écriture Excel (xlsx-js-style 1.2.0, licence Apache 2.0, copie locale pour ne pas dépendre d'un CDN).
 - `style.css` : styles Pocket Club, d'après les jetons de la charte (`04-jetons-design.css` du projet).
 - `supabase/schema.sql` (3.0), puis `alpha_3_0_1.sql`, `alpha_3_0_2.sql`, `alpha_3_1.sql`, `alpha_3_2.sql`, `alpha_3_2_1.sql` et `alpha_3_2_4.sql` (mises à jour). `supabase/build_reset.sh` fabrique `RESET_ALPHA_3_0.sql` (efface tout, comptes compris, puis installe tout), `MAJ_ALPHA_3_2.sql` et `MAJ_ALPHA_3_2_4.sql` (mises à jour sans perte).
