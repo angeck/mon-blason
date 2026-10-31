@@ -1,0 +1,367 @@
+{
+ "proprietaire": "raveneau.gael@yahoo.fr",
+ "banque": "Ma banque (privée)",
+ "source": "Appli U8-U9 Boissy Basketball 91 (https://claude.ai/artifact/EBgG7SP6gLV5PsqQnVxkTg), récupérée le 2026-10-31",
+ "note_videos": "video_asset = identifiant de la vidéo stockée dans l artefact source ; à transférer vers le stockage Pocket Club en 3.1",
+ "exercices": [
+  {
+   "id": "contact-dribble-arriere",
+   "nom": "Contact + dribble arrière",
+   "theme": "Dribble",
+   "duree_min": 10,
+   "description": "Par 2 en face à face (env. 4 m), 1 ballon chacun.\n• 10 dribbles rapides sur place.\n• On avance en dribblant et on vient taper la main du copain.\n• 3 dribbles en marche arrière : dribble de protection, corps et bras en opposition, ballon protégé derrière.\nEt ainsi de suite.\n\nVidéo d'origine : https://www.facebook.com/share/v/19VbwH24Q4/",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "a6d3eeafdf8963ad7e211b1622d54d34"
+  },
+  {
+   "id": "double-pas-evolutif",
+   "nom": "Double pas évolutif",
+   "theme": "Appuis & tir",
+   "duree_min": 15,
+   "description": "Lay-up main droite, côté droit du panier. Un disque « 0 » au sol marque le dernier appui pied gauche (celui du dernier dribble).\n\n1. Double pas arrêté : pied gauche sur le 0, ballon en main, puis droite-gauche et lay-up.\n2. Idem avec un dribble sur place avant le droite-gauche.\n3. Départ à 3 pas : on part en dribble en marchant pour que le pied gauche tombe sur le 0, puis droite-gauche.\n4. Départ à 6 m en courant : idem.\n5. Sans disque.\n\nRythme à faire dire : « 0 - 1 - 2 - lay-up » (gauche - droite - gauche).\nOn ne passe à l'étape suivante que si le rythme est acquis.",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "0c614a93653336859c2a8ee0f5434ec1"
+  },
+  {
+   "id": "dribble-feu-tricolore",
+   "nom": "Feu tricolore (dribble sur place)",
+   "theme": "Dribble",
+   "duree_min": 5,
+   "description": "Chaque enfant a son ballon et reste dans sa zone. Le coach annonce la couleur :\n• VERT : dribble normal (la balle monte à la taille).\n• ORANGE : dribble bas et rapide (hauteur de genou).\n• ROUGE : arrêt, ballon tenu à deux mains contre la poitrine.\n\nNiveau 1 : seulement la main forte, avec le bout des doigts, en regardant le coach.\nNiveau 2 : alterner main forte et main faible, puis changement de main devant soi, en regardant devant.",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "76edf887f9f39d682ccda3abdece72a3"
+  },
+  {
+   "id": "dribble-la-traversee",
+   "nom": "La traversée (dribble en déplacement)",
+   "theme": "Dribble",
+   "duree_min": 7,
+   "description": "Aller d'une ligne à l'autre en dribblant, avec des plots espacés comme obstacles. Regard levé, ballon au bout des doigts, ballon loin des plots (du côté opposé).\n\nNiveau 1 : en marchant, un plot sur deux, main forte.\nNiveau 2 : en courant, slalom entre les plots, changement de main à chaque plot.\n\nMatériel : 5 plots par couloir, 1 ballon par enfant.",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "a29bedc5251d6f7edd4739e17628caa9"
+  },
+  {
+   "id": "dribble-relais-aller-retour",
+   "nom": "Relais en dribble",
+   "theme": "Dribble",
+   "duree_min": 7,
+   "description": "Équipes de 4 à 5 par panier : aller-retour en dribble autour d'un plot, puis le suivant part. Un seul coureur à la fois, les autres attendent derrière la ligne, et le suivant part quand le coureur est revenu.\n\nNiveau 1 : parcours court, main forte.\nNiveau 2 : parcours long, main faible à l'aller, main forte au retour.\nPour finir, on peut ajouter un lay-up simple.\n\nMatériel : 1 plot par équipe, 1 ballon par équipe.",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "62185c31b425e6a048233f190f5d0f9a"
+  },
+  {
+   "id": "dribble-retour-calme-stop",
+   "nom": "Retour au calme : dribble et stop en deux temps",
+   "theme": "Dribble",
+   "duree_min": 3,
+   "description": "Tous les enfants dribblent dans la zone sans toucher personne. Au signal « stop », ils s'arrêtent en deux temps (1 … 2), genoux fléchis, ballon tenu à deux mains, regard levé.\n\nNiveau 1 : dribble lent, main forte.\nNiveau 2 : dribble plus vite, en alternant les mains.",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "8f8100327a36cc1fb72c7bab91eb3313"
+  },
+  {
+   "id": "dribble-stop-go-double-pas",
+   "nom": "Dribble stop & go + reverse + double pas",
+   "theme": "Dribble",
+   "duree_min": 10,
+   "description": "Départ ligne de fond côté droit, 3 plots en ligne le long du côté, 1 plot dans le rond central, 1 plot à gauche.\n• Dribble main droite vers chaque plot : arrêt, dribbles rapides gauche-droite, accélération (3 fois).\n• Rond central : reverse.\n• Retour vers le panier par le centre, direction le plot de gauche, puis double pas.\nLe suivant part quand le précédent passe le 2e plot.\n\nVidéo d'origine : https://www.facebook.com/share/r/151QDjkyhEs/",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "912c8f2e0e4194214fb80a4fb427862b"
+  },
+  {
+   "id": "dribble-suis-le-chef",
+   "nom": "Suis le chef (protection du ballon)",
+   "theme": "Dribble",
+   "duree_min": 8,
+   "description": "Par deux : le chef dribble librement dans la zone, le suiveur l'imite en restant derrière. On change de rôle au signal.\n\nProtection du ballon : le chef garde son corps entre le ballon et le suiveur. Le suiveur ne fait que suivre et n'essaie jamais de voler le ballon.\n\nAstuce : associer un enfant à l'aise avec un moins à l'aise, qui progresse en copiant sans pression.\nNiveau 1 : chef qui va lentement, main forte.\nNiveau 2 : chef rapide, changements de direction et de main.\n\nMatériel : 4 plots pour délimiter chaque zone, 1 ballon par enfant.",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "c1ac82741187c93acb90e78549dc09ee"
+  },
+  {
+   "id": "epervier-mtwwhvv",
+   "nom": "EPERVIER",
+   "theme": "Échauffement",
+   "duree_min": 10,
+   "description": "Choisir un des enfants les plus introvertis",
+   "sport": "basket",
+   "visibilite": "privee"
+  },
+  {
+   "id": "espaces-horloge-demarquage",
+   "nom": "L'horloge (se démarquer)",
+   "theme": "Espaces",
+   "duree_min": 10,
+   "description": "Objectif : se placer là où le porteur peut passer (jamais caché derrière le défenseur).\n\nGroupes de 3 : 1 passeur au centre, 1 réceptionneur, 1 défenseur. 8 pastilles en cercle à 3-4 m autour du passeur.\n\n1. Le coach donne le ballon au passeur, le défenseur vient vite sur lui, bras tendus sans contact. Le réceptionneur file sur une pastille du côté libre, mains en avant + « Oui ! ». Il reçoit, rend tout de suite et change de pastille (« je rends et je bouge »).\n2. Évolution : le défenseur se place sur la ligne de passe (entre passeur et réceptionneur) ; le réceptionneur doit changer de côté vite.\n\nLe passeur a le droit de pivoter.\nRotation des 3 rôles toutes les 30 s.\nMatériel : 8 pastilles et 1 ballon par groupe.",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "a429682b5e8bb84bbfdd8e62c682bba9"
+  },
+  {
+   "id": "match-4v4-jnvcspk",
+   "nom": "MATCH 4V4",
+   "theme": "Opposition / match",
+   "duree_min": 20,
+   "description": "",
+   "sport": "basket",
+   "visibilite": "privee"
+  },
+  {
+   "id": "pac-man-demi-terrain-sncooyq",
+   "nom": "PAC MAN demi terrain",
+   "theme": "Échauffement",
+   "duree_min": 10,
+   "description": "",
+   "sport": "basket",
+   "visibilite": "privee"
+  },
+  {
+   "id": "pac-man-grand-terrain-cstnbuj",
+   "nom": "PAC MAN grand terrain",
+   "theme": "Échauffement",
+   "duree_min": 10,
+   "description": "",
+   "sport": "basket",
+   "visibilite": "privee"
+  },
+  {
+   "id": "passe-coupe-inverse-g3mjtxp",
+   "nom": "PASSE + COUPE INVERSE",
+   "theme": "Appuis & tir",
+   "duree_min": 10,
+   "description": "",
+   "sport": "basket",
+   "visibilite": "privee"
+  },
+  {
+   "id": "passe-et-suit-a-3",
+   "nom": "Passe et suit à 3",
+   "theme": "Passe",
+   "duree_min": 10,
+   "description": "Groupes de 3 sur une même ligne (gauche – milieu – droite), environ 3 à 4 m entre chaque enfant. Passes à deux mains poitrine.\n\nV1 : 1 ballon par groupe\n• Celui du milieu a le ballon : il fait une passe à celui de droite et prend sa place.\n• Celui de droite dribble vers celui de gauche, lui fait la passe et prend sa place.\n• Celui de gauche, avec le ballon, se place au milieu, et on recommence : passe à droite, on prend sa place, et ainsi de suite.\n\nV2 : 3 ballons par groupe (1 ballon chacun)\n• Seul celui du milieu se déplace. Il passe à celui de droite et récupère en même temps la passe que celui-ci lui fait.\n• Il dribble, fait le tour de celui de droite, puis va vers celui de gauche.\n• Avec celui de gauche, même enchaînement : passes croisées, dribble, tour, retour vers le milieu. Et ainsi de suite pendant 30 secondes.\n• Au bout de 30 secondes, on tourne : un autre enfant devient celui du milieu.\n\nConsignes : mains en cible, on regarde le receveur avant de passer, ballon protégé pendant le dribble.\n\nMatériel : 1 ballon (V1) ou 3 ballons (V2) et 3 plots par groupe de 3.",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "fea3838ec30435f440008e216bef18ec"
+  },
+  {
+   "id": "passe-pivot-evolutif",
+   "nom": "Passe + pivot évolutif",
+   "theme": "Passe",
+   "duree_min": 15,
+   "description": "1. Face à face à 3 m : passe à terre (rebond aux 2/3).\n2. Idem à 5 m.\n3. En file : 1 part en dribble, arrêt pieds joints dans les 2 cerceaux, pivot sur un pied, passe à terre à 2 qui fait le même parcours ; 1 revient en fin de file.\n4. Idem, 1 défend un peu sur 2 au départ du dribble.\n5. Idem avec un départ en dribble gauche-droite.\nMatériel : 2 cerceaux par atelier, 1 ballon pour 2.",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "4d8c0fec4fa5feaa304eb742ab8cbcda"
+  },
+  {
+   "id": "passe-triangle-a-4",
+   "nom": "Le triangle à 4",
+   "theme": "Passe",
+   "duree_min": 10,
+   "description": "Objectif : passer AVANT que le défenseur arrive, du côté libre.\n\nGroupes de 4 : 3 passeurs en triangle (4 à 5 m), 1 défenseur au centre sur un plot.\n\n1. Le défenseur part du plot vers le porteur, qui regarde où il arrive et passe du côté libre. Après chaque passe, le défenseur retouche le plot avant de repartir.\n2. Sans plot : le défenseur enchaîne directement, il faut décider plus vite.\n\nRègles : passes à 2 mains (poitrine ou à terre), jamais en cloche. Le défenseur gêne mais ne prend pas le ballon ; il marque 1 point s'il touche le porteur avant la passe.\nRotation : nouveau défenseur toutes les 30 s ou après 2 touches.\nRéglage : trop dur → agrandir le triangle ou garder le plot ; trop facile → enlever le plot.\nMatériel : 1 ballon, 1 plot par groupe.",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "7a411fb6b67e33971090463b430ca0f2"
+  },
+  {
+   "id": "relais-slalom-tir-double-pas",
+   "nom": "Relais slalom : tir / double pas",
+   "theme": "Appuis & tir",
+   "duree_min": 10,
+   "description": "Mise en place : 2 colonnes derrière la ligne de départ, 4 plots en slalom devant chaque colonne, 1 ballon par colonne.\n\n• Colonne de gauche : slalom en dribble, arrêt sur la zone de tir, tir.\n• Colonne de droite : slalom en dribble, puis double pas (appuis 1-2, on lâche le ballon en haut).\n• Chacun récupère son rebond, revient en dribble par l'extérieur et donne le ballon au suivant, puis va en fin de colonne.\n\nAu bout de 5 min : les colonnes changent de côté, chacun fait les deux.\n\nMatériel : 8 plots, 2 ballons (+1 de réserve).\nSi le double pas coince : tir en course près du panier sans exiger les 2 appuis, ou enlever les 2 derniers plots pour plus d'élan.",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "9b0be61f575e4605d16e7fde697a4be3"
+  },
+  {
+   "id": "remise-en-jeux-digqg23",
+   "nom": "REMISE EN JEUX",
+   "theme": "Espaces",
+   "duree_min": 10,
+   "description": "",
+   "sport": "basket",
+   "visibilite": "privee"
+  },
+  {
+   "id": "tour-de-plots-face-panier",
+   "nom": "Tour de plots face au panier",
+   "theme": "Dribble",
+   "duree_min": 10,
+   "description": "3 colonnes sur la ligne de fond, 3 plots par colonne sur la longueur.\n• Départ en dribble vers le 1er plot.\n• Tour complet du plot en restant toujours face au panier adverse : la partie qui redescend se fait en marche arrière.\n• On repart vers le plot suivant, et ainsi de suite jusqu'à la ligne de fond.\nLa vague suivante part quand la précédente a passé le 1er plot.",
+   "sport": "basket",
+   "visibilite": "privee",
+   "video_asset": "36d59b50a88be604860a138fd8ad1f0c"
+  }
+ ],
+ "seances": [
+  {
+   "date": "2026-09-28",
+   "debut": "11:00",
+   "duree_cible_min": 90,
+   "blocs": [
+    {
+     "exercice": "pac-man-grand-terrain-cstnbuj",
+     "nom": "PAC MAN grand terrain",
+     "duree_min": 10
+    },
+    {
+     "exercice": "passe-pivot-vbtd1f0",
+     "nom": "PASSE + PIVOT",
+     "duree_min": 10
+    },
+    {
+     "exercice": "double-pas-evo-m0iryyu",
+     "nom": "DOUBLE PAS EVO",
+     "duree_min": 10
+    },
+    {
+     "exercice": "pac-man-demi-terrain-sncooyq",
+     "nom": "PAC MAN demi terrain",
+     "duree_min": 10
+    }
+   ]
+  },
+  {
+   "date": "2026-10-03",
+   "debut": "11:00",
+   "duree_cible_min": 90,
+   "blocs": [
+    {
+     "exercice": "epervier-mtwwhvv",
+     "nom": "EPERVIER",
+     "duree_min": 10
+    },
+    {
+     "exercice": "passe-pivot-evolutif",
+     "nom": "Passe + pivot évolutif",
+     "duree_min": 15
+    },
+    {
+     "exercice": "double-pas-evolutif",
+     "nom": "Double pas évolutif",
+     "duree_min": 15
+    },
+    {
+     "exercice": "relais-slalom-tir-double-pas",
+     "nom": "Relais slalom : tir / double pas",
+     "duree_min": 10
+    },
+    {
+     "exercice": "tour-de-plots-face-panier",
+     "nom": "Tour de plots face au panier",
+     "duree_min": 10
+    },
+    {
+     "exercice": "dribble-stop-go-double-pas",
+     "nom": "Dribble stop & go + reverse + double pas",
+     "duree_min": 10
+    },
+    {
+     "exercice": "match-4v4-jnvcspk",
+     "nom": "MATCH 4V4",
+     "duree_min": 20
+    }
+   ]
+  },
+  {
+   "date": "2026-10-09",
+   "debut": "11:00",
+   "duree_cible_min": 90,
+   "blocs": [
+    {
+     "exercice": "dribble-feu-tricolore",
+     "nom": "Feu tricolore (dribble sur place)",
+     "duree_min": 5
+    },
+    {
+     "exercice": "contact-dribble-arriere",
+     "nom": "Contact + dribble arrière",
+     "duree_min": 10
+    },
+    {
+     "exercice": "dribble-la-traversee",
+     "nom": "La traversée (dribble en déplacement)",
+     "duree_min": 7
+    },
+    {
+     "exercice": "dribble-relais-aller-retour",
+     "nom": "Relais en dribble",
+     "duree_min": 7
+    },
+    {
+     "exercice": "passe-pivot-evolutif",
+     "nom": "Passe + pivot évolutif",
+     "duree_min": 15
+    },
+    {
+     "exercice": "passe-triangle-a-4",
+     "nom": "Le triangle à 4",
+     "duree_min": 10
+    },
+    {
+     "exercice": "espaces-horloge-demarquage",
+     "nom": "L'horloge (se démarquer)",
+     "duree_min": 10
+    },
+    {
+     "exercice": "match-4v4-jnvcspk",
+     "nom": "MATCH 4V4",
+     "duree_min": 20
+    }
+   ]
+  },
+  {
+   "date": "2026-10-17",
+   "debut": "11:00",
+   "duree_cible_min": 90,
+   "blocs": [
+    {
+     "exercice": "passe-et-suit-a-3",
+     "nom": "Passe et suit à 3",
+     "duree_min": 10
+    },
+    {
+     "exercice": "dribble-feu-tricolore",
+     "nom": "Feu tricolore (dribble sur place)",
+     "duree_min": 5
+    },
+    {
+     "exercice": "dribble-relais-aller-retour",
+     "nom": "Relais en dribble",
+     "duree_min": 7
+    },
+    {
+     "exercice": "passe-triangle-a-4",
+     "nom": "Le triangle à 4",
+     "duree_min": 10
+    },
+    {
+     "exercice": "passe-pivot-evolutif",
+     "nom": "Passe + pivot évolutif",
+     "duree_min": 15
+    },
+    {
+     "exercice": "double-pas-evolutif",
+     "nom": "Double pas évolutif",
+     "duree_min": 15
+    },
+    {
+     "exercice": "remise-en-jeux-digqg23",
+     "nom": "REMISE EN JEUX",
+     "duree_min": 10
+    },
+    {
+     "exercice": "match-4v4-jnvcspk",
+     "nom": "MATCH 4V4",
+     "duree_min": 20
+    }
+   ]
+  }
+ ]
+}
