@@ -75,6 +75,7 @@ w("grant usage on schema public, auth to authenticated; grant select, insert, up
 w("revoke select on profiles from authenticated; grant select (id, full_name, first_name, last_name, nickname, created_at, show_all_club) on profiles to authenticated;")
 w("revoke execute on function activate_membership(uuid, uuid, uuid) from authenticated;")
 w("revoke execute on function link_unlinked_trainings() from authenticated, anon;")  # comme dans alpha_3_2_4.sql
+w("revoke execute on function push_claim(int), push_result(bigint[], bigint[], text[], text), push_cleanup(), push_enqueue(uuid, text, text, text, text, text), push_event_targets(uuid, uuid), push_announcement_targets(uuid, uuid), push_as(uuid), push_restore(text, text) from authenticated, anon;")  # comme dans alpha_3_3.sql
 w("grant usage on schema public to anon; grant execute on all functions in schema public to anon; grant select on all tables in schema public to anon; revoke select on profiles from anon;")  # comme Supabase
 
 # ---------- comptes ----------
@@ -805,6 +806,107 @@ fails("la fonction retirée est refusée par la base", f"update memberships set 
 ok("le coordinateur garde les rubriques Technique et Événements", "fonction_areas('Coordinateur') = array['technique','evenements']")
 ok("plus aucune rubrique pour l'ancienne fonction", "fonction_areas('Responsable événements et buvette') = '{}'::text[]")
 w(f"delete from board_areas where user_id = '{people['b6'][0]}' and club_id = {C1} and area = 'evenements';")
+w("set role authenticated;")
+
+section("3.3 · Notifications (étape B)")
+w("reset role;")
+K = lambda k: f"(select v::uuid from tests.kv where k = '{k}')"
+def ASK(k): w(f"select set_config('request.uid', (select v from tests.kv where k = '{k}'), false);")
+# Personnes choisies : deux familles U9 distinctes (p1 et p2), une famille U13F, un supporteur, la présidente de l'autre club
+w(f"""insert into tests.kv select 'p1', p.id::text from players p where p.team_id = {T('U9')} and p.deleted_at is null and not exists(select 1 from player_teams pt where pt.player_id = p.id)
+  and exists(select 1 from player_parents pp join memberships m on m.user_id = pp.user_id and m.club_id = {C1} and m.status = 'active' where pp.player_id = p.id) order by p.id limit 1;""")
+w(f"insert into tests.kv select 'pU9', pp.user_id::text from player_parents pp join memberships m on m.user_id = pp.user_id and m.club_id = {C1} and m.status = 'active' where pp.player_id = {K('p1')} order by pp.user_id limit 1;")
+w(f"""insert into tests.kv select 'pU9b', pp.user_id::text from player_parents pp join players p on p.id = pp.player_id join memberships m on m.user_id = pp.user_id and m.club_id = {C1} and m.status = 'active'
+  where p.team_id = {T('U9')} and p.deleted_at is null and p.id <> {K('p1')}
+  and not exists(select 1 from player_parents x where x.player_id = {K('p1')} and x.user_id = pp.user_id)
+  and not exists(select 1 from memberships c where c.user_id = pp.user_id and c.club_id = {C1} and c.role in ('coach','president','bureau')) order by pp.user_id limit 1;""")
+w(f"""insert into tests.kv select 'pU13', pp.user_id::text from player_parents pp join players p on p.id = pp.player_id join memberships m on m.user_id = pp.user_id and m.club_id = {C1} and m.status = 'active'
+  where p.team_id = {T('U13F')} and not exists(select 1 from player_parents x join players y on y.id = x.player_id where x.user_id = pp.user_id and (y.team_id = {T('U9')} or exists(select 1 from player_teams pt where pt.player_id = y.id and pt.team_id = {T('U9')}))) order by pp.user_id limit 1;""")
+for key in ["pres", "cU9", "s7", "pres2"]: w(f"insert into tests.kv values ('{key}', '{people[key][0]}');")
+w(f"select set_config('request.uid', '{people['s7'][0]}', false); set role authenticated; select join_club({CODE}, 'supporteur', null, null); reset role;")
+ok("les personnes du test sont trouvées", "(select count(*) from tests.kv where k in ('p1','pU9','pU9b','pU13','pres','cU9','s7','pres2')) = 8")
+w("set role authenticated;")
+for key in ["pres", "cU9", "pU9", "pU9b", "pU13", "s7", "pres2"]:
+    ASK(key); w(f"select push_subscribe('https://push.exemple.invalid/{key}', 'cle-publique-fictive-{key}', 'secret-{key}', 'test');")
+ok("un appareil inscrit ne lit pas la liste des appareils", "(select count(*) from push_subscriptions) = 0")
+fails("l'application ne prend pas la file d'envoi", "select * from push_claim(10)")
+fails("l'application n'ajoute pas de notification à la main", f"select push_enqueue(auth.uid(), 'x', 'x', 'x', 'x')")
+w("reset role;")
+ok("7 appareils inscrits", "(select count(*) from push_subscriptions) = 7")
+QN = lambda key, cond="true": f"(select count(*) from push_queue where user_id = {K(key)} and {cond})"
+
+w("set role authenticated;")
+ASK("cU9"); w(f"insert into events(club_id, team_ids, audience, type, title, starts_at, place, created_by) values ({C1}, array[{T('U9')}], 'team', 'Entraînement', 'Notif U9', now() + interval '3 days', 'Gymnase', auth.uid());")
+ok("après l'envoi, le coach reste lui-même (identité rétablie)", f"auth.uid() = {K('cU9')}")
+w("reset role;")
+ev = "(select id from events where title = 'Notif U9')"
+ok("rendez-vous U9 : le parent U9 est prévenu", QN('pU9', f"dedupe_key = 'evnew:' || {ev} and title = 'Nouveau : entraînement'") + " = 1")
+ok("rendez-vous U9 : le texte donne titre, jour, lieu et club", f"exists(select 1 from push_queue where user_id = {K('pU9')} and body like 'Notif U9 · %' and body like '%Gymnase (AS Test Basket)')")
+ok("rendez-vous U9 : la présidente (bureau) est prévenue", QN('pres', f"dedupe_key = 'evnew:' || {ev}") + " = 1")
+ok("rendez-vous U9 : pas l'auteur", QN('cU9') + " = 0")
+ok("rendez-vous U9 : pas la famille U13F", QN('pU13') + " = 0")
+ok("rendez-vous U9 : pas le supporteur", QN('s7') + " = 0")
+ok("rendez-vous U9 : rien pour l'autre club", QN('pres2') + " = 0")
+
+w("set role authenticated;"); ASK("cU9")
+w(f"select create_events(jsonb_build_object('club_id', {C1}, 'audience', 'team', 'team_ids', jsonb_build_array({T('U9')}), 'type', 'Entraînement', 'title', 'Série notif U9', 'series', jsonb_build_object('weekday', 2, 'start_time', '18:00', 'until', (now() + interval '60 days')::date), 'starts', jsonb_build_array(now() + interval '7 days', now() + interval '14 days', now() + interval '21 days', now() + interval '28 days')));")
+w("reset role;")
+ok("série de 4 séances : une seule notification par personne", QN('pU9', "title = 'Nouveaux entraînements'") + " = 1 and " + QN('pres', "title = 'Nouveaux entraînements'") + " = 1")
+ok("série : le texte dit le jour et l'heure", f"exists(select 1 from push_queue where user_id = {K('pU9')} and title = 'Nouveaux entraînements' and body like 'Série notif U9 · chaque % à %')")
+
+w("set role authenticated;"); ASK("cU9")
+w(f"update events set cancelled = true where id = {ev};")
+w(f"insert into events(club_id, team_ids, audience, type, title, starts_at, created_by) values ({C1}, array[{T('U9')}], 'team', 'Entraînement', 'Notif passé', now() - interval '2 days', auth.uid());")
+w("reset role;")
+ok("annulation : le parent U9 est prévenu", QN('pU9', "title = 'Annulé' and body like 'Notif U9%'") + " = 1")
+ok("rendez-vous déjà passé : personne n'est prévenu", "not exists(select 1 from push_queue where body like 'Notif passé%')")
+
+w("set role authenticated;"); ASK("pres")
+w(f"update events set starts_at = starts_at + interval '1 hour' where title = 'Série notif U9';")
+w(f"insert into events(club_id, audience, type, title, starts_at, created_by) values ({C1}, 'club', 'Événement', 'Fête du club notif', now() + interval '20 days', auth.uid());")
+w(f"insert into events(club_id, team_ids, audience, type, title, starts_at, convoked, created_by) values ({C1}, array[{T('U9')}], 'team', 'Match', 'Match convoc notif', now() + interval '5 days', array[{K('p1')}], auth.uid());")
+w("reset role;")
+ok("série décalée d'une heure : une seule notification « Nouvel horaire »", QN('pU9', "title = 'Nouvel horaire'") + " = 1")
+ok("événement du club : le supporteur est prévenu", QN('s7', "body like 'Fête du club notif%'") + " = 1")
+ok("événement du club : rien pour l'autre club", QN('pres2') + " = 0")
+ok("convocation : la famille du joueur convoqué est prévenue", QN('pU9', "title = 'Convocation : match'") + " = 1")
+ok("convocation : pas la famille d'un joueur non convoqué", QN('pU9b', "title = 'Convocation : match'") + " = 0")
+ok("convocation : le coach de l'équipe est prévenu", QN('cU9', "title = 'Convocation : match'") + " = 1")
+
+w("set role authenticated;"); ASK("pres")
+w(f"insert into groups(club_id, name, created_by) values ({C1}, 'Groupe notif', auth.uid());")
+w(f"insert into group_members(group_id, user_id) select g.id, u from groups g, unnest(array[auth.uid(), {K('pU9')}, {K('s7')}]) u where g.name = 'Groupe notif';")
+w("reset role;")
+w(f"update group_members set muted = true where user_id = {K('s7')} and group_id = (select id from groups where name = 'Groupe notif');")
+w("set role authenticated;"); ASK("pres")
+w("insert into messages(group_id, user_id, body) select id, auth.uid(), 'Qui peut conduire samedi ?' from groups where name = 'Groupe notif';")
+w("insert into polls(group_id, question, created_by) select id, 'Présents au tournoi ?', auth.uid() from groups where name = 'Groupe notif';")
+w(f"insert into announcements(club_id, audience, title, body) values ({C1}, 'club', 'Annonce notif', 'Le gymnase ferme à 21 h.');")
+w("reset role;")
+ok("message de groupe : le membre est prévenu avec le prénom de l'auteur", QN('pU9', "title = 'Groupe notif' and body = 'Céline : Qui peut conduire samedi ?' and tag like 'grp:%'") + " = 1")
+ok("message de groupe : pas le membre qui a coupé le groupe", QN('s7', "title = 'Groupe notif'") + " = 0")
+ok("message de groupe : pas l'auteur", QN('pres', "title = 'Groupe notif'") + " = 0")
+ok("sondage de groupe : le membre est prévenu", QN('pU9', "body = 'Nouveau sondage : Présents au tournoi ?'") + " = 1")
+ok("annonce à tout le club : le supporteur est prévenu", QN('s7', "title = 'Annonce notif' and body like 'Le gymnase ferme à 21 h. (AS Test Basket)'") + " = 1")
+ok("annonce à tout le club : rien pour l'autre club", QN('pres2') + " = 0")
+
+w("set role authenticated;"); ASK("pres2")
+works("notification d'essai envoyée à soi-même", "select push_test()")
+w("select push_subscribe('https://push.exemple.invalid/pres', 'cle-publique-fictive-pres', 'secret-pres', 'test');")
+w("reset role;")
+ok("l'essai est dans la file", QN('pres2', "title = 'Essai Pocket Club'") + " = 1")
+ok("un appareil réinscrit par un autre compte change de compte", f"(select user_id from push_subscriptions where endpoint = 'https://push.exemple.invalid/pres') = {K('pres2')}")
+w("set role authenticated;"); ASK("pres2")
+works("l'appareil se retire (« Couper »)", "select push_unsubscribe('https://push.exemple.invalid/pres')")
+w("reset role;")
+ok("l'appareil retiré n'est plus inscrit", "not exists(select 1 from push_subscriptions where endpoint = 'https://push.exemple.invalid/pres')")
+w("create temp table pc_claim as select * from push_claim(1000);")
+ok("la fonction d'envoi reçoit une ligne par appareil", "(select count(*) from pc_claim) > 0 and (select count(*) from pc_claim where endpoint is null) = 0")
+w("select push_result(array(select queue_id from pc_claim where endpoint not like '%s7'), array(select queue_id from pc_claim where endpoint like '%s7'), array['https://push.exemple.invalid/pU13'], 'test');")
+ok("envoyées : marquées", f"not exists(select 1 from push_queue q where q.id in (select queue_id from pc_claim where endpoint like '%pU9') and q.sent_at is null)")
+ok("en erreur : gardées pour un nouvel essai", "exists(select 1 from push_queue q where q.id in (select queue_id from pc_claim where endpoint like '%s7') and q.sent_at is null and q.tries = 1)")
+ok("appareil disparu : retiré", "not exists(select 1 from push_subscriptions where endpoint like '%pU13')")
+ok("ménage : rien de récent n'est effacé", "push_cleanup() = 0")
 w("set role authenticated;")
 
 section("Départs et redemandes")
