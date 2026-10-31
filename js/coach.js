@@ -575,7 +575,27 @@ CHANGES.push(async (t) => {
   if (t.dataset.pmin) { render(true); return true; }
   return false;
 });
-// Survol d'une vignette (souris) : la vidéo se lit sans le son ; elle s'arrête quand la souris s'en va
-document.addEventListener('mouseover', (ev) => { const v = ev.target.closest?.('.vthumb')?.querySelector('video'); if (v && v.paused) { v.closest('.vthumb').classList.add('on'); v.play().catch(() => {}); } });
-document.addEventListener('mouseout', (ev) => { const t = ev.target.closest?.('.vthumb'); if (!t || t.contains(ev.relatedTarget)) return; const v = t.querySelector('video'); if (v) { v.pause(); t.classList.remove('on'); } });
+// Vignettes vidéo : sur ordinateur, lecture au survol de la souris ou quand la ligne a le focus (clavier) ;
+// sur téléphone (pas de survol), lecture de la vignette la plus proche du milieu de l'écran pendant le défilement.
+const canHover = matchMedia('(hover: hover) and (pointer: fine)');
+const vPlay = (t) => { const v = t?.querySelector('video'); if (v && v.paused) { t.classList.add('on'); v.play().catch(() => {}); } };
+const vStop = (t) => { const v = t?.querySelector('video'); if (v && !v.paused) { v.pause(); t.classList.remove('on'); } };
+const thumbOf = (el) => el?.closest?.('.vthumb') || el?.closest?.('.head')?.querySelector('.vthumb');
+document.addEventListener('mouseover', (ev) => { if (canHover.matches) vPlay(ev.target.closest?.('.vthumb')); });
+document.addEventListener('mouseout', (ev) => { const t = ev.target.closest?.('.vthumb'); if (t && !t.contains(ev.relatedTarget) && document.activeElement?.querySelector?.('.vthumb') !== t) vStop(t); });
+document.addEventListener('focusin', (ev) => vPlay(thumbOf(ev.target)));
+document.addEventListener('focusout', (ev) => { const t = thumbOf(ev.target); if (t && !t.matches(':hover')) vStop(t); });
+let vRaf = 0;
+function centerPlay() {
+  vRaf = 0; if (canHover.matches) return;
+  const ts = [...document.querySelectorAll('.vthumb')].filter((t) => t.querySelector('video')), mid = innerHeight / 2;
+  let best = null, bd = Infinity;
+  for (const t of ts) { const r = t.getBoundingClientRect(); if (r.bottom < 0 || r.top > innerHeight) continue; const d = Math.abs((r.top + r.bottom) / 2 - mid); if (d < bd) { bd = d; best = t; } }
+  ts.forEach((t) => t !== best && vStop(t)); vPlay(best);
+}
+const schedule = () => { if (!vRaf) vRaf = requestAnimationFrame(centerPlay); };
+document.addEventListener('scroll', schedule, { capture: true, passive: true });
+new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+schedule();
+document.addEventListener('visibilitychange', () => { if (document.hidden) document.querySelectorAll('.vthumb').forEach(vStop); else schedule(); });
 export { coachOf };
