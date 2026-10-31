@@ -1,6 +1,6 @@
 // Pocket Club · éléments d'interface communs : logos, icônes, blason du club, en-tête, onglets, thème.
 import { BRAND } from '../config.js';
-import { S, esc, club, onColor, contrast, lum, initials, isActive, toValidate, myTeamIds } from './core.js';
+import { S, esc, club, onColor, contrast, lum, initials, isActive, toValidate, myTeamIds, casquettes, store } from './core.js';
 
 // ---------- Ballon (identique dans les deux logos ; seules les coutures changent selon le sport) ----------
 const SEAMS = {
@@ -38,6 +38,7 @@ const P = {
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   doc: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/>',
   down: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4.2-4.2"/>',
   share: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>',
 };
 export const icon = (n, size = 22, stroke = 'currentColor', w = 2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ''}</svg>`;
@@ -75,14 +76,24 @@ export const accountBtn = () => `<button class="roundbtn" data-act="account" ari
 export const backBtn = () => `<button class="roundbtn" data-act="back" aria-label="Retour">${icon('back', 22, '#11162E', 2.4)}</button>`;
 // opts : { title, kicker, sub, back, tags[], brand }
 // N° 27 : même en-tête partout. Bande du haut : (retour) · logo C · Mon compte, alignés ; dessous le club ; dessous le titre.
+// Picto « Espace » (charte du 31 octobre) : quatre carrés aux symboles des rôles ; seulement pour qui a une fonction
+const ESPACE_SVG = '<svg width="30" height="30" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="12.5" height="12.5" rx="4" fill="#FFC93C"/><path d="M5 11.5V3.8l5 1.8-5 1.8" stroke="#11162E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><rect x="14.5" y="1" width="12.5" height="12.5" rx="4" fill="#C9F5E4"/><circle cx="20.75" cy="7.25" r="3" stroke="#0B5C43" stroke-width="1.5" fill="none"/><path d="M20.75 5.9v2.7" stroke="#0B5C43" stroke-width="1.5" stroke-linecap="round" fill="none"/><rect x="1" y="14.5" width="12.5" height="12.5" rx="4" fill="#DCE4FF"/><circle cx="7.25" cy="18.8" r="1.8" stroke="#2F5BFF" stroke-width="1.5" fill="none"/><path d="M4 24.5c0-2 1.4-3 3.25-3s3.25 1 3.25 3" stroke="#2F5BFF" stroke-width="1.5" stroke-linecap="round" fill="none"/><rect x="14.5" y="14.5" width="12.5" height="12.5" rx="4" fill="#11162E"/><path d="M20.75 16.6l3.2 1.2v2.8c0 1.9-1.3 3.2-3.2 3.8-1.9-.6-3.2-1.9-3.2-3.8v-2.8z" stroke="#FFFFFF" stroke-width="1.5" stroke-linejoin="round" fill="none"/></svg>';
+export const espaceBtn = () => `<button class="roundbtn" data-act="espace" aria-label="Mes espaces">${ESPACE_SVG}</button>`;
+export const searchBtn = () => `<button class="roundbtn" data-act="csearch" aria-label="Chercher un club">${icon('search', 22, '#11162E', 2.2)}</button>`;
+// opts : { title, kicker, sub, back, tags[], brand, role }
+// N° 27 : même en-tête partout. Bande du haut : (retour) · logo C · loupe (n° 56) · Espace · Mon compte ;
+// dans un espace : (retour) · pastille du rôle · logo E · Mon compte (charte : logo E quand la place manque)
 export function header(o = {}) {
   const c = club(), br = o.brand || brandMode(), sport = c?.sport;
   const acc = S.session && S.me && S.view?.type !== 'account' && S.me.cgu_version && !S.me.deleted_at;
-  let h = `<div class="band">${o.back ? backBtn() : ''}<span class="logo">${wordmark(22, sport)}</span>${acc ? accountBtn() : '<span style="width:44px"></span>'}</div>`;
-  if (!br && c) h += `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.kicker || o.sub || '')}</span></div></div>`;
+  const inClub = acc && S.clubId && isActive() && S.onb === null;
+  let h;
+  if (o.role) h = `<div class="band">${o.back ? backBtn() : ''}<span class="rolepill">${esc(o.role)}</span><span style="flex:1"></span><span class="roundbtn" style="cursor:default">${symbol(28, sport)}</span>${acc ? accountBtn() : ''}</div>`;
+  else h = `<div class="band">${o.back ? backBtn() : ''}<span class="logo">${wordmark(22, sport)}</span>${acc && S.view?.type !== 'csearch' ? searchBtn() : ''}${inClub && !o.back && casquettes().length ? espaceBtn() : ''}${acc ? accountBtn() : '<span style="width:44px"></span>'}</div>`;
+  if (!br && c && !o.role) h += `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.kicker || o.sub || '')}</span></div></div>`;
   else if (o.kicker) h += `<div class="kicker">${esc(o.kicker)}</div>`;
   const tags = o.tags?.length ? `<div class="tags">${o.tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : '';
-  return `<header class="hd">${h}${o.title ? `<h1>${o.title}</h1>` : ''}${tags}</header>`;
+  return `<header class="hd">${h}${o.title ? `<h1>${o.title}</h1>` : ''}${o.under ? `<span class="under">${esc(o.under)}</span>` : ''}${tags}</header>`;
 }
 
 // ---------- Onglets ----------

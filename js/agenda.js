@@ -5,6 +5,7 @@ import {
   toLocalInput, fmtDay, plural, download, norm, follows,
 } from './core.js';
 import { icon, dayBadge, delBtn, field } from './ui.js';
+import { missionsBlock, myMissionLabel } from './vie.js';
 
 const INTERNAL = { board: 'Bureau', board_coaches: 'Bureau et coachs', coaches: 'Tous les coachs' };
 const SUB_TYPES = { Entraînements: ['Entraînement'], Matchs: ['Match', 'Plateau', 'Tournoi'], Événements: ['Événement', 'Réunion', 'AG'] };
@@ -34,15 +35,19 @@ export function isOpen(e) {
   return !next || next.id === e.id;
 }
 export const opensOn = (e) => new Date(new Date(e.starts_at).getTime() - OPEN_DAYS * 864e5);
+// Convocation : un match peut ne convoquer que certains joueurs (3.2)
+export const convoked = (e, pid) => !(e.convoked || []).length || e.convoked.includes(pid);
+const myFiche = () => S.players.find((p) => p.user_id === S.me.id);
+const meConvoked = (e) => !(e.convoked || []).length || (myFiche() && e.convoked.includes(myFiche().id));
 export function needsAnswer(e) {
   if (e.cancelled || new Date(e.starts_at) < Date.now() - 2 * 3600e3 || !isOpen(e)) return false;
   const R = respOf(e.id);
   if (!isTeamType(e)) return !R.mine;
-  const k = myKidsIn(evTeams(e)), me = iPlayIn(evTeams(e));
+  const k = myKidsIn(evTeams(e)).filter((p) => convoked(e, p.id)), me = iPlayIn(evTeams(e)) && meConvoked(e);
   if (k.some((p) => !R.kid(p.id))) return true;
   if (me) return !R.mine;
-  if (followOnly(e) || notInvited(e)) return false;
-  return !coachOnly(e) && !k.length && !R.mine;
+  if (followOnly(e) || notInvited(e) || (e.convoked || []).length) return false;
+  return !coachOnly(e) && !myKidsIn(evTeams(e)).length && !R.mine;
 }
 function pair(e, pid) {
   const R = respOf(e.id), m = pid ? R.kid(pid) : R.mine, p = pid && pl(pid);
@@ -59,19 +64,21 @@ export function invitedCount(e) {
   return ids.size;
 }
 // Nombre de joueurs concernés (match, plateau, tournoi, entraînement : on compte des joueurs)
-const playersOf = (e) => { const m = new Map(); evTeams(e).forEach((t) => playersOfTeam(t).forEach((p) => m.set(p.id, p))); return [...m.values()]; };
+export const playersOf = (e) => { const m = new Map(); evTeams(e).forEach((t) => playersOfTeam(t).forEach((p) => { if (convoked(e, p.id)) m.set(p.id, p); })); return [...m.values()]; };
 export function answerBlock(e) {
   if (e.cancelled) return '';
   if (notInvited(e)) return '<p class="note">Tu as créé ce rendez-vous pour des personnes choisies : tu n’en fais pas partie.</p>';
   if (!isTeamType(e)) return pair(e, null);
   if (followOnly(e)) return '<p class="note">Tu suis cette équipe : pas de réponse à donner.</p>';
-  const k = myKidsIn(evTeams(e)), me = iPlayIn(evTeams(e)), kids = k.map((p) => pair(e, p.id)).join('');
+  const all = myKidsIn(evTeams(e)), k = all.filter((p) => convoked(e, p.id)), me = iPlayIn(evTeams(e)) && meConvoked(e);
+  const kids = k.map((p) => pair(e, p.id)).join('') + all.filter((p) => !convoked(e, p.id)).map((p) => `<p class="note">${esc(p.first_name)} n'est pas convoqué${p.first_name.endsWith('e') ? '(e)' : ''} à ce rendez-vous.</p>`).join('');
   if (coachOnly(e)) {
     const R = respOf(e.id), n = playersOf(e).length, oui = R.oui.filter((x) => x.player_id || !k.length).length, non = R.non.length;
     const rest = isOpen(e) ? `<span class="pill">${Math.max(0, n - oui - non)} sans réponse</span>` : `<span class="det">Réponses demandées à partir du ${esc(fmtDay(opensOn(e)))}</span>`;
     return `<div class="card pale"><div class="kick">Tu encadres</div><div class="chips"><span class="pill ok">${oui} oui</span><span class="pill ko">${non} non</span>${rest}</div><button class="btn main small" data-act="appel" data-id="${e.id}">Faire l'appel</button></div>` + kids;
   }
-  return (me || !k.length ? pair(e, null) : '') + kids;
+  if (iPlayIn(evTeams(e)) && !me) return '<p class="note">Tu n\'es pas convoqué à ce rendez-vous.</p>' + kids;
+  return (me || !all.length ? pair(e, null) : '') + kids;
 }
 function respName(x) {
   if (!x.player_id) return esc(name(x.user_id));
@@ -125,6 +132,7 @@ function statusPill(e) {
   if (e.cancelled) return '<span class="pill ko">Annulé</span>';
   const R = respOf(e.id), k = isTeamType(e) ? myKidsIn(evTeams(e)) : [];
   if (needsAnswer(e)) return '<span class="pill wait">À répondre</span>';
+  if ((e.convoked || []).length && isTeamType(e) && !coachOnly(e) && myKidsIn(evTeams(e)).length && !myKidsIn(evTeams(e)).some((p) => convoked(e, p.id))) return '<span class="pill">Non convoqué</span>';
   if (followOnly(e)) return '<span class="pill blue">Suivie</span>';
   if (coachOnly(e) && !k.length) return `<span class="pill blue">${R.oui.length} oui</span>`;
   const a = k.length ? R.kid(k[0].id) : R.mine;
@@ -132,7 +140,7 @@ function statusPill(e) {
 }
 // Carte d'un rendez-vous ; opts : { answer: boutons si une réponse manque, select: mode sélection }
 export function evCard(e, o = {}) {
-  const sub = [hm(new Date(e.starts_at)), e.place, e.audience !== 'club' && e.audience !== 'team' ? '' : teamsLabel(evTeams(e))].filter(Boolean).join(' · ');
+  const sub = [hm(new Date(e.starts_at)), e.place, e.audience !== 'club' && e.audience !== 'team' ? '' : teamsLabel(evTeams(e)), myMissionLabel(e)].filter(Boolean).join(' · ');
   const sel = o.select && canManageEvent(e), checked = S.sel?.has(e.id);
   const badgeCls = new Date(e.starts_at) < Date.now() ? 'past' : needsAnswer(e) ? 'wait' : '';
   return `<div class="ev ${e.cancelled ? 'cancel' : ''}">${sel
@@ -172,6 +180,14 @@ function audienceField(f) {
   }
   return h;
 }
+// Convocation de joueurs choisis : match, plateau ou tournoi d'une seule équipe
+function convField(f) {
+  if (!['Match', 'Plateau', 'Tournoi'].includes(f.type) || f.aud !== 'team' || f.teams.size !== 1) return '';
+  const tid = [...f.teams][0], ps = playersOfTeam(tid).sort((a, b) => pname(a).localeCompare(pname(b), 'fr'));
+  let h = `<div class="field"><span class="lab">Convoquer</span><div class="chips"><button type="button" class="chip" data-act="evconvm" data-v="all" aria-pressed="${f.convMode !== 'some'}">Toute l'équipe</button><button type="button" class="chip" data-act="evconvm" data-v="some" aria-pressed="${f.convMode === 'some'}">Joueurs choisis${f.convMode === 'some' ? ' (' + f.conv.size + ')' : ''}</button></div></div>`;
+  if (f.convMode === 'some') h += `<div class="card flat" style="max-height:320px;overflow:auto;gap:0">${ps.map((p) => `<label class="check" style="padding:6px 0"><input type="checkbox" data-evconv="${p.id}" ${f.conv.has(p.id) ? 'checked' : ''}><span>${esc(pname(p))}</span></label>`).join('') || '<p class="empty">Aucune fiche joueur.</p>'}</div><p class="note">Seuls les joueurs choisis (et leurs parents) répondent ; les autres voient le rendez-vous sans être convoqués.</p>`;
+  return h;
+}
 function repeatFields(f) {
   if (f.type !== 'Entraînement' || f.id) return '';
   return `<label class="check"><input type="checkbox" name="repeat" data-evrep="1" ${f.repeat ? 'checked' : ''}><span>Répéter chaque semaine (même jour, même heure)</span></label>
@@ -187,6 +203,7 @@ export function eventForm() {
   ${repeatFields(f)}
   ${field('el', 'Lieu', `<input id="el" name="place" value="${esc(f.place || '')}" placeholder="Ex. Gymnase de Boissy">`)}
   ${audienceField(f)}
+  ${convField(f)}
   <button class="btn main" type="submit">${f.id ? 'Enregistrer les changements' : 'Enregistrer'}</button></form>`;
 }
 function keepForm() { const fm = document.getElementById('evf'); if (!fm) return; const v = Object.fromEntries(new FormData(fm)); Object.assign(S.form, v); S.form.repeat = !!v.repeat; S.form.skiphol = !!v.skiphol; }
@@ -202,6 +219,11 @@ export function eventPage(id) {
   <div class="chips"><span class="pill ok">${R.oui.length} oui</span><span class="pill ko">${R.non.length} non</span>${base > tot && isOpen(e) ? `<span class="pill">${base - tot} sans réponse</span>` : ''}</div><div><b>Viennent :</b> ${list(R.oui)}</div><div><b>Ne viennent pas :</b> ${list(R.non)}</div></div>`;
   h += `<div class="btns"><button class="btn" data-act="ics" data-id="${id}">${icon('calplus', 20)}Ajouter à mon agenda</button>${e.place ? `<a class="btn small" style="flex:none;width:52px;padding:0" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.place)}" target="_blank" rel="noopener" aria-label="Itinéraire">${icon('pin', 22)}</a>` : ''}</div>`;
   if (!coachOnly(e) && e.type !== 'Entraînement' && R.mine === 'non') h += `<button class="btn ghost" data-act="${hiddenByMe(e) ? 'unhide' : 'hide'}" data-id="${id}">${hiddenByMe(e) ? 'Réafficher dans mon agenda' : 'Ne plus afficher dans mon agenda'}</button>`;
+  if (man && !e.cancelled && new Date(e.starts_at) > Date.now()) {
+    const recent = e.reminded_at && Date.now() - new Date(e.reminded_at) < 12 * 3600e3;
+    h += `<div class="card flat"><div class="kick">Relance</div>${(e.convoked || []).length ? `<span class="pill blue">${plural(e.convoked.length, 'joueur convoqué', 'joueurs convoqués')}</span>` : ''}<button class="btn small ${recent ? 'ghost' : 'main'}" data-act="evremind" data-id="${id}" ${recent ? 'disabled' : ''}>${recent ? 'Relance faite à ' + hm(new Date(e.reminded_at)) : 'Relancer les sans-réponse'}</button><p class="note">Un rappel s'affiche en haut de l'Accueil des personnes qui n'ont pas répondu (une relance toutes les 12 heures).</p></div>`;
+  }
+  h += missionsBlock(e);
   const plans = (S.evPlans || []).filter((p) => p.event_id === id);
   if (plans.length) h += `<div class="card pale"><div class="kick">Séance prévue</div>${plans.map((p) => `<button class="row" data-act="pview" data-id="${p.id}"><span class="g">${esc(p.title)}<small>${plural(p.items.length, 'exercice')} · ${p.items.reduce((a, x) => a + (+x.minutes || 0), 0)} min · imprimer ou PDF</small></span></button>`).join('')}</div>`;
   if (man) {
@@ -249,17 +271,19 @@ Object.assign(ACTIONS, {
   event: (el, d) => { S.view = { type: 'event', id: d.id }; render(); },
   evnew: (el, d) => {
     const coachT = coachTeams(), team = d.team || (!isBoard() && coachT.length === 1 ? coachT[0] : '');
-    S.form = { type: 'Entraînement', starts_at: today(), aud: team || !isBoard() ? 'team' : 'club', teams: new Set(team ? [team] : []), people: new Set(), pq: '' };
+    S.form = { type: d.type || 'Entraînement', starts_at: today(), aud: team || !isBoard() ? 'team' : 'club', teams: new Set(team ? [team] : []), people: new Set(), pq: '', conv: new Set(), convMode: 'all' };
     S.view = { type: 'evform' }; render();
   },
   evedit: (el, d) => {
     const e = S.events.find((x) => x.id === d.id);
-    S.form = { id: e.id, type: e.type, title: e.title, opponents: e.opponents, place: e.place, starts_at: toLocalInput(new Date(e.starts_at)), aud: e.audience, teams: new Set(evTeams(e)), people: new Set(e.people || []), pq: '' };
+    S.form = { id: e.id, type: e.type, title: e.title, opponents: e.opponents, place: e.place, starts_at: toLocalInput(new Date(e.starts_at)), aud: e.audience, teams: new Set(evTeams(e)), people: new Set(e.people || []), pq: '', conv: new Set(e.convoked || []), convMode: (e.convoked || []).length ? 'some' : 'all' };
     S.view = { type: 'evform' }; render();
   },
   evtype: (el, d) => { keepForm(); S.form.type = d.v; render(true); },
   evaud: (el, d) => { keepForm(); S.form.aud = d.v; render(true); },
-  evteam: (el, d) => { keepForm(); S.form.teams[S.form.teams.has(d.id) ? 'delete' : 'add'](d.id); render(true); },
+  evteam: (el, d) => { keepForm(); S.form.teams[S.form.teams.has(d.id) ? 'delete' : 'add'](d.id); S.form.conv = new Set(); render(true); },
+  evconvm: (el, d) => { keepForm(); S.form.convMode = d.v; render(true); },
+  evremind: async (el, d) => { const n = await run(sb.rpc('remind_event', { p_event: d.id })); if (n !== null) { toast(n ? plural(n, 'personne relancée', 'personnes relancées') + ' : un rappel apparaît en haut de leur Accueil.' : 'Tout le monde a déjà répondu.'); await refresh(); } },
   rsvp: async (el, d) => {
     const R = respOf(d.id), pid = d.p || null, cur = pid ? R.kid(pid) : R.mine;
     if (await run(sb.rpc('respond_event', { p_event: d.id, p_player: pid, p_answer: cur === d.v ? null : d.v }))) {
@@ -297,7 +321,9 @@ FORMS.evf = async (v) => {
   const f = S.form, aud = f.aud;
   if (aud === 'team' && !f.teams.size) return toast('Choisis au moins une équipe.');
   if (aud === 'people' && !f.people.size) return toast('Choisis au moins une personne.');
-  const base = { club_id: S.clubId, audience: aud, team_ids: aud === 'team' ? [...f.teams] : [], people: aud === 'people' ? [...f.people] : [], type: f.type, title: v.title.trim(), place: (v.place || '').trim(), opponents: (v.opponents || '').trim() };
+  const conv = ['Match', 'Plateau', 'Tournoi'].includes(f.type) && aud === 'team' && f.teams.size === 1 && f.convMode === 'some' ? [...f.conv] : [];
+  if (f.convMode === 'some' && conv.length === 0 && ['Match', 'Plateau', 'Tournoi'].includes(f.type) && aud === 'team' && f.teams.size === 1) return toast('Choisis au moins un joueur à convoquer.');
+  const base = { club_id: S.clubId, audience: aud, team_ids: aud === 'team' ? [...f.teams] : [], people: aud === 'people' ? [...f.people] : [], convoked: conv, type: f.type, title: v.title.trim(), place: (v.place || '').trim(), opponents: (v.opponents || '').trim() };
   const start = new Date(v.starts_at);
   if (f.id) {
     if (await run(sb.from('events').update({ ...base, starts_at: start.toISOString() }).eq('id', f.id), 'Rendez-vous modifié.')) { S.view = { type: 'event', id: f.id }; S.form = null; await refresh(); }
@@ -320,6 +346,7 @@ FORMS.evf = async (v) => {
 CHANGES.push(async (t) => {
   if (t.dataset.clubtog) { const v = t.checked; if (await run(sb.from('profiles').update({ show_all_club: v }).eq('id', S.me.id))) S.me.show_all_club = v; render(true); return true; }
   if (t.dataset.evrep) { keepForm(); S.form.repeat = t.checked; if (!t.checked) S.form.until = ''; render(true); return true; }
+  if (t.dataset.evconv) { keepForm(); S.form.conv[t.checked ? 'add' : 'delete'](t.dataset.evconv); render(true); return true; }
   if (t.dataset.evpeople) { keepForm(); S.form.people[t.checked ? 'add' : 'delete'](t.dataset.evpeople); render(true); return true; }
   if (t.dataset.evsel) { S.sel[t.checked ? 'add' : 'delete'](t.dataset.evsel); S.del = null; render(true); return true; }
   return false;

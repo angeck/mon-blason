@@ -1,4 +1,5 @@
 // Pocket Club · messages : groupes d'échange, messages en direct, sondages (supprimables, restaurables par le bureau).
+import { annoncesBlock } from './vie.js';
 import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, isBoard, name, nick, teamName, fmtShort, loadGroup, parentsOf, playersOfTeam, plural, norm } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 
@@ -20,7 +21,7 @@ export function bump(m, kind = 'message') {
   g.last_message_at = m.created_at; S.previews[m.group_id] = { group_id: m.group_id, user_id: m.user_id ?? m.created_by, body: m.body ?? m.question, created_at: m.created_at, kind };
 }
 export function messagesTab() {
-  let h = `<button class="btn main" data-act="gnew">${icon('plus', 20)}Créer un groupe d'échange</button>`;
+  let h = annoncesBlock() + `<div class="sec"><h2>Groupes d'échange</h2></div><button class="btn main" data-act="gnew">${icon('plus', 20)}Créer un groupe d'échange</button>`;
   h += `<div class="card"><div class="list">${S.groups.length ? sortedGroups().map((g) => {
     const p = S.previews[g.id], n = S.unread[g.id] || 0;
     const line = p ? (p.kind === 'sondage' ? 'Sondage : ' : (p.user_id === S.me.id ? 'Toi' : esc(nick(p.user_id)).split(' ')[0]) + ' : ') + esc(String(p.body).slice(0, 70)) : 'Pas encore de message';

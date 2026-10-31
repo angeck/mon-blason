@@ -1,7 +1,7 @@
 // Pocket Club · onglet Club : blason et en-tête, code, validations, licences et cotisations, tarifs, équipes, membres, corbeille.
 import { BRAND } from '../config.js';
 import {
-  S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, BCATS, SEASON, XLSX_URL, club, isBoard, isPresident,
+  S, sb, esc, roleLabel, hasArea, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, BCATS, SEASON, XLSX_URL, club, isBoard, isPresident,
   coachTeams, coachOf, teamName, name, pname, adminOf, toValidate, canValidate, norm, loadJs, download, toDataUrl, num, plural, onColor, contrast, rankOf, myRank, niceFirst, niceLast,
 } from './core.js';
 import { icon, field } from './ui.js';
@@ -30,7 +30,7 @@ function teamPick(m) {
 }
 export function pendRows(list) {
   return `<div class="list">${list.map((m) => { const child = [m.child_first, m.child_last].filter(Boolean).join(' ');
-    return `<div class="row static" style="flex-direction:column;align-items:stretch"><span class="g">${esc(name(m.user_id))}<small>${ROLES[m.role]}${m.team_id ? ' · ' + esc(teamName(m.team_id)) : ''}${child ? ' · enfant : ' + esc(child) : ''}${!m.team_id && ['coach', 'joueur', 'parent'].includes(m.role) ? ' · équipe non choisie' : ''}</small></span>${teamPick(m)}<div class="btns"><button class="btn small main" data-act="mok" data-id="${m.id}">Valider</button><button class="btn small ghost" data-act="mno" data-id="${m.id}">Refuser</button></div></div>`; }).join('')}</div>`;
+    return `<div class="row static" style="flex-direction:column;align-items:stretch"><span class="g">${esc(name(m.user_id))}<small>${esc(roleLabel(m))}${m.team_id ? ' · ' + esc(teamName(m.team_id)) : ''}${child ? ' · enfant : ' + esc(child) : ''}${!m.team_id && ['coach', 'joueur', 'parent'].includes(m.role) ? ' · équipe non choisie' : ''}</small></span>${teamPick(m)}<div class="btns"><button class="btn small main" data-act="mok" data-id="${m.id}">Valider</button><button class="btn small ghost" data-act="mno" data-id="${m.id}">Refuser</button></div></div>`; }).join('')}</div>`;
 }
 
 // ---------- membres ----------
@@ -41,11 +41,11 @@ function people(rows) {
 }
 const RANK = { president: 0, bureau: 1, coach: 2, joueur: 3 };
 function tagHtml(x, manage) {
-  const lab = (x.kind === 'joueur' ? 'Joueur' : ROLES[x.role] + (x.assistant ? ' assistant' : '')) + (x.team_id ? ' ' + teamName(x.team_id) : ''), m = S.members.find((y) => y.id === x.ref);
+  const lab = (x.kind === 'joueur' ? 'Joueur' : (x.role === 'bureau' ? roleLabel(S.members.find((y) => y.id === x.ref) || x) : ROLES[x.role]) + (x.assistant ? ' assistant' : '')) + (x.team_id ? ' ' + teamName(x.team_id) : ''), m = S.members.find((y) => y.id === x.ref);
   if (manage && x.kind === 'membre' && x.role !== 'president' && m && canValidate(m)) return `<button class="pill ${isArmed('m' + x.ref) ? 'armed' : 'blue'}" data-act="mdel" data-id="${x.ref}" aria-label="Retirer le profil ${esc(lab)}">${esc(lab)} ${isArmed('m' + x.ref) ? '· confirmer le retrait' : '×'}</button>`;
   return `<span class="pill">${esc(lab)}</span>`;
 }
-function membersBlock() {
+export function membersBlock() {
   if (!S.roster.length) return '';   // n° 40 : un supporteur ne voit aucun membre
   const board = isBoard(), coach = coachTeams().length > 0, mgmt = board || coach;
   let list = people(S.roster);
@@ -69,8 +69,8 @@ function membersBlock() {
 }
 
 // ---------- licences, cotisations, dates de naissance ----------
-function licencesBlock() {
-  if (!isBoard()) return '';
+export function licencesBlock() {
+  if (!hasArea('tresorerie') && !hasArea('secretariat')) return '';
   const all = S.players, f = S.lf || 'Tous', noBirth = all.filter((p) => !p.birth_date).length;
   const lic = all.filter((p) => adminOf(p.id)?.licence_state === 'Licencié').length, paid = all.filter((p) => feeState(adminOf(p.id)) === 'Payée').length;
   const rest = (p) => { const a = adminOf(p.id); return a?.fee_amount == null ? null : Math.max(0, a.fee_amount - (+a.fee_paid || 0)); };
@@ -83,17 +83,17 @@ function licencesBlock() {
   h += `<div class="chips">${['Tous', 'Licence à finir', 'Reste à payer', 'Certificat manquant', ...(noBirth ? ['Date de naissance manquante'] : [])].map((x) => `<button class="chip" data-act="lf" data-v="${x}" aria-pressed="${f === x}">${x}</button>`).join('')}</div>`;
   return h + `<details class="card" ${f !== 'Tous' ? 'open' : ''}><summary>${plural(list.length, 'joueur')}</summary><div class="list">${list.length ? list.map((p) => { const a = adminOf(p.id) || {}; return `<button class="row" data-act="player" data-id="${p.id}"><span class="g">${esc(pname(p))}<small>${esc(teamName(p.team_id) || 'Sans équipe')} · Dû ${eur(a.fee_amount)} · Réglé ${eur(a.fee_paid || 0)} · Reste ${eur(rest(p))}${p.birth_date ? '' : ' · date de naissance à compléter'}</small><span class="chips" style="gap:4px;margin-top:4px">${statusPills(p)}</span></span><span class="chev"></span></button>`; }).join('') : '<p class="empty">Aucun joueur dans ce filtre.</p>'}</div></details>`;
 }
-function namesToCheck() {
-  if (!isBoard()) return '';
+export function namesToCheck() {
+  if (!hasArea('secretariat')) return '';
   const bad = S.players.filter((p) => !p.last_name || /\s/.test(p.first_name)); if (!bad.length) return '';
   return `<details class="card"><summary>Noms à vérifier (${bad.length})</summary><div class="list">${bad.map((p) => `<button class="row" data-act="player" data-id="${p.id}"><span class="g">${esc(p.first_name)} <b>|</b> ${esc(p.last_name || '—')}<small>Prénom | Nom découpés automatiquement : à corriger si besoin</small></span><span class="chev"></span></button>`).join('')}</div></details>`;
 }
 
 // ---------- tarifs ----------
-function feesBlock() {
+export function feesBlock() {
   const d = S.docs.find((x) => x.kind === 'tarifs');
   let h = d ? `<button class="btn ghost" data-act="docopen" data-id="${d.id}">${icon('doc', 20)}Tarifs du club : ${esc(d.file_name)}</button>` : '';
-  if (!isBoard()) return h;
+  if (!hasArea('tresorerie')) return h;
   const g = S.fees, imp = S.fimp;
   h += `<details class="card" ${imp ? 'open' : ''}><summary>Tarifs ${SEASON} (${g.length})</summary><div class="list">${g.map((x) => `<div class="row static"><span class="g">${esc(x.team_id ? 'Équipe ' + teamName(x.team_id) : x.category || '—')}<small>${esc(x.amount)} €${x.fed_part != null ? ' dont ' + esc(x.fed_part) + ' € part fédération' : ''}</small></span><button class="btn small ghost" data-act="feedel" data-id="${x.id}">Retirer</button></div>`).join('') || '<p class="empty">Aucun tarif.</p>'}</div>
   <form id="feef" class="stack">${field('ffc', 'Pour', `<select id="ffc" name="target">${[...new Set(S.teams.map((t) => t.category || t.name).filter(Boolean).concat(BCATS))].map((c) => `<option value="cat:${esc(c)}">Catégorie ${esc(c)}</option>`).join('')}${S.teams.map((t) => `<option value="team:${t.id}">Équipe ${esc(t.name)} (tarif particulier)</option>`).join('')}</select>`)}<div class="grid2">${field('ffa', 'Montant (€)', '<input id="ffa" name="amount" type="number" step="0.01" min="0" required inputmode="decimal">')}${field('fff', 'dont part fédération (€)', '<input id="fff" name="fed" type="number" step="0.01" min="0" inputmode="decimal">')}</div><button class="btn main" type="submit">Ajouter ce tarif</button></form>
@@ -133,18 +133,18 @@ async function buildExport() {
 }
 
 // ---------- équipes ----------
-function teamsBlock() {
+export function teamsBlock() {
   const board = isBoard(), list = S.cteams;
   let h = `<div class="sec"><h2>Équipes</h2><span class="det">${board ? list.length : ''}</span></div><div class="card"><div class="list">${list.length ? list.map((t) => {
     const sub = [t.category !== t.name ? t.category : '', t.gender, t.coach ? 'Coach : ' + t.coach : '', t.slots].filter(Boolean).join(' · ');
     return `<div class="row static" style="flex-wrap:wrap"><button class="g" data-act="team" data-id="${t.id}" style="background:none;border:0;text-align:left;padding:0;min-height:44px;color:inherit">${esc(t.name)}<small>${esc(sub)}</small>${t.coaches != null ? `<small>Coachs : ${t.coaches} · Effectif : ${plural(t.players, 'joueur')}</small>` : ''}</button>${t.state === 'Fantôme' ? '<span class="pill wait">Fantôme · en attente de validation</span>' : t.state === 'Archivée' ? '<span class="pill">Archivée</span>' : t.followed ? '<span class="pill blue">Suivie</span>' : ''}</div>`;
   }).join('') : '<p class="empty">Aucune équipe.</p>'}</div></div>`;
-  if (board) h += `<details class="card"><summary>${icon('plus', 18)} Créer une équipe</summary>${teamForm({}, 'teamnew')}<p class="note">Une nouvelle équipe reste en mode fantôme (invisible des familles) jusqu'à ce que son coach, le bureau ou le président la rende visible.</p></details>`;
+  if (hasArea('technique')) h += `<details class="card"><summary>${icon('plus', 18)} Créer une équipe</summary>${teamForm({}, 'teamnew')}<p class="note">Une nouvelle équipe reste en mode fantôme (invisible des familles) jusqu'à ce que son coach, le bureau ou le président la rende visible.</p></details>`;
   return h;
 }
 
 // ---------- contacts du club (n° 42) ----------
-function contactsBlock() {
+export function contactsBlock() {
   const L = S.contacts.filter((x) => x.kind === 'contact'), pres = S.contacts.find((x) => x.kind === 'president');
   const one = (c) => `<div class="row static" style="flex-direction:column;align-items:stretch;gap:8px"><span class="g">${esc(c.name)}<small>${esc(c.fonction)}${c.phone ? ' · ' + esc(c.phone) : ''}${c.email ? ' · ' + esc(c.email) : ''}</small></span>${c.phone || c.email ? `<div class="btns">${c.phone ? `<a class="btn small ghost" href="tel:${esc(c.phone.replace(/\s/g, ''))}">${icon('phone', 18)}Appeler</a>` : ''}${c.email ? `<a class="btn small ghost" href="mailto:${esc(c.email)}">${icon('mail', 18)}Écrire un e-mail</a>` : ''}</div>` : '<span class="det">Pas de coordonnées publiées : écris-lui depuis Messages.</span>'}</div>`;
   const part = (lab, arr) => (arr.length ? `<div class="kick">${lab}</div><div class="list">${arr.map(one).join('')}</div>` : '');
@@ -160,7 +160,7 @@ function contactsBlock() {
 export function memberPage(u) {
   const ms = S.members.filter((m) => m.user_id === u && m.status === 'active'), can = isBoard() && u !== S.me.id && rankOf(u) < myRank();
   const nm = name(u), ph = S.phones[u];
-  let h = `<div class="card lift"><div class="chips">${ms.map((m) => `<span class="pill blue">${esc(ROLES[m.role] + (m.team_id ? ' ' + teamName(m.team_id) : ''))}</span>`).join('')}</div>${ph ? `<a class="btn small ghost" href="tel:${esc(ph.replace(/\s/g, ''))}">${icon('phone', 18)}Appeler · ${esc(ph)}</a>` : '<span class="det">Téléphone non renseigné ou non visible.</span>'}</div>`;
+  let h = `<div class="card lift"><div class="chips">${ms.map((m) => `<span class="pill blue">${esc(roleLabel(m) + (m.team_id ? ' ' + teamName(m.team_id) : ''))}</span>`).join('')}</div>${ph ? `<a class="btn small ghost" href="tel:${esc(ph.replace(/\s/g, ''))}">${icon('phone', 18)}Appeler · ${esc(ph)}</a>` : '<span class="det">Téléphone non renseigné ou non visible.</span>'}</div>`;
   if (can) { const [f, ...l] = nm.split(' '); h += `<form id="memberf" data-id="${u}" class="card"><div class="kick">Modifier la fiche</div><div class="grid2">${field('mf1', 'Prénom', `<input id="mf1" name="first_name" value="${esc(f || '')}" required>`)}${field('mf2', 'Nom', `<input id="mf2" name="last_name" value="${esc(l.join(' '))}">`)}</div>${field('mf3', 'Téléphone', `<input id="mf3" name="phone" type="tel" value="${esc(ph || '')}">`)}<button class="btn main" type="submit">Enregistrer</button><p class="note">La modification est notée dans le journal du club (qui, quoi, quand).</p></form>`; }
   else if (isBoard()) h += '<p class="note">Cette personne est de ton niveau ou au-dessus dans le club : seul un rang supérieur peut modifier sa fiche.</p>';
   return h;
@@ -168,15 +168,15 @@ export function memberPage(u) {
 
 // ---------- corbeille ----------
 async function loadTrash() { const r = await sb.rpc('club_trash', { p_club: S.clubId }); S.trash = r.data || []; }
-function trashBlock() {
+export function trashBlock() {
   if (!isBoard()) return '';
   const K = { team: 'Équipe', player: 'Fiche joueur', poll: 'Sondage', exercise: 'Exercice' };
   return `<details class="card" data-trash="1" ${S.trashOpen ? 'open' : ''}><summary>${icon('trash', 18)} Corbeille${S.trash.length ? ' (' + S.trash.length + ')' : ''}</summary>${S.trash.length ? `<div class="list">${S.trash.map((x) => `<div class="row static"><span class="g">${esc(x.label)}<small>${K[x.kind]} · supprimé le ${new Date(x.deleted_at).toLocaleDateString('fr-FR')}${x.deleted_by ? ' par ' + esc(x.deleted_by) : ''} · effacé le ${new Date(x.purge_at).toLocaleDateString('fr-FR')}</small></span><button class="btn small ghost" data-act="restore" data-k="${x.kind}" data-id="${x.id}">Restaurer</button></div>`).join('')}</div>` : '<p class="empty">La corbeille est vide.</p>'}<p class="note">Ce qui est supprimé reste ici 30 jours, puis est effacé définitivement.</p></details>`;
 }
 
 // ---------- blason et en-tête ----------
-function brandBlock() {
-  if (!isBoard()) return '';
+export function brandBlock() {
+  if (!hasArea('communication')) return '';
   const c = club(), logo = S.tmpLogo === undefined ? c.logo : S.tmpLogo;
   return `<details class="card"><summary>Blason, couleurs et réglages du club</summary><form id="brandf" class="stack"><div data-prev>${brandPreview(c.name, c.color1, logo, c.crest_bg, c.custom_header)}</div>
   ${field('bcp', 'Code postal du club', `<input id="bcp" name="postal_code" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" value="${esc(c.postal_code || '')}">`)}

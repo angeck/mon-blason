@@ -21,6 +21,8 @@ export const store = {
 };
 
 export const ROLES = { president: 'Président', bureau: 'Membre du bureau', coach: 'Coach', joueur: 'Joueur', parent: 'Parent de joueur', supporteur: 'Supporteur' };
+// Libellé d'un profil : « Bureau · Trésorier » pour un membre du bureau (n° 54)
+export const roleLabel = (m) => (m.role === 'bureau' ? 'Bureau · ' + (m.fonction || 'Membre du bureau') : ROLES[m.role]);
 export const JOIN_ROLES = ['supporteur', 'parent', 'joueur', 'coach', 'bureau'];
 export const SPORTS = ['Basket-ball', 'Volley-ball'];
 export const TEAM_TYPES = ['Entraînement', 'Match', 'Plateau', 'Tournoi'];
@@ -35,7 +37,7 @@ export const S = {
   session: null, me: null, mems: [], clubs: {}, clubId: store.get('pc_club'), tab: 0, view: null,
   members: [], names: {}, nicks: {}, phones: {}, teams: [], events: [], resp: [], groups: [], lastMsgs: [],
   msgs: [], polls: [], votes: [], gmembers: [], roster: [], players: [], pparents: [], padmin: [], att: [], pteams: [],
-  docs: [], fees: [], discounts: [], hidden: [], trash: [], previews: {}, payments: [], follows: [], cteams: [], unread: {}, myGroups: [], contacts: [], myContact: null,
+  docs: [], fees: [], areas: [], annonces: [], annRead: new Set(), missions: [], signups: [], overview: [], discounts: [], hidden: [], trash: [], previews: {}, payments: [], follows: [], cteams: [], unread: {}, myGroups: [], contacts: [], myContact: null,
   authMode: 'login', onb: null, join: { code: '', role: 'supporteur', teams: [] },
   rq: { role: 'joueur', team: '', open: false }, form: null, del: null, sel: null,
   updated: null, online: navigator.onLine, channel: null,
@@ -120,11 +122,25 @@ export function isMajor(p) {
   const b = new Date(p.birth_date), n = new Date();
   return n.getFullYear() - b.getFullYear() - (n < new Date(n.getFullYear(), b.getMonth(), b.getDate()) ? 1 : 0) >= 18;
 }
+// N° 55 : rubriques du bureau (tresorerie, secretariat, technique, communication, evenements), calculées par la base
+export const hasArea = (a) => (S.areas || []).includes(a);
+export const AREAS = { tresorerie: 'Trésorerie', secretariat: 'Secrétariat', technique: 'Technique', communication: 'Communication', evenements: 'Événements et buvette' };
+export const FONCTIONS = ['Vice-président', 'Secrétaire', 'Secrétaire adjoint', 'Trésorier', 'Trésorier adjoint', 'Directeur sportif', 'Coordinateur', 'Correspondant licences', 'Chargé de communication', 'Responsable sponsoring', 'Responsable événements et buvette', 'Membre du bureau'];
+// Casquettes de l'espace (charte du 31 octobre) : Coach, Président, chaque fonction du bureau
+export function casquettes() {
+  const l = [], ct = coachTeams().filter((t) => S.teams.some((x) => x.id === t));
+  if (ct.length) l.push({ k: 'coach', label: 'Coach' + (ct.length === 1 ? ' ' + (S.teams.find((x) => x.id === ct[0])?.name || '') : ''), pill: 'Coach' });
+  if (isPresident()) l.push({ k: 'president', label: 'Président', pill: 'Président' });
+  active().filter((m) => m.role === 'bureau').forEach((m) => { const f = m.fonction || 'Membre du bureau'; if (!l.some((x) => x.k === 'f:' + f)) l.push({ k: 'f:' + f, label: f, pill: f === 'Membre du bureau' ? 'Bureau' : f.replace(/ (adjoint|et buvette)$/, '').replace('Responsable ', '').replace('Chargé de ', '') }); });
+  return l;
+}
+export const myFonctions = () => active().filter((m) => m.role === 'bureau').map((m) => m.fonction || 'Membre du bureau');
 export function canValidate(m) {
   if (m.user_id === S.me.id) return false;
-  return active().some((x) => x.role === 'president'
-    || (x.role === 'bureau' && ['joueur', 'parent', 'coach', 'supporteur'].includes(m.role))
-    || (x.role === 'coach' && ['joueur', 'parent'].includes(m.role) && m.team_id && m.team_id === x.team_id));
+  if (isPresident()) return true;
+  if (['joueur', 'parent', 'supporteur'].includes(m.role) && hasArea('secretariat')) return true;
+  if (m.role === 'coach' && (hasArea('secretariat') || hasArea('technique'))) return true;
+  return ['joueur', 'parent'].includes(m.role) && !!m.team_id && coachOf(m.team_id);
 }
 export const toValidate = () => S.members.filter((m) => m.status === 'pending' && canValidate(m));
 // N° 32 : rang dans le club (président 3, bureau 2, coach 1, autres 0), comme dans la base
@@ -188,6 +204,16 @@ export async function loadClub() {
     sb.rpc('group_previews', { p_club: cid }),
     sb.from('club_contacts').select('*').eq('club_id', cid).eq('user_id', S.me.id).maybeSingle(),
   ]);
+  const [ar, an, anr, mis] = await Promise.all([
+    sb.rpc('my_areas', { c: cid }),
+    sb.from('announcements').select('*').eq('club_id', cid).is('deleted_at', null).order('created_at', { ascending: false }).limit(60),
+    sb.from('announcement_reads').select('announcement_id').eq('user_id', S.me.id),
+    inList(sb.from('event_missions').select('*').order('position'), 'event_id', eids),
+  ]);
+  S.areas = ar.data || []; S.annonces = an.data || []; S.annRead = new Set((anr.data || []).map((x) => x.announcement_id)); S.missions = mis.data || [];
+  S.signups = S.missions.length ? ((await sb.from('mission_signups').select('*').in('mission_id', S.missions.map((m) => m.id))).data || []) : [];
+  const clubIds = [...new Set(S.mems.filter((m) => m.status === 'active').map((m) => m.club_id))];
+  S.overview = clubIds.length > 1 ? ((await sb.rpc('my_clubs_overview')).data || []) : [];
   S.payments = pay.data || []; S.follows = (fol.data || []).map((x) => x.team_id); S.cteams = ct.data || []; S.myGroups = mg.data || [];
   S.contacts = cl.data || []; S.myContact = mc.data || null;
   S.previews = {}; (gp.data || []).forEach((x) => (S.previews[x.group_id] = x));
@@ -201,7 +227,7 @@ export async function loadClub() {
   }
   S.pparents = pp.data || []; S.padmin = pa.data || []; S.att = at.data || []; S.pteams = pt.data || [];
   S.resp = rs.data || []; S.lastMsgs = lm.data || []; S.discounts = dc.data || [];
-  const uids = S.members.map((m) => m.user_id).concat(S.pparents.map((x) => x.user_id), S.lastMsgs.map((m) => m.user_id), S.resp.map((r) => r.user_id));
+  const uids = S.members.map((m) => m.user_id).concat(S.pparents.map((x) => x.user_id), S.lastMsgs.map((m) => m.user_id), S.resp.map((r) => r.user_id), S.signups.map((x) => x.user_id), S.annonces.map((a) => a.created_by));
   await loadNames(uids);
   const ph = await sb.rpc('phones_for', { p_ids: [...new Set(uids)] });
   S.phones = {}; (ph.data || []).forEach((x) => (S.phones[x.id] = x.phone));

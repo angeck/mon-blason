@@ -209,3 +209,27 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 .tbl td{padding:8px;border-bottom:1px solid var(--pc-trait);white-space:nowrap}
 .tbl tr:last-child td{border-bottom:0}
 .chip input[type=radio]{width:18px;height:18px;min-height:0;margin:0;flex:none;accent-color:var(--pc-bleu)}
+
+/* 3.2 · espaces, annonces, missions */
+.rolepill{height:44px;padding:0 16px;border-radius:22px;background:var(--pc-jaune);color:var(--pc-encre);display:flex;align-items:center;font:800 18px var(--pc-titre);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
+.hd .under{font-size:16px;position:relative}
+.hd .band .roundbtn{flex:none}
+.casq{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.casq button{flex:none;height:44px;padding:0 16px;border-radius:22px;font-weight:700;font-size:16px;border:2px solid var(--pc-trait);background:var(--pc-papier);color:var(--pc-encre)}
+.casq button[aria-selected="true"]{border-color:var(--pc-encre);background:var(--pc-encre);color:#FFFFFF}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tile{background:var(--pc-papier);border-radius:20px;padding:12px;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(17,22,46,.06);border:0;text-align:left;color:inherit;font:inherit}
+.tile b{font-family:var(--pc-titre);font-size:28px;line-height:1}
+.tile span{font-size:14px;color:var(--pc-texte-doux)}
+.tile.blue{background:var(--pc-bleu);color:#FFFFFF}.tile.blue span{color:#FFFFFF}
+.tile.ok{background:var(--pc-oui-fond)}.tile.ok b,.tile.ok span{color:var(--pc-oui-texte)}
+.bigadd{border:0;background:var(--pc-jaune);color:var(--pc-encre);font-weight:700;font-size:19px;min-height:60px;border-radius:30px;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 10px 22px rgba(17,22,46,.12)}
+.ann{display:flex;gap:12px;align-items:flex-start;border:0;background:transparent;text-align:left;color:inherit;font:inherit;width:100%;padding:10px 0;border-bottom:1px solid var(--pc-trait)}
+.ann:last-child{border-bottom:0}
+.ann .dot{width:10px;height:10px;border-radius:5px;background:var(--pc-bleu);flex:none;margin-top:7px}
+.ann .dot.read{background:transparent}
+.mission{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--pc-trait)}
+.mission:last-child{border-bottom:0}
+.mission .g{flex:1;min-width:0;display:flex;flex-direction:column;font-weight:700}
+.mission .g small{font-weight:400;color:var(--pc-texte-doux);font-size:14px}
+.progress{height:14px;border-radius:7px;background:#EEF0F7;overflow:hidden}.progress span{display:block;height:100%;background:var(--pc-bleu);border-radius:7px}

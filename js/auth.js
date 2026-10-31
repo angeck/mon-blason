@@ -1,6 +1,6 @@
 // Pocket Club · connexion, inscription, conditions, premier club (créer ou rejoindre), textes légaux.
 import { BRAND, VERSION, CGU_VERSION, TURNSTILE_SITEKEY } from '../config.js';
-import { S, sb, esc, run, toast, render, refresh, store, remember, ROLES, JOIN_ROLES, SPORTS, niceFirst, niceLast, lum, onColor, isActive, club, ACTIONS, FORMS, INPUTS, CHANGES } from './core.js';
+import { S, sb, esc, run, toast, render, refresh, store, remember, ROLES, JOIN_ROLES, SPORTS, FONCTIONS, niceFirst, niceLast, lum, onColor, isActive, club, ACTIONS, FORMS, INPUTS, CHANGES } from './core.js';
 import { header, wordmark, crest, field, icon } from './ui.js';
 
 // ---------- Textes légaux (vouvoiement, provisoires : à relire par un juriste) ----------
@@ -80,12 +80,13 @@ const needCaptcha = () => { if (TURNSTILE_SITEKEY && !S.captcha) { toast('Vérif
 
 // ---------- Accueil public : recherche de clubs (n° 49) ----------
 const pubHeader = (o = {}) => header({ brand: true, back: o.back, kicker: o.kicker, title: o.title });
-function searchBlock() {
+const memberOf = (id) => !!S.session && (S.mems || []).some((m) => m.club_id === id && m.status === 'active');
+export function searchBlock() {
   const P = S.ps || (S.ps = { q: '', sport: '', res: null });
   return `<form id="psf" class="card lift" role="search">${field('psq', 'Chercher un club', `<input id="psq" type="search" data-psq="1" value="${esc(P.q)}" placeholder="Nom du club, ville ou code postal" autocomplete="off" minlength="2">`)}
   <div class="chips">${[['', 'Tous les sports'], ['Basket-ball', 'Basket'], ['Volley-ball', 'Volley']].map(([v, l]) => `<button type="button" class="chip" data-act="pssport" data-v="${v}" aria-pressed="${P.sport === v}">${l}</button>`).join('')}</div>
   <button class="btn main" type="submit">Chercher</button></form>
-  ${P.res === null ? '' : P.res.length ? `<div class="stack">${P.res.map((c) => `<button class="card" data-act="pclub" data-id="${c.id}" style="flex-direction:row;align-items:center;gap:14px;border:0;text-align:left;font:inherit;color:inherit">${crest(c, 40, '#FFFFFF')}<span style="display:flex;flex-direction:column;min-width:0;flex:1"><b>${esc(c.name)}</b><span class="det">${esc([c.city, c.postal_code].filter(Boolean).join(' · '))}${c.city || c.postal_code ? ' · ' : ''}${esc(c.sport)}</span></span><span class="chev"></span></button>`).join('')}</div>` : '<p class="empty">Aucun club trouvé. Essaie la ville, ou demande le code du club à ton coach.</p>'}`;
+  ${P.res === null ? '' : P.res.length ? `<div class="stack">${P.res.map((c) => `<button class="card" data-act="pclub" data-id="${c.id}" style="flex-direction:row;align-items:center;gap:14px;border:0;text-align:left;font:inherit;color:inherit">${crest(c, 40, '#FFFFFF')}<span style="display:flex;flex-direction:column;min-width:0;flex:1"><b>${esc(c.name)}</b><span class="det">${esc([c.city, c.postal_code].filter(Boolean).join(' · '))}${c.city || c.postal_code ? ' · ' : ''}${esc(c.sport)}</span></span>${memberOf(c.id) ? '<span class="pill ok">Déjà membre</span>' : '<span class="chev"></span>'}</button>`).join('')}</div>` : '<p class="empty">Aucun club trouvé. Essaie la ville, ou demande le code du club à ton coach.</p>'}`;
 }
 export function publicHome() {
   return `<div class="splash" style="flex:none;padding:44px 20px 4px">${wordmark(46, 'Basket-ball')}<p>L'agenda, les messages et la vie de ton club, au même endroit.</p></div><main class="bd" style="padding-top:8px">
@@ -99,7 +100,7 @@ export function publicClubScreen(id) {
   if (!c) return pubHeader({ back: true, kicker: 'Club' }) + '<main class="bd"><p class="empty">Ce club n’est pas visible dans la recherche. Demande son code au club pour le rejoindre.</p></main>';
   const teams = c.teams || [];
   return pubHeader({ back: true, kicker: c.sport, title: esc(c.name) }) + `<main class="bd"><div class="card lift" style="flex-direction:row;align-items:center;gap:14px">${crest(c, 52, '#FFFFFF')}<span style="display:flex;flex-direction:column"><b style="font-size:18px">${esc(c.name)}</b><span class="det">${esc([c.city, c.postal_code].filter(Boolean).join(' · ') || 'Ville non renseignée')} · ${esc(c.sport)}</span></span></div>
-  <button class="btn main" data-act="pjoin" data-id="${c.id}">Rejoindre ce club</button>
+  ${memberOf(c.id) ? `<span class="pill ok">Déjà membre</span><button class="btn main" data-act="club" data-id="${c.id}">Ouvrir le club</button>` : `<button class="btn main" data-act="pjoin" data-id="${c.id}">Rejoindre ce club</button>`}
   <div class="sec"><h2>Équipes</h2></div><div class="card"><div class="list">${teams.length ? teams.map((t) => `<div class="row static"><span class="g">${esc(t.name)}<small>${esc([t.category !== t.name ? t.category : '', t.gender].filter(Boolean).join(' · '))}</small>${t.slots ? `<small>${icon('cal', 14)} ${esc(t.slots)}</small>` : ''}</span></div>`).join('') : '<p class="empty">Pas encore d’équipe affichée.</p>'}</div></div>
   <p class="note">${S.session ? '' : 'Les matchs, les messages et les contacts du club sont réservés aux membres connectés.'}</p></main>`;
 }
@@ -222,6 +223,7 @@ export function roleExtra(st, p, teams) {
   let h = '';
   if (st.role === 'parent') h += `<div class="grid2">${field(p + 'k', "Prénom de l'enfant", `<input id="${p}k" data-${p}="childf" value="${esc(st.childf || '')}">`)}${field(p + 'k2', "Nom de l'enfant", `<input id="${p}k2" data-${p}="childl" value="${esc(st.childl || '')}">`)}</div>`;
   if (st.role === 'joueur') h += `<label class="check"><input type="checkbox" data-${p}="age" ${st.age ? 'checked' : ''}><span>J'ai 15 ans ou plus</span></label>`;
+  if (st.role === 'bureau') h += field(p + 'f', 'Fonction demandée (une par demande ; pour plusieurs fonctions, refais une demande)', `<select id="${p}f" data-${p}="fonction">${FONCTIONS.map((f) => `<option ${(st.fonction || 'Membre du bureau') === f ? 'selected' : ''}>${f}</option>`).join('')}</select>`) + '<p class="note">Le président valide chaque fonction séparément.</p>';
   if (['parent', 'joueur', 'coach'].includes(st.role) && teams.length) h += field(p + 't', 'Équipe', `<select id="${p}t" data-${p}="team"><option value="">Je ne sais pas</option>${teams.map((t) => `<option value="${t.id}" ${st.team === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>`);
   return h;
 }
@@ -264,7 +266,8 @@ Object.assign(ACTIONS, {
     const j = S.join; if (!j.byId && !j.code) return toast('Indique le code du club.');
     if (!checkRole(j)) return;
     const args = { p_role: j.role, p_team: j.team || null, p_child_first: j.childf || null, p_child_last: j.childl || null };
-    const cid = await run(j.byId ? sb.rpc('join_club_by_id', { p_club: j.byId, ...args }) : sb.rpc('join_club', { p_code: j.code, ...args }));
+    const cid = await run(j.role === 'bureau' ? sb.rpc('request_bureau', { p_club: j.byId || null, p_code: j.byId ? null : j.code, p_fonction: j.fonction || 'Membre du bureau' })
+      : j.byId ? sb.rpc('join_club_by_id', { p_club: j.byId, ...args }) : sb.rpc('join_club', { p_code: j.code, ...args }));
     if (j.byId && cid) store.set('pc_join', '');
     if (cid === null) return;
     if (cid === true || !cid) return toast('Code inconnu. Vérifie les 8 caractères.');

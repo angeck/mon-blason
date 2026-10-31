@@ -35,6 +35,8 @@ async function loadExos() {
   if (others.length) { const a = await sb.rpc('exercise_authors', { p_ids: others }); (a.data || []).forEach((x) => (S.exAuthors[x.id] = x)); }
 }
 export async function loadEvPlans() { S.evPlans = canCoachSpace() ? ((await sb.from('training_plans').select('id,title,event_id,team_id,items,notes').not('event_id', 'is', null).is('deleted_at', null).limit(300)).data || []) : []; }
+export async function ensureExos() { if (!S.exos) await loadExos(); }
+export function planForEvent(e) { const t = evTeams(e).find((x) => coachOf(x)) || evTeams(e)[0] || ''; S.plan = { club: S.clubId, id: null, title: e.title + ' · ' + new Date(e.starts_at).toLocaleDateString('fr-FR'), team_id: t, event_id: e.id, notes: '', items: [] }; savePlanLocal(); }
 async function loadPlans() { S.plans = (await sb.from('training_plans').select('*').is('deleted_at', null).order('updated_at', { ascending: false }).limit(200)).data || []; }
 // Compteurs pour l'onglet Club (bureau) : relevés d'heures et exercices publics à valider
 export async function loadCoachCounts() {

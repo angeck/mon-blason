@@ -6,7 +6,7 @@ const ME = 'u-me', C = 'c-1', T9 = 't-u9', T11 = 't-u11', T13 = 't-u13';
 const people = { 'u-me': ['Gaël', 'Test'], 'u-pres': ['Céline', 'Présidente'], 'u-c11': ['Karim', 'Coach'], 'u-p1': ['Nina', 'Parent'], 'u-p2': ['Hugo', 'Parent'], 'u-s1': ['Léa', 'Supportrice'] };
 const D = {
   profiles: Object.entries(people).map(([id, [f, l]]) => ({ id, first_name: f, last_name: l, full_name: f + ' ' + l, nickname: null, phone: id === ME ? '06 00 00 00 00' : '06 11 22 33 44', cgu_version: 'alpha-3.0', optin_emails: false, show_all_club: false, deleted_at: null })),
-  clubs: [{ id: C, name: 'BC Testville', city: 'Testville', sport: 'Basket-ball', color1: '#C2410C', color2: '#FFC93C', crest_bg: null, logo: null, custom_header: false, join_code: 'AB3CD4EF', created_at: at(-60) }],
+  clubs: [{ id: 'c-2', name: 'Volley Ailleurs', city: 'Ailleurs', sport: 'Volley-ball', color1: '#0F1A3A', color2: '#FF5B14', crest_bg: null, logo: null, custom_header: false, join_code: 'ZZ3CD4EF', created_at: at(-60) }, { id: C, default_missions: [{ label: 'Arbitre', slots: 2 }, { label: 'Table de marque', slots: 2 }, { label: 'Aide', slots: 2 }, { label: 'Buvette', slots: 2 }], coach_sees_fees: true, public_listed: true, name: 'BC Testville', city: 'Testville', sport: 'Basket-ball', color1: '#C2410C', color2: '#FFC93C', crest_bg: null, logo: null, custom_header: false, join_code: 'AB3CD4EF', created_at: at(-60) }],
   teams: [
     { id: T9, club_id: C, name: 'U9', category: 'U9', gender: 'Mixte', state: 'Visible', season: '2026-2027', slots: 'Mercredi 17 h 30, gymnase', deleted_at: null },
     { id: T11, club_id: C, name: 'U11', category: 'U11', gender: 'Mixte', state: 'Visible', season: '2026-2027', slots: '', deleted_at: null },
@@ -14,7 +14,8 @@ const D = {
     { id: T13, club_id: C, name: 'U13 F', category: 'U13', gender: 'Féminine', state: 'Fantôme', season: '2026-2027', slots: '', deleted_at: null },
   ],
   memberships: [
-    { id: 'm1', club_id: C, user_id: ME, role: 'bureau', team_id: null, status: 'active', created_at: at(-50) },
+    { id: 'm1', club_id: C, user_id: ME, role: 'bureau', fonction: 'Trésorier', team_id: null, status: 'active', created_at: at(-50) },
+    { id: 'm9', club_id: 'c-2', user_id: ME, role: 'joueur', team_id: null, status: 'active', created_at: at(-20) },
     { id: 'm2', club_id: C, user_id: ME, role: 'coach', team_id: T9, status: 'active', created_at: at(-50), assistant: false },
     { id: 'm3', club_id: C, user_id: ME, role: 'parent', team_id: T11, player_id: 'p-lily', status: 'active', created_at: at(-50) },
     { id: 'm4', club_id: C, user_id: 'u-pres', role: 'president', team_id: null, status: 'active', created_at: at(-60) },
@@ -58,6 +59,8 @@ const D = {
     { id: 'x2', club_id: 'c-autre', created_by: 'u-autre', sport: 'Tous les sports', title: 'Échauffement en musique', category: 'Échauffement', duration_min: 10, level: '', description: 'Course libre, arrêt au signal.', diagram: [], sharing: 'public', public_state: 'validated', origin: 'ia', source: '', certified: true, up_count: 4, down_count: 0, deleted_at: null, updated_at: at(-9) },
     { id: 'x3', club_id: C, created_by: 'u-c11', sport: 'Basket-ball', title: 'Défense 1 contre 1', category: 'Tactique', duration_min: 20, level: '', description: 'Défense en glissés.', diagram: [], sharing: 'public', public_state: 'pending', origin: 'adapte', source: 'Formation fédérale', certified: true, up_count: 0, down_count: 0, deleted_at: null, updated_at: at(-1) },
   ],
+  announcements: [{ id: 'a1', club_id: C, audience: 'club', team_ids: [], people: [], kind: 'annonce', event_id: null, title: 'Gymnase fermé samedi', body: 'Travaux : entraînements déplacés.', created_by: 'u-pres', created_at: at(-1, 12), deleted_at: null }],
+  announcement_reads: [], event_missions: [], mission_signups: [], board_areas: [],
   exercise_votes: [], exercise_reports: [], training_plans: [], coach_hours: [{ id: 'h0', club_id: C, user_id: 'u-c11', team_id: T11, day: at(-4).slice(0, 10), minutes: 90, kind: 'Entraînement', note: '' }],
   coach_statements: [{ id: 'st1', club_id: C, user_id: 'u-c11', month: (() => { const d = new Date(); return d.toLocaleDateString('sv-SE').slice(0, 8) + '01'; })(), status: 'submitted', total_minutes: 90 }],
 };
@@ -125,6 +128,17 @@ const RPC = {
   fill_coach_hours: () => { D.coach_hours.push({ id: uid(), club_id: C, user_id: ME, team_id: T9, event_id: 'e7', day: at(-6).slice(0, 10), minutes: 90, kind: 'Entraînement', note: '' }); return 1; },
   submit_coach_month: ({ p_month }) => { D.coach_statements.push({ id: uid(), club_id: C, user_id: ME, month: p_month, status: 'submitted', total_minutes: 90 }); return null; },
   decide_coach_month: ({ p_statement, p_ok, p_comment }) => { const s = D.coach_statements.find((x) => x.id === p_statement); s.status = p_ok ? 'validated' : 'refused'; s.comment = p_comment; s.decided_by = ME; s.decided_at = new Date().toISOString(); return null; },
+  my_areas: () => window.__AREAS || ['communication', 'evenements', 'secretariat', 'technique', 'tresorerie'],
+  my_clubs_overview: () => [{ club_id: C, name: 'BC Testville', sport: 'Basket-ball', color1: '#C2410C', roles: ['bureau'], next_events: [], unread: 0 }, { club_id: 'c-2', name: 'Volley Ailleurs', sport: 'Volley-ball', color1: '#0F1A3A', roles: ['joueur'], next_events: [{ id: 'v1', title: 'Match 4x4', type: 'Match', starts_at: at(2, 20) }], unread: 2 }],
+  add_default_missions: ({ p_event }) => { const c = D.clubs.find((x) => x.id === C); c.default_missions.forEach((m, i) => D.event_missions.push({ id: uid(), event_id: p_event, label: m.label, slots: m.slots, position: i + 1, created_at: new Date().toISOString() })); return c.default_missions.length; },
+  volunteer: ({ p_mission, p_on }) => { if (p_on) D.mission_signups.push({ mission_id: p_mission, user_id: ME, added_by: ME }); else D.mission_signups = D.mission_signups.filter((x) => !(x.mission_id === p_mission && x.user_id === ME)); return null; },
+  assign_volunteer: ({ p_mission, p_user, p_on }) => { if (p_on) D.mission_signups.push({ mission_id: p_mission, user_id: p_user, added_by: ME }); else D.mission_signups = D.mission_signups.filter((x) => !(x.mission_id === p_mission && x.user_id === p_user)); return null; },
+  remind_missions: () => '2 aide, 2 buvette', remind_event: () => 3, remind_fee: () => 1,
+  delete_announcement: ({ p_id }) => { D.announcements.find((a) => a.id === p_id).deleted_at = new Date().toISOString(); return null; },
+  set_bureau_fonction: ({ p_user, p_fonction, p_membership }) => { if (p_membership) D.memberships.find((m) => m.id === p_membership).fonction = p_fonction; else D.memberships.push({ id: uid(), club_id: C, user_id: p_user, role: 'bureau', fonction: p_fonction, status: 'active' }); return null; },
+  set_board_area: ({ p_user, p_area, p_on }) => { if (p_on) D.board_areas.push({ club_id: C, user_id: p_user, area: p_area }); else D.board_areas = D.board_areas.filter((x) => !(x.user_id === p_user && x.area === p_area)); return null; },
+  club_log: () => [{ at: at(-1), actor: 'Céline Présidente', target: 'Tom Dupont', action: 'versement ajouté', detail: { montant: 50 } }],
+  request_bureau: () => C,
   export_my_data: () => ({ profil: D.profiles[0] }), validate_membership: ({ mid }) => { D.memberships.find((m) => m.id === mid).status = 'active'; return null; },
 };
 export function createClient() {
