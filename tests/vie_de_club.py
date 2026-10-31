@@ -814,7 +814,8 @@ K = lambda k: f"(select v::uuid from tests.kv where k = '{k}')"
 def ASK(k): w(f"select set_config('request.uid', (select v from tests.kv where k = '{k}'), false);")
 # Personnes choisies : deux familles U9 distinctes (p1 et p2), une famille U13F, un supporteur, la présidente de l'autre club
 w(f"""insert into tests.kv select 'p1', p.id::text from players p where p.team_id = {T('U9')} and p.deleted_at is null and not exists(select 1 from player_teams pt where pt.player_id = p.id)
-  and exists(select 1 from player_parents pp join memberships m on m.user_id = pp.user_id and m.club_id = {C1} and m.status = 'active' where pp.player_id = p.id) order by p.id limit 1;""")
+  and exists(select 1 from player_parents pp join memberships m on m.user_id = pp.user_id and m.club_id = {C1} and m.status = 'active' where pp.player_id = p.id)
+  and not exists(select 1 from player_parents pp join memberships c on c.user_id = pp.user_id and c.club_id = {C1} and c.role in ('coach','president','bureau') where pp.player_id = p.id) order by p.id limit 1;""")
 w(f"insert into tests.kv select 'pU9', pp.user_id::text from player_parents pp join memberships m on m.user_id = pp.user_id and m.club_id = {C1} and m.status = 'active' where pp.player_id = {K('p1')} order by pp.user_id limit 1;")
 w(f"""insert into tests.kv select 'pU9b', pp.user_id::text from player_parents pp join players p on p.id = pp.player_id join memberships m on m.user_id = pp.user_id and m.club_id = {C1} and m.status = 'active'
   where p.team_id = {T('U9')} and p.deleted_at is null and p.id <> {K('p1')}
@@ -907,6 +908,19 @@ ok("envoyées : marquées", f"not exists(select 1 from push_queue q where q.id i
 ok("en erreur : gardées pour un nouvel essai", "exists(select 1 from push_queue q where q.id in (select queue_id from pc_claim where endpoint like '%s7') and q.sent_at is null and q.tries = 1)")
 ok("appareil disparu : retiré", "not exists(select 1 from push_subscriptions where endpoint like '%pU13')")
 ok("ménage : rien de récent n'est effacé", "push_cleanup() = 0")
+w("\\i ../supabase/alpha_3_3_2.sql")
+w("\\i ../supabase/alpha_3_3_2.sql")
+ok("3.3.2 · sans mot de passe d'appel, la fonction d'envoi n'est pas appelée", "push_tick() = 'rien à envoyer' and (select count(*) from net.calls) = 0")
+w("update push_settings set secret = 'secret-de-test';")
+w(f"insert into events(club_id, team_ids, audience, type, title, starts_at, created_by, created_at) values ({C1}, array[{T('U9')}], 'team', 'Entraînement', 'Rappel 72h U9', now() + interval '71 hours', {K('cU9')}, now() - interval '3 days');")
+w(f"insert into event_responses(event_id, user_id, player_id, answer) select (select id from events where title = 'Rappel 72h U9'), {K('pU9b')}, pp.player_id, 'oui' from player_parents pp join players p on p.id = pp.player_id where pp.user_id = {K('pU9b')} and p.team_id = {T('U9')};")
+ok("3.3.2 · un passage demande l'envoi quand des notifications attendent", "push_tick() = 'envoi demandé'")
+ok("3.3.2 · l'appel porte le mot de passe et vise la fonction d'envoi", "exists(select 1 from net.calls where headers->>'x-pocket-secret' = 'secret-de-test' and url like '%/functions/v1/envoyer-notifications')")
+ok("3.3.2 · rappel 72 h : la famille sans réponse est prévenue", QN('pU9', "dedupe_key = 'ev72:' || (select id from events where title = 'Rappel 72h U9') and title = 'Ta réponse est attendue'") + " = 1")
+ok("3.3.2 · rappel 72 h : pas la famille qui a déjà répondu", QN('pU9b', "dedupe_key like 'ev72:%'") + " = 0")
+w("select push_tick();")
+ok("3.3.2 · rappel 72 h : une seule fois même si le programme repasse", QN('pU9', "dedupe_key like 'ev72:%'") + " = 1")
+ok("3.3.2 · le mot de passe d'appel n'est pas lisible par l'application", "not has_table_privilege('authenticated', 'push_settings', 'select') and not has_function_privilege('authenticated', 'push_tick()', 'execute')")
 w("set role authenticated;")
 
 section("Départs et redemandes")

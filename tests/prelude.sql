@@ -13,3 +13,8 @@ create table if not exists storage.objects(id uuid primary key default gen_rando
 alter table storage.objects enable row level security;
 grant usage on schema storage to authenticated, anon;
 grant select, insert, update, delete on storage.objects to authenticated;
+-- pg_net (forme minimale) : les appels sont notés dans net.calls au lieu de partir sur le réseau
+create schema if not exists net;
+create table if not exists net.calls(id bigserial primary key, url text, body jsonb, headers jsonb, at timestamptz default now());
+create or replace function net.http_post(url text, body jsonb default '{}', params jsonb default '{}', headers jsonb default '{}', timeout_milliseconds int default 5000) returns bigint
+language sql as $$ insert into net.calls(url, body, headers) values (url, body, headers) returning id $$;
