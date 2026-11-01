@@ -90,7 +90,7 @@ export function searchBlock() {
   ${P.res === null ? '' : P.res.length ? `<div class="stack">${P.res.map((c) => `<button class="card" data-act="pclub" data-id="${c.id}" style="flex-direction:row;align-items:center;gap:14px;border:0;text-align:left;font:inherit;color:inherit">${crest(c, 40, '#FFFFFF')}<span style="display:flex;flex-direction:column;min-width:0;flex:1"><b>${esc(c.name)}</b><span class="det">${esc([c.city, c.postal_code].filter(Boolean).join(' · '))}${c.city || c.postal_code ? ' · ' : ''}${esc(c.sport)}</span></span>${memberOf(c.id) ? '<span class="pill ok">Déjà membre</span>' : '<span class="chev"></span>'}</button>`).join('')}</div>` : '<p class="empty">Aucun club trouvé. Essaie la ville, ou demande le code du club à ton coach.</p>'}`;
 }
 export function publicHome() {
-  return `<div class="splash" style="flex:none;padding:44px 20px 4px">${wordmark(46, 'Basket-ball')}<p>L'agenda, les messages et la vie de ton club, au même endroit.</p></div><main class="bd" style="padding-top:8px">
+  return `<div class="splash" style="flex:none;padding:44px 20px 4px">${wordmark(46)}<p>L'agenda, les messages et la vie de ton club, au même endroit.</p></div><main class="bd" style="padding-top:8px">
   <div class="btns"><button class="btn main" data-act="auth" data-v="login">Se connecter</button><button class="btn" data-act="auth" data-v="signup">Créer un compte</button></div>
   ${searchBlock()}
   <button class="btn link" data-act="legal" style="align-self:center">Mentions légales et données</button><p class="note" style="text-align:center">${esc(BRAND.name)} ${esc(VERSION)} · version de test</p></main>`;

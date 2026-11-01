@@ -71,7 +71,7 @@ export function membersBlock() {
 // ---------- licences, cotisations, dates de naissance ----------
 export function licencesBlock() {
   if (!hasArea('tresorerie') && !hasArea('secretariat')) return '';
-  const all = S.players, f = S.lf || 'Tous', noBirth = all.filter((p) => !p.birth_date).length;
+  const all = S.players.filter((p) => !p.from_partner), f = S.lf || 'Tous', noBirth = all.filter((p) => !p.birth_date).length;
   const lic = all.filter((p) => adminOf(p.id)?.licence_state === 'Licencié').length, paid = all.filter((p) => feeState(adminOf(p.id)) === 'Payée').length;
   const rest = (p) => { const a = adminOf(p.id); return a?.fee_amount == null ? null : Math.max(0, a.fee_amount - (+a.fee_paid || 0)); };
   const keep = (p) => { const a = adminOf(p.id); return f === 'Tous' || (f === 'Licence à finir' && a?.licence_state !== 'Licencié') || (f === 'Reste à payer' && rest(p) > 0) || (f === 'Certificat manquant' && !a?.health_doc) || (f === 'Date de naissance manquante' && !p.birth_date); };
@@ -118,7 +118,7 @@ async function buildExport() {
   try { await loadXlsx(); } catch { return toast('Export impossible pour l’instant (connexion ?). Réessaie.'); }
   const X = window.XLSX, c = (club()?.color1 || '#2F5BFF').replace('#', '').toUpperCase(), di = (id) => S.discounts.find((a) => a.player_id === id) || {};
   const rows = [[BRAND.name + ' · ' + (club()?.name || '') + ' · licences et cotisations ' + SEASON], [], ['Équipe', 'Prénom', 'Nom', 'Naissance', 'Licence', 'N° de licence', 'Certificat', 'Montant dû (€)', 'Payé (€)', 'Reste (€)', 'Moyen', 'Réduction (€)', 'Motif']];
-  S.players.slice().sort((a, b) => teamName(a.team_id).localeCompare(teamName(b.team_id)) || a.last_name.localeCompare(b.last_name)).forEach((p) => {
+  S.players.filter((p) => !p.from_partner).sort((a, b) => teamName(a.team_id).localeCompare(teamName(b.team_id)) || a.last_name.localeCompare(b.last_name)).forEach((p) => {
     const a = adminOf(p.id) || {}, d = di(p.id), due = a.fee_amount != null ? +a.fee_amount : null;
     rows.push([teamName(p.team_id), p.first_name, p.last_name, p.birth_date ? p.birth_date.split('-').reverse().join('/') : '', a.licence_state || '', a.licence_number || '', a.health_doc ? 'fourni' : 'manquant', due ?? '', +a.fee_paid || 0, due != null ? Math.max(0, due - (+a.fee_paid || 0)) : '', [...new Set(S.payments.filter((x) => x.player_id === p.id).map((x) => x.method).filter(Boolean))].join(', '), d.amount ? +d.amount : '', d.reason || '']);
   });

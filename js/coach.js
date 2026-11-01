@@ -338,6 +338,12 @@ export function plansPage() {
   if (!S.plans.length) return '<p class="empty">Aucune séance enregistrée.</p><button class="btn main" data-act="cplan">Composer une séance</button>';
   return `<div class="card"><div class="list">${S.plans.map((p) => { const e = S.events.find((x) => x.id === p.event_id); return `<div class="row static" style="flex-wrap:wrap"><button class="g" style="background:none;border:0;text-align:left;padding:0;flex:1" data-act="popen" data-id="${p.id}">${esc(p.title)}<small>${[teamName(p.team_id), e ? fmtShort(e.starts_at) : '', plural(p.items.length, 'exercice'), fmtMin(planTotal(p))].filter(Boolean).map(esc).join(' · ')}</small></button>${delBtn('pldel', p.id, 'Supprimer', 'Confirmer', isArmed('pl' + p.id), 'style="flex:none;min-height:44px"')}</div>`; }).join('')}</div></div>`;
 }
+// Appel en tuiles : « Ajouter un exercice » ouvre la séance reliée à l'entraînement (ou en crée une)
+export function openPlanForEvent(e) {
+  const p = plansForEvent(e.id)[0];
+  if (!p) return planForEvent(e);
+  S.plan = { club: S.clubId, id: p.id, title: p.title, team_id: p.team_id || '', event_id: p.event_id || '', notes: p.notes || '', items: [...(p.items || [])] }; savePlanLocal(); S.ctab = 'seance';
+}
 export const plansForEvent = (eid) => (S.evPlans || []).filter((p) => p.event_id === eid);
 function printHtml(title, body) {
   const w = window.open('', '_blank'); if (!w) { toast('Autorise les fenêtres pour imprimer ou enregistrer en PDF.'); return; }
@@ -548,7 +554,7 @@ Object.assign(ACTIONS, {
   stper: (el, d) => { S.st.period = d.v; return open({ type: 'stats' }, loadStats); },
   stxlsx: () => statsXlsx(),
   stpdf: () => statsPdf(),
-  chours: () => { S.hr = { month: new Date(), board: false }; return open({ type: 'hours' }, loadHours); },
+  chours: (el, d) => { S.hr = { month: d?.month ? new Date(d.month + 'T12:00') : new Date(), board: false }; return open({ type: 'hours' }, loadHours); },
   choursb: () => { S.hr = { month: new Date(), board: true }; S.hOpen = null; return open({ type: 'hoursb' }, loadHours); },
   hmonth: (el, d) => { const m = monthStart(S.hr.month); S.hr.month = new Date(m.getFullYear(), m.getMonth() + +d.v, 1); S.hr.lines = null; return open(S.view, loadHours); },
   hfill: async () => { const n = await run(sb.rpc('fill_coach_hours', { p_club: S.clubId, p_month: ymd(monthStart(S.hr.month)) })); if (n !== null) { toast(n ? plural(n, 'séance ajoutée', 'séances ajoutées') + '.' : 'Rien à ajouter : tes séances passées sont déjà notées.'); await loadHours(); render(true); } },

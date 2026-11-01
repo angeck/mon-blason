@@ -53,7 +53,7 @@ const D = {
   event_hidden: [], attendance: [],
   groups: [{ id: 'g1', club_id: C, name: 'U9 · Parents et coachs', created_by: ME, created_at: at(-20), last_message_at: at(-1, 9) }, { id: 'g2', club_id: C, name: 'Bureau · trésorerie', created_by: ME, created_at: at(-10), last_message_at: at(-5, 9) }],
   group_members: [{ group_id: 'g2', user_id: ME, muted: false, last_read_at: at(-1) }, { group_id: 'g1', user_id: ME, muted: false, last_read_at: at(-2) }, { group_id: 'g1', user_id: 'u-p1', muted: false, last_read_at: at(-2) }],
-  team_follows: [], player_payments: [{ id: 'pay1', player_id: 'p-tom', amount: 50, method: 'Chèque', paid_at: at(-3) }], club_contacts: [],
+  team_follows: [], hours_checks: [], hours_confirms: [], user_prefs: [], player_payments: [{ id: 'pay1', player_id: 'p-tom', amount: 50, method: 'Chèque', paid_at: at(-3) }], club_contacts: [],
   messages: [{ id: 1, group_id: 'g1', user_id: 'u-p1', body: 'Qui peut faire le covoiturage samedi ?', created_at: at(-1, 9) }, { id: 2, group_id: 'g2', user_id: 'u-pres', body: 'Point sur les cotisations jeudi', created_at: at(-5, 9) }],
   polls: [{ id: 'q1', group_id: 'g1', question: 'Présent au plateau ?', created_by: ME, created_at: at(-1), deleted_at: null }],
   poll_votes: [{ poll_id: 'q1', user_id: 'u-p1', answer: 'Présent' }],
@@ -148,6 +148,12 @@ const RPC = {
   set_board_area: ({ p_user, p_area, p_on }) => { if (p_on) D.board_areas.push({ club_id: C, user_id: p_user, area: p_area }); else D.board_areas = D.board_areas.filter((x) => !(x.user_id === p_user && x.area === p_area)); return null; },
   club_log: () => [{ at: at(-1), actor: 'Céline Présidente', target: 'Tom Dupont', action: 'versement ajouté', detail: { montant: 50 } }],
   request_bureau: () => C,
+  set_score: ({ p_event, p_lines }) => { const e = D.events.find((x) => x.id === p_event); e.score_edited = !!e.scores; e.scores = p_lines; e.score_at = new Date().toISOString(); return p_lines.length; },
+  confirm_hours: ({ p_check }) => { const c = D.hours_confirms.find((x) => x.check_id === p_check && x.user_id === ME); if (c) c.confirmed_at = new Date().toISOString(); return 0; },
+  ask_hours_check: ({ p_month }) => { const id = uid(); D.hours_checks.unshift({ id, club_id: C, month: p_month }); D.hours_confirms.push({ check_id: id, user_id: 'u-c11', minutes: 120, confirmed_at: null }); return 1; },
+  relance_hours: () => 1,
+  set_team_partner: ({ p_team, p_club, p_name }) => { const t = D.teams.find((x) => x.id === p_team); t.partner_state = p_club ? 'demandee' : p_name ? 'invitee' : 'aucune'; t.partner_name = p_name || (p_club ? 'Volley Ailleurs' : ''); return t.partner_state; },
+  partner_teams: () => [{ team_id: 't-x', team_name: 'U15 M', host_club: 'ES Voisins', state: 'demandee', coaches: 'Paul R.', my_players: ['Ana L.'], players_count: 9 }],
   export_my_data: () => ({ profil: D.profiles[0] }), validate_membership: ({ mid }) => { D.memberships.find((m) => m.id === mid).status = 'active'; return null; },
 };
 export function createClient() {

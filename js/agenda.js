@@ -3,8 +3,10 @@ import {
   S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, CHANGES, INPUTS, TEAM_TYPES, club, active, isBoard, coachOf, coachTeams,
   teamName, teamsLabel, evTeams, name, pl, pname, parentsOf, myKidsIn, iPlayIn, inTeam, playersOfTeam, fmtDate, hm, localDay, inHolidays,
   toLocalInput, fmtDay, plural, download, norm, follows, hooks, hasArea, myMem, isPresident,
+  SEASON, durOf, endOf, timeRange, fmtDur, DEF_DUR, fmtShort,
 } from './core.js';
-import { icon, dayBadge, delBtn, field } from './ui.js';
+import { icon, dayBadge, delBtn, field, crest, ball } from './ui.js';
+import { plansForEvent, fmtMin, courtSvg, openPlanForEvent } from './coach.js';
 import { missionsBlock, myMissionLabel } from './vie.js';
 
 const INTERNAL = { board: 'Bureau', board_coaches: 'Bureau et coachs', coaches: 'Tous les coachs' };
@@ -64,15 +66,22 @@ export function needsAnswer(e) {
   if (e.cancelled || new Date(e.starts_at) < Date.now() - 2 * 3600e3 || !isOpen(e)) return false;
   const R = respOf(e.id);
   if (noAnswerRole(e)) return false;
-  if (!isTeamType(e)) return !notInvited(e) && !R.mine;
+  if (!isTeamType(e)) { if (notInvited(e)) return false; return !R.mine || famKids(e).some((p) => !p.user_id && !R.kid(p.id)); }
   const k = myKidsIn(evTeams(e)).filter((p) => convoked(e, p.id)), me = iPlayIn(evTeams(e)) && meConvoked(e);
   if (k.some((p) => !R.kid(p.id))) return true;
   if (me) return !R.mine;
   return false;
 }
+// N° 79 : sur un événement ouvert au-delà d'une équipe, une ligne par personne du foyer : « Moi » et chaque enfant concerné.
+// La réponse d'un enfant est commune aux deux parents ; un joueur avec son propre compte répond pour lui-même.
+export function famKids(e) {
+  if (isTeamType(e) || !['club', 'team'].includes(e.audience)) return [];
+  const ts = e.audience === 'club' ? S.teams.map((t) => t.id) : evTeams(e);
+  return myKidsIn(ts).filter((p) => p.user_id !== S.me.id);
+}
 function pair(e, pid) {
-  const R = respOf(e.id), m = pid ? R.kid(pid) : R.mine, p = pid && pl(pid);
-  const yes = p ? `${esc(p.first_name)} vient` : 'Je viens', no = p ? `${esc(p.first_name)} ne vient pas` : 'Je ne viens pas';
+  const R = respOf(e.id), m = pid ? R.kid(pid) : R.mine, p = pid && pl(pid), ev = !isTeamType(e);
+  const yes = p ? `${esc(p.first_name)} ${ev ? 'participe' : 'vient'}` : ev ? 'Je participe' : 'Je viens', no = p ? `${esc(p.first_name)} ${ev ? 'ne participe pas' : 'ne vient pas'}` : ev ? 'Je ne participe pas' : 'Je ne viens pas';
   return `<div class="pair"><button class="btn yes" data-act="rsvp" data-id="${e.id}" data-p="${pid || ''}" data-v="oui" aria-pressed="${m === 'oui'}">${m === 'oui' ? icon('check', 20, 'currentColor', 3) : ''}${yes}</button><button class="btn no" data-act="rsvp" data-id="${e.id}" data-p="${pid || ''}" data-v="non" aria-pressed="${m === 'non'}">${no}</button></div>`;
 }
 export function invitedCount(e) {
@@ -91,7 +100,13 @@ export function answerBlock(e) {
   if (notInvited(e)) return '<p class="note">Tu as créé ce rendez-vous pour des personnes choisies : tu n’en fais pas partie.</p>';
   if (noAnswerRole(e)) return `<p class="note">${myMem().some((m) => m.status === 'pending') ? 'Ta demande attend la validation du club : pas de réponse à donner pour l’instant.' : 'En supporteur, pas de réponse à donner : tu suis la vie du club.'}</p>`;
   if (outsider(e)) return '<p class="note">Tu ne fais pas partie de cette équipe : seuls ses joueurs (ou leurs parents) répondent.</p>';
-  if (!isTeamType(e)) return pair(e, null);
+  if (!isTeamType(e)) {
+    const ks = famKids(e); if (!ks.length) return pair(e, null);
+    const R = respOf(e.id);
+    return `<p class="note" style="margin:0">Une réponse pour chaque personne de ta famille. La réponse d'un enfant vaut pour ses deux parents.</p><div class="kick">Moi</div>${pair(e, null)}` + ks.map((p) => p.user_id
+      ? `<p class="note"><b>${esc(p.first_name)}</b> a son propre compte et répond pour lui-même : ${R.kid(p.id) === 'oui' ? 'participe' : R.kid(p.id) === 'non' ? 'ne participe pas' : 'pas encore de réponse'}.</p>`
+      : `<div class="kick">${esc(p.first_name)}</div>${pair(e, p.id)}`).join('');
+  }
   if (followOnly(e)) return '<p class="note">Tu suis cette équipe : pas de réponse à donner.</p>';
   const all = myKidsIn(evTeams(e)), k = all.filter((p) => convoked(e, p.id)), me = iPlayIn(evTeams(e)) && meConvoked(e);
   const kids = k.map((p) => pair(e, p.id)).join('') + all.filter((p) => !convoked(e, p.id)).map((p) => `<p class="note">${esc(p.first_name)} n'est pas convoqué${p.first_name.endsWith('e') ? '(e)' : ''} à ce rendez-vous.</p>`).join('');
@@ -152,8 +167,47 @@ export function byDay(list, fn) {
   list.forEach((e) => { const d = new Date(e.starts_at), k = localDay(d); if (k !== last) { h += `<div class="kick day">${esc(dayTitle(d))}</div>`; last = k; } h += fn(e); });
   return h;
 }
+// ---------- n° 77 · score ----------
+export function scoreSum(e) {
+  const L = e.scores || []; if (!L.length) return null;
+  const w = L.filter((l) => l.us > l.them).length, lo = L.filter((l) => l.us < l.them).length, d = L.length - w - lo;
+  if (L.length === 1) { const l = L[0], k = w ? 'v' : lo ? 'd' : 'n'; return { k, text: (w ? 'Victoire ' : lo ? 'Défaite ' : 'Nul ') + l.us + ' – ' + l.them + (l.opponent ? ' contre ' + l.opponent : '') + (l.forfeit ? ' (forfait)' : '') }; }
+  return { k: w > lo ? 'v' : lo > w ? 'd' : 'n', text: plural(w, 'victoire') + ', ' + plural(lo, 'défaite') + (d ? ', ' + plural(d, 'nul') : '') };
+}
+const canScore = (e) => ['Match', 'Plateau', 'Tournoi'].includes(e.type) && !e.cancelled && canCallRoll(e) && new Date(e.starts_at) <= Date.now();
+function scoreBlock(e) {
+  if (!['Match', 'Plateau', 'Tournoi'].includes(e.type) || e.cancelled) return '';
+  const sum = scoreSum(e), team = teamsLabel(evTeams(e)) || 'Nous';
+  if (S.score?.eid === e.id) {
+    const L = S.score.lines;
+    return `<form id="scoref" class="card lift"><div class="kick">Score · ${esc(team)}</div>${L.map((l, i) => `<div class="score-l"><input name="o${i}" value="${esc(l.opponent || '')}" placeholder="Adversaire" aria-label="Adversaire ${i + 1}" maxlength="80"><input name="u${i}" type="number" min="0" max="999" inputmode="numeric" value="${esc(l.us ?? '')}" aria-label="Score de ${esc(team)}" required><span>–</span><input name="t${i}" type="number" min="0" max="999" inputmode="numeric" value="${esc(l.them ?? '')}" aria-label="Score de l'adversaire" required><button type="button" class="btn ghost small" style="width:48px;padding:0" data-act="scrm" data-i="${i}" aria-label="Retirer cette ligne" ${L.length > 1 ? '' : 'disabled'}>${icon('trash', 18)}</button></div><label class="check" style="margin-top:-4px"><input type="checkbox" name="f${i}" ${l.forfeit ? 'checked' : ''}><span>Forfait</span></label>`).join('')}
+      <button type="button" class="btn ghost small" data-act="scadd">${icon('plus', 18)}+ 1 rencontre</button><div class="btns"><button class="btn main" type="submit">Valider</button><button type="button" class="btn ghost" data-act="sccancel">Annuler</button></div></form>`;
+  }
+  let h = '';
+  if (sum) h += `<div class="card"><div class="kick">Résultat${e.score_edited ? ' · modifié' : ''}</div><span class="pill res-${sum.k}" style="font-size:16px;align-self:flex-start">${esc(sum.text)}</span>${(e.scores || []).length > 1 ? `<div class="list">${e.scores.map((l) => `<div class="row static"><span class="g">${esc(team)} ${l.us} – ${l.them} ${esc(l.opponent || 'adversaire')}${l.forfeit ? ' · forfait' : ''}</span><span class="pill res-${l.us > l.them ? 'v' : l.us < l.them ? 'd' : 'n'}">${l.us > l.them ? 'V' : l.us < l.them ? 'D' : 'N'}</span></div>`).join('')}</div>` : ''}${canScore(e) ? `<button class="btn ghost small" data-act="scedit" data-id="${e.id}">Corriger le score</button>` : ''}</div>`;
+  else if (canScore(e)) h += `<button class="btn main" data-act="scedit" data-id="${e.id}">Mettre le score</button>`;
+  return h;
+}
+function keepScore() {
+  const fm = document.getElementById('scoref'); if (!fm || !S.score) return; const v = Object.fromEntries(new FormData(fm));
+  S.score.lines = S.score.lines.map((l, i) => ({ opponent: v['o' + i] || '', us: v['u' + i] === '' ? '' : +v['u' + i], them: v['t' + i] === '' ? '' : +v['t' + i], forfeit: !!v['f' + i] }));
+}
+FORMS.scoref = async () => {
+  keepScore(); const L = S.score.lines;
+  if (L.some((l) => l.us === '' || l.them === '')) return toast('Indique les deux scores de chaque rencontre.');
+  const n = await run(sb.rpc('set_score', { p_event: S.score.eid, p_lines: L }));
+  if (n !== null) { const e = S.events.find((x) => x.id === S.score.eid); if (e) { e.score_edited = !!e.scores; e.scores = L; } S.score = null; toast('Score enregistré : les joueurs, les familles et les supporteurs de l’équipe le voient sur leur Accueil.'); await refresh(); }
+};
+Object.assign(ACTIONS, {
+  scedit: (el, d) => { const e = S.events.find((x) => x.id === d.id), opp = (e.opponents || '').split(',').map((x) => x.trim()).filter(Boolean); S.score = { eid: e.id, lines: e.scores?.length ? e.scores.map((l) => ({ ...l })) : (opp.length ? opp : ['']).map((o) => ({ opponent: o, us: '', them: '', forfeit: false })) }; render(true); },
+  scadd: () => { keepScore(); if (S.score.lines.length >= 20) return toast('Vingt rencontres au plus.'); const e = S.events.find((x) => x.id === S.score.eid), opp = (e.opponents || '').split(',').map((x) => x.trim()).filter(Boolean); S.score.lines.push({ opponent: opp[S.score.lines.length] || '', us: '', them: '', forfeit: false }); render(true); },
+  scrm: (el, d) => { keepScore(); S.score.lines.splice(+d.i, 1); render(true); },
+  sccancel: () => { S.score = null; render(true); },
+});
+
 function statusPill(e) {
   if (e.cancelled) return '<span class="pill ko">Annulé</span>';
+  const sc = scoreSum(e); if (sc) return `<span class="pill res-${sc.k}">${sc.k === 'v' ? 'Victoire' : sc.k === 'd' ? 'Défaite' : 'Nul'}</span>`;
   const R = respOf(e.id), k = isTeamType(e) ? myKidsIn(evTeams(e)) : [];
   if (needsAnswer(e)) return '<span class="pill wait">À répondre</span>';
   if ((e.convoked || []).length && isTeamType(e) && !coachOnly(e) && myKidsIn(evTeams(e)).length && !myKidsIn(evTeams(e)).some((p) => convoked(e, p.id))) return '<span class="pill">Non convoqué</span>';
@@ -164,7 +218,7 @@ function statusPill(e) {
 }
 // Carte d'un rendez-vous ; opts : { answer: boutons si une réponse manque, select: mode sélection }
 export function evCard(e, o = {}) {
-  const sub = [hm(new Date(e.starts_at)), e.place, e.audience !== 'club' && e.audience !== 'team' ? '' : teamsLabel(evTeams(e)), myMissionLabel(e)].filter(Boolean).join(' · ');
+  const sub = [timeRange(e), e.place, e.audience !== 'club' && e.audience !== 'team' ? '' : teamsLabel(evTeams(e)), myMissionLabel(e)].filter(Boolean).join(' · ');
   const sel = o.select && canManageEvent(e), checked = S.sel?.has(e.id);
   const badgeCls = new Date(e.starts_at) < Date.now() ? 'past' : needsAnswer(e) ? 'wait' : '';
   return `<div class="ev ${e.cancelled ? 'cancel' : ''}">${sel
@@ -218,6 +272,19 @@ function repeatFields(f) {
   return `<label class="check"><input type="checkbox" name="repeat" data-evrep="1" ${f.repeat ? 'checked' : ''}><span>Répéter chaque semaine (même jour, même heure)</span></label>
   ${f.repeat ? `${field('eu', "Répéter jusqu'au (obligatoire)", `<input id="eu" name="until" type="date" required value="${esc(f.until || '')}">`)}<label class="check"><input type="checkbox" name="skiphol" ${f.skiphol === false ? '' : 'checked'}><span>Hors vacances scolaires (zone C : Créteil, Paris, Versailles)</span></label>` : ''}`;
 }
+// N° 80 : durée par quarts d'heure (15 min à 6 h) ou toute la journée ; l'heure de fin est calculée tout de suite
+export function usualDur(type, teams) {
+  const last = S.events.filter((x) => x.type === type && x.duration_min && (!teams?.size || evTeams(x).some((t) => teams.has(t)))).sort((a, b) => b.starts_at.localeCompare(a.starts_at))[0];
+  return last ? last.duration_min : DEF_DUR[type] || 120;
+}
+function durField(f) {
+  const cur = f.dur || String(usualDur(f.type, f.teams)), opts = [];
+  for (let m = 15; m <= 360; m += 15) opts.push(`<option value="${m}" ${String(m) === cur ? 'selected' : ''}>${fmtDur(m)}</option>`);
+  opts.push(`<option value="jour" ${cur === 'jour' ? 'selected' : ''}>Toute la journée</option>`);
+  let end = '';
+  if (f.starts_at) { const st = new Date(f.starts_at); if (!isNaN(st)) end = cur === 'jour' ? `${st.toLocaleDateString('fr-FR', { weekday: 'long' })} · toute la journée` : `${st.toLocaleDateString('fr-FR', { weekday: 'long' })} ${hm(st)} → ${hm(new Date(st.getTime() + +cur * 60000))}`; }
+  return field('edu', 'Durée', `<select id="edu" name="dur" data-evdur="1">${opts.join('')}</select>`) + (end ? `<p class="note" id="evend" style="margin-top:-6px">${esc(end)}</p>` : '');
+}
 export function eventForm() {
   const f = S.form;
   return `<form id="evf" class="card lift">
@@ -225,7 +292,8 @@ export function eventForm() {
   ${field('et', 'Titre', `<input id="et" name="title" required maxlength="120" value="${esc(f.title || '')}" placeholder="${f.type === 'Match' ? 'Ex. Match contre Val Vert' : 'Ex. ' + esc(f.type)}">`)}
   ${['Match', 'Plateau', 'Tournoi'].includes(f.type) ? field('eo', f.type === 'Match' ? 'Adversaire' : 'Adversaires (séparés par des virgules)', `<input id="eo" name="opponents" value="${esc(f.opponents || '')}">`) : ''}
   ${['Match', 'Plateau', 'Tournoi'].includes(f.type) ? `<label class="check"><input type="checkbox" name="at_home" data-evhome="1" ${f.at_home === false ? '' : 'checked'}><span>Nous recevons (rencontre à domicile)</span></label>` : ''}
-  ${field('ed', 'Date et heure', `<input id="ed" name="starts_at" type="datetime-local" required value="${esc(f.starts_at || '')}">`)}
+  ${field('ed', 'Date et heure', `<input id="ed" name="starts_at" type="datetime-local" required value="${esc(f.starts_at || '')}" data-evdur="1">`)}
+  ${durField(f)}
   ${repeatFields(f)}
   ${field('el', 'Lieu', `<input id="el" name="place" value="${esc(f.place || '')}" placeholder="Ex. Gymnase de Boissy">`)}
   ${audienceField(f)}
@@ -247,13 +315,14 @@ export function eventPage(id) {
   ${e.cancelled ? '' : `<b style="font-family:var(--pc-titre);font-size:22px">${coachOnly(e) && !myKidsIn(evTeams(e)).length ? 'Ton équipe' : outsider(e) || noAnswerRole(e) ? 'Ce rendez-vous' : 'Tu viens ?'}</b>${answerBlock(e)}${!isOpen(e) && !coachOnly(e) && !followOnly(e) && !outsider(e) && !noAnswerRole(e) ? `<p class="note">Tu peux répondre dès maintenant. Sinon, cette séance arrivera dans « À répondre » le ${esc(fmtDay(opensOn(e)))}.</p>` : ''}`}</div>`;
   const tot = R.oui.length + R.non.length, base = Math.max(tot, isTeamType(e) ? playersOf(e).length : invitedCount(e));
   h += `<div class="card"><div class="sec"><h2>Qui vient ?</h2><span class="det">${plural(R.all.length, 'réponse')}</span></div>${base ? `<div class="bar"><span style="width:${(100 * R.oui.length) / base}%"></span><span style="width:${(100 * R.non.length) / base}%"></span></div>` : ''}
-  <div class="chips"><span class="pill ok">${R.oui.length} oui</span><span class="pill ko">${R.non.length} non</span>${base > tot && isOpen(e) ? `<span class="pill">${base - tot} sans réponse</span>` : ''}</div><div><b>Viennent :</b> ${list(R.oui)}</div><div><b>Ne viennent pas :</b> ${list(R.non)}</div></div>`;
+  <div class="chips"><span class="pill ok">${R.oui.length} oui</span><span class="pill ko">${R.non.length} non</span>${base > tot && isOpen(e) ? `<span class="pill">${base - tot} sans réponse</span>` : ''}</div>${!isTeamType(e) && R.oui.some((x) => x.player_id) ? `<div class="det">${plural(R.oui.length, 'participant')} · ${plural(R.oui.filter((x) => !x.player_id).length, 'adulte')}, ${plural(R.oui.filter((x) => x.player_id).length, 'enfant')}</div>` : ''}<div><b>Viennent :</b> ${list(R.oui)}</div><div><b>Ne viennent pas :</b> ${list(R.non)}</div></div>`;
   h += `<div class="btns"><button class="btn" data-act="ics" data-id="${id}">${icon('calplus', 20)}Ajouter à mon agenda</button>${e.place ? `<a class="btn small" style="flex:none;width:52px;padding:0" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.place)}" target="_blank" rel="noopener" aria-label="Itinéraire">${icon('pin', 22)}</a>` : ''}</div>`;
   if (!coachOnly(e) && e.type !== 'Entraînement' && R.mine === 'non') h += `<button class="btn ghost" data-act="${hiddenByMe(e) ? 'unhide' : 'hide'}" data-id="${id}">${hiddenByMe(e) ? 'Réafficher dans mon agenda' : 'Ne plus afficher dans mon agenda'}</button>`;
   if (man && !e.cancelled && new Date(e.starts_at) > Date.now()) {
     const recent = e.reminded_at && Date.now() - new Date(e.reminded_at) < 12 * 3600e3;
     h += `<div class="card flat"><div class="kick">Relance</div>${(e.convoked || []).length ? `<span class="pill blue">${plural(e.convoked.length, 'joueur convoqué', 'joueurs convoqués')}</span>` : ''}<button class="btn small ${recent ? 'ghost' : 'main'}" data-act="evremind" data-id="${id}" ${recent ? 'disabled' : ''}>${recent ? 'Relance faite à ' + hm(new Date(e.reminded_at)) : 'Relancer les sans-réponse'}</button><p class="note">Un rappel s'affiche en haut de l'Accueil des personnes qui n'ont pas répondu (une relance toutes les 12 heures).</p></div>`;
   }
+  h += scoreBlock(e);
   h += (hooks.convocBlock || (() => ''))(e);
   h += missionsBlock(e);
   const plans = (S.evPlans || []).filter((p) => p.event_id === id);
@@ -269,29 +338,95 @@ export function eventPage(id) {
   return h;
 }
 
-// ---------- appel ----------
+// ---------- appel en tuiles (n° 81 · claude/10-appel-en-tuiles.md) ----------
 function announced(p, eid) {
   const own = S.resp.filter((x) => x.event_id === eid && x.player_id === p.id);
   const r = own.length ? own : S.resp.filter((x) => x.event_id === eid && !x.player_id && x.user_id === p.user_id);
   return r.some((x) => x.answer === 'oui') ? 'oui' : r.some((x) => x.answer === 'non') ? 'non' : '';
 }
+const ROLL_TYPES = ['Entraînement', 'Plateau', 'Match', 'Tournoi'];
+// Catégorie d'âge affichée sur la tuile : U + (année de fin de saison − année de naissance)
+function ageCat(p) {
+  if (!p.birth_date) return '';
+  const t = S.teams.find((x) => x.id === p.team_id), end = +(String(t?.season || SEASON).split('-')[1] || new Date().getFullYear());
+  const n = end - +p.birth_date.slice(0, 4);
+  return n > 0 && n < 21 ? 'U' + n : '';
+}
+// Six états, toujours couleur + icône : oui (jaune) · non (gris) · sans réponse (pointillé orange) · présent (bleu) · retard (bleu pâle) · absent (fin)
+function tileState(p, eid, ended) {
+  const s = S.ap.st[p.id];
+  if (s === 'present') return 'pres';
+  if (s === 'retard') return 'late';
+  if (S.ap.done && ended) return 'abs';
+  const a = announced(p, eid);
+  return a === 'oui' ? 'yes' : a === 'non' ? 'no' : 'wait';
+}
+const TILE_ICON = { yes: '✓', no: '✕', wait: '?', pres: '✓', late: '', abs: '✕' };
+const TILE_LABEL = { yes: 'a répondu présent', no: 'a répondu absent', wait: 'sans réponse', pres: 'présent', late: 'arrivé en retard', abs: 'absent' };
+const CLOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+function rollEvents(e) {
+  const t = evTeams(e)[0];
+  return S.events.filter((x) => !x.cancelled && evTeams(x).includes(t) && ROLL_TYPES.includes(x.type) && canCallRoll(x)).sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+}
+function initAp(eid) {
+  const rows = S.att.filter((x) => x.event_id === eid);
+  S.ap = { eid, st: {}, arr: {}, done: rows.length > 0, open: rows.length === 0, reopened: false, late: null, editTime: false };
+  rows.forEach((x) => { if (x.status !== 'absent') S.ap.st[x.player_id] = x.status; if (x.arrived_at) S.ap.arr[x.player_id] = x.arrived_at; });
+}
+export function teamStrip(e, cur) {
+  const t = S.teams.find((x) => x.id === evTeams(e)[0]), c = club();
+  const logo = c?.logo ? crest(c, 40, '#FFFFFF') : ball(44, c?.sport || 'Basket-ball');
+  const tabs = [['Pointer', 'appel', e.id], ['Programme', 'appprog', e.id], ['Stats', 'cstats', ''], ['Séances', 'cplans', ''], ['Effectif', 'team', t?.id || '']];
+  return `<div class="tstrip"><div class="tsid">${logo}<span><b>${esc(t?.name || teamsLabel(evTeams(e)))}</b><small>${esc(c?.name || '')} · saison ${esc(t?.season || SEASON)}</small></span></div>
+  <nav class="ttabs" aria-label="Équipe">${tabs.map(([l, a, id]) => `<button data-act="${a}" data-id="${esc(id)}" ${l === cur ? 'aria-current="page"' : ''}>${l}</button>`).join('')}</nav></div>`;
+}
 export function appelPage(eid) {
   const e = S.events.find((x) => x.id === eid); if (!e) return '<p class="empty">Rendez-vous introuvable.</p>';
   const ps = playersOf(e).sort((a, b) => pname(a).localeCompare(pname(b), 'fr'));
-  if (!S.ap || S.ap.eid !== eid) { S.ap = { eid, st: {} }; S.att.filter((x) => x.event_id === eid).forEach((x) => (S.ap.st[x.player_id] = x.status)); }
-  const st = S.ap.st, n = ps.filter((p) => ['present', 'retard'].includes(st[p.id])).length;
-  let h = `<div class="card lift" style="flex-direction:row;align-items:center;justify-content:space-between"><span class="big">${n} / ${ps.length}</span><span class="det" style="text-align:right">présents<br>prérempli d'après les réponses</span></div>`;
-  h += `<button class="btn ghost" data-act="appall">Tous ceux annoncés présents sont là</button><div class="card"><div class="list">`;
-  h += ps.map((p) => {
-    const a = announced(p, eid), s = st[p.id] || '';
-    return `<div class="row static" style="flex-wrap:wrap"><span class="g" style="flex:1 1 100%">${esc(pname(p))}<small>${a === 'oui' ? '<span style="color:var(--pc-bleu);font-weight:700">● annoncé présent</span>' : a === 'non' ? '<span style="color:var(--pc-non-texte);font-weight:700">✕ annoncé absent</span>' : 'sans réponse'}</small></span><div class="chips" style="gap:6px">${[['present', 'Présent', 'ok'], ['retard', 'Retard', 'wait'], ['absent', 'Absent', 'ko']].map(([k, l, c]) => `<button class="pill ${s === k ? c : ''}" data-act="appset" data-id="${p.id}" data-v="${k}" aria-pressed="${s === k}" style="min-height:44px;padding:6px 14px;${s === k ? '' : 'background:#FFFFFF;border:2px solid var(--pc-trait)'}">${l}</button>`).join('')}</div></div>`;
-  }).join('') || '<p class="empty">Aucune fiche joueur dans cette équipe.</p>';
-  return h + `</div></div><button class="btn main" data-act="appsave">Enregistrer l'appel</button><p class="note">À l'enregistrement, les joueurs non pointés passent en absent. Une séance sans appel ne compte pas dans les statistiques.</p>`;
+  if (!S.ap || S.ap.eid !== eid) initAp(eid);
+  const A = S.ap, ended = Date.now() > endOf(e).getTime(), N = ps.length;
+  const states = ps.map((p) => [p, tileState(p, eid, ended)]);
+  const nPres = states.filter(([, s]) => s === 'pres' || s === 'late').length, nLate = states.filter(([, s]) => s === 'late').length;
+  const ann = { oui: 0, non: 0, '': 0 }; ps.forEach((p) => ann[announced(p, eid)]++);
+  // Navigation : séance précédente / suivante de l'équipe, type de rendez-vous
+  const list = rollEvents(e), i = list.findIndex((x) => x.id === eid), prev = list[i - 1], next = list[i + 1];
+  let h = teamStrip(e, 'Pointer');
+  h += `<div class="rollnav"><button class="roundbtn" data-act="appgo" data-id="${prev?.id || ''}" ${prev ? '' : 'disabled'} aria-label="Séance précédente">${icon('back', 20, '#11162E', 2.4)}</button><span><b>${esc(new Date(e.starts_at).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }))}</b><small>${esc(timeRange(e))}${e.place ? ' · ' + esc(e.place) : ''}</small></span><button class="roundbtn" data-act="appgo" data-id="${next?.id || ''}" ${next ? '' : 'disabled'} aria-label="Séance suivante" style="transform:scaleX(-1)">${icon('back', 20, '#11162E', 2.4)}</button></div>`;
+  h += `<div class="seg" role="group" aria-label="Type">${ROLL_TYPES.map((t) => { const near = list.filter((x) => x.type === t).sort((a, b) => Math.abs(new Date(a.starts_at) - new Date(e.starts_at)) - Math.abs(new Date(b.starts_at) - new Date(e.starts_at)))[0]; return `<button data-act="appgo" data-id="${near?.id || ''}" aria-pressed="${e.type === t}" ${near || e.type === t ? '' : 'disabled'}>${t}</button>`; }).join('')}</div>`;
+  if (!N) return h + '<div class="card"><p class="empty">Aucune fiche joueur dans cette équipe.</p></div>';
+  // Après « Terminer l'appel » : bandeau réduit
+  if (A.done && !A.open) {
+    const abs = states.filter(([p, s]) => !['pres', 'late'].includes(s) && announced(p, eid)).length, wait = states.filter(([p, s]) => !['pres', 'late'].includes(s) && !announced(p, eid)).length;
+    h += `<button class="rollband" data-act="appopen" aria-label="Rouvrir l'appel"><span class="rb1"><b>${nPres} présent${nPres > 1 ? 's' : ''}</b> · ${abs} absent${abs > 1 ? 's' : ''} · ${wait} sans réponse${nLate ? ` · dont ${nLate} en retard` : ''}</span><span class="minibar">${states.map(([, s]) => `<i class="t-${s}"></i>`).join('')}</span><span class="det">Toucher pour rouvrir l'appel (retards)</span></button>`;
+    return h + deroule(e);
+  }
+  h += `<div class="card rollcount"><span class="big">${nPres}<small> / ${N}</small></span><span class="rclab">présent${nPres > 1 ? 's' : ''}${nLate ? `, dont ${nLate} en retard` : ''}</span><span class="det">${ann.oui} annoncé${ann.oui > 1 ? 's' : ''} · ${ann.non} excusé${ann.non > 1 ? 's' : ''} · ${ann['']} sans réponse</span></div>`;
+  if (!A.done) h += `<button class="btn main" data-act="appall">${icon('check', 20, 'currentColor', 3)}Les annoncés présents sont là</button><div class="btns"><button class="btn ghost small" data-act="appnone">Tout décocher</button><button class="btn ghost small" data-act="appevery">Tout le monde présent</button></div>`;
+  else h += `<p class="note">Appel rouvert : touche un joueur arrivé après l'appel pour le noter en retard (heure du toucher). Un second toucher annule.</p>`;
+  h += `<div class="tiles9" role="group" aria-label="Joueurs">${states.map(([p, s]) => {
+    const cat = ageCat(p), arr = s === 'late' && A.arr[p.id] ? hm(new Date(A.arr[p.id])) : '';
+    return `<button class="tile9 t-${s}" data-act="apptap" data-id="${p.id}" aria-pressed="${s === 'pres' || s === 'late'}" aria-label="${esc(pname(p))} · ${TILE_LABEL[s]}${arr ? ' à ' + arr : ''}"><span class="ti">${s === 'late' ? CLOCK : TILE_ICON[s]}</span>${cat ? `<span class="tc">${esc(cat)}</span>` : ''}<b>${esc(p.first_name)}</b><small>${esc(p.last_name || '')}</small>${arr ? `<span class="ta">Arrivé ${esc(arr)}</span>` : ''}</button>`;
+  }).join('')}</div>`;
+  if (A.late) {
+    const p = pl(A.late), t = A.arr[A.late] ? new Date(A.arr[A.late]) : new Date();
+    if (p) h += `<div class="card pale latemsg"><span><b>${esc(pname(p))}</b> en retard · arrivé à ${esc(hm(t))}</span>${A.editTime ? `<input type="time" id="lateat" value="${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}" aria-label="Heure d'arrivée"><button class="btn small main" data-act="applateok">Valider l'heure</button>` : '<button class="btn small ghost" data-act="applateedit">Changer l\'heure</button>'}</div>`;
+  }
+  if (A.done) h += `<div class="btns"><button class="btn ghost" data-act="appfold">Réduire</button><button class="btn ghost" data-act="appclose" data-id="${eid}">Fermer l'appel</button></div>`;
+  else h += `<div class="rollfoot"><button class="btn main" data-act="appsave">Terminer l'appel · ${nPres} / ${N}</button></div><p class="note">À « Terminer l'appel », les joueurs non pointés passent en absent. Une séance sans appel ne compte pas dans les statistiques.</p>`;
+  return h + (A.done ? deroule(e) : '');
+}
+// Déroulé de la séance, sous l'appel terminé (entraînement seulement)
+function deroule(e) {
+  if (e.type !== 'Entraînement') return '';
+  const p = plansForEvent(e.id)[0], items = p?.items || [], tot = items.reduce((a, x) => a + (+x.minutes || 0), 0), dur = durOf(e);
+  let h = `<div class="sec"><h2>Déroulé de la séance</h2><span class="det">${fmtMin(tot)}${dur ? ' / ' + fmtMin(dur) : ''}</span></div>`;
+  h += items.length ? `<div class="card"><div class="list">${items.map((x, i) => `<div class="row static deroule"><span class="dnum">${i + 1}</span><span class="g">${esc(x.title)}<small>${esc([x.category, (x.description || '').split(/[.\n]/)[0]].filter(Boolean).join(' · ').slice(0, 90))}</small></span>${x.diagram?.length ? `<span class="dmini">${courtSvg(x.sport === 'Tous les sports' ? club()?.sport : x.sport || club()?.sport, x.diagram)}</span>` : ''}<span class="pill blue">${fmtMin(x.minutes)}</span></div>`).join('')}</div></div>` : '<div class="card"><p class="empty">Aucun exercice prévu pour cette séance.</p></div>';
+  return h + `<button class="bigadd" data-act="appex" data-id="${e.id}">${icon('plus', 24, '#11162E', 2.6)}Ajouter un exercice</button>`;
 }
 
 // ---------- agenda du téléphone ----------
 function icsFor(e) {
-  const f = (d) => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, ''), end = new Date(new Date(e.starts_at).getTime() + 90 * 6e4);
+  const f = (d) => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, ''), end = endOf(e);
   const clean = (s) => String(s || '').replace(/[\\;,]/g, (m) => '\\' + m).replace(/\n/g, ' ');
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Pocket Club//FR', 'BEGIN:VEVENT', 'UID:' + e.id + '@pocketclub', 'DTSTAMP:' + f(Date.now()), 'DTSTART:' + f(e.starts_at), 'DTEND:' + f(end), 'SUMMARY:' + clean(e.title + ' · ' + (club()?.name || '')), 'LOCATION:' + clean(e.place), 'BEGIN:VALARM', 'TRIGGER:-PT2H', 'ACTION:DISPLAY', 'DESCRIPTION:Rappel', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
 }
@@ -308,10 +443,10 @@ Object.assign(ACTIONS, {
   },
   evedit: (el, d) => {
     const e = S.events.find((x) => x.id === d.id);
-    S.form = { id: e.id, type: e.type, title: e.title, opponents: e.opponents, place: e.place, starts_at: toLocalInput(new Date(e.starts_at)), aud: e.audience, teams: new Set(evTeams(e)), people: new Set(e.people || []), pq: '', conv: new Set(e.convoked || []), convMode: (e.convoked || []).length ? 'some' : 'all', at_home: e.at_home !== false };
+    S.form = { id: e.id, type: e.type, title: e.title, opponents: e.opponents, place: e.place, starts_at: toLocalInput(new Date(e.starts_at)), aud: e.audience, teams: new Set(evTeams(e)), people: new Set(e.people || []), pq: '', conv: new Set(e.convoked || []), convMode: (e.convoked || []).length ? 'some' : 'all', at_home: e.at_home !== false, dur: e.all_day ? 'jour' : String(durOf(e)) };
     S.view = { type: 'evform' }; render();
   },
-  evtype: (el, d) => { keepForm(); S.form.type = d.v; render(true); },
+  evtype: (el, d) => { keepForm(); S.form.type = d.v; S.form.dur = String(usualDur(d.v, S.form.teams)); render(true); },
   evaud: (el, d) => { keepForm(); S.form.aud = d.v; render(true); },
   evteam: (el, d) => { keepForm(); S.form.teams[S.form.teams.has(d.id) ? 'delete' : 'add'](d.id); S.form.conv = new Set(); render(true); },
   evconvm: (el, d) => { keepForm(); S.form.convMode = d.v; render(true); },
@@ -341,12 +476,40 @@ Object.assign(ACTIONS, {
   unhide: async (el, d) => { if (await run(sb.from('event_hidden').delete().eq('event_id', d.id).eq('user_id', S.me.id), 'Réaffiché.')) { S.hidden = S.hidden.filter((h) => h.event_id !== d.id); render(true); } },
   ics: (el, d) => { const e = S.events.find((x) => x.id === d.id); download(new Blob([icsFor(e)], { type: 'text/calendar' }), 'rendez-vous-' + e.starts_at.slice(0, 10) + '.ics'); toast("Ouvre le fichier pour l'ajouter à ton agenda."); },
   appel: (el, d) => { S.ap = null; S.view = { type: 'appel', id: d.id }; render(); },
-  appset: (el, d) => { S.ap.st[d.id] = S.ap.st[d.id] === d.v ? '' : d.v; render(true); },
-  appall: () => { const e = S.events.find((x) => x.id === S.ap.eid); playersOf(e).forEach((p) => { if (announced(p, e.id) !== 'non' && !S.ap.st[p.id]) S.ap.st[p.id] = 'present'; }); render(true); },
+  appgo: (el, d) => { if (!d.id || d.id === S.ap?.eid) return; S.ap = null; S.view = { type: 'appel', id: d.id }; render(); },
+  appprog: (el, d) => { S.view = { type: 'event', id: d.id }; render(); },
+  apptap: async (el, d) => {
+    const A = S.ap, e = S.events.find((x) => x.id === A.eid);
+    if (!A.done) { A.st[d.id] = A.st[d.id] === 'present' ? '' : 'present'; return render(true); }
+    // Appel rouvert : un non-présent passe en retard (heure du toucher) ; un second toucher annule ; enregistré tout de suite
+    const was = A.st[d.id], now = new Date().toISOString();
+    const row = was ? { status: 'absent', arrived_at: null } : { status: 'retard', arrived_at: now };
+    if (await run(sb.from('attendance').upsert({ event_id: e.id, player_id: d.id, marked_by: S.me.id, marked_at: now, ...row }))) {
+      if (was) { delete A.st[d.id]; delete A.arr[d.id]; A.late = null; } else { A.st[d.id] = 'retard'; A.arr[d.id] = now; A.late = d.id; A.editTime = false; }
+      const r = S.att.find((x) => x.event_id === e.id && x.player_id === d.id); if (r) Object.assign(r, row); else S.att.push({ event_id: e.id, player_id: d.id, ...row });
+      render(true);
+    }
+  },
+  applateedit: () => { S.ap.editTime = true; render(true); },
+  applateok: async () => {
+    const A = S.ap, v = document.getElementById('lateat')?.value; if (!v || !A.late) return;
+    const e = S.events.find((x) => x.id === A.eid), t = new Date(e.starts_at); t.setHours(+v.slice(0, 2), +v.slice(3, 5), 0, 0);
+    if (await run(sb.from('attendance').update({ arrived_at: t.toISOString() }).eq('event_id', e.id).eq('player_id', A.late), 'Heure d’arrivée changée.')) { A.arr[A.late] = t.toISOString(); A.editTime = false; render(true); }
+  },
+  appall: () => { const e = S.events.find((x) => x.id === S.ap.eid); playersOf(e).forEach((p) => { if (announced(p, e.id) === 'oui') S.ap.st[p.id] = 'present'; }); render(true); },
+  appnone: () => { S.ap.st = {}; render(true); },
+  appevery: () => { const e = S.events.find((x) => x.id === S.ap.eid); playersOf(e).forEach((p) => (S.ap.st[p.id] = 'present')); render(true); },
+  appopen: () => { S.ap.open = true; S.ap.reopened = true; render(true); },
+  appfold: () => { S.ap.open = false; S.ap.late = null; render(true); },
+  appclose: (el, d) => { S.ap = null; S.view = { type: 'event', id: d.id }; render(); },
+  appex: (el, d) => { const e = S.events.find((x) => x.id === d.id); if (e) { openPlanForEvent(e); ACTIONS.cplan(); } },
   appsave: async () => {
-    const e = S.events.find((x) => x.id === S.ap.eid);
-    const rows = playersOf(e).map((p) => ({ event_id: e.id, player_id: p.id, status: S.ap.st[p.id] || 'absent', marked_by: S.me.id, marked_at: new Date().toISOString() }));
-    if (rows.length && await run(sb.from('attendance').upsert(rows), 'Appel enregistré.')) { S.view = { type: 'event', id: e.id }; await refresh(); }
+    const A = S.ap, e = S.events.find((x) => x.id === A.eid), at = new Date().toISOString();
+    const rows = playersOf(e).map((p) => ({ event_id: e.id, player_id: p.id, status: A.st[p.id] || 'absent', arrived_at: A.st[p.id] === 'retard' ? A.arr[p.id] || at : null, marked_by: S.me.id, marked_at: at }));
+    if (rows.length && await run(sb.from('attendance').upsert(rows), 'Appel terminé.')) {
+      rows.forEach((r) => { const x = S.att.find((y) => y.event_id === r.event_id && y.player_id === r.player_id); if (x) Object.assign(x, r); else S.att.push(r); });
+      A.done = true; A.open = false; render(true); window.scrollTo(0, 0);
+    }
   },
 });
 // N° 58 : garde-fou — le titre cite une heure (« exceptionnellement à 12h », « 18h30 ») différente de l'heure choisie dans le formulaire
@@ -361,10 +524,16 @@ FORMS.evf = async (v) => {
   const conv = ['Match', 'Plateau', 'Tournoi'].includes(f.type) && aud === 'team' && f.teams.size === 1 && f.convMode === 'some' ? [...f.conv] : [];
   if (f.convMode === 'some' && conv.length === 0 && ['Match', 'Plateau', 'Tournoi'].includes(f.type) && aud === 'team' && f.teams.size === 1) return toast('Choisis au moins un joueur à convoquer.');
   const base = { club_id: S.clubId, audience: aud, team_ids: aud === 'team' ? [...f.teams] : [], people: aud === 'people' ? [...f.people] : [], convoked: conv, type: f.type, title: v.title.trim(), place: (v.place || '').trim(), opponents: (v.opponents || '').trim(), at_home: ['Match', 'Plateau', 'Tournoi'].includes(f.type) ? !!v.at_home : true };
+  const allDay = v.dur === 'jour'; base.all_day = allDay; base.duration_min = allDay ? null : +v.dur || DEF_DUR[f.type] || 120;
   const start = new Date(v.starts_at), th = titleHour(v.title);
   if (th && (th.h !== start.getHours() || th.mi !== start.getMinutes()) && !confirm(`Le titre parle de ${th.h} h ${String(th.mi).padStart(2, '0')}, mais l’heure choisie est ${hm(start)}. Enregistrer quand même ?`)) return;
   if (f.id) {
-    if (await run(sb.from('events').update({ ...base, starts_at: start.toISOString() }).eq('id', f.id), 'Rendez-vous modifié.')) { S.view = { type: 'event', id: f.id }; S.form = null; await refresh(); }
+    const e0 = S.events.find((x) => x.id === f.id);
+    if (await run(sb.from('events').update({ ...base, starts_at: start.toISOString() }).eq('id', f.id), 'Rendez-vous modifié.')) {
+      // Une série garde la même durée : les séances à venir suivent
+      if (e0?.series_id && (e0.duration_min !== base.duration_min || !!e0.all_day !== allDay)) await run(sb.from('events').update({ duration_min: base.duration_min, all_day: allDay }).eq('series_id', e0.series_id).gte('starts_at', new Date().toISOString()).neq('id', f.id), 'Durée appliquée aux séances à venir de la série.');
+      S.view = { type: 'event', id: f.id }; S.form = null; await refresh();
+    }
     return;
   }
   let starts = [start.toISOString()], series = null;
@@ -388,6 +557,7 @@ FORMS.evf = async (v) => {
 CHANGES.push(async (t) => {
   if (t.dataset.clubtog) { const v = t.checked; if (await run(sb.from('profiles').update({ show_all_club: v }).eq('id', S.me.id))) S.me.show_all_club = v; render(true); return true; }
   if (t.dataset.evhome) { keepForm(); render(true); return true; }
+  if (t.dataset.evdur) { keepForm(); render(true); return true; }
   if (t.dataset.evrep) { keepForm(); S.form.repeat = t.checked; if (!t.checked) S.form.until = ''; render(true); return true; }
   if (t.dataset.evconv) { keepForm(); S.form.conv[t.checked ? 'add' : 'delete'](t.dataset.evconv); render(true); return true; }
   if (t.dataset.evpeople) { keepForm(); S.form.people[t.checked ? 'add' : 'delete'](t.dataset.evpeople); render(true); return true; }

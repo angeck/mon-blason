@@ -35,6 +35,11 @@ export function playerPage(pid) {
   const p = pl(pid); if (!p) return '<p class="empty">Fiche introuvable (à la corbeille ?).</p>';
   const ed = canEdit(p), cons = canConsent(p), board = isBoard(), a = adminOf(pid), c = p.consents || {}, pr = presence(pid), par = parentsOf(pid);
   let h = `<div class="card lift"><div class="det">${esc(teamName(p.team_id) || 'Sans équipe')}${p.birth_date ? ' · né(e) le ' + p.birth_date.split('-').reverse().join('/') : ' · <b>date de naissance à compléter</b>'}${isMajor(p) ? ' · majeur' : ''}</div>${pr.n ? `<div class="chips"><span class="pill blue">Présence ${pr.ok} / ${pr.n}</span>${pr.late ? `<span class="pill wait">${pr.late} retard${pr.late > 1 ? 's' : ''}</span>` : ''}</div>` : ''}<div class="chips">${statusPills(p)}</div></div>`;
+  // n° 78 : équipe en entente → club du joueur (seuls les joueurs de notre club entrent dans la trésorerie)
+  const tt = team(p.team_id);
+  if (tt && tt.partner_state && tt.partner_state !== 'aucune') {
+    h += `<div class="card"><div class="kick">Club du joueur · équipe en entente</div>${canManagePlayer(p) ? `<div class="chips"><button class="chip" data-act="plclub" data-id="${p.id}" data-v="0" aria-pressed="${!p.from_partner}">Notre club</button><button class="chip" data-act="plclub" data-id="${p.id}" data-v="1" aria-pressed="${!!p.from_partner}">${esc(tt.partner_name || 'Club partenaire')}</button></div>` : `<span class="pill blue">${esc(p.from_partner ? tt.partner_name || 'Club partenaire' : 'Notre club')}</span>`}${p.from_partner ? '<p class="note">Joueur du club partenaire : hors licences, cotisations et relances de paiement de notre club.</p>' : ''}</div>`;
+  }
   // informations
   h += '<div class="sec"><h2>Informations</h2></div>';
   if (ed) {
@@ -83,6 +88,7 @@ export function playerPage(pid) {
 }
 
 Object.assign(ACTIONS, {
+  plclub: async (el, d) => { const p = pl(d.id), v = d.v === '1'; if (await run(sb.from('players').update({ from_partner: v }).eq('id', d.id), v ? 'Joueur noté au club partenaire.' : 'Joueur noté à notre club.')) { p.from_partner = v; render(true); } },
   player: (el, d) => { S.view = { type: 'player', id: d.id }; render(); },
   consent: async (el, d) => {
     const p = pl(d.id), c = { ...(p.consents || {}) }, cur = !!(c[d.k] || {}).ok;

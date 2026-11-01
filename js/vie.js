@@ -10,6 +10,7 @@ import { upcoming } from './agenda.js';
 import { pendRows, licencesBlock, namesToCheck, feesBlock, teamsBlock, brandBlock, contactsBlock, trashBlock, membersBlock } from './club.js';
 import { ensureExos, plansForEvent, planForEvent, fmtMin } from './coach.js';
 import { searchBlock } from './auth.js';
+import { arrange, hoursHome, hoursCheckBlock, clubResults, partnerRequests } from './v35.js';
 
 // Rubriques de chaque fonction (même table que la base : fonction_areas)
 const FONCTION_AREAS = {
@@ -54,44 +55,63 @@ const teamsLabelSafe = (ids) => ids.map(teamName).filter(Boolean).join(', ');
 function coachSpace() {
   const ct = coachTeams(), soon = Date.now() + 14 * 864e5;
   const evs = upcoming(S.events.filter((e) => !e.cancelled && evTeams(e).some(coachOf) && ['Entraînement', 'Match', 'Plateau', 'Tournoi'].includes(e.type) && new Date(e.starts_at) < soon)).slice(0, 4);
-  let h = `<button class="bigadd" data-act="cexnew">${icon('plus', 24, '#11162E', 2.6)}Ajouter un exercice</button>`;
-  h += `<div class="sec"><h2>Séances à préparer</h2><button data-act="cplan">Ma séance</button></div>`;
-  h += evs.length ? evs.map((e) => {
+  let sea = `<div class="sec"><h2>Séances à préparer</h2><button data-act="cplan">Ma séance</button></div>`;
+  sea += evs.length ? evs.map((e) => {
     const p = plansForEvent(e.id)[0];
     const st = p ? `<span class="pill ok">Prête</span>` : `<span class="pill ko">À préparer</span>`;
     return `<button class="card" data-act="${p ? 'pview' : 'cplanfor'}" data-id="${p ? p.id : e.id}" style="flex-direction:row;align-items:center;gap:12px;border:0;text-align:left;font:inherit;color:inherit">${dayBadge(e.starts_at)}<span style="display:flex;flex-direction:column;flex:1;min-width:0"><b>${esc(teamsLabelSafe(evTeams(e)))} · ${esc(hm(new Date(e.starts_at)))}</b><span class="det">${p ? plural(p.items.length, 'exercice') + ' · ' + fmtMin(p.items.reduce((a, x) => a + (+x.minutes || 0), 0)) : esc(e.type + (e.title ? ' · ' + e.title : ''))}</span></span>${st}</button>`;
   }).join('') : '<p class="empty">Aucune séance dans les 14 prochains jours.</p>';
+  // Appel du jour : accès direct à la page Pointer (appel en tuiles)
+  const roll = upcoming(S.events.filter((e) => !e.cancelled && evTeams(e).some(coachOf) && ['Entraînement', 'Match', 'Plateau', 'Tournoi'].includes(e.type) && new Date(e.starts_at) > Date.now() - 6 * 3600e3))[0];
+  const rollH = roll ? `<button class="card yellow" data-act="appel" data-id="${roll.id}" style="border:0;text-align:left;font:inherit;color:inherit"><span class="kick" style="color:var(--pc-encre)">Pointer · prochaine séance</span><b style="font-family:var(--pc-titre);font-size:22px">${esc(teamsLabelSafe(evTeams(roll)))} · ${esc(fmtShort(roll.starts_at))}</b><span>Faire l’appel en tuiles</span></button>` : '';
   const ex = S.exos;
-  h += `<div class="sec"><h2>Banque d'exercices</h2><button data-act="cexos" data-tab="mine">Ma banque</button></div>
+  const bank = `<div class="sec"><h2>Banque d'exercices</h2><button data-act="cexos" data-tab="mine">Ma banque</button></div>
   <div class="tiles"><button class="tile blue" data-act="cexos" data-tab="mine"><b>${ex ? ex.filter((e) => e.created_by === S.me.id && !e.deleted_at).length : '…'}</b><span>Ma banque</span></button><button class="tile" data-act="cexos" data-tab="club"><b>${ex ? ex.filter((e) => e.club_id === S.clubId && e.sharing !== 'me' && !e.deleted_at).length : '…'}</b><span>Du club</span></button><button class="tile" data-act="cexos" data-tab="libre"><b>${ex ? ex.filter((e) => e.sharing === 'public' && e.public_state === 'validated' && !e.deleted_at).length : '…'}</b><span>Libre</span></button></div>`;
-  h += `<div class="grid2"><button class="btn small" data-act="cstats">${icon('team', 18)}Statistiques</button><button class="btn small" data-act="chours">${icon('check', 18)}Mes heures</button>
+  const tools = `<div class="grid2"><button class="btn small" data-act="cstats">${icon('team', 18)}Statistiques</button><button class="btn small" data-act="chours">${icon('check', 18)}Mes heures</button>
   <button class="btn small" data-act="evnew" data-type="Match" data-team="${ct[0] || ''}">${icon('calplus', 18)}Convoquer un match</button><button class="btn small" data-act="annnew">${icon('msg', 18)}Annonce à l'équipe</button></div>`;
-  return h;
+  return arrange('coach', [
+    { id: 'heures', pin: true, html: hoursHome() },
+    { id: 'ajout', pin: true, html: `<button class="bigadd" data-act="cexnew">${icon('plus', 24, '#11162E', 2.6)}Ajouter un exercice</button>` },
+    { id: 'appel', label: 'Pointer', html: rollH },
+    { id: 'seances', label: 'Séances à préparer', html: sea },
+    { id: 'banque', label: "Banque d'exercices", html: bank },
+    { id: 'outils', label: 'Raccourcis', html: tools },
+  ]);
 }
 
 function presidentSpace() {
   const vp = toValidate(), byRole = {};
   vp.forEach((m) => { const r = m.role === 'parent' ? 'parent de joueur' : m.role === 'bureau' ? 'bureau' : m.role; byRole[r] = (byRole[r] || 0) + 1; });
-  let h = '';
-  if (vp.length) h += `<div class="card" style="flex-direction:row;align-items:center;gap:12px;border:3px solid var(--pc-jaune)"><span style="display:flex;flex-direction:column;flex:1"><b style="font-size:18px">${plural(vp.length, 'demande à valider', 'demandes à valider')}</b><span class="det">${esc(Object.entries(byRole).map(([r, n]) => n + ' ' + r).join(', '))}</span></span><button class="btn main small" style="flex:none" data-act="tab" data-i="4">Voir</button></div>`;
+  let alert = '';
+  if (vp.length) alert = `<div class="card" style="flex-direction:row;align-items:center;gap:12px;border:3px solid var(--pc-jaune)"><span style="display:flex;flex-direction:column;flex:1"><b style="font-size:18px">${plural(vp.length, 'demande à valider', 'demandes à valider')}</b><span class="det">${esc(Object.entries(byRole).map(([r, n]) => n + ' ' + r).join(', '))}</span></span><button class="btn main small" style="flex:none" data-act="tab" data-i="4">Voir</button></div>`;
   const fees = S.padmin.filter((a) => a.fee_amount != null), due = fees.reduce((a, x) => a + +x.fee_amount, 0), paid = fees.reduce((a, x) => a + Math.min(+x.fee_paid || 0, +x.fee_amount), 0);
-  h += `<div class="tiles"><button class="tile" data-act="rub" data-id="secretariat"><b>${S.players.length}</b><span>Licenciés</span></button><button class="tile" data-act="rub" data-id="technique"><b>${S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').length}</b><span>Équipes</span></button><button class="tile ok" data-act="rub" data-id="tresorerie"><b>${due ? Math.round((100 * paid) / due) + ' %' : '—'}</b><span>Cotisations</span></button></div>`;
-  if (S.vstats) h += `<button class="card" data-act="rub" data-id="evenements" style="border:0;text-align:left;font:inherit;color:inherit;flex-direction:row;align-items:center;gap:12px"><span class="g" style="flex:1"><b>Bénévoles</b><span class="det" style="display:block">Membres : ${(S.vstats.members?.yes || []).length} bénévoles · ${(S.vstats.members?.no || []).length} non${S.vstats.supporters ? ` · supporteurs : ${(S.vstats.supporters.yes || []).length} · ${(S.vstats.supporters.no || []).length} non · ${(S.vstats.supporters.none || []).length} sans réponse` : ''}</span></span><span class="chev"></span></button>`;
+  const tiles = `<div class="tiles"><button class="tile" data-act="rub" data-id="secretariat"><b>${S.players.filter((p) => !p.from_partner).length}</b><span>Licenciés</span></button><button class="tile" data-act="rub" data-id="technique"><b>${S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').length}</b><span>Équipes</span></button><button class="tile ok" data-act="rub" data-id="tresorerie"><b>${due ? Math.round((100 * paid) / due) + ' %' : '—'}</b><span>Cotisations</span></button></div>`;
+  const benev = !S.vstats ? '' : `<button class="card" data-act="rub" data-id="evenements" style="border:0;text-align:left;font:inherit;color:inherit;flex-direction:row;align-items:center;gap:12px"><span class="g" style="flex:1"><b>Bénévoles</b><span class="det" style="display:block">Membres : ${(S.vstats.members?.yes || []).length} bénévoles · ${(S.vstats.members?.no || []).length} non${S.vstats.supporters ? ` · supporteurs : ${(S.vstats.supporters.yes || []).length} · ${(S.vstats.supporters.no || []).length} non · ${(S.vstats.supporters.none || []).length} sans réponse` : ''}</span></span><span class="chev"></span></button>`;
   const todo = [], noBirth = S.players.filter((p) => !p.birth_date).length, cc = S.coachCounts || {};
   if (noBirth) todo.push(['rub', 'secretariat', plural(noBirth, 'date de naissance manquante', 'dates de naissance manquantes'), 'Secrétariat']);
   if (cc.hours) todo.push(['choursb', '', plural(cc.hours, 'relevé d’heures de coach', 'relevés d’heures de coachs'), 'À valider']);
   if (cc.exos) todo.push(['cexos', 'club', plural(cc.exos, 'exercice proposé à tous les clubs', 'exercices proposés à tous les clubs'), 'À valider']);
   const ag = upcoming(S.events.filter((e) => e.type === 'AG' && !e.cancelled))[0];
   if (ag) todo.push(['event', ag.id, 'AG du club : ' + fmtShort(ag.starts_at).split(' · ')[0], 'Dans ' + Math.max(1, Math.round((new Date(ag.starts_at) - Date.now()) / (7 * 864e5))) + ' sem.']);
-  if (todo.length) h += `<div class="sec"><h2>À suivre</h2></div><div class="card"><div class="list">${todo.map(([a, id, t, p]) => `<button class="row" data-act="${a}" data-id="${esc(id)}" data-tab="${esc(id)}"><span class="g">${esc(t)}</span><span class="pill ${p === 'À valider' ? 'wait' : 'blue'}">${esc(p)}</span></button>`).join('')}</div></div>`;
-  h += rubList(Object.keys(AREAS).concat('commun'));
+  const suivre = !todo.length ? '' : `<div class="sec"><h2>À suivre</h2></div><div class="card"><div class="list">${todo.map(([a, id, t, p]) => `<button class="row" data-act="${a}" data-id="${esc(id)}" data-tab="${esc(id)}"><span class="g">${esc(t)}</span><span class="pill ${p === 'À valider' ? 'wait' : 'blue'}">${esc(p)}</span></button>`).join('')}</div></div>`;
   const c = club();
-  h += `<div class="sec"><h2>Réglages du club</h2></div><div class="card">
+  const regl = `<div class="sec"><h2>Réglages du club</h2></div><div class="card">
     ${sw('custom_header', 'Aux couleurs du club', 'L’en-tête prend la couleur principale du club.', c.custom_header)}
     ${sw('public_listed', 'Apparaître dans la recherche des clubs', 'Nom, ville, équipes visibles et créneaux seulement.', c.public_listed !== false)}
     ${sw('coach_sees_fees', 'Les coachs voient licences et cotisations', 'De leurs joueurs seulement, sans les réductions.', c.coach_sees_fees !== false)}</div>`;
-  h += `<div class="grid2"><button class="btn small" data-act="fonctions">${icon('user', 18)}Fonctions du bureau</button><button class="btn small" data-act="journal">${icon('doc', 18)}Journal des actions</button></div>`;
-  return h;
+  const outils = `<div class="grid2"><button class="btn small" data-act="fonctions">${icon('user', 18)}Fonctions du bureau</button><button class="btn small" data-act="journal">${icon('doc', 18)}Journal des actions</button></div>`;
+  return arrange('president', [
+    { id: 'alerte', pin: true, html: alert },
+    { id: 'chiffres', label: 'Chiffres du club', html: tiles },
+    { id: 'heures', label: 'Heures des coachs', html: hoursCheckBlock() },
+    { id: 'resultats', label: 'Derniers résultats', html: clubResults() },
+    { id: 'ententes', label: 'Ententes', html: partnerRequests() },
+    { id: 'benevoles', label: 'Bénévoles', html: benev },
+    { id: 'suivre', label: 'À suivre', html: suivre },
+    { id: 'rubriques', label: 'Rubriques', html: rubList(Object.keys(AREAS).concat('commun')) },
+    { id: 'reglages', label: 'Réglages du club', html: regl },
+    { id: 'outils', label: 'Fonctions et journal', html: outils },
+  ]);
 }
 const sw = (k, t, d, on) => `<label class="switch"><input type="checkbox" data-clubset="${k}" ${on ? 'checked' : ''}><span><b>${esc(t)}</b><br><span class="det">${esc(d)}</span></span></label>`;
 function rubList(keys) {
@@ -106,8 +126,12 @@ function fonctionSpace(f) {
   const own = (FONCTION_AREAS[f] || []).filter(hasArea), extra = (S.areas || []).filter((a) => !own.includes(a));
   let h = '';
   if (!own.length) h += `<div class="card pale"><b>${esc(f)}</b><p class="note">Ta fonction donne accès à la rubrique Commun. Le président peut t'ouvrir d'autres rubriques.</p></div>` + rubBody('commun');
-  own.forEach((a, i) => { h += (i || own.length > 1 ? `<div class="sec"><h2>${esc(AREAS[a])}</h2></div>` : '') + rubBody(a); });
-  return h + rubList((own.length ? ['commun'] : []).concat(extra));
+  const bl = [{ id: 'alerte', pin: true, html: h }];
+  if (own.includes('tresorerie') || extra.includes('tresorerie')) bl.push({ id: 'heures', label: 'Heures des coachs', html: hoursCheckBlock() });
+  if (own.includes('technique')) bl.push({ id: 'ententes', label: 'Ententes', html: partnerRequests() }, { id: 'resultats', label: 'Derniers résultats', html: clubResults() });
+  own.forEach((a, i) => bl.push({ id: a, label: AREAS[a], html: (i || own.length > 1 ? `<div class="sec"><h2>${esc(AREAS[a])}</h2></div>` : '') + rubBody(a) }));
+  bl.push({ id: 'rubriques', label: 'Rubriques', html: rubList((own.length ? ['commun'] : []).concat(extra)) });
+  return arrange('f:' + f, bl);
 }
 
 // ---------- rubriques (n° 55) ----------
@@ -126,7 +150,7 @@ function rubBody(a) {
   return `<div class="grid2"><button class="btn small" data-act="tab" data-i="1">${icon('cal', 18)}Agenda</button><button class="btn small" data-act="tab" data-i="2">${icon('msg', 18)}Messages</button><button class="btn small" data-act="annlist">${icon('msg', 18)}Annonces</button>${isPresident() ? `<button class="btn small" data-act="journal">${icon('doc', 18)}Journal</button>` : ''}</div>` + trashBlock();
 }
 function tresoSummary() {
-  const rows = S.players.map((p) => ({ p, a: S.padmin.find((x) => x.player_id === p.id) })).filter((x) => x.a && x.a.fee_amount != null);
+  const rows = S.players.filter((p) => !p.from_partner).map((p) => ({ p, a: S.padmin.find((x) => x.player_id === p.id) })).filter((x) => x.a && x.a.fee_amount != null);
   const due = rows.reduce((s, x) => s + +x.a.fee_amount, 0), paid = rows.reduce((s, x) => s + Math.min(+x.a.fee_paid || 0, +x.a.fee_amount), 0);
   const full = rows.filter((x) => +x.a.fee_paid >= +x.a.fee_amount).length, part = rows.filter((x) => +x.a.fee_paid > 0 && +x.a.fee_paid < +x.a.fee_amount).length, none = rows.filter((x) => !(+x.a.fee_paid > 0) && +x.a.fee_amount > 0).length;
   const late = rows.filter((x) => +x.a.fee_amount - (+x.a.fee_paid || 0) > 0).sort((a, b) => (+b.a.fee_amount - b.a.fee_paid) - (+a.a.fee_amount - a.a.fee_paid));

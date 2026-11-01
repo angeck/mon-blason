@@ -3,7 +3,7 @@
 import { BRAND, VERSION } from './config.js';
 import {
   S, sb, $, run, toast, hooks, ACTIONS, FORMS, INPUTS, CHANGES, club, active, isActive, ROLES, roleLabel, teamName, teamsLabel, evTeams, pl, pname, team,
-  loadMe, loadClub, loadGroup, checkVersion, fmtShort, hm, esc,
+  loadMe, loadClub, loadGroup, checkVersion, fmtShort, hm, esc, timeRange,
 } from './js/core.js';
 import { header, tabBar, applyTheme, wordmark, icon } from './js/ui.js';
 import { authScreen, cguScreen, onboarding, legalScreen, publicHome, publicClubScreen, recoveryScreen, mountCaptcha, openPendingJoin } from './js/auth.js';
@@ -18,6 +18,7 @@ import { COACH_VIEWS, loadCoachCounts, loadEvPlans } from './js/coach.js';
 import { VIE_VIEWS } from './js/vie.js';
 import { syncPush } from './js/notif.js';
 import './js/convoc.js';
+import './js/v35.js';
 import { switchBar, saveSwitch, resetUser } from './js/profils.js';
 
 const TAB_TITLES = ['', 'Agenda', 'Messages', 'Équipe', 'Le club'];
@@ -29,9 +30,9 @@ function syncBar() {
 function viewScreen(v) {
   const e = ['event', 'appel'].includes(v.type) ? S.events.find((x) => x.id === v.id) : null;
   switch (v.type) {
-    case 'event': return [header({ back: true, kicker: e ? e.type + (evTeams(e).length ? ' · ' + teamsLabel(evTeams(e)) : '') : 'Rendez-vous', title: esc(e?.title || 'Rendez-vous'), tags: e ? [fmtShort(e.starts_at).split(' · ')[0], hm(new Date(e.starts_at)), e.place].filter(Boolean) : [] }), eventPage(v.id)];
+    case 'event': return [header({ back: true, kicker: e ? e.type + (evTeams(e).length ? ' · ' + teamsLabel(evTeams(e)) : '') : 'Rendez-vous', title: esc(e?.title || 'Rendez-vous'), tags: e ? [fmtShort(e.starts_at).split(' · ')[0], timeRange(e), e.place].filter(Boolean) : [] }), eventPage(v.id)];
     case 'evform': return [header({ back: true, kicker: 'Agenda', title: S.form?.id ? 'Modifier' : 'Nouveau rendez-vous' }), eventForm()];
-    case 'appel': return [header({ back: true, kicker: 'Appel', title: esc(e?.title || 'Appel'), tags: e ? [fmtShort(e.starts_at)] : [] }), appelPage(v.id)];
+    case 'appel': return [header({ back: true, kicker: 'Appel · ' + (e?.type || ''), title: esc(e?.title || 'Appel') }), appelPage(v.id)];
     case 'gform': return [header({ back: true, kicker: 'Messages', title: 'Nouveau groupe' }), groupForm()];
     case 'group': return [header({ back: true, kicker: "Groupe d'échange", title: esc(grp(v.id)?.name || 'Groupe') }), groupPage(v.id)];
     case 'player': { const p = pl(v.id); return [header({ back: true, kicker: 'Fiche joueur', title: esc(p ? pname(p) : 'Fiche') }), playerPage(v.id)]; }
@@ -48,7 +49,7 @@ function render(keep) {
   const vt = S.view?.type;
   if (!S.session) html = vt === 'legal' ? legalScreen() : vt === 'auth' ? authScreen() : vt === 'pclub' ? publicClubScreen(S.view.id) : publicHome();
   else if (S.recovery) html = recoveryScreen();
-  else if (!S.me) html = `<div class="splash">${wordmark(52, 'Basket-ball')}<p>Chargement…</p></div>`;
+  else if (!S.me) html = `<div class="splash">${wordmark(52)}<p>Chargement…</p></div>`;
   else if (vt === 'legal') html = legalScreen();
   else if (vt === 'pclub') html = publicClubScreen(S.view.id);
   else if (S.me.deleted_at) html = deletedScreen();

@@ -65,6 +65,12 @@ export const isArmed = (key) => S.del === key;
 
 export const hm = (d = new Date()) => d.getHours() + ' h ' + String(d.getMinutes()).padStart(2, '0');
 export const fmtDate = (iso) => { const s = new Date(iso).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }); return s.charAt(0).toUpperCase() + s.slice(1) + ' · ' + hm(new Date(iso)); };
+// N° 80 : durée d'un rendez-vous (par défaut selon le type) et heure de fin
+export const DEF_DUR = { Entraînement: 90, Match: 120, Plateau: 180, Tournoi: 360, Événement: 120, Réunion: 120, AG: 120 };
+export const durOf = (e) => (e.all_day ? null : +e.duration_min || DEF_DUR[e.type] || 120);
+export const endOf = (e) => { if (e.all_day) { const d = new Date(e.starts_at); d.setHours(23, 59, 0, 0); return d; } return new Date(new Date(e.starts_at).getTime() + durOf(e) * 60000); };
+export const timeRange = (e) => (e.all_day ? 'toute la journée' : hm(new Date(e.starts_at)) + ' – ' + hm(endOf(e)));
+export const fmtDur = (m) => { const h = Math.floor(m / 60), r = m % 60; return h ? h + ' h' + (r ? ' ' + String(r).padStart(2, '0') : '') : r + ' min'; };
 export const fmtShort = (iso) => { const d = new Date(iso); return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) + ' · ' + hm(d); };
 export const fmtDay = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 export const localDay = (d) => d.toLocaleDateString('sv-SE');
@@ -210,7 +216,16 @@ export async function loadClub() {
     sb.from('announcement_reads').select('announcement_id').eq('user_id', S.me.id),
     inList(sb.from('event_missions').select('*').order('position'), 'event_id', eids),
   ]);
-  S.areas = ar.data || []; S.annonces = an.data || []; S.annRead = new Set((anr.data || []).map((x) => x.announcement_id)); S.missions = mis.data || [];
+  S.areas = ar.data || []; S.annonces = an.data || [];
+  // 3.5.0 : vérification des heures (n° 75), ordre des blocs des espaces (n° 76), ententes reçues (n° 78)
+  const [hc, hf, up, pt2] = await Promise.all([
+    sb.from('hours_checks').select('*').eq('club_id', cid).order('month', { ascending: false }).limit(12),
+    sb.from('hours_confirms').select('*'),
+    sb.from('user_prefs').select('*').eq('user_id', S.me.id),
+    isPresident() || (ar.data || []).includes('technique') ? sb.rpc('partner_teams', { p_club: cid }) : Promise.resolve({ data: [] }),
+  ]);
+  S.hchecks = hc.data || []; S.hconf = hf.data || []; S.partnerTeams = Array.isArray(pt2.data) ? pt2.data : [];
+  S.prefs = {}; (up.data || []).forEach((x) => (S.prefs[x.key] = x.value)); S.annRead = new Set((anr.data || []).map((x) => x.announcement_id)); S.missions = mis.data || [];
   S.signups = S.missions.length ? ((await sb.from('mission_signups').select('*').in('mission_id', S.missions.map((m) => m.id))).data || []) : [];
   // n° 66 : personnes qui ne souhaitent pas être sollicitées pour le bénévolat (rubrique Événements seulement)
   S.optouts = S.areas.includes('evenements') ? (await sb.rpc('volunteer_optouts', { p_club: cid })).data : [];
