@@ -2,37 +2,18 @@
 import { BRAND } from '../config.js';
 import { S, esc, club, onColor, contrast, lum, initials, isActive, toValidate, myTeamIds, casquettes, store } from './core.js';
 
-// ---------- Ballon (identique dans tous les logos ; seules les coutures changent selon le sport) ----------
-// Charte du 1er novembre : hors club, ballon multisport (quatre quarts : basket, foot, volley, rugby) ;
-// connecté à un club, ballon jaune aux coutures du sport du club.
-const SEAMS = {
-  'Basket-ball': 'M28 6V50M6 28H50M12 11C21 20 21 36 12 45M44 11C35 20 35 36 44 45',
-  'Volley-ball': 'M9 21C20 26 33 24 43 9M26 6C22 18 27 31 41 43M11 41C21 33 34 35 49 30',
-  'Football': 'M28 19L36.6 25.2L33.3 35.3H22.7L19.4 25.2ZM28 19V6M36.6 25.2L48.5 21M33.3 35.3L40.5 46M22.7 35.3L15.5 46M19.4 25.2L7.5 21',
-};
-const ballInner = (sport) => `<circle cx="28" cy="28" r="25" fill="#FFC93C" stroke="#11162E" stroke-width="6"/><g fill="none" stroke="#11162E" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"><path d="${SEAMS[sport] || SEAMS['Basket-ball']}"/></g>`;
-// Ballon multisport : quarts qui se touchent sans trait de séparation, contour encre 4,5/56
-export const MULTI_INNER = '<defs><clipPath id="pcms"><circle cx="28" cy="28" r="25.75"/></clipPath></defs><g clip-path="url(#pcms)">'
-  + '<rect width="28" height="28" fill="#F08A24"/><path d="M16 4V27M4 16H27M8.5 7.5C13 12 13 20 8.5 24.5M23.5 7.5C19 12 19 20 23.5 24.5" fill="none" stroke="#11162E" stroke-width="2" stroke-linecap="round"/>'
-  + '<rect x="28" width="28" height="28" fill="#FFFFFF"/><path d="M40 11.5L45 15.1L43.1 21H36.9L35 15.1Z" fill="#11162E"/><path d="M40 11.5V5M45 15.1L51 13M43.1 21L47 26M36.9 21L33 26M35 15.1L29 13" fill="none" stroke="#11162E" stroke-width="1.8" stroke-linecap="round"/>'
-  + '<rect y="28" width="28" height="28" fill="#FFC93C"/><path d="M4 35C11 33 19 35 26 42M5 43C11 41 17 44 21 51M14 30C17 35 23 37 28 37" fill="none" stroke="#2F5BFF" stroke-width="2.2" stroke-linecap="round"/>'
-  + '<rect x="28" y="28" width="28" height="28" fill="#B5652B"/><path d="M40 31V50" stroke="#7A3F14" stroke-width="1.8" stroke-linecap="round"/><path d="M37 35H43M37 39H43M37 43H43M37 47H43" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round"/>'
-  + '</g><circle cx="28" cy="28" r="25.75" fill="none" stroke="#11162E" stroke-width="4.5"/>';
-// sport absent = hors club = ballon multisport
-export const ball = (size, sport) => `<svg width="${size}" height="${size}" viewBox="0 0 56 56" aria-hidden="true">${sport ? ballInner(sport) : MULTI_INNER}</svg>`;
-// Version 1 · mot-symbole « pocket club » sur une ligne : partout où il y a la place
+// ---------- Ballons (charte validée le 1er novembre 2026 au soir · fichiers dans img/, fabriqués par tools/fabriquer_logos.py) ----------
+// Hors club : ballon 4/4 (basket, foot, volley, rugby) ; dans un club : le ballon du sport du club.
+// Le rugby ovale sert dans les espaces des clubs de rugby (option oval), la version ronde dans le « o » du logo.
+const BALLS = { 'Basket-ball': 'basket', 'Volley-ball': 'volley', 'Football': 'foot', 'Rugby': 'rugby-rond' };
+export const ballSrc = (sport, oval) => `img/ballon-${!sport ? '4-4' : oval && /rugby/i.test(sport) ? 'rugby-ovale' : BALLS[sport] || (/rugby/i.test(sport) ? 'rugby-rond' : 'basket')}.svg`;
+// sport absent = hors club = ballon 4/4
+export const ball = (size, sport, oval) => `<img class="ball" src="${ballSrc(sport, oval)}" width="${size}" height="${size}" alt="" aria-hidden="true" style="display:inline-block;vertical-align:middle">`;
+// Mot-symbole « pocket club » sur une ligne, en minuscules, le ballon dans le « o » (le logo empilé est abandonné partout)
 export function wordmark(px, sport) {
   const b = Math.round(px * 0.62);
   return `<span class="wordmark" role="img" aria-label="${esc(BRAND.name)}" style="font-size:${px}px">${esc(BRAND.word1)}${ball(b, sport)}${esc(BRAND.word2)}<span style="width:${Math.round(px * 0.22)}px"></span><span class="club">${esc(BRAND.word3)}</span></span>`;
 }
-// Version 2 · logo empilé « pocket » / ballon / « club » (le p●c est abandonné) : icône, places carrées, espaces.
-// Carré bleu et lettres blanches ; carré blanc et lettres encre quand le fond est déjà bleu (ou trop proche).
-const bluish = (hex) => { const n = parseInt(String(hex).slice(1), 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; if (d < 0.12 || mx !== b) return false; const h = 60 * (((r - g) / d) + 4); return h >= 190 && h <= 260; };
-export const symbol = (size, sport, onBg) => {
-  const white = onBg && (contrast(onBg, '#2F5BFF') < 1.6 || bluish(onBg)), bg = white ? '#FFFFFF' : '#2F5BFF', fg = white ? '#11162E' : '#FFFFFF';
-  const w1 = esc(BRAND.word1 + 'o' + BRAND.word2), w2 = esc(BRAND.word3);
-  return `<svg class="pcmark" width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="${esc(BRAND.name)}"><rect width="100" height="100" rx="22" fill="${bg}"/><g fill="${fg}" font-family="Bricolage Grotesque,system-ui,sans-serif" font-weight="800" font-size="17" text-anchor="middle" letter-spacing="-0.6"><text x="50" y="21">${w1}</text><text x="50" y="93">${w2}</text></g><svg x="23" y="24" width="54" height="54" viewBox="0 0 56 56">${sport ? ballInner(sport) : MULTI_INNER}</svg></svg>`;
-};
 
 // ---------- Icônes au trait ----------
 const P = {
@@ -56,6 +37,8 @@ const P = {
   doc: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/>',
   down: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4.2-4.2"/>',
+  flag: '<path d="M6 21V4"/><path d="M6 4h11l-2.5 4L17 12H6"/>',
+  crown: '<path d="M4 18h16M5 18L3.5 8l5 4L12 5l3.5 7 5-4L19 18"/>',
   share: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>',
 };
 export const icon = (n, size = 22, stroke = 'currentColor', w = 2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ''}</svg>`;
@@ -85,7 +68,7 @@ export function applyTheme() {
   const bg = perso ? c.color1 : '#2F5BFF';
   S.headerBg = bg; r.setProperty('--pc-entete', bg); r.setProperty('--pc-entete-texte', onColor(bg));
   const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = bg;
-  document.title = BRAND.name;
+  document.title = BRAND.title || BRAND.name; // n° 91 : nom en minuscules, comme le logo
 }
 
 // ---------- En-tête ----------
@@ -99,14 +82,13 @@ export const espaceBtn = () => `<button class="roundbtn" data-act="espace" aria-
 export const searchBtn = () => `<button class="roundbtn" data-act="csearch" aria-label="Chercher un club">${icon('search', 22, '#11162E', 2.2)}</button>`;
 // opts : { title, kicker, sub, back, tags[], brand, role }
 // N° 27 : même en-tête partout. Bande du haut : (retour) · logo C · loupe (n° 56) · Espace · Mon compte ;
-// dans un espace : (retour) · pastille du rôle · logo empilé · Mon compte (charte du 1er novembre)
+// dans un espace : (retour) · pastille du rôle · Mon compte (n° 85 : plus de logo, la personne sait où elle est)
 export function header(o = {}) {
   const c = club(), br = o.brand || brandMode(), sport = br ? null : (c?.sport || 'Basket-ball'); // hors club : ballon multisport
   const acc = S.session && S.me && S.view?.type !== 'account' && S.me.cgu_version && !S.me.deleted_at;
   const inClub = acc && S.clubId && isActive() && S.onb === null;
   let h;
-  // n° 63 : la pastille du rôle puis le petit logo, posé comme une signature (sans rond autour, distinct des boutons ronds)
-  if (o.role) h = `<div class="band">${o.back ? backBtn() : ''}<span class="rolepill">${esc(o.role)}</span><span class="pclogo">${symbol(46, sport, S.headerBg || '#2F5BFF')}</span><span style="flex:1"></span>${acc ? accountBtn() : ''}</div>`;
+  if (o.role) h = `<div class="band">${o.back ? backBtn() : ''}<span class="rolepill">${esc(o.role)}</span><span style="flex:1"></span>${acc ? accountBtn() : ''}</div>`;
   else h = `<div class="band">${o.back ? backBtn() : ''}<span class="logo">${wordmark(22, sport)}</span>${acc && S.view?.type !== 'csearch' ? searchBtn() : ''}${inClub && !o.back && casquettes().length ? espaceBtn() : ''}${acc ? accountBtn() : '<span style="width:44px"></span>'}</div>`;
   if (!br && c && !o.role) h += `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.kicker || o.sub || '')}</span></div></div>`;
   else if (o.kicker) h += `<div class="kicker">${esc(o.kicker)}</div>`;

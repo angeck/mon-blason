@@ -36,7 +36,9 @@ function currentCasq() {
 }
 function casqTabs() {
   const l = casquettes(); if (l.length < 2) return '';
-  return `<div class="casq" role="tablist" aria-label="Mes casquettes">${l.map((x) => `<button role="tab" data-act="casq" data-v="${esc(x.k)}" aria-selected="${x.k === S.casq}">${esc(x.label)}</button>`).join('')}</div>`;
+  // n° 85 : rangée bien visible, reconnaissable comme des boutons de rôle (contour marqué, icône devant chaque nom)
+  const ic = (k) => icon(k === 'coach' ? 'flag' : k === 'president' ? 'crown' : 'user', 20);
+  return `<p class="casqhint">Tes casquettes · touche pour changer d'espace</p><div class="casq" role="tablist" aria-label="Mes casquettes">${l.map((x) => `<button role="tab" data-act="casq" data-v="${esc(x.k)}" aria-selected="${x.k === S.casq}">${ic(x.k)}<span>${esc(x.label)}</span></button>`).join('')}</div>`;
 }
 const areaKey = (c) => (c.k === 'coach' || c.k === 'president' ? c.k : (FONCTION_AREAS[c.k.slice(2)] || [])[0] || 'commun');
 function espaceView() {

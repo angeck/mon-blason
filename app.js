@@ -49,7 +49,7 @@ function render(keep) {
   const vt = S.view?.type;
   if (!S.session) html = vt === 'legal' ? legalScreen() : vt === 'auth' ? authScreen() : vt === 'pclub' ? publicClubScreen(S.view.id) : publicHome();
   else if (S.recovery) html = recoveryScreen();
-  else if (!S.me) html = `<div class="splash">${wordmark(52)}<p>Chargement…</p></div>`;
+  else if (!S.me) html = `<div class="splash bigsplash">${wordmark(Math.min(92, Math.round(innerWidth * 0.145)))}</div>`; // n° 90
   else if (vt === 'legal') html = legalScreen();
   else if (vt === 'pclub') html = publicClubScreen(S.view.id);
   else if (S.me.deleted_at) html = deletedScreen();

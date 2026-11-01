@@ -24,11 +24,13 @@ a{color:var(--pc-bleu)}
 
 /* ---------- Logos ---------- */
 .wordmark{display:inline-flex;align-items:center;font-family:var(--pc-titre);font-weight:800;letter-spacing:-.04em;line-height:1;white-space:nowrap}
-.wordmark svg{flex:none;margin:0 1px 0 2px}
+.wordmark svg,.wordmark .ball{flex:none;margin:0 1px 0 2px}
 .wordmark .club{color:var(--pc-bleu)}
 .hd .wordmark .club{color:inherit}
 .splash{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px 20px;text-align:center}
 .splash .wordmark{font-size:52px}
+.bigsplash{min-height:100vh;min-height:100dvh;background:var(--pc-fond)}
+.bigsplash .wordmark{font-size:min(14.5vw,92px)}.bigsplash .wordmark .ball{width:.62em;height:.62em}.bigsplash .wordmark .sp{width:.22em}
 .splash p{margin:0;color:var(--pc-texte-doux);font-size:17px}
 
 /* ---------- En-tête ---------- */
@@ -215,8 +217,9 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 .hd .under{font-size:16px;position:relative}
 .hd .band .roundbtn{flex:none}
 .casq{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
-.casq button{flex:none;height:44px;padding:0 16px;border-radius:22px;font-weight:700;font-size:16px;border:2px solid var(--pc-trait);background:var(--pc-papier);color:var(--pc-encre)}
-.casq button[aria-selected="true"]{border-color:var(--pc-encre);background:var(--pc-encre);color:#FFFFFF}
+.casqhint{margin:0 0 6px;font-size:13px;font-weight:700;color:var(--pc-texte-doux)}
+.casq button{flex:none;display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 18px 0 14px;border-radius:24px;font-weight:700;font-size:16px;border:2px solid var(--pc-encre);background:#FFFFFF;color:var(--pc-encre);box-shadow:0 2px 0 var(--pc-encre)}
+.casq button[aria-selected="true"]{border-color:var(--pc-encre);background:var(--pc-encre);color:#FFFFFF;box-shadow:none}
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .tile{background:var(--pc-papier);border-radius:20px;padding:12px;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(17,22,46,.06);border:0;text-align:left;color:inherit;font:inherit}
 .tile b{font-family:var(--pc-titre);font-size:28px;line-height:1}
@@ -246,7 +249,7 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 /* Alpha 3.2.5 · profils de test */
 .swbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:10px;background:var(--pc-encre);color:#fff;padding:calc(6px + env(safe-area-inset-top)) 14px 6px;font-size:14px;font-weight:700}
 .swbar select{flex:1;min-height:40px;border-radius:12px;border:2px solid #fff;background:#fff;color:var(--pc-encre);font-weight:700;font-size:16px;padding:0 10px}
-.pclogo{flex:none;display:flex;align-items:center}.pclogo svg{display:block;border-radius:9px}
+
 
 /* ---------- 3.5.0 · appel en tuiles (n° 81, claude/10-appel-en-tuiles.md) : couleurs de la charte uniquement ---------- */
 .tstrip{background:var(--pc-entete);color:var(--pc-entete-texte);border-radius:var(--pc-rayon-carte);padding:12px 12px 0;display:flex;flex-direction:column;gap:10px}

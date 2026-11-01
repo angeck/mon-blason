@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Pocket Club</title>
+<title>pocket club</title>
 <meta name="theme-color" content="#2F5BFF">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="pocket club">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Sans:wght@400;500;700&display=swap">
@@ -16,7 +17,8 @@
 </head>
 <body>
 <!-- Le nom affiché vient de config.js ; ce titre ne sert qu'au tout premier affichage. -->
-<div id="app"><div class="splash"><p>Chargement…</p></div></div>
+<!-- N° 90 : écran d'ouverture = grand logo « pocket club » avec le ballon 4/4 dans le « o », disparaît dès que l'application est prête -->
+<div id="app"><div class="splash bigsplash"><span class="wordmark" role="img" aria-label="pocket club">p<img class="ball" src="img/ballon-4-4.svg" alt="" aria-hidden="true">cket<span class="sp"></span><span class="club">club</span></span></div></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="app.js"></script>
 </body>
