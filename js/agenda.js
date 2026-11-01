@@ -86,7 +86,7 @@ function pair(e, pid) {
 }
 export function invitedCount(e) {
   const act = S.members.filter((m) => m.status === 'active'), ids = new Set(), board = act.filter((m) => ['president', 'bureau'].includes(m.role)).map((m) => m.user_id);
-  if (e.audience === 'club') act.forEach((m) => ids.add(m.user_id));
+  if (e.audience === 'club') { const real = new Set(act.filter((m) => m.role !== 'supporteur').map((m) => m.user_id)); act.forEach((m) => { if (e.with_supporters !== false || real.has(m.user_id)) ids.add(m.user_id); }); } // n° 89
   else if (e.audience === 'board') board.forEach((u) => ids.add(u));
   else if (e.audience === 'coaches' || e.audience === 'board_coaches') { act.filter((m) => m.role === 'coach').forEach((m) => ids.add(m.user_id)); if (e.audience === 'board_coaches') board.forEach((u) => ids.add(u)); }
   else if (e.audience === 'people') (e.people || []).forEach((u) => ids.add(u));
@@ -125,7 +125,7 @@ function respName(x) {
   return esc(nm) + (staff && p ? ` <span class="det">(répondu par ${esc(name(x.user_id))})</span>` : '');
 }
 export function forLabel(e) {
-  const txt = e.audience === 'team' ? teamsLabel(evTeams(e)) || 'équipe' : e.audience === 'people' ? plural((e.people || []).length, 'personne choisie', 'personnes choisies') : INTERNAL[e.audience] || 'tout le club';
+  const txt = e.audience === 'team' ? teamsLabel(evTeams(e)) || 'équipe' : e.audience === 'people' ? plural((e.people || []).length, 'personne choisie', 'personnes choisies') : INTERNAL[e.audience] || (e.with_supporters === false ? 'membres du club' : 'tout le club, supporteurs compris');
   let h = `<span class="pill ${INTERNAL[e.audience] || e.audience === 'people' ? 'wait' : 'blue'}">${INTERNAL[e.audience] || e.audience === 'people' ? icon('lock', 14) : ''}Pour : ${esc(txt)}</span>`;
   if (active().length > 1) { const r = reason(e); if (r) h += ` <span class="det">Toi : ${esc(r)}</span>`; }
   return h;
@@ -246,10 +246,13 @@ export function agendaTab() {
 }
 
 // ---------- formulaire ----------
+// N° 89 · « Tout le club » : supporteurs compris par défaut pour un match, un plateau ou un tournoi ; membres seulement sinon (AG, fête…)
+const supDefault = (t) => ['Match', 'Plateau', 'Tournoi'].includes(t);
 function audienceField(f) {
   const myTeams = S.teams.filter((t) => isBoard() || coachOf(t.id));
   const opts = isBoard() ? [['club', 'Tout le club'], ['team', 'Une ou plusieurs équipes'], ['board', 'Bureau'], ['board_coaches', 'Bureau et coachs'], ['coaches', 'Tous les coachs'], ['people', 'Personnes choisies']] : [['team', myTeams.length > 1 ? 'Une ou plusieurs de mes équipes' : 'Mon équipe']];
   let h = `<div class="field"><span class="lab">Pour</span><div class="chips">${opts.map(([v, l]) => `<button type="button" class="chip" data-act="evaud" data-v="${v}" aria-pressed="${f.aud === v}">${INTERNAL[v] || v === 'people' ? icon('lock', 14) + ' ' : ''}${l}</button>`).join('')}</div></div>`;
+  if (f.aud === 'club') h += `<div class="field"><span class="lab">Supporteurs</span><div class="chips"><button type="button" class="chip" data-act="evsup" data-v="0" aria-pressed="${!f.sup}">${icon('lock', 14)} Membres du club seulement</button><button type="button" class="chip" data-act="evsup" data-v="1" aria-pressed="${!!f.sup}">Tout le club, supporteurs compris</button></div><p class="note">${f.sup ? 'Les supporteurs le voient dans l’Agenda et en sont prévenus.' : 'Les supporteurs ne le voient pas et ne sont pas prévenus.'}</p></div>`; // n° 89
   if (f.aud === 'team') h += `<div class="field"><span class="lab">Équipes (${f.teams.size})</span><div class="chips">${myTeams.map((t) => `<button type="button" class="chip" data-act="evteam" data-id="${t.id}" aria-pressed="${f.teams.has(t.id)}">${esc(t.name)}</button>`).join('') || '<p class="empty">Aucune équipe.</p>'}</div></div>`;
   if (f.aud === 'people') {
     const ppl = [...new Map(S.members.filter((m) => m.status === 'active').map((m) => [m.user_id, m])).keys()].filter((u) => u !== S.me.id).sort((a, b) => name(a).localeCompare(name(b), 'fr'));
@@ -438,16 +441,17 @@ Object.assign(ACTIONS, {
   event: (el, d) => { S.view = { type: 'event', id: d.id }; render(); },
   evnew: (el, d) => {
     const coachT = coachTeams(), team = d.team || (!isBoard() && coachT.length === 1 ? coachT[0] : '');
-    S.form = { type: d.type || 'Entraînement', starts_at: today(), aud: team || !isBoard() ? 'team' : 'club', teams: new Set(team ? [team] : []), people: new Set(), pq: '', conv: new Set(), convMode: 'all' };
+    S.form = { type: d.type || 'Entraînement', starts_at: today(), aud: team || !isBoard() ? 'team' : 'club', sup: supDefault(d.type || 'Entraînement'), teams: new Set(team ? [team] : []), people: new Set(), pq: '', conv: new Set(), convMode: 'all' };
     S.view = { type: 'evform' }; render();
   },
   evedit: (el, d) => {
     const e = S.events.find((x) => x.id === d.id);
-    S.form = { id: e.id, type: e.type, title: e.title, opponents: e.opponents, place: e.place, starts_at: toLocalInput(new Date(e.starts_at)), aud: e.audience, teams: new Set(evTeams(e)), people: new Set(e.people || []), pq: '', conv: new Set(e.convoked || []), convMode: (e.convoked || []).length ? 'some' : 'all', at_home: e.at_home !== false, dur: e.all_day ? 'jour' : String(durOf(e)) };
+    S.form = { id: e.id, type: e.type, title: e.title, opponents: e.opponents, place: e.place, starts_at: toLocalInput(new Date(e.starts_at)), aud: e.audience, sup: e.with_supporters !== false, supSet: true, teams: new Set(evTeams(e)), people: new Set(e.people || []), pq: '', conv: new Set(e.convoked || []), convMode: (e.convoked || []).length ? 'some' : 'all', at_home: e.at_home !== false, dur: e.all_day ? 'jour' : String(durOf(e)) };
     S.view = { type: 'evform' }; render();
   },
-  evtype: (el, d) => { keepForm(); S.form.type = d.v; S.form.dur = String(usualDur(d.v, S.form.teams)); render(true); },
+  evtype: (el, d) => { keepForm(); S.form.type = d.v; if (!S.form.supSet && !S.form.id) S.form.sup = supDefault(d.v); S.form.dur = String(usualDur(d.v, S.form.teams)); render(true); },
   evaud: (el, d) => { keepForm(); S.form.aud = d.v; render(true); },
+  evsup: (el, d) => { keepForm(); S.form.sup = d.v === '1'; S.form.supSet = true; render(true); },
   evteam: (el, d) => { keepForm(); S.form.teams[S.form.teams.has(d.id) ? 'delete' : 'add'](d.id); S.form.conv = new Set(); render(true); },
   evconvm: (el, d) => { keepForm(); S.form.convMode = d.v; render(true); },
   evremind: async (el, d) => { const n = await run(sb.rpc('remind_event', { p_event: d.id })); if (n !== null) { toast(n ? plural(n, 'personne relancée', 'personnes relancées') + ' : un rappel apparaît en haut de leur Accueil.' : 'Tout le monde a déjà répondu.'); await refresh(); } },
@@ -523,7 +527,7 @@ FORMS.evf = async (v) => {
   if (aud === 'people' && !f.people.size) return toast('Choisis au moins une personne.');
   const conv = ['Match', 'Plateau', 'Tournoi'].includes(f.type) && aud === 'team' && f.teams.size === 1 && f.convMode === 'some' ? [...f.conv] : [];
   if (f.convMode === 'some' && conv.length === 0 && ['Match', 'Plateau', 'Tournoi'].includes(f.type) && aud === 'team' && f.teams.size === 1) return toast('Choisis au moins un joueur à convoquer.');
-  const base = { club_id: S.clubId, audience: aud, team_ids: aud === 'team' ? [...f.teams] : [], people: aud === 'people' ? [...f.people] : [], convoked: conv, type: f.type, title: v.title.trim(), place: (v.place || '').trim(), opponents: (v.opponents || '').trim(), at_home: ['Match', 'Plateau', 'Tournoi'].includes(f.type) ? !!v.at_home : true };
+  const base = { club_id: S.clubId, audience: aud, team_ids: aud === 'team' ? [...f.teams] : [], people: aud === 'people' ? [...f.people] : [], convoked: conv, type: f.type, title: v.title.trim(), place: (v.place || '').trim(), opponents: (v.opponents || '').trim(), at_home: ['Match', 'Plateau', 'Tournoi'].includes(f.type) ? !!v.at_home : true, with_supporters: aud === 'club' ? !!f.sup : true };
   const allDay = v.dur === 'jour'; base.all_day = allDay; base.duration_min = allDay ? null : +v.dur || DEF_DUR[f.type] || 120;
   const start = new Date(v.starts_at), th = titleHour(v.title);
   if (th && (th.h !== start.getHours() || th.mi !== start.getMinutes()) && !confirm(`Le titre parle de ${th.h} h ${String(th.mi).padStart(2, '0')}, mais l’heure choisie est ${hm(start)}. Enregistrer quand même ?`)) return;

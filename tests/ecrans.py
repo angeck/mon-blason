@@ -173,7 +173,7 @@ with sync_playwright() as p:
     check('n° 60 : la rangée des casquettes reste visible dans une rubrique', pg.evaluate("document.querySelectorAll('.casq [data-act=casq]').length >= 2"))
     act('[data-act=casq][data-v=coach]')
     check('n° 60 : changer de casquette depuis une rubrique ramène à l’espace choisi', pg.inner_text('.hd .rolepill') == 'Coach' and has('Séances à préparer'))
-    check('n° 63 : petit logo sans rond autour, distinct des boutons ronds', pg.evaluate("!!document.querySelector('.hd .pclogo svg.pcmark') && !document.querySelector('.hd .roundbtn svg.pcmark')"))
+    check('n° 85 : plus de logo dans l’en-tête de l’espace, pastille du rôle seule', pg.evaluate("!document.querySelector('.hd .pclogo') && !!document.querySelector('.hd .rolepill')"))
     act('[data-act=tab][data-i="0"]'); act('[data-act=account]')
     check('n° 66 : « Je participe au bénévolat du club » coché par défaut', pg.evaluate("document.querySelector('[data-volunteer]').checked"))
     pg.once('dialog', lambda d: d.accept()); pg.click('[data-volunteer]'); pg.wait_for_timeout(300)

@@ -4,7 +4,7 @@
 // Réservé à la rubrique Événements (coordinateur, vice-président, président) ; la base le vérifie (convocation_data).
 import { BRAND } from '../config.js';
 import { S, sb, esc, run, toast, render, ACTIONS, hooks, hasArea, onColor, contrast } from './core.js';
-import { header, icon } from './ui.js';
+import { header, icon, crest, ballSrc } from './ui.js';
 import { VIE_VIEWS } from './vie.js';
 
 const MATCHY = ['Match', 'Plateau', 'Tournoi'];
@@ -17,8 +17,8 @@ export function convocBlock(e) {
   <div class="btns"><button class="btn small ghost" data-act="convoc" data-id="${e.id}" data-v="P">${icon('doc', 18)}Pré-convocation</button><button class="btn small main" data-act="convoc" data-id="${e.id}" data-v="C">${icon('doc', 18)}Convocation</button></div></div>`;
 }
 
-const SEAMS = { 'Basket-ball': 'M28 6V50M6 28H50M12 11C21 20 21 36 12 45M44 11C35 20 35 36 44 45', 'Volley-ball': 'M9 21C20 26 33 24 43 9M26 6C22 18 27 31 41 43M11 41C21 33 34 35 49 30' };
-const ballSvg = (px, sport) => `<svg width="${px}" height="${px}" viewBox="0 0 56 56" style="vertical-align:-0.1em"><circle cx="28" cy="28" r="25" fill="#FFC93C" stroke="#11162E" stroke-width="6"/><g fill="none" stroke="#11162E" stroke-width="4.2" stroke-linecap="round"><path d="${SEAMS[sport] || SEAMS['Basket-ball']}"/></g></svg>`;
+const abs = (u) => { try { return new URL(u, location.href).href; } catch { return u; } };
+const ballSvg = (px, sport) => `<img src="${abs(ballSrc(sport))}" width="${px}" height="${px}" alt="" style="vertical-align:-0.1em">`;
 const DAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const dateOf = (s) => new Date(s + 'T12:00:00');
@@ -56,7 +56,8 @@ export const blocking = (d, step) => step === 'C' && d.events.some((x) => !x.can
 export function convocHtml(d, step, now = new Date()) {
   const c = d.club, c1 = c.color1 || '#2F5BFF', c2 = c.color2 || '#FFC93C', txt = onColor(c1), soft = tint(c1), ref = reference(c.name, d.from, step);
   const k = d.correspondent, when = weekendLabel(d.from, d.to), pre = step === 'P';
-  const logo = c.logo ? `<span class="lg"><img src="${esc(c.logo)}" alt=""></span>` : '';
+  // n° 92 : le blason du club tel qu'il est dans l'application (même fonction crest, mêmes réglages) ; sans logo, le ballon 4/4 Pocket Club
+  const logo = c.logo ? `<span class="lg">${crest(c, 58, c1)}</span>` : `<span class="lg"><img src="${abs(ballSrc(null))}" width="62" height="62" alt="Pocket Club"></span>`;
   const corr = k ? [esc(k.name), k.phone ? esc(k.phone) : '', k.email ? esc(k.email) : ''].filter(Boolean).join(' · ') : '';
   const strike = (x, s) => (x.cancelled ? `<s>${s}</s>` : s);
   const status = (x) => (x.cancelled ? '<span class="st">Annulée</span>' : '');
@@ -81,7 +82,7 @@ export function convocHtml(d, step, now = new Date()) {
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=DM+Sans:wght@400;500;700&display=swap">
 <style>@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:'DM Sans',Arial,sans-serif;color:#11162E;font-size:13px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .page{width:210mm;min-height:297mm;display:flex;flex-direction:column}
-.hd{background:${c1};color:${head};padding:14mm 14mm 8mm;display:flex;gap:14px;align-items:center}.lg{width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex:none;overflow:hidden}.lg img{max-width:80%;max-height:80%}
+.hd{background:${c1};color:${head};padding:14mm 14mm 8mm;display:flex;gap:14px;align-items:center}.lg{display:flex;align-items:center;justify-content:center;flex:none}.lg .ecu{display:flex;align-items:center;justify-content:center}
 .hd .nm{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:22px;line-height:1.1}.hd .co{font-size:11.5px;opacity:.92;margin-top:3px}.tag{margin-left:auto;border:1.5px solid ${head};border-radius:20px;padding:5px 12px;font-weight:700;font-size:11px;white-space:nowrap}
 .lis{height:8px;background:${c2}}.ct{padding:9mm 14mm;flex:1}h2{margin:0;font-size:13px;color:${c1};text-transform:uppercase;letter-spacing:.06em}h1{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:26px;margin:4px 0 10px;line-height:1.1}
 table{border-collapse:collapse;width:100%;margin:12px 0}th{color:${c1};text-align:left;font-size:11px;text-transform:uppercase;border-bottom:2px solid ${c1};padding:6px}td{border-bottom:1px solid ${soft};padding:8px 6px;vertical-align:top}small,.sm{color:#4A5068;font-size:11.5px}
