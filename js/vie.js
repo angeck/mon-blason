@@ -76,6 +76,7 @@ function presidentSpace() {
   if (vp.length) h += `<div class="card" style="flex-direction:row;align-items:center;gap:12px;border:3px solid var(--pc-jaune)"><span style="display:flex;flex-direction:column;flex:1"><b style="font-size:18px">${plural(vp.length, 'demande à valider', 'demandes à valider')}</b><span class="det">${esc(Object.entries(byRole).map(([r, n]) => n + ' ' + r).join(', '))}</span></span><button class="btn main small" style="flex:none" data-act="tab" data-i="4">Voir</button></div>`;
   const fees = S.padmin.filter((a) => a.fee_amount != null), due = fees.reduce((a, x) => a + +x.fee_amount, 0), paid = fees.reduce((a, x) => a + Math.min(+x.fee_paid || 0, +x.fee_amount), 0);
   h += `<div class="tiles"><button class="tile" data-act="rub" data-id="secretariat"><b>${S.players.length}</b><span>Licenciés</span></button><button class="tile" data-act="rub" data-id="technique"><b>${S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').length}</b><span>Équipes</span></button><button class="tile ok" data-act="rub" data-id="tresorerie"><b>${due ? Math.round((100 * paid) / due) + ' %' : '—'}</b><span>Cotisations</span></button></div>`;
+  if (S.vstats) h += `<button class="card" data-act="rub" data-id="evenements" style="border:0;text-align:left;font:inherit;color:inherit;flex-direction:row;align-items:center;gap:12px"><span class="g" style="flex:1"><b>Bénévoles</b><span class="det" style="display:block">Membres : ${(S.vstats.members?.yes || []).length} bénévoles · ${(S.vstats.members?.no || []).length} non${S.vstats.supporters ? ` · supporteurs : ${(S.vstats.supporters.yes || []).length} · ${(S.vstats.supporters.no || []).length} non · ${(S.vstats.supporters.none || []).length} sans réponse` : ''}</span></span><span class="chev"></span></button>`;
   const todo = [], noBirth = S.players.filter((p) => !p.birth_date).length, cc = S.coachCounts || {};
   if (noBirth) todo.push(['rub', 'secretariat', plural(noBirth, 'date de naissance manquante', 'dates de naissance manquantes'), 'Secrétariat']);
   if (cc.hours) todo.push(['choursb', '', plural(cc.hours, 'relevé d’heures de coach', 'relevés d’heures de coachs'), 'À valider']);
@@ -136,12 +137,35 @@ function tresoSummary() {
   }
   return h;
 }
+// n° 71 : missions à pourvoir avec relance depuis l'espace ; n° 74 : compteurs ; n° 70 : réglage des supporteurs
+function benevBlock(evs) {
+  const memAll = [...new Map(S.members.filter((x) => x.status === 'active').map((x) => [x.user_id, x])).keys()].sort((a, b) => name(a).localeCompare(name(b), 'fr'));
+  const off = new Set(S.optouts || []), nm = (u) => esc(name(u)) + (off.has(u) ? ' (ne souhaite pas être sollicité)' : '');
+  let h = `<div class="sec"><h2>Missions à pourvoir</h2></div>`;
+  h += evs.length ? evs.map((e) => {
+    const m = missionsOf(e.id), miss = missing(e.id), open = S.mremOpen === e.id;
+    const recent = e.missions_reminded_at && Date.now() - new Date(e.missions_reminded_at) < 12 * 3600e3;
+    const det = m.length ? (miss ? 'il manque ' + m.map((x) => [x.slots - signupsOf(x.id).length, x.label.toLowerCase()]).filter(([n]) => n > 0).map(([n, l]) => n + ' ' + l).join(', ') : 'complet') : 'aucune mission';
+    let r = `<div class="card flat"><button class="row" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(fmtShort(e.starts_at))} · ${esc(det)}${recent ? ' · relancé à ' + hm(new Date(e.missions_reminded_at)) + ', prochaine relance possible à ' + hm(new Date(new Date(e.missions_reminded_at).getTime() + 12 * 3600e3)) : ''}</small></span>${m.length ? (miss ? `<span class="pill wait">Il manque ${miss}</span>` : '<span class="pill ok">Complet</span>') : ''}</button>`;
+    if (!m.length) r += `<button class="btn small ghost" data-act="mdef" data-id="${e.id}">Ajouter les missions par défaut</button>`;
+    else if (miss && !recent) r += open ? remindBox(e, memAll.filter((u) => S.members.some((x) => x.user_id === u && x.status === 'active' && x.role !== 'supporteur') || club()?.supporters_volunteer), nm) : `<button class="btn small main" data-act="mremopen" data-id="${e.id}">Relancer</button>`;
+    return r + '</div>';
+  }).join('') : '<p class="empty">Aucun match ni événement dans les 30 prochains jours.</p>';
+  const v = S.vstats;
+  if (v) {
+    const cnt = (o, k) => (o?.[k] || []).length, cats = v.members?.cats || {};
+    h += `<div class="sec"><h2>Bénévoles</h2></div><div class="card"><button class="row" data-act="vlist" data-v="members"><span class="g">Membres (hors supporteurs) : ${cnt(v.members, 'yes')} bénévoles · ${cnt(v.members, 'no')} non<small>${esc(Object.entries(cats).map(([k, [y, n]]) => `${k} ${y} / ${y + n}`).join(' · '))}</small></span><span class="chev"></span></button>`
+      + (v.supporters ? `<button class="row" data-act="vlist" data-v="supporters"><span class="g">Supporteurs : ${cnt(v.supporters, 'yes')} bénévoles · ${cnt(v.supporters, 'no')} non · ${cnt(v.supporters, 'none')} sans réponse</span><span class="chev"></span></button>` : '')
+      + (S.vlist ? `<p class="note">${S.vlist === 'members' ? `<b>Bénévoles :</b> ${(v.members.yes || []).map((u) => esc(name(u))).join(', ') || '—'}<br><b>Non :</b> ${(v.members.no || []).map((u) => esc(name(u))).join(', ') || '—'}` : `<b>Bénévoles :</b> ${(v.supporters?.yes || []).map((u) => esc(name(u))).join(', ') || '—'}<br><b>Non :</b> ${(v.supporters?.no || []).map((u) => esc(name(u))).join(', ') || '—'}<br><b>Sans réponse :</b> ${(v.supporters?.none || []).map((u) => esc(name(u))).join(', ') || '—'}`}</p>` : '')
+      + `</div>`;
+  }
+  h += `<div class="card"><label class="switch"><input type="checkbox" data-supvolclub="1" ${club()?.supporters_volunteer ? 'checked' : ''}><span><b>Les supporteurs peuvent être bénévoles</b><br><span class="det">Supporteurs majeurs : événements du club et matchs des équipes qu’ils suivent. Ils répondent à un encart sur l’Accueil.</span></span></label></div>`;
+  return h;
+}
 function eventsRub() {
   const soon = Date.now() + 30 * 864e5;
   const evs = upcoming(S.events.filter((e) => !e.cancelled && new Date(e.starts_at) < soon && ['Match', 'Plateau', 'Tournoi', 'Événement', 'AG'].includes(e.type)));
-  let h = `<button class="btn main" data-act="evnew" data-type="Événement">${icon('plus', 20)}Nouvel événement</button>`;
-  h += `<div class="sec"><h2>Bénévoles des 30 prochains jours</h2></div>`;
-  h += evs.length ? `<div class="card"><div class="list">${evs.map((e) => { const m = missionsOf(e.id), miss = missing(e.id); return `<button class="row" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(fmtShort(e.starts_at))}${m.length ? '' : ' · aucune mission'}</small></span>${m.length ? (miss ? `<span class="pill wait">Il manque ${miss}</span>` : '<span class="pill ok">Complet</span>') : ''}</button>`; }).join('')}</div></div>` : '<p class="empty">Aucun match ni événement dans les 30 prochains jours.</p>';
+  let h = benevBlock(evs) + `<button class="btn main" data-act="evnew" data-type="Événement">${icon('plus', 20)}Nouvel événement</button>`;
   const dm = S.dm || (S.dm = (club()?.default_missions || []).map((x) => ({ ...x })));
   h += `<div class="sec"><h2>Missions par défaut du club</h2></div><div class="card"><div class="list">${dm.map((x, i) => `<div class="row static"><input aria-label="Mission ${i + 1}" data-dml="${i}" value="${esc(x.label)}" maxlength="40" style="flex:1;min-width:0;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 10px"><input type="number" aria-label="Places" data-dms="${i}" value="${esc(x.slots)}" min="1" max="20" style="width:70px;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 8px"><button class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="dmrm" data-i="${i}" aria-label="Retirer">${icon('trash', 18)}</button></div>`).join('')}</div>
   <div class="btns"><button class="btn ghost small" data-act="dmadd">${icon('plus', 18)}Ajouter</button><button class="btn main small" data-act="dmsave">Enregistrer</button></div><p class="note">Proposées en un geste sur chaque match, plateau, tournoi ou événement.</p></div>`;
@@ -332,6 +356,8 @@ Object.assign(ACTIONS, {
   vassign: async () => { const u = document.getElementById('mia')?.value, m = document.getElementById('mim')?.value; if (!u) return toast('Choisis une personne.'); if (await run(sb.rpc('assign_volunteer', { p_mission: m, p_user: u, p_on: true }), 'Bénévole inscrit.')) { await reloadMissions(); render(true); } },
   mdef: async (el, d) => { const n = await run(sb.rpc('add_default_missions', { p_event: d.id })); if (n !== null) { toast(plural(n, 'mission ajoutée', 'missions ajoutées') + '.'); await reloadMissions(); render(true); } },
   mdelm: async (el, d) => { if (!armed('mi' + d.id)) return; if (await run(sb.from('event_missions').delete().eq('id', d.id), 'Mission retirée.')) { await reloadMissions(); render(true); } },
+  mremopen: (el, d) => { S.mremOpen = d.id; S.mrem = null; render(true); },
+  vlist: (el, d) => { S.vlist = S.vlist === d.v ? null : d.v; render(true); },
   mremt: (el, d) => { S.mrem.target = d.v; render(true); },
   mremteam: (el, d) => { S.mrem.teams[S.mrem.teams.has(d.id) ? 'delete' : 'add'](d.id); render(true); },
   mremind: async (el, d) => {
@@ -375,6 +401,7 @@ INPUTS.push((t) => {
   return false;
 });
 CHANGES.push(async (t) => {
+  if (t.dataset.supvolclub) { const on = t.checked; if (await run(sb.rpc('set_supporters_volunteer', { p_club: S.clubId, p_on: on }), on ? 'Bénévolat ouvert aux supporteurs.' : 'Bénévolat fermé aux supporteurs.')) { club().supporters_volunteer = on; await refresh(); } else t.checked = !on; return true; }
   if (t.dataset.mremp) { S.mrem.people[t.checked ? 'add' : 'delete'](t.dataset.mremp); render(true); return true; }
   if (t.dataset.clubset) {
     const k = t.dataset.clubset, v = t.checked;

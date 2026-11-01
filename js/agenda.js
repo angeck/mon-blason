@@ -2,7 +2,7 @@
 import {
   S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, CHANGES, INPUTS, TEAM_TYPES, club, active, isBoard, coachOf, coachTeams,
   teamName, teamsLabel, evTeams, name, pl, pname, parentsOf, myKidsIn, iPlayIn, inTeam, playersOfTeam, fmtDate, hm, localDay, inHolidays,
-  toLocalInput, fmtDay, plural, download, norm, follows, hooks, hasArea, myMem,
+  toLocalInput, fmtDay, plural, download, norm, follows, hooks, hasArea, myMem, isPresident,
 } from './core.js';
 import { icon, dayBadge, delBtn, field } from './ui.js';
 import { missionsBlock, myMissionLabel } from './vie.js';
@@ -11,6 +11,8 @@ const INTERNAL = { board: 'Bureau', board_coaches: 'Bureau et coachs', coaches: 
 const SUB_TYPES = { Entraînements: ['Entraînement'], Matchs: ['Match', 'Plateau', 'Tournoi'], Événements: ['Événement', 'Réunion', 'AG'] };
 export const types = () => (isBoard() ? ['Entraînement', 'Match', 'Plateau', 'Tournoi', 'Événement', 'Réunion', 'AG'] : ['Entraînement', 'Match', 'Plateau', 'Tournoi']);
 export const canManageEvent = (e) => isBoard() || (e.audience === 'team' && evTeams(e).some(coachOf));
+// n° 72 : l'appel et la convocation reviennent aux coachs de l'équipe et au président
+export const canCallRoll = (e) => isPresident() || (e.audience === 'team' && evTeams(e).some(coachOf));
 
 // ---------- réponses ----------
 export function respOf(eid) {
@@ -205,6 +207,7 @@ function audienceField(f) {
 // Convocation de joueurs choisis : match, plateau ou tournoi d'une seule équipe
 function convField(f) {
   if (!['Match', 'Plateau', 'Tournoi'].includes(f.type) || f.aud !== 'team' || f.teams.size !== 1) return '';
+  if (!isPresident() && ![...f.teams].every(coachOf)) return '<p class="note">La convocation des joueurs est faite par le coach de l’équipe.</p>';
   const tid = [...f.teams][0], ps = playersOfTeam(tid).sort((a, b) => pname(a).localeCompare(pname(b), 'fr'));
   let h = `<div class="field"><span class="lab">Convoquer</span><div class="chips"><button type="button" class="chip" data-act="evconvm" data-v="all" aria-pressed="${f.convMode !== 'some'}">Toute l'équipe</button><button type="button" class="chip" data-act="evconvm" data-v="some" aria-pressed="${f.convMode === 'some'}">Joueurs choisis${f.convMode === 'some' ? ' (' + f.conv.size + ')' : ''}</button></div></div>`;
   if (f.convMode === 'some') h += `<div class="card flat" style="max-height:320px;overflow:auto;gap:0">${ps.map((p) => `<label class="check" style="padding:6px 0"><input type="checkbox" data-evconv="${p.id}" ${f.conv.has(p.id) ? 'checked' : ''}><span>${esc(pname(p))}</span></label>`).join('') || '<p class="empty">Aucune fiche joueur.</p>'}</div><p class="note">Seuls les joueurs choisis (et leurs parents) répondent ; les autres voient le rendez-vous sans être convoqués.</p>`;
@@ -256,7 +259,7 @@ export function eventPage(id) {
   const plans = (S.evPlans || []).filter((p) => p.event_id === id);
   if (plans.length) h += `<div class="card pale"><div class="kick">Séance prévue</div>${plans.map((p) => `<button class="row" data-act="pview" data-id="${p.id}"><span class="g">${esc(p.title)}<small>${plural(p.items.length, 'exercice')} · ${p.items.reduce((a, x) => a + (+x.minutes || 0), 0)} min · imprimer ou PDF</small></span></button>`).join('')}</div>`;
   if (man) {
-    if (isTeamType(e) && !e.cancelled && !coachOnly(e)) h += `<button class="btn main" data-act="appel" data-id="${id}">Faire l'appel</button>`;
+    if (isTeamType(e) && !e.cancelled && !coachOnly(e) && canCallRoll(e)) h += `<button class="btn main" data-act="appel" data-id="${id}">Faire l'appel</button>`;
     h += `<div class="btns"><button class="btn ghost" data-act="evedit" data-id="${id}">Modifier</button><button class="btn ghost" data-act="evcancel" data-id="${id}">${e.cancelled ? 'Rétablir' : 'Annuler le rendez-vous'}</button></div>`;
     if (e.series_id) {
       const k1 = 'ev1' + id, k2 = 'evs' + id;

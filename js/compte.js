@@ -26,9 +26,10 @@ export function accountScreen() {
   ${field('pm', 'Adresse e-mail', `<input id="pm" value="${esc(S.session.user.email)}" readonly>`)}
   ${field('pt', "Téléphone (visible de l'encadrement et des familles concernées)", `<input id="pt" name="phone" type="tel" value="${esc(me.phone || '')}">`)}
   <label class="check"><input type="checkbox" name="optin" ${me.optin_emails ? 'checked' : ''}><span>Recevoir les e-mails d'information de ${esc(BRAND.name)}</span></label>
-  ${active().some((m) => m.role !== 'supporteur') ? `<label class="check"><input type="checkbox" data-volunteer="1" ${me.volunteer === false ? '' : 'checked'}><span>Je participe au bénévolat du club<small class="det" style="display:block">Tu reçois les demandes « On cherche des bénévoles » et les relances.</small></span></label>` : ''}
+
   <button class="btn main" type="submit">Enregistrer mon profil</button></form>`;
   h += roleRequest();
+  h += benevolatCard();
   h += pushCard();
   // n° 42 : le président et les membres du bureau peuvent se déclarer contacts du club
   if (c && isBoard()) {
@@ -45,6 +46,17 @@ export function accountScreen() {
   <button class="btn ghost" data-act="legal">Mentions légales, confidentialité et conditions</button>
   <p class="note" style="text-align:center">${esc(S.session.user.email)} · ${esc(BRAND.name)} ${esc(VERSION)}</p></main>`;
   return h;
+}
+// n° 69, 70 : rubrique Bénévolat toujours visible ; ligne grisée qui dit pourquoi quand on ne peut pas être bénévole
+function benevolatCard() {
+  const c = club(); if (!c) return '';
+  const real = active().some((m) => m.role !== 'supporteur'), minor = S.players.some((p) => p.user_id === S.me.id && (!p.birth_date || new Date(p.birth_date) > new Date(Date.now() - 18 * 365.25 * 864e5)));
+  let body;
+  if (minor) body = '<p class="note">Le bénévolat est réservé aux adultes.</p>';
+  else if (real) body = `<label class="check"><input type="checkbox" data-volunteer="1" ${S.me.volunteer === false ? '' : 'checked'}><span>Je participe au bénévolat du club<small class="det" style="display:block">Tu reçois les demandes « On cherche des bénévoles » et les relances.</small></span></label>`;
+  else if (c.supporters_volunteer) body = `<label class="check"><input type="checkbox" data-supvol="1" ${S.me.supporter_volunteer ? 'checked' : ''}><span>Je participe au bénévolat du club<small class="det" style="display:block">Événements du club et matchs des équipes que tu suis.</small></span></label>`;
+  else body = '<p class="note">Le club n’ouvre pas le bénévolat aux supporteurs.</p>';
+  return `<div class="sec"><h2>Bénévolat</h2></div><div class="card">${body}</div>`;
 }
 // Compte dont la suppression est demandée
 export function deletedScreen() {
@@ -83,6 +95,11 @@ FORMS.proff = async (v) => {
 };
 INPUTS.push((t) => { if (t.dataset.r && t.type !== 'checkbox') { S.rq[t.dataset.r] = t.value; return true; } return false; });
 // n° 66 : décocher le bénévolat demande confirmation ; le coordinateur et le président sont prévenus (par la base)
+CHANGES.push(async (t) => {
+  if (!t.dataset.supvol) return false;
+  if (await run(sb.rpc('set_supporter_volunteer', { p_on: t.checked }), t.checked ? 'Merci ! Tu participes au bénévolat du club.' : 'C’est noté.')) S.me.supporter_volunteer = t.checked; else t.checked = !t.checked;
+  return true;
+});
 CHANGES.push(async (t) => {
   if (!t.dataset.volunteer) return false;
   const on = t.checked;

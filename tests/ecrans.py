@@ -178,6 +178,13 @@ with sync_playwright() as p:
     check('n° 66 : « Je participe au bénévolat du club » coché par défaut', pg.evaluate("document.querySelector('[data-volunteer]').checked"))
     pg.once('dialog', lambda d: d.accept()); pg.click('[data-volunteer]'); pg.wait_for_timeout(300)
     check('n° 66 : décocher demande confirmation puis enregistre', pg.evaluate("window.__VOL === false"))
+    check('n° 69 : rubrique « Bénévolat » visible dans Mon compte', has('Bénévolat') and pg.evaluate("!!document.querySelector('[data-volunteer]')"))
+    act('[data-act=back]'); act('[data-act=espace]'); act('[data-act=casq][data-v="f:Trésorier"]'); act('[data-act=rub][data-id=evenements]')
+    check('n° 71 : missions à pourvoir et relance depuis la rubrique Événements', has('Missions à pourvoir') and (has('Relancer') or has('Ajouter les missions par défaut')))
+    check('n° 74 : compteur des bénévoles (membres)', has('Membres (hors supporteurs) : 2 bénévoles · 1 non'))
+    pg.click('[data-supvolclub]'); pg.wait_for_timeout(400)
+    check('n° 70 : réglage « Les supporteurs peuvent être bénévoles » et compteur des supporteurs', pg.evaluate("window.__CALLS.some(c => c[1] === 'set_supporters_volunteer' && c[2].p_on === true)") and has('Supporteurs : 0 bénévoles · 0 non · 1 sans réponse'))
+    act('[data-act=casq][data-v=coach]'); act('[data-act=tab][data-i="0"]'); act('[data-act=account]')
     # ---------- alpha 3.3 · notifications (étape B, partie application) ----------
     pg.evaluate("""async () => {
       const sub = { endpoint: 'https://push.exemple.invalid/abc123456789012345678901234', toJSON() { return { endpoint: this.endpoint, keys: { p256dh: 'cle-publique-fictive', auth: 'secret-fictif' } }; }, unsubscribe: async () => true };

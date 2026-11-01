@@ -75,7 +75,7 @@ w("grant usage on schema public, auth to authenticated; grant select, insert, up
 w("revoke select on profiles from authenticated; grant select (id, full_name, first_name, last_name, nickname, created_at, show_all_club) on profiles to authenticated;")
 w("revoke execute on function activate_membership(uuid, uuid, uuid) from authenticated;")
 w("revoke execute on function link_unlinked_trainings() from authenticated, anon;")  # comme dans alpha_3_2_4.sql
-w("revoke execute on function club_helper(uuid, uuid, uuid[]), has_real_role(uuid, uuid) from authenticated, anon;")  # comme dans alpha_3_4_1.sql
+w("revoke execute on function club_helper(uuid, uuid, uuid[]), has_real_role(uuid, uuid), is_minor_in(uuid, uuid), supporter_can_help(uuid, uuid), wants_volunteer(uuid, uuid) from authenticated, anon;")  # comme dans alpha_3_4_1.sql
 w("revoke execute on function push_claim(int), push_result(bigint[], bigint[], text[], text), push_cleanup(), push_enqueue(uuid, text, text, text, text, text), push_event_targets(uuid, uuid), push_announcement_targets(uuid, uuid), push_as(uuid), push_restore(text, text) from authenticated, anon;")  # comme dans alpha_3_3.sql
 w("grant usage on schema public to anon; grant execute on all functions in schema public to anon; grant select on all tables in schema public to anon; revoke select on profiles from anon;")  # comme Supabase
 
@@ -1024,6 +1024,43 @@ w("set role authenticated;")
 ASK("pU9"); w("select push_subscribe('https://push.exemple.invalid/partage', 'cle-publique-partagee', 'secret-partage', 'test');")
 w("reset role;")
 ok("n° 62 · sans l'option, le téléphone passe au seul compte ouvert", f"(select array_agg(user_id) from push_subscriptions where endpoint = 'https://push.exemple.invalid/partage') = array[{K('pU9')}]")
+w("set role authenticated;")
+
+section("3.4.2 · n° 69 à 74")
+w("reset role;")
+w(f"insert into tests.kv values ('b4', '{people['b4'][0]}'), ('b5', '{people['b5'][0]}') on conflict (k) do update set v = excluded.v;")
+w(f"update memberships set fonction = 'Coordinateur' where user_id = {K('b5')} and club_id = {C1} and role = 'bureau';")
+w(f"delete from board_areas where user_id = {K('b5')} and club_id = {C1};")
+w("set role authenticated;")
+ASK("b4"); fails("n° 70 · le trésorier n'ouvre pas le bénévolat aux supporteurs", f"select set_supporters_volunteer({C1}, true)")
+ASK("s7"); fails("n° 70 · réglage éteint : un supporteur ne s'inscrit pas", "select volunteer((select m.id from event_missions m join events e on e.id = m.event_id where e.title = 'Match bénévoles U9' order by m.position limit 1), true)")
+ASK("b5"); works("n° 70 · le coordinateur ouvre le bénévolat aux supporteurs", f"select set_supporters_volunteer({C1}, true)")
+w("reset role;")
+ok("n° 70 · réglage inscrit au journal", "exists(select 1 from action_log where action = 'benevolat_supporteurs' and detail->>'ouvert' = 'true')")
+w("set role authenticated;")
+ASK("s7"); fails("n° 70 · réglage ouvert : pas de mission sur le match d'une équipe non suivie", "select volunteer((select m.id from event_missions m join events e on e.id = m.event_id where e.title = 'Match bénévoles U9' order by m.position offset 1 limit 1), true)")
+ASK("s7"); w(f"insert into team_follows(user_id, team_id) values (auth.uid(), {T('U9')}) on conflict do nothing;")
+ASK("s7"); works("n° 70 · réglage ouvert : inscription possible sur un match d'une équipe suivie", "select volunteer((select m.id from event_missions m join events e on e.id = m.event_id where e.title = 'Match bénévoles U9' order by m.position offset 1 limit 1), true)")
+ASK("s7"); works("n° 70 · le supporteur répond « Non merci »", "select set_supporter_volunteer(false)")
+ASK("b5"); ok("n° 74 · compteurs : le supporteur compte dans « non », séparé des membres", f"{K('s7')}::text in (select jsonb_array_elements_text(volunteer_stats({C1})->'supporters'->'no')) and not {K('s7')}::text in (select jsonb_array_elements_text(volunteer_stats({C1})->'members'->'no'))")
+ASK("cU9"); fails("n° 74 · un coach ne voit pas les compteurs", f"select volunteer_stats({C1})")
+# n° 72 : appel et convocation
+ASK("b5"); fails("n° 72 · le coordinateur ne fait pas l'appel", f"insert into attendance(event_id, player_id, status) values ((select id from events where title = 'Match bénévoles U9'), {K('p1')}, 'present')")
+ASK("b5"); fails("n° 72 · le coordinateur ne convoque pas", f"update events set convoked = array[{K('p1')}] where title = 'Match bénévoles U9'")
+ASK("b5"); works("n° 72 · le coordinateur change l'heure et le lieu", "update events set starts_at = starts_at + interval '1 hour', place = 'Salle B' where title = 'Match bénévoles U9'")
+ASK("cU9"); works("n° 72 · le coach de l'équipe fait l'appel", f"insert into attendance(event_id, player_id, status) values ((select id from events where title = 'Match bénévoles U9'), {K('p1')}, 'present')")
+ASK("cU9"); works("n° 72 · le coach de l'équipe convoque", f"update events set convoked = array[{K('p1')}] where title = 'Match bénévoles U9'")
+ASK("pres"); works("n° 72 · la présidente fait l'appel de toute équipe", f"insert into attendance(event_id, player_id, status) values ((select id from events where title = 'Match bénévoles U9'), {K('p1')}, 'retard') on conflict (event_id, player_id) do update set status = 'retard'")
+w("reset role;")
+ok("n° 72 · l'appel du coordinateur n'a rien enregistré", f"(select status from attendance where event_id = (select id from events where title = 'Match bénévoles U9') and player_id = {K('p1')}) = 'retard'")
+# n° 73 : notifications du bénévolat
+w("delete from push_queue where title = 'Bénévolat';")
+w(f"update profiles set volunteer = true where id = {K('pU9b')};")
+ok("n° 73 · se remettre bénévole ne prévient personne", "not exists(select 1 from push_queue where title = 'Bénévolat')")
+w(f"update profiles set volunteer = false where id = {K('s7')};")
+ok("n° 73 · un supporteur qui décoche ne prévient personne", "not exists(select 1 from push_queue where title = 'Bénévolat')")
+w(f"update profiles set volunteer = false where id = {K('pU9b')};")
+ok("n° 73 · un parent qui décoche prévient la présidente", f"exists(select 1 from push_queue where title = 'Bénévolat' and user_id = {K('pres')})")
 w("set role authenticated;")
 
 section("Départs et redemandes")

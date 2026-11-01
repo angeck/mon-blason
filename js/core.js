@@ -215,6 +215,7 @@ export async function loadClub() {
   // n° 66 : personnes qui ne souhaitent pas être sollicitées pour le bénévolat (rubrique Événements seulement)
   S.optouts = S.areas.includes('evenements') ? (await sb.rpc('volunteer_optouts', { p_club: cid })).data : [];
   if (!Array.isArray(S.optouts)) S.optouts = [];
+  S.vstats = S.areas.includes('evenements') ? (await sb.rpc('volunteer_stats', { p_club: cid })).data || null : null;
   const clubIds = [...new Set(S.mems.filter((m) => m.status === 'active').map((m) => m.club_id))];
   S.overview = clubIds.length > 1 ? ((await sb.rpc('my_clubs_overview')).data || []) : [];
   S.payments = pay.data || []; S.follows = (fol.data || []).map((x) => x.team_id); S.cteams = ct.data || []; S.myGroups = mg.data || [];
