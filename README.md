@@ -1,4 +1,4 @@
-# Pocket Club (nom provisoire) · alpha 3.5.0
+# Pocket Club (nom provisoire) · alpha 3.5.1
 
 Application web installable (PWA) pour les clubs sportifs : agenda avec réponses « Je viens / Je ne viens pas », appel, fiches joueurs, licences et cotisations, groupes d'échange (messages en direct, sondages), équipes, membres, corbeille de 30 jours.
 
@@ -29,6 +29,10 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 - `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (213 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
 
 Toutes les personnes des tests sont fictives.
+
+## Alpha 3.5.1
+
+Pas de changement de base : aucun script Supabase à lancer. Nouvelle icône de l'application : ballon multisport seul sur carré bleu #2F5BFF, sans texte (icônes any, maskable avec le ballon dans la zone sûre, apple-touch-icon). Livrée sans relancer les tests.
 
 ## Alpha 3.5.0
 

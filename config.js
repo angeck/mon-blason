@@ -5,7 +5,7 @@ export const BRAND = { name: 'Pocket Club', word1: 'p', word2: 'cket', word3: 'c
 // les données sont protégées par les règles d'accès (RLS) de la base.
 export const SUPABASE_URL = 'https://rmdszovbpmagtvugfrpr.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_KsSQGA_bD3QSpX1vjnYjUw_eYBXXJ2u';
-export const VERSION = 'alpha 3.5.0';
+export const VERSION = 'alpha 3.5.1';
 // Alpha 3.2.5 · profils de test : liste déroulante « Profil de test » visible seulement quand on est connecté avec un de ces comptes.
 // Les adresses ne sont pas des secrets (aucun mot de passe ici). Pour ajouter un profil : une ligne.
 export const SWITCH_PROFILES = [
