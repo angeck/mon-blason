@@ -129,7 +129,7 @@ export const FONCTIONS = ['Vice-président', 'Secrétaire', 'Secrétaire adjoint
 // Casquettes de l'espace (charte du 31 octobre) : Coach, Président, chaque fonction du bureau
 export function casquettes() {
   const l = [], ct = coachTeams().filter((t) => S.teams.some((x) => x.id === t));
-  if (ct.length) l.push({ k: 'coach', label: 'Coach' + (ct.length === 1 ? ' ' + (S.teams.find((x) => x.id === ct[0])?.name || '') : ''), pill: 'Coach' });
+  if (ct.length) l.push({ k: 'coach', label: 'Coach ' + ct.map((t) => S.teams.find((x) => x.id === t)?.name || '').filter(Boolean).join(' · '), pill: 'Coach' });
   if (isPresident()) l.push({ k: 'president', label: 'Président', pill: 'Président' });
   active().filter((m) => m.role === 'bureau').forEach((m) => { const f = m.fonction || 'Membre du bureau'; if (!l.some((x) => x.k === 'f:' + f)) l.push({ k: 'f:' + f, label: f, pill: f === 'Membre du bureau' ? 'Bureau' : f.replace(/ adjoint$/, '').replace('Responsable ', '').replace('Chargé de ', '') }); });
   return l;
@@ -212,6 +212,9 @@ export async function loadClub() {
   ]);
   S.areas = ar.data || []; S.annonces = an.data || []; S.annRead = new Set((anr.data || []).map((x) => x.announcement_id)); S.missions = mis.data || [];
   S.signups = S.missions.length ? ((await sb.from('mission_signups').select('*').in('mission_id', S.missions.map((m) => m.id))).data || []) : [];
+  // n° 66 : personnes qui ne souhaitent pas être sollicitées pour le bénévolat (rubrique Événements seulement)
+  S.optouts = S.areas.includes('evenements') ? (await sb.rpc('volunteer_optouts', { p_club: cid })).data : [];
+  if (!Array.isArray(S.optouts)) S.optouts = [];
   const clubIds = [...new Set(S.mems.filter((m) => m.status === 'active').map((m) => m.club_id))];
   S.overview = clubIds.length > 1 ? ((await sb.rpc('my_clubs_overview')).data || []) : [];
   S.payments = pay.data || []; S.follows = (fol.data || []).map((x) => x.team_id); S.cteams = ct.data || []; S.myGroups = mg.data || [];

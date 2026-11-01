@@ -1,6 +1,6 @@
 // Pocket Club · Mon compte : profil, autres rôles, clubs, mes données (export, suppression), déconnexion.
 import { BRAND, VERSION } from '../config.js';
-import { S, sb, esc, roleLabel, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, JOIN_ROLES, club, myMem, isBoard, isPresident, teamName, niceFirst, niceLast, download, fmtDay, store } from './core.js';
+import { S, sb, esc, roleLabel, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, JOIN_ROLES, club, myMem, active, isBoard, isPresident, teamName, niceFirst, niceLast, download, fmtDay, store } from './core.js';
 import { header, crest, icon, delBtn, field } from './ui.js';
 import { roleExtra, checkRole, newPwdFields } from './auth.js';
 import { pushCard } from './notif.js';
@@ -26,6 +26,7 @@ export function accountScreen() {
   ${field('pm', 'Adresse e-mail', `<input id="pm" value="${esc(S.session.user.email)}" readonly>`)}
   ${field('pt', "Téléphone (visible de l'encadrement et des familles concernées)", `<input id="pt" name="phone" type="tel" value="${esc(me.phone || '')}">`)}
   <label class="check"><input type="checkbox" name="optin" ${me.optin_emails ? 'checked' : ''}><span>Recevoir les e-mails d'information de ${esc(BRAND.name)}</span></label>
+  ${active().some((m) => m.role !== 'supporteur') ? `<label class="check"><input type="checkbox" data-volunteer="1" ${me.volunteer === false ? '' : 'checked'}><span>Je participe au bénévolat du club<small class="det" style="display:block">Tu reçois les demandes « On cherche des bénévoles » et les relances.</small></span></label>` : ''}
   <button class="btn main" type="submit">Enregistrer mon profil</button></form>`;
   h += roleRequest();
   h += pushCard();
@@ -81,6 +82,14 @@ FORMS.proff = async (v) => {
   if (await run(sb.from('profiles').update({ first_name: niceFirst(v.first_name), last_name: niceLast(v.last_name), nickname: (v.nickname || '').trim() || null, phone: (v.phone || '').trim() || null, optin_emails: !!v.optin }).eq('id', S.me.id), 'Profil enregistré.')) await refresh();
 };
 INPUTS.push((t) => { if (t.dataset.r && t.type !== 'checkbox') { S.rq[t.dataset.r] = t.value; return true; } return false; });
+// n° 66 : décocher le bénévolat demande confirmation ; le coordinateur et le président sont prévenus (par la base)
+CHANGES.push(async (t) => {
+  if (!t.dataset.volunteer) return false;
+  const on = t.checked;
+  if (!on && !confirm('Le club compte sur chacun pour aider au moins une fois dans la saison. Ne plus être sollicité ?')) { t.checked = true; return true; }
+  if (await run(sb.rpc('set_volunteer', { p_on: on }), on ? 'Merci ! Tu participes au bénévolat du club.' : 'C’est noté : tu ne seras plus sollicité. Le coordinateur et le président sont prévenus.')) S.me.volunteer = on; else t.checked = !on;
+  return true;
+});
 CHANGES.push(async (t) => {
   if (!t.dataset.contact) return false;
   const k = t.dataset.contact, first = !S.myContact || (!S.myContact.for_licence && !S.myContact.for_matches);

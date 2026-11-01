@@ -112,7 +112,9 @@ function fonctionSpace(f) {
 // ---------- rubriques (n° 55) ----------
 function rubView(a) {
   const ok = a === 'commun' ? isBoard() : hasArea(a);
-  return { head: header({ back: true, kicker: 'Rubrique', title: esc(AREAS[a] || 'Commun') }), body: ok ? rubBody(a) : '<div class="card"><p class="empty">Cette rubrique n’est pas ouverte pour toi. Le président peut l’ouvrir dans « Fonctions du bureau ».</p></div>' };
+  // n° 60 : la rangée des casquettes reste visible dans les rubriques, pour changer de casquette sans revenir en arrière
+  currentCasq();
+  return { head: header({ back: true, kicker: 'Rubrique', title: esc(AREAS[a] || 'Commun') }), body: ok ? casqTabs() + rubBody(a) : '<div class="card"><p class="empty">Cette rubrique n’est pas ouverte pour toi. Le président peut l’ouvrir dans « Fonctions du bureau ».</p></div>' };
 }
 function rubBody(a) {
   if (a === 'tresorerie') return tresoSummary() + feesBlock() + licencesBlock();
@@ -177,9 +179,24 @@ export function missionsBlock(e) {
     const mem = [...new Map(S.members.filter((x) => x.status === 'active' && x.role !== 'supporteur').map((x) => [x.user_id, x])).keys()].sort((a, b) => name(a).localeCompare(name(b), 'fr'));
     if (!ms.length) h += `<button class="btn main small" data-act="mdef" data-id="${e.id}">Ajouter les missions du club (${(club()?.default_missions || []).map((x) => x.label).join(', ')})</button>`;
     h += `<form id="mif" data-id="${e.id}" class="grid2" style="align-items:end">${field('mil', 'Autre mission', '<input id="mil" name="label" maxlength="40" placeholder="Ex. Photos, Accueil" required>')}${field('mis', 'Places', '<input id="mis" name="slots" type="number" min="1" max="20" value="1" required>')}<button class="btn ghost small" type="submit">${icon('plus', 18)}Ajouter la mission</button></form>`;
-    if (ms.length) h += `<div class="grid2" style="align-items:end">${field('mia', 'Inscrire quelqu’un', `<select id="mia" data-massign="1"><option value="">Choisir…</option>${mem.map((u) => `<option value="${u}">${esc(name(u))}</option>`).join('')}</select>`)}${field('mim', 'Sur la mission', `<select id="mim">${ms.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('')}</select>`)}</div><div class="btns"><button class="btn small" data-act="vassign">Inscrire</button>${missing(e.id) ? `<button class="btn small main" data-act="mremind" data-id="${e.id}">Relancer les missions vides</button>` : ''}</div>`;
+    const off = new Set(S.optouts || []), nm = (u) => esc(name(u)) + (off.has(u) ? ' (ne souhaite pas être sollicité)' : '');
+    if (ms.length) h += `<div class="grid2" style="align-items:end">${field('mia', 'Inscrire quelqu’un', `<select id="mia" data-massign="1"><option value="">Choisir…</option>${mem.map((u) => `<option value="${u}">${nm(u)}</option>`).join('')}</select>`)}${field('mim', 'Sur la mission', `<select id="mim">${ms.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('')}</select>`)}</div><div class="btns"><button class="btn small" data-act="vassign">Inscrire</button></div>`;
+    if (ms.length && missing(e.id)) h += remindBox(e, mem, nm);
+    if (off.size && hasArea('evenements')) { const l = mem.filter((u) => off.has(u)); if (l.length) h += `<p class="note">Ne souhaite${l.length > 1 ? 'nt' : ''} pas être sollicité${l.length > 1 ? 's' : ''} pour le bénévolat : ${l.map((u) => esc(name(u))).join(', ')}.</p>`; }
   }
   return h + '</div>';
+}
+// N° 67 : relance des missions vides vers le rendez-vous, tout le club, des équipes ou des personnes choisies (une fois toutes les 12 heures)
+function remindBox(e, mem, nm) {
+  const r = S.mrem && S.mrem.eid === e.id ? S.mrem : (S.mrem = { eid: e.id, target: 'event', teams: new Set(evTeams(e)), people: new Set() });
+  const recent = e.missions_reminded_at && Date.now() - new Date(e.missions_reminded_at) < 12 * 3600e3;
+  const T = [['event', 'Les concernés'], ['club', 'Tout le club'], ['teams', 'Des équipes'], ['people', 'Des personnes']];
+  let h = `<div class="card flat"><div class="kick">Relancer les missions vides</div><div class="chips">${T.map(([k, l]) => `<button class="chip" data-act="mremt" data-v="${k}" aria-pressed="${r.target === k}">${l}</button>`).join('')}</div>`;
+  if (r.target === 'teams') h += `<div class="chips">${S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').map((t) => `<button class="chip" data-act="mremteam" data-id="${t.id}" aria-pressed="${r.teams.has(t.id)}">${esc(t.name)}</button>`).join('')}</div>`;
+  if (r.target === 'people') h += `<div class="card flat" style="max-height:240px;overflow:auto;gap:0">${mem.map((u) => `<label class="check" style="padding:6px 0"><input type="checkbox" data-mremp="${u}" ${r.people.has(u) ? 'checked' : ''}><span>${nm(u)}</span></label>`).join('')}</div>`;
+  const note = { event: 'Les personnes qui peuvent aider sur ce rendez-vous.', club: 'Les adultes du club : bureau, coachs, parents, joueurs majeurs.', teams: 'Parents, joueurs majeurs et coachs des équipes choisies.', people: 'Seulement les personnes cochées, même si elles ont décoché le bénévolat.' }[r.target];
+  h += `<p class="note">${note} Jamais les mineurs, les supporteurs ni les personnes déjà inscrites. Une relance toutes les 12 heures.</p><button class="btn small ${recent ? 'ghost' : 'main'}" data-act="mremind" data-id="${e.id}" ${recent ? 'disabled' : ''}>${recent ? 'Relance faite à ' + hm(new Date(e.missions_reminded_at)) : 'Envoyer la relance'}</button></div>`;
+  return h;
 }
 // Accueil : missions à pourvoir (sans envahir « À répondre »)
 export function missionsHome() {
@@ -289,7 +306,7 @@ async function markRead(id) {
 }
 Object.assign(ACTIONS, {
   espace: async () => { S.view = { type: 'espace' }; currentCasq(); render(); if (S.casq === 'coach') { await ensureExos(); render(true); } },
-  casq: async (el, d) => { S.casq = d.v; store.set('pc_casq_' + S.clubId, d.v); render(true); if (d.v === 'coach') { await ensureExos(); render(true); } },
+  casq: async (el, d) => { S.casq = d.v; store.set('pc_casq_' + S.clubId, d.v); if (S.view?.type !== 'espace') { S.view = { type: 'espace' }; render(); } else render(true); if (d.v === 'coach') { await ensureExos(); render(true); } },
   rub: async (el, d) => { S.view = { type: 'rub', id: d.id }; render(); },
   cplanfor: (el, d) => { const e = S.events.find((x) => x.id === d.id); if (e) planForEvent(e); S.ctab = 'seance'; ACTIONS.cplan(); },
   csearch: () => { S.view = { type: 'csearch' }; render(); },
@@ -315,7 +332,15 @@ Object.assign(ACTIONS, {
   vassign: async () => { const u = document.getElementById('mia')?.value, m = document.getElementById('mim')?.value; if (!u) return toast('Choisis une personne.'); if (await run(sb.rpc('assign_volunteer', { p_mission: m, p_user: u, p_on: true }), 'Bénévole inscrit.')) { await reloadMissions(); render(true); } },
   mdef: async (el, d) => { const n = await run(sb.rpc('add_default_missions', { p_event: d.id })); if (n !== null) { toast(plural(n, 'mission ajoutée', 'missions ajoutées') + '.'); await reloadMissions(); render(true); } },
   mdelm: async (el, d) => { if (!armed('mi' + d.id)) return; if (await run(sb.from('event_missions').delete().eq('id', d.id), 'Mission retirée.')) { await reloadMissions(); render(true); } },
-  mremind: async (el, d) => { const t = await run(sb.rpc('remind_missions', { p_event: d.id })); if (t !== null) { toast('Annonce envoyée : il manque ' + t + '.'); await refresh(); } },
+  mremt: (el, d) => { S.mrem.target = d.v; render(true); },
+  mremteam: (el, d) => { S.mrem.teams[S.mrem.teams.has(d.id) ? 'delete' : 'add'](d.id); render(true); },
+  mremind: async (el, d) => {
+    const r = S.mrem && S.mrem.eid === d.id ? S.mrem : { target: 'event', teams: new Set(), people: new Set() };
+    if (r.target === 'teams' && !r.teams.size) return toast('Choisis au moins une équipe.');
+    if (r.target === 'people' && !r.people.size) return toast('Choisis au moins une personne.');
+    const t = await run(sb.rpc('remind_missions', { p_event: d.id, p_target: r.target, p_teams: r.target === 'teams' ? [...r.teams] : null, p_people: r.target === 'people' ? [...r.people] : null }));
+    if (t !== null) { toast('Relance envoyée : il manque ' + t + '.'); S.mrem = null; await refresh(); }
+  },
   dmadd: () => { S.dm.push({ label: '', slots: 1 }); render(true); },
   dmrm: (el, d) => { S.dm.splice(+d.i, 1); render(true); },
   dmsave: async () => { const l = S.dm.map((x) => ({ label: String(x.label || '').trim(), slots: Math.max(1, Math.min(20, +x.slots || 1)) })).filter((x) => x.label.length >= 2); if (await run(sb.from('clubs').update({ default_missions: l }).eq('id', S.clubId), 'Missions par défaut enregistrées.')) { S.dm = null; await refresh(); } },
@@ -350,6 +375,7 @@ INPUTS.push((t) => {
   return false;
 });
 CHANGES.push(async (t) => {
+  if (t.dataset.mremp) { S.mrem.people[t.checked ? 'add' : 'delete'](t.dataset.mremp); render(true); return true; }
   if (t.dataset.clubset) {
     const k = t.dataset.clubset, v = t.checked;
     if (await run(sb.from('clubs').update({ [k]: v }).eq('id', S.clubId), 'Réglage enregistré.')) { club()[k] = v; } else t.checked = !v;

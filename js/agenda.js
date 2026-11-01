@@ -2,7 +2,7 @@
 import {
   S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, CHANGES, INPUTS, TEAM_TYPES, club, active, isBoard, coachOf, coachTeams,
   teamName, teamsLabel, evTeams, name, pl, pname, parentsOf, myKidsIn, iPlayIn, inTeam, playersOfTeam, fmtDate, hm, localDay, inHolidays,
-  toLocalInput, fmtDay, plural, download, norm, follows, hooks, hasArea,
+  toLocalInput, fmtDay, plural, download, norm, follows, hooks, hasArea, myMem,
 } from './core.js';
 import { icon, dayBadge, delBtn, field } from './ui.js';
 import { missionsBlock, myMissionLabel } from './vie.js';
@@ -52,15 +52,21 @@ export const opensOn = (e) => new Date(new Date(e.starts_at).getTime() - OPEN_DA
 export const convoked = (e, pid) => !(e.convoked || []).length || e.convoked.includes(pid);
 const myFiche = () => S.players.find((p) => p.user_id === S.me.id);
 const meConvoked = (e) => !(e.convoked || []).length || (myFiche() && e.convoked.includes(myFiche().id));
+// N° 59 : un compte qui n'est que supporteur (ou dont la demande attend la validation) n'a pas de réponse à donner, sauf invitation nominative
+export const supporterOnly = () => !active().some((m) => m.role !== 'supporteur');
+const noAnswerRole = (e) => supporterOnly() && !(e.audience === 'people' && (e.people || []).includes(S.me.id));
+// N° 65 : sur un rendez-vous d'équipe, seuls les joueurs de l'équipe (et les parents pour un mineur) répondent ;
+// le créateur, le coordinateur, le bureau et les coachs le voient sans « À répondre »
+const outsider = (e) => isTeamType(e) && !iPlayIn(evTeams(e)) && !myKidsIn(evTeams(e)).length && !coachOnly(e) && !followOnly(e);
 export function needsAnswer(e) {
   if (e.cancelled || new Date(e.starts_at) < Date.now() - 2 * 3600e3 || !isOpen(e)) return false;
   const R = respOf(e.id);
-  if (!isTeamType(e)) return !R.mine;
+  if (noAnswerRole(e)) return false;
+  if (!isTeamType(e)) return !notInvited(e) && !R.mine;
   const k = myKidsIn(evTeams(e)).filter((p) => convoked(e, p.id)), me = iPlayIn(evTeams(e)) && meConvoked(e);
   if (k.some((p) => !R.kid(p.id))) return true;
   if (me) return !R.mine;
-  if (followOnly(e) || notInvited(e) || (e.convoked || []).length) return false;
-  return !coachOnly(e) && !myKidsIn(evTeams(e)).length && !R.mine;
+  return false;
 }
 function pair(e, pid) {
   const R = respOf(e.id), m = pid ? R.kid(pid) : R.mine, p = pid && pl(pid);
@@ -81,6 +87,8 @@ export const playersOf = (e) => { const m = new Map(); evTeams(e).forEach((t) =>
 export function answerBlock(e) {
   if (e.cancelled) return '';
   if (notInvited(e)) return '<p class="note">Tu as créé ce rendez-vous pour des personnes choisies : tu n’en fais pas partie.</p>';
+  if (noAnswerRole(e)) return `<p class="note">${myMem().some((m) => m.status === 'pending') ? 'Ta demande attend la validation du club : pas de réponse à donner pour l’instant.' : 'En supporteur, pas de réponse à donner : tu suis la vie du club.'}</p>`;
+  if (outsider(e)) return '<p class="note">Tu ne fais pas partie de cette équipe : seuls ses joueurs (ou leurs parents) répondent.</p>';
   if (!isTeamType(e)) return pair(e, null);
   if (followOnly(e)) return '<p class="note">Tu suis cette équipe : pas de réponse à donner.</p>';
   const all = myKidsIn(evTeams(e)), k = all.filter((p) => convoked(e, p.id)), me = iPlayIn(evTeams(e)) && meConvoked(e);
@@ -123,7 +131,8 @@ const hiddenByMe = (e) => S.hidden.some((h) => h.event_id === e.id && new Date(h
 // n° 35 : le créateur voit toujours son rendez-vous ; n° 41 : les matchs des équipes suivies comptent comme les miens
 const personal = (e) => e.created_by === S.me.id || evTeams(e).some((t) => coachOf(t) || iPlayIn([t]) || myKidsIn([t]).length || (follows(t) && ['Match', 'Plateau', 'Tournoi'].includes(e.type)));
 // n° 22 : sans « Tout le club », le président et le bureau ne voient pas les rendez-vous des équipes où ils n'ont aucun rôle
-const hiddenByToggle = (e) => isBoard() && !S.me.show_all_club && e.audience === 'team' && !personal(e);
+// n° 61 : la rubrique Événements (coordinateur, vice-président, président) voit toujours les matchs, plateaux et tournois, pour les bénévoles
+const hiddenByToggle = (e) => isBoard() && !S.me.show_all_club && e.audience === 'team' && !personal(e) && !(hasArea('evenements') && ['Match', 'Plateau', 'Tournoi'].includes(e.type));
 export const sortEvents = (l) => l.slice().sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at) || teamsLabel(evTeams(a)).localeCompare(teamsLabel(evTeams(b))));
 const soon = () => Date.now() - 2 * 3600e3;
 export const upcoming = (l) => sortEvents(l.filter((e) => new Date(e.starts_at).getTime() >= soon()));
@@ -232,7 +241,7 @@ export function eventPage(id) {
   const e = S.events.find((x) => x.id === id); if (!e) return '<p class="empty">Rendez-vous introuvable (supprimé ?).</p>';
   const R = respOf(id), list = (a) => (a.length ? a.map(respName).join(', ') : '—'), man = canManageEvent(e);
   let h = `<div class="card lift">${e.cancelled ? '<span class="pill ko">Rendez-vous annulé</span>' : ''}<div>${forLabel(e)}</div>${e.opponents ? `<div class="det">Contre : ${esc(e.opponents)}</div>` : ''}${man ? `<div class="det">${plural(invitedCount(e), 'personne prévenue', 'personnes prévenues')}${isTeamType(e) ? ' · ' + plural(playersOf(e).length, 'joueur concerné', 'joueurs concernés') : ''}</div>` : ''}
-  ${e.cancelled ? '' : `<b style="font-family:var(--pc-titre);font-size:22px">${coachOnly(e) && !myKidsIn(evTeams(e)).length ? 'Ton équipe' : 'Tu viens ?'}</b>${answerBlock(e)}${!isOpen(e) && !coachOnly(e) && !followOnly(e) ? `<p class="note">Tu peux répondre dès maintenant. Sinon, cette séance arrivera dans « À répondre » le ${esc(fmtDay(opensOn(e)))}.</p>` : ''}`}</div>`;
+  ${e.cancelled ? '' : `<b style="font-family:var(--pc-titre);font-size:22px">${coachOnly(e) && !myKidsIn(evTeams(e)).length ? 'Ton équipe' : outsider(e) || noAnswerRole(e) ? 'Ce rendez-vous' : 'Tu viens ?'}</b>${answerBlock(e)}${!isOpen(e) && !coachOnly(e) && !followOnly(e) && !outsider(e) && !noAnswerRole(e) ? `<p class="note">Tu peux répondre dès maintenant. Sinon, cette séance arrivera dans « À répondre » le ${esc(fmtDay(opensOn(e)))}.</p>` : ''}`}</div>`;
   const tot = R.oui.length + R.non.length, base = Math.max(tot, isTeamType(e) ? playersOf(e).length : invitedCount(e));
   h += `<div class="card"><div class="sec"><h2>Qui vient ?</h2><span class="det">${plural(R.all.length, 'réponse')}</span></div>${base ? `<div class="bar"><span style="width:${(100 * R.oui.length) / base}%"></span><span style="width:${(100 * R.non.length) / base}%"></span></div>` : ''}
   <div class="chips"><span class="pill ok">${R.oui.length} oui</span><span class="pill ko">${R.non.length} non</span>${base > tot && isOpen(e) ? `<span class="pill">${base - tot} sans réponse</span>` : ''}</div><div><b>Viennent :</b> ${list(R.oui)}</div><div><b>Ne viennent pas :</b> ${list(R.non)}</div></div>`;

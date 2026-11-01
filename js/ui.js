@@ -14,12 +14,15 @@ export function wordmark(px, sport) {
   const b = Math.round(px * 0.62);
   return `<span class="wordmark" role="img" aria-label="${esc(BRAND.name)}" style="font-size:${px}px">${esc(BRAND.word1)}${ball(b, sport)}${esc(BRAND.word2)}<span style="width:${Math.round(px * 0.22)}px"></span><span class="club">${esc(BRAND.word3)}</span></span>`;
 }
-// Petit logo p●c (charte du 31 octobre, remplace le logo E) : en-têtes serrés, espaces, icône, onglet.
+// Petit logo p●c (charte du 31 octobre ; n° 63 et 64) : en-têtes serrés, espaces, icône, onglet.
+// Lettres centrées sur leur corps (pas sur la queue du p), ballon un peu plus grand que les minuscules.
 // Carré bleu et lettres blanches ; carré blanc et lettres encre quand le fond est déjà bleu (ou trop proche).
-const PC_ARC = 'M88.35 37.55A8 8 0 1 0 88.35 49.45';
+// Fond bleu (teinte 190° à 260°, assez saturé) : le carré bleu jurerait, on passe au carré blanc
+const bluish = (hex) => { const n = parseInt(String(hex).slice(1), 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; if (d < 0.12 || mx !== b) return false; const h = 60 * (((r - g) / d) + 4); return h >= 190 && h <= 260; };
+const PC_ARC = 'M37.02 -6.69A9 9 0 1 0 37.02 6.69';
 export const symbol = (size, sport, onBg) => {
-  const white = onBg && contrast(onBg, '#2F5BFF') < 1.6, bg = white ? '#FFFFFF' : '#2F5BFF', fg = white ? '#11162E' : '#FFFFFF';
-  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="${esc(BRAND.name)}"><rect width="100" height="100" rx="22" fill="${bg}"/><g fill="none" stroke="${fg}" stroke-width="9" stroke-linecap="round"><path d="M18 35.5V71"/><circle cx="27" cy="43.5" r="8"/><path d="${PC_ARC}"/></g><svg x="43.5" y="29" width="23" height="23" viewBox="0 0 56 56">${ballInner(sport)}</svg></svg>`;
+  const white = onBg && (contrast(onBg, '#2F5BFF') < 1.6 || bluish(onBg)), bg = white ? '#FFFFFF' : '#2F5BFF', fg = white ? '#11162E' : '#FFFFFF';
+  return `<svg class="pcmark" width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="${esc(BRAND.name)}"><rect width="100" height="100" rx="22" fill="${bg}"/><g transform="translate(50 47) scale(0.86)"><g fill="none" stroke="${fg}" stroke-width="8" stroke-linecap="round"><path d="M-40 -9V24"/><circle cx="-31" cy="0" r="9"/><path d="${PC_ARC}"/></g><svg x="-14" y="-14" width="28" height="28" viewBox="0 0 56 56">${ballInner(sport)}</svg></g></svg>`;
 };
 
 // ---------- Icônes au trait ----------
@@ -93,7 +96,8 @@ export function header(o = {}) {
   const acc = S.session && S.me && S.view?.type !== 'account' && S.me.cgu_version && !S.me.deleted_at;
   const inClub = acc && S.clubId && isActive() && S.onb === null;
   let h;
-  if (o.role) h = `<div class="band">${o.back ? backBtn() : ''}<span class="rolepill">${esc(o.role)}</span><span style="flex:1"></span><span class="roundbtn" style="cursor:default">${symbol(30, sport, S.headerBg || '#2F5BFF')}</span>${acc ? accountBtn() : ''}</div>`;
+  // n° 63 : la pastille du rôle puis le petit logo, posé comme une signature (sans rond autour, distinct des boutons ronds)
+  if (o.role) h = `<div class="band">${o.back ? backBtn() : ''}<span class="rolepill">${esc(o.role)}</span><span class="pclogo">${symbol(40, sport, S.headerBg || '#2F5BFF')}</span><span style="flex:1"></span>${acc ? accountBtn() : ''}</div>`;
   else h = `<div class="band">${o.back ? backBtn() : ''}<span class="logo">${wordmark(22, sport)}</span>${acc && S.view?.type !== 'csearch' ? searchBtn() : ''}${inClub && !o.back && casquettes().length ? espaceBtn() : ''}${acc ? accountBtn() : '<span style="width:44px"></span>'}</div>`;
   if (!br && c && !o.role) h += `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.kicker || o.sub || '')}</span></div></div>`;
   else if (o.kicker) h += `<div class="kicker">${esc(o.kicker)}</div>`;

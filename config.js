@@ -5,7 +5,7 @@ export const BRAND = { name: 'Pocket Club', word1: 'p', word2: 'cket', word3: 'c
 // les données sont protégées par les règles d'accès (RLS) de la base.
 export const SUPABASE_URL = 'https://rmdszovbpmagtvugfrpr.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_KsSQGA_bD3QSpX1vjnYjUw_eYBXXJ2u';
-export const VERSION = 'alpha 3.4';
+export const VERSION = 'alpha 3.4.1';
 // Alpha 3.2.5 · profils de test : liste déroulante « Profil de test » visible seulement quand on est connecté avec un de ces comptes.
 // Les adresses ne sont pas des secrets (aucun mot de passe ici). Pour ajouter un profil : une ligne.
 export const SWITCH_PROFILES = [
@@ -17,6 +17,7 @@ export const SWITCH_PROFILES = [
   { label: 'Coordinateur', email: 'gael.monblason+coordinateur@gmail.com' },
   { label: 'Communication', email: 'gael.monblason+communication@gmail.com' },
   { label: 'Sponsoring', email: 'gael.monblason+sponsoring@gmail.com' },
+  { label: 'Supporteur', email: 'gael.monblason+supporteur@gmail.com' },
 ];
 export const CGU_VERSION = 'alpha-3.0-2026-10';
 // N° 46 · Cloudflare Turnstile (anti-robots) : clé PUBLIQUE du site (« Site Key »), faite pour être visible.
