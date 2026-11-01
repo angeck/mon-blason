@@ -306,3 +306,5 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 .blkbar b{flex:1;font-size:15px}.blkbar button{width:48px;height:48px;border-radius:14px;border:2px solid var(--pc-trait);background:var(--pc-papier);font-size:18px;font-weight:800}
 .blkbar button:disabled{opacity:.35}
 @media (min-width:960px){.rollfoot{bottom:16px}}
+
+.tagrow{display:flex;flex-direction:column;gap:4px;margin:6px 0}

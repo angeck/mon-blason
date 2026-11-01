@@ -169,6 +169,7 @@ export async function loadMe() {
   const [prof, mems] = await Promise.all([sb.rpc('my_profile'), sb.from('memberships').select('*').eq('user_id', uid)]);
   S.me = prof.data || { id: uid, full_name: '', first_name: '', last_name: '' };
   S.mems = mems.data || [];
+  sb.rpc('is_app_admin').then((r) => { S.isAdmin = r.data === true; }, () => {}); // n° 86 : administrateur Pocket Club (demandes de schéma)
   const ids = [...new Set(S.mems.map((m) => m.club_id))];
   S.clubs = {};
   if (ids.length) { const { data } = await sb.from('clubs').select('*').in('id', ids); (data || []).forEach((c) => (S.clubs[c.id] = c)); }

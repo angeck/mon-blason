@@ -41,6 +41,7 @@ export function accountScreen() {
   if (c) h += `<button class="btn ghost ${isArmed('leave') ? 'danger armed' : ''}" data-act="leave">${isArmed('leave') ? `Confirmer : quitter ${esc(c.name)}` : `Quitter ${esc(c.name)}`}</button>`;
   h += `<details class="card"><summary>Changer mon mot de passe</summary><form id="npwf" class="stack">${newPwdFields('cp')}<button class="btn main" type="submit">Changer le mot de passe</button></form></details>
   <button class="btn" data-act="logout">${icon('back', 20)}Me déconnecter</button>`;
+  if (S.isAdmin) h += `<div class="sec"><h2>Administration Pocket Club</h2></div><div class="card"><button class="btn" data-act="cschemas">${icon('doc', 20)}Demandes de schéma</button><p class="note">Exercices envoyés par les coachs : dépose la vidéo du schéma, l’exercice est mis à jour et le coach prévenu.</p></div>`; // n° 86
   h += `<div class="sec"><h2>Mes données</h2></div><div class="card"><button class="btn ghost" data-act="export">${icon('down', 20)}Télécharger mes données</button><p class="note">Un fichier avec ton profil, tes rôles, les fiches de tes enfants, tes réponses, tes messages et tes votes.</p>
   ${delBtn('delacc', 'me', 'Supprimer mon compte', 'Confirmer : supprimer mon compte dans 30 jours', isArmed('delacc'))}<p class="note">Tu es retiré tout de suite de tes clubs et groupes. Pendant 30 jours, tu peux annuler en te reconnectant ; ensuite tout est effacé. Les fiches de joueurs restent au club.</p></div>
   <button class="btn ghost" data-act="legal">Mentions légales, confidentialité et conditions</button>
