@@ -165,6 +165,11 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 .bub.me{align-self:flex-end;background:var(--pc-bleu);color:#FFFFFF;border-radius:20px 20px 6px 20px}
 .bub .who{font-size:13px;font-weight:700;color:var(--pc-bleu)}
 .bub .when{font-size:12px;opacity:.75;margin-top:2px}
+.bub .fwd{font-size:12px;font-style:italic;opacity:.85;margin-bottom:2px}
+.bub .file{display:flex;align-items:center;gap:6px;width:100%;margin:6px 0 2px;padding:8px 10px;border-radius:12px;border:1.5px solid currentColor;background:transparent;color:inherit;font:inherit;font-weight:700;text-align:left;min-height:44px}
+.bub .file span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bub .file small{font-weight:500;opacity:.8}
+.linkbtn{background:none;border:0;padding:0 2px;color:inherit;font:inherit;text-decoration:underline;cursor:pointer;min-height:24px}
+.attbtn{flex:none;font-size:20px;cursor:pointer}.attlist{margin:4px 0}
 
 /* ---------- Bandeaux ---------- */
 .offline{background:var(--pc-attente-fond);color:var(--pc-attente-texte);border-radius:18px;padding:12px 14px;font-weight:700}

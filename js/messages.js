@@ -52,13 +52,44 @@ function pollCard(p) {
   <div class="chips">${['Présent', 'Absent', 'Je ne sais pas'].map((a) => `<button class="chip" data-act="vote" data-id="${p.id}" data-v="${a}" aria-pressed="${my === a}" style="${my === a ? 'background:var(--pc-encre);color:#FFFFFF;border-color:var(--pc-encre)' : 'background:#FFFFFF;border-color:#FFFFFF'}">${a} · ${v.filter((x) => x.answer === a).length}</button>`).join('')}</div><div class="det">${plural(v.length, 'réponse')} sur ${S.gmembers.length}</div></div>`;
 }
 
+// ---------- N° 83 · pièces jointes ; n° 84 · transférer un message ----------
+const ATT_MAX = 10 * 1024 * 1024, ATT_N = 5;
+const ATT_ACCEPT = '.pdf,image/*,.doc,.docx,.xls,.xlsx,.txt';
+const safeName = (n) => String(n || 'fichier').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '_').slice(-80);
+async function uploadFiles(groupId, list) {
+  const out = [];
+  for (const f of list) {
+    const path = `${groupId}/${crypto.randomUUID()}-${safeName(f.name)}`;
+    const { error } = await sb.storage.from('message-files').upload(path, f, { contentType: f.type || 'application/octet-stream', upsert: false });
+    if (error) { toast(`Envoi impossible pour « ${f.name} » : type de fichier ou taille refusés.`); return null; }
+    out.push({ path, name: String(f.name).slice(0, 120), size: f.size, type: f.type || '' });
+  }
+  return out;
+}
+const kb = (n) => (n > 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' Mo' : Math.max(1, Math.round(n / 1024)) + ' Ko');
+function bubble(m) {
+  const mine = m.user_id === S.me.id, files = m.files || [];
+  const auto = files.length && m.body === '📎 ' + files.map((f) => f.name).join(', ').slice(0, 1990);
+  return `<div class="bub ${mine ? 'me' : ''}">${mine ? '' : `<div class="who">${esc(nick(m.user_id))}</div>`}${m.forwarded_by ? `<div class="fwd">Transféré par ${esc(mine ? 'toi' : nick(m.user_id))} · message de ${esc(m.forwarded_by)}</div>` : ''}${auto ? '' : `<div>${esc(m.body)}</div>`}
+  ${files.map((f) => `<button type="button" class="file" data-act="msgfile" data-path="${esc(f.path)}" data-name="${esc(f.name)}">📎 <span>${esc(f.name)}</span> <small>${kb(f.size || 0)}</small></button>`).join('')}
+  <div class="when">${esc(fmtShort(m.created_at))} · <button type="button" class="linkbtn" data-act="msgfwd" data-id="${m.id}">Transférer</button></div></div>`;
+}
+export function forwardPage() {
+  const m = S.fwd; if (!m) return '<p class="empty">Message introuvable.</p>';
+  const gs = (S.groups || []).filter((g) => g.id !== m.group_id);
+  return `<div class="card flat"><div class="kick">Message à transférer</div><div>${esc(m.body)}</div>${(m.files || []).length ? `<div class="det">${plural(m.files.length, 'pièce jointe', 'pièces jointes')}</div>` : ''}</div>
+  <p class="note">Choisis le groupe qui le recevra. Ses membres verront « Transféré par » avec ton nom et l’auteur du message.</p>
+  <div class="list">${gs.map((g) => `<button class="row" data-act="fwdto" data-id="${g.id}"><span class="g">${esc(g.name)}</span><span class="pill blue">Envoyer</span></button>`).join('') || '<p class="empty">Aucun autre groupe. Crée d’abord un groupe avec les personnes choisies.</p>'}</div>`;
+}
+
 export function groupPage(id) {
   const g = grp(id); if (!g) return '<p class="empty">Groupe introuvable.</p>';
   const mine = S.gmembers.find((x) => x.user_id === S.me.id);
   let h = `<details class="card"><summary>${plural(S.gmembers.length, 'membre')}</summary><div class="det">${S.gmembers.map((x) => esc(name(x.user_id))).join(', ')}</div></details>`;
   h += S.polls.map(pollCard).join('');
-  h += '<div class="msgs">' + (S.msgs.length ? S.msgs.map((m) => `<div class="bub ${m.user_id === S.me.id ? 'me' : ''}">${m.user_id === S.me.id ? '' : `<div class="who">${esc(nick(m.user_id))}</div>`}<div>${esc(m.body)}</div><div class="when">${esc(fmtShort(m.created_at))}</div></div>`).join('') : '<p class="empty">Écris le premier message.</p>') + '</div>';
-  h += `<form id="msgf" class="compose"><input name="body" placeholder="Ton message" autocomplete="off" maxlength="2000" aria-label="Message"><button class="btn main small" type="submit">Envoyer</button></form>`;
+  h += '<div class="msgs">' + (S.msgs.length ? S.msgs.map(bubble).join('') : '<p class="empty">Écris le premier message.</p>') + '</div>';
+  h += (S.att || []).length ? `<div class="chips attlist">${S.att.map((f, i) => `<span class="pill">📎 ${esc(f.name)} <button type="button" class="linkbtn" data-act="attrm" data-i="${i}" aria-label="Retirer ${esc(f.name)}">✕</button></span>`).join('')}</div>` : '';
+  h += `<form id="msgf" class="compose"><label class="roundbtn attbtn" aria-label="Joindre un fichier">📎<input type="file" multiple accept="${ATT_ACCEPT}" data-att="1" hidden></label><input name="body" placeholder="Ton message" autocomplete="off" maxlength="2000" aria-label="Message"><button class="btn main small" type="submit">Envoyer</button></form>`;
   h += `<div class="chips"><button class="chip" data-act="pollnew">${icon('plus', 16)} Sondage</button><button class="chip" data-act="gmute" aria-pressed="${!!mine?.muted}">${mine?.muted ? 'Notifications coupées' : 'Couper les notifications'}</button>${g.created_by === S.me.id ? '' : '<button class="chip" data-act="gleave">Quitter le groupe</button>'}</div>`;
   if (g.created_by === S.me.id || isBoard()) h += delBtn('gdel', id, 'Supprimer le groupe', 'Confirmer : supprimer le groupe et ses messages', isArmed('g' + id));
   return h;
@@ -85,6 +116,27 @@ Object.assign(ACTIONS, {
     if (await run(sb.from('group_members').insert([S.me.id, ...S.form.sel].map((u) => ({ group_id: g.id, user_id: u }))), 'Groupe créé.')) { S.groups.unshift(g); S.form = null; await openGroup(g.id); }
   },
   group: (el, d) => openGroup(d.id),
+  attrm: (el, d) => { S.att.splice(+d.i, 1); render(true); },
+  msgfile: async (el, d) => {
+    const w = window.open('', '_blank');
+    const { data, error } = await sb.storage.from('message-files').createSignedUrl(d.path, 300, { download: false });
+    if (error || !data?.signedUrl) { w?.close(); return toast('Fichier introuvable ou plus disponible.'); }
+    if (w) w.location = data.signedUrl; else location.href = data.signedUrl;
+  },
+  msgfwd: (el, d) => { const m = S.msgs.find((x) => String(x.id) === String(d.id)); if (!m) return; S.fwd = m; S.stack = (S.stack || []).concat([S.view]); S.view = { type: 'msgfwd' }; render(); },
+  fwdto: async (el, d) => {
+    const m = S.fwd; if (!m) return;
+    const files = [];
+    for (const f of m.files || []) {   // copie dans le dossier du groupe qui reçoit (ses membres seuls la liront)
+      const path = `${d.id}/${crypto.randomUUID()}-${safeName(f.name)}`;
+      const { error } = await sb.storage.from('message-files').copy(f.path, path);
+      if (error) return toast(`Copie impossible pour « ${f.name} ».`);
+      files.push({ ...f, path });
+    }
+    const origin = m.forwarded_by || nick(m.user_id);
+    const r = await run(sb.from('messages').insert({ group_id: d.id, user_id: S.me.id, body: m.body, files, forwarded_by: String(origin).slice(0, 120) }).select().single(), 'Message transféré.');
+    if (r) { bump(r); S.fwd = null; await openGroup(d.id); }
+  },
   pollnew: async () => {
     const q = prompt('Question du sondage (ex. Plateau samedi 7 novembre ?)'); if (!q || !q.trim()) return;
     const pl = await run(sb.from('polls').insert({ group_id: S.view.id, question: q.trim().slice(0, 200), created_by: S.me.id }).select().single(), 'Sondage publié.');
@@ -98,13 +150,25 @@ Object.assign(ACTIONS, {
   gdel: async (el, d) => { if (!armed('g' + d.id)) return; if (await run(sb.from('groups').delete().eq('id', d.id), 'Groupe supprimé.')) { S.view = null; await refresh(); } },
 });
 FORMS.msgf = async (v) => {
-  const body = (v.body || '').trim(); if (!body) return;
-  const m = await run(sb.from('messages').insert({ group_id: S.view.id, user_id: S.me.id, body }).select().single());
+  const att = S.att || [], txt = (v.body || '').trim(); if (!txt && !att.length) return;
+  let files = [];
+  if (att.length) { toast('Envoi des pièces jointes…'); files = await uploadFiles(S.view.id, att); if (!files) return; }
+  const body = txt || '📎 ' + files.map((f) => f.name).join(', ').slice(0, 1990);
+  const m = await run(sb.from('messages').insert({ group_id: S.view.id, user_id: S.me.id, body, files }).select().single());
+  if (m) S.att = [];
   if (m) { if (!S.msgs.some((x) => x.id === m.id)) S.msgs.push(m); S.lastMsgs.unshift(m); bump(m); render(true); scrollEnd(); document.querySelector('#msgf input')?.focus(); }
 };
 INPUTS.push((t) => {
   if (t.dataset.f && S.form) { S.form[t.dataset.f] = t.value; return true; }
   if (t.dataset.gq) { S.form.q = t.value; const pos = t.selectionStart; render(true); const n = document.getElementById('gq'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch { /* */ } } return true; }
   return false;
+});
+CHANGES.push((t) => {   // n° 83 : fichiers choisis (5 au plus, 10 Mo chacun)
+  if (!t.dataset.att) return false;
+  const add = [...(t.files || [])], big = add.find((f) => f.size > ATT_MAX);
+  if (big) toast(`« ${big.name} » est trop lourd : 10 Mo maximum.`);
+  S.att = (S.att || []).concat(add.filter((f) => f.size <= ATT_MAX)).slice(0, ATT_N);
+  if ((S.att.length) === ATT_N) toast('5 pièces jointes au plus par message.');
+  t.value = ''; render(true); return true;
 });
 CHANGES.push((t) => { if (t.dataset.gsel) { S.form.sel[t.checked ? 'add' : 'delete'](t.dataset.gsel); render(true); return true; } return false; });

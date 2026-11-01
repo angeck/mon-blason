@@ -4,7 +4,7 @@
 import { BRAND } from '../config.js';
 import {
   S, sb, esc, run, toast, render, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, club, isBoard, isCoach, coachTeams, coachOf,
-  team, teamName, name, plural, download, norm, fmtShort, onColor, evTeams, store, loadNames,
+  team, teamName, name, plural, download, norm, fmtShort, onColor, evTeams, store, loadNames, isPresident, hasArea,
 } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 import { loadXlsx } from './equipe.js';
@@ -429,6 +429,7 @@ async function loadHours() {
   if (!h.board) { q = q.eq('user_id', S.me.id); q2 = q2.eq('user_id', S.me.id); }
   const [a, b] = await Promise.all([q, q2]);
   h.lines = a.data || []; h.stmts = b.data || [];
+  if (h.board) { const r = await sb.from('coach_rates').select('user_id,rate,updated_at').eq('club_id', S.clubId); h.rates = Object.fromEntries((r.data || []).map((x) => [x.user_id, +x.rate])); } // n° 82
   await loadNames(h.lines.map((x) => x.user_id).concat(h.stmts.map((x) => x.user_id), h.stmts.map((x) => x.decided_by)));
 }
 const monthNav = (h) => `<div class="btns" style="align-items:center"><button class="btn ghost small" style="flex:none;width:52px;padding:0" data-act="hmonth" data-v="-1" aria-label="Mois précédent">‹</button><b style="flex:1;text-align:center;font-size:18px">${monthLabel(h.month)}</b><button class="btn ghost small" style="flex:none;width:52px;padding:0" data-act="hmonth" data-v="1" aria-label="Mois suivant" ${monthStart(h.month) >= monthStart(new Date()) ? 'disabled' : ''}>›</button></div>`;
@@ -456,14 +457,25 @@ export function hoursPage() {
   if (h.lines.length) out += `<button class="btn ghost" data-act="hxlsx">${icon('down', 20)}Exporter en Excel</button>`;
   return out;
 }
+// N° 82 · taux horaire de chaque coach (président et trésorerie) : listing déroulant, montant estimé du mois
+const allCoaches = () => [...new Set(S.members.filter((m) => m.status === 'active' && m.role === 'coach').map((m) => m.user_id))].sort((a, b) => name(a).localeCompare(name(b), 'fr'));
+const money = (n) => (Math.round(n * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+function ratesBlock(h) {
+  if (!hoursManagerHere()) return '';
+  const cs = allCoaches(), r = h.rates || {};
+  return `<details class="card flat" ${S.ratesOpen ? 'open' : ''} data-ratesopen="1"><summary><b>Taux horaire des coachs</b> <span class="note">(${cs.filter((u) => r[u] != null).length} / ${cs.length} renseignés)</span></summary>
+  <p class="note">Visible du président et de la trésorerie seulement. Chaque changement est gardé dans l’historique.</p>
+  <div class="list">${cs.map((u) => `<div class="row static"><span class="g">${esc(name(u))}</span><span style="display:flex;align-items:center;gap:6px"><input type="number" inputmode="decimal" min="0" max="500" step="0.5" style="width:96px" data-rate="${u}" value="${r[u] != null ? r[u] : ''}" aria-label="Taux horaire de ${esc(name(u))}"> €/h <button class="btn small" data-act="rateset" data-id="${u}">OK</button></span></div>`).join('') || '<p class="empty">Aucun coach dans le club.</p>'}</div></details>`;
+}
+const hoursManagerHere = () => isPresident() || hasArea('tresorerie');
 export function hoursBoardPage() {
   const h = S.hr; if (!h.lines) return monthNav(h) + loading();
   const coaches = [...new Set(h.lines.map((l) => l.user_id).concat(h.stmts.map((s) => s.user_id)))].sort((a, b) => name(a).localeCompare(name(b), 'fr'));
-  let out = monthNav(h);
+  let out = monthNav(h) + ratesBlock(h);
   if (!coaches.length) return out + '<p class="empty">Aucune heure notée ce mois-ci.</p>';
   out += coaches.map((u) => {
     const ls = h.lines.filter((l) => l.user_id === u), st = h.stmts.find((s) => s.user_id === u), tot = ls.reduce((a, l) => a + l.minutes, 0), opened = S.hOpen === u;
-    let c = `<div class="card"><button class="row" data-act="hopen" data-id="${u}" style="border:0"><span class="g">${esc(name(u))}<small>${byTeam(ls).map(([k, v]) => `${esc(k)} ${fmtMin(v)}`).join(' · ') || '—'}</small></span><b>${fmtMin(st && st.status !== 'refused' ? st.total_minutes : tot)}</b></button><div class="chips">${st ? STATE[st.status] : '<span class="pill">Pas encore envoyé</span>'}</div>`;
+    let c = `<div class="card"><button class="row" data-act="hopen" data-id="${u}" style="border:0"><span class="g">${esc(name(u))}<small>${byTeam(ls).map(([k, v]) => `${esc(k)} ${fmtMin(v)}`).join(' · ') || '—'}</small></span><b>${fmtMin(st && st.status !== 'refused' ? st.total_minutes : tot)}${h.rates?.[u] != null ? `<small style="display:block;font-weight:500">≈ ${money(((st && st.status !== 'refused' ? st.total_minutes : tot) / 60) * h.rates[u])}</small>` : ''}</b></button><div class="chips">${st ? STATE[st.status] : '<span class="pill">Pas encore envoyé</span>'}</div>`;
     if (opened) c += `<div class="list">${ls.map((l) => `<div class="row static"><span class="g">${new Date(l.day + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} · ${esc(l.kind)}<small>${[teamName(l.team_id), l.note].filter(Boolean).map(esc).join(' · ')}</small></span><b>${fmtMin(l.minutes)}</b></div>`).join('')}</div>`;
     if (st?.status === 'submitted' && u !== S.me.id) c += `<div class="field"><label for="hc${u}">Commentaire (obligatoire pour refuser)</label><input id="hc${u}" data-hcom="${u}" maxlength="300" value="${esc((S.hCom || {})[u] || '')}"></div><div class="btns"><button class="btn main small" data-act="hok" data-id="${st.id}" data-v="1">Valider</button><button class="btn ghost small" data-act="hok" data-id="${st.id}" data-u="${u}" data-v="0">Refuser</button></div>`;
     else if (st?.status === 'submitted') c += '<p class="note">Ton propre relevé est validé par un autre membre du bureau.</p>';
@@ -477,10 +489,10 @@ async function hoursXlsx() {
   let X; try { X = await loadXlsx(); } catch { return toast('Export impossible pour l’instant. Réessaie.'); }
   const h = S.hr, c = (club()?.color1 || '#2F5BFF').replace('#', '').toUpperCase(), head = { font: { bold: true, color: { rgb: onColor('#' + c).slice(1) } }, fill: { fgColor: { rgb: c } } };
   const coaches = [...new Set(h.lines.map((l) => l.user_id))].sort((a, b) => name(a).localeCompare(name(b), 'fr'));
-  const sum = [[`${BRAND.name} · ${club()?.name || ''} · heures des coachs · ${monthLabel(h.month)}`], [], ['Coach', 'Équipe', 'Heures', 'Minutes', 'État du relevé']];
-  coaches.forEach((u) => { const st = h.stmts.find((s) => s.user_id === u); byTeam(h.lines.filter((l) => l.user_id === u)).forEach(([k, v]) => sum.push([name(u), k, Math.round((v / 60) * 100) / 100, v, st ? { submitted: 'Envoyé', validated: 'Validé', refused: 'Refusé' }[st.status] : 'Pas envoyé'])); });
-  const ws = X.utils.aoa_to_sheet(sum); ws.A1.s = { font: { bold: true, sz: 14, color: { rgb: c } } }; ['A3', 'B3', 'C3', 'D3', 'E3'].forEach((k) => (ws[k].s = head));
-  ws['!cols'] = [{ wch: 24 }, { wch: 18 }, { wch: 8 }, { wch: 9 }, { wch: 14 }];
+  const sum = [[`${BRAND.name} · ${club()?.name || ''} · heures des coachs · ${monthLabel(h.month)}`], [], ['Coach', 'Équipe', 'Heures', 'Minutes', 'État du relevé', 'Taux (€/h)', 'Montant (€)']];
+  coaches.forEach((u) => { const st = h.stmts.find((s) => s.user_id === u); byTeam(h.lines.filter((l) => l.user_id === u)).forEach(([k, v]) => sum.push([name(u), k, Math.round((v / 60) * 100) / 100, v, st ? { submitted: 'Envoyé', validated: 'Validé', refused: 'Refusé' }[st.status] : 'Pas envoyé', h.rates?.[u] ?? '', h.rates?.[u] != null ? Math.round((v / 60) * h.rates[u] * 100) / 100 : ''])); });
+  const ws = X.utils.aoa_to_sheet(sum); ws.A1.s = { font: { bold: true, sz: 14, color: { rgb: c } } }; ['A3', 'B3', 'C3', 'D3', 'E3', 'F3', 'G3'].forEach((k) => (ws[k].s = head));
+  ws['!cols'] = [{ wch: 24 }, { wch: 18 }, { wch: 8 }, { wch: 9 }, { wch: 14 }, { wch: 10 }, { wch: 12 }];
   const wb = X.utils.book_new(), used = new Set(['Résumé']); X.utils.book_append_sheet(wb, ws, 'Résumé');
   coaches.forEach((u) => {
     const ls = h.lines.filter((l) => l.user_id === u);
@@ -567,6 +579,12 @@ Object.assign(ACTIONS, {
     if (await run(sb.rpc('decide_coach_month', { p_statement: d.id, p_ok: ok, p_comment: com }), ok ? 'Relevé validé.' : 'Relevé refusé : le coach peut corriger et renvoyer.')) { await loadHours(); await loadCoachCounts(); render(true); }
   },
   hxlsx: () => hoursXlsx(),
+  rateset: async (el, d) => {
+    const inp = document.querySelector(`[data-rate="${d.id}"]`), raw = (inp?.value || '').trim().replace(',', '.'), v = raw === '' ? null : +raw;
+    if (v != null && (!isFinite(v) || v < 0 || v > 500)) return toast('Taux entre 0 et 500 € de l’heure.');
+    S.ratesOpen = true;
+    if (await run(sb.rpc('set_coach_rate', { p_club: S.clubId, p_user: d.id, p_rate: v }), v == null ? 'Taux retiré.' : `Taux de ${name(d.id)} : ${money(v)} de l’heure.`)) { await loadHours(); render(true); }
+  },
 });
 FORMS.exf = async () => {
   keepEx(); const f = S.exf;
