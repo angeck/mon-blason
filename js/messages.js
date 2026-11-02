@@ -156,7 +156,7 @@ FORMS.msgf = async (v) => {
   const body = txt || '📎 ' + files.map((f) => f.name).join(', ').slice(0, 1990);
   const m = await run(sb.from('messages').insert({ group_id: S.view.id, user_id: S.me.id, body, files }).select().single());
   if (m) S.att = [];
-  if (m) { if (!S.msgs.some((x) => x.id === m.id)) S.msgs.push(m); S.lastMsgs.unshift(m); bump(m); render(true); scrollEnd(); document.querySelector('#msgf input')?.focus(); }
+  if (m) { if (!S.msgs.some((x) => x.id === m.id)) S.msgs.push(m); S.lastMsgs.unshift(m); bump(m); render(true); scrollEnd(); document.querySelector('#msgf input[name=body]')?.focus(); }
 };
 INPUTS.push((t) => {
   if (t.dataset.f && S.form) { S.form[t.dataset.f] = t.value; return true; }

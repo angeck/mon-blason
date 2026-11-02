@@ -57,7 +57,7 @@ const teamsLabelSafe = (ids) => ids.map(teamName).filter(Boolean).join(', ');
 function coachSpace() {
   const ct = coachTeams(), soon = Date.now() + 14 * 864e5;
   const evs = upcoming(S.events.filter((e) => !e.cancelled && evTeams(e).some(coachOf) && ['Entraînement', 'Match', 'Plateau', 'Tournoi'].includes(e.type) && new Date(e.starts_at) < soon)).slice(0, 4);
-  let sea = `<div class="sec"><h2>Séances à préparer</h2><button data-act="cplan">Ma séance</button></div>`;
+  let sea = `<div class="sec"><h2>Séances à préparer</h2><button data-act="cplan">Séance en préparation</button></div>`;
   sea += evs.length ? evs.map((e) => {
     const p = plansForEvent(e.id)[0];
     const st = p ? `<span class="pill ok">Prête</span>` : `<span class="pill ko">À préparer</span>`;
@@ -101,7 +101,7 @@ function presidentSpace() {
     ${sw('custom_header', 'Aux couleurs du club', 'L’en-tête prend la couleur principale du club.', c.custom_header)}
     ${sw('public_listed', 'Apparaître dans la recherche des clubs', 'Nom, ville, équipes visibles et créneaux seulement.', c.public_listed !== false)}
     ${sw('coach_sees_fees', 'Les coachs voient licences et cotisations', 'De leurs joueurs seulement, sans les réductions.', c.coach_sees_fees !== false)}</div>`;
-  const outils = `<div class="grid2"><button class="btn small" data-act="fonctions">${icon('user', 18)}Fonctions du bureau</button><button class="btn small" data-act="journal">${icon('doc', 18)}Journal des actions</button></div>`;
+  const outils = `<button class="btn main" data-act="gestion">${icon('shield', 20)}Gestion du club</button><div class="grid2"><button class="btn small" data-act="fonctions">${icon('user', 18)}Fonctions du bureau</button><button class="btn small" data-act="journal">${icon('doc', 18)}Journal des actions</button></div>`; // n° 88 : la gestion venue de l'onglet Club
   return arrange('president', [
     { id: 'alerte', pin: true, html: alert },
     { id: 'chiffres', label: 'Chiffres du club', html: tiles },
@@ -133,6 +133,7 @@ function fonctionSpace(f) {
   if (own.includes('technique')) bl.push({ id: 'ententes', label: 'Ententes', html: partnerRequests() }, { id: 'resultats', label: 'Derniers résultats', html: clubResults() });
   own.forEach((a, i) => bl.push({ id: a, label: AREAS[a], html: (i || own.length > 1 ? `<div class="sec"><h2>${esc(AREAS[a])}</h2></div>` : '') + rubBody(a) }));
   bl.push({ id: 'rubriques', label: 'Rubriques', html: rubList((own.length ? ['commun'] : []).concat(extra)) });
+  bl.push({ id: 'gestion', label: 'Gestion du club', html: `<button class="btn" data-act="gestion">${icon('shield', 20)}Gestion du club</button>` }); // n° 88
   return arrange('f:' + f, bl);
 }
 

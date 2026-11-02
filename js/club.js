@@ -186,16 +186,26 @@ export function brandBlock() {
   <button class="btn main" type="submit">Enregistrer</button></form></details>`;
 }
 
+// N° 88 · l'onglet Club montre la vie du club (infos, contacts, équipes) ; la gestion passe dans l'Espace (page « Gestion du club »)
 export function clubTab() {
-  const c = club(), vp = toValidate();
+  const c = club(), vp = toValidate(), board = isBoard();
+  let h = '';
+  if (board) h += `<div class="card flat"><div class="kick">Gestion du club</div><p class="note" style="margin:0">Demandes, tarifs, licences, membres, heures des coachs, corbeille : tout est dans la page « Gestion du club », aussi dans ton Espace.</p><button class="btn ${vp.length ? 'main' : ''}" data-act="gestion">${icon('shield', 20)}Gestion du club${vp.length ? ` · ${plural(vp.length, 'demande', 'demandes')} à valider` : ''}</button></div>`;
+  else if (vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>`;
+    h += `<div class="card yellow" style="transform:none"><span class="kick" style="color:var(--pc-encre)">Code pour rejoindre le club</span><span class="codebox">${esc(c.join_code)}</span><button class="btn ink small" data-act="share">${icon('share', 18, '#FFFFFF')}Partager l'invitation</button></div>`;
+  h += contactsBlock() + teamsBlock() + (board ? '' : feesBlock() + membersBlock());
+  return h;
+}
+export function gestionPage() {
+  const vp = toValidate();
   let h = '';
   if (vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>`;
-  h += `<div class="card yellow" style="transform:none"><span class="kick" style="color:var(--pc-encre)">Code pour rejoindre le club</span><span class="codebox">${esc(c.join_code)}</span><button class="btn ink small" data-act="share">${icon('share', 18, '#FFFFFF')}Partager l'invitation</button></div>`;
-  h += contactsBlock() + brandBlock() + feesBlock() + licencesBlock() + namesToCheck() + teamsBlock() + coachClubBlock() + membersBlock() + trashBlock();
-  return h;
+  h += brandBlock() + feesBlock() + licencesBlock() + namesToCheck() + coachClubBlock() + membersBlock() + trashBlock();
+  return h || '<p class="empty">Rien à gérer pour ta fonction.</p>';
 }
 
 Object.assign(ACTIONS, {
+  gestion: () => { S.stack = (S.stack || []).concat(S.view ? [S.view] : []); S.view = { type: 'gestion' }; render(); },
   share: async () => { const c = club(), txt = `Rejoins ${c.name} sur ${BRAND.name} : ouvre ${location.href.split('#')[0]} puis « Rejoindre un club » avec le code ${c.join_code}.`; if (navigator.share) { try { await navigator.share({ title: BRAND.name, text: txt }); } catch { /* annulé */ } } else { try { await navigator.clipboard.writeText(txt); toast('Invitation copiée.'); } catch { toast(txt); } } },
   mok: async (el, d) => {
     let t = (S.vt || {})[d.id] || null;

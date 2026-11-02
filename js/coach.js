@@ -152,20 +152,16 @@ export async function loadCoachCounts() {
 async function open(view, loader) { S.view = view; S.cload = true; render(); try { await loader(); } finally { S.cload = false; render(true); } }
 const loading = () => (S.cload ? '<p class="empty">Chargement…</p>' : '');
 
-// ---------- entrée « Espace coach » (onglet Équipe et onglet Club) ----------
+// ---------- n° 88 · onglet Équipe : plus de carte « Espace coach » en double, un seul bouton vers l'Espace ----------
 export function coachEntry() {
-  if (!canCoachSpace()) return '';
-  return `<div class="card pale"><div class="kick">Espace coach</div><div class="grid2">
-    <button class="btn small" data-act="cexos">${icon('doc', 18)}Exercices</button>
-    <button class="btn small" data-act="cplan">${icon('cal', 18)}Ma séance</button>
-    <button class="btn small" data-act="cstats">${icon('team', 18)}Statistiques</button>
-    ${isCoach() ? `<button class="btn small" data-act="chours">${icon('check', 18)}Mes heures</button>` : `<button class="btn small" data-act="choursb">${icon('check', 18)}Heures des coachs</button>`}
-  </div></div>`;
+  if (!canCoachSpace() || !isCoach()) return '';
+  return `<button class="btn" data-act="casq" data-v="coach">${icon('flag', 20)}Ouvrir mon espace coach</button>`;
 }
+// Page « Gestion du club » (bureau) : heures des coachs, exercices à valider, statistiques
 export function coachClubBlock() {
   if (!isBoard()) return '';
   const c = S.coachCounts || { hours: 0, exos: 0 };
-  return `<div class="sec"><h2>Espace coach</h2></div><div class="card"><div class="list">
+  return `<div class="sec"><h2>Technique</h2></div><div class="card"><div class="list">
     <button class="row" data-act="choursb"><span class="g">Heures des coachs<small>Relevés mensuels envoyés par les coachs, à valider</small></span>${c.hours ? `<span class="pill wait">${c.hours} à valider</span>` : ''}</button>
     <button class="row" data-act="cexos" data-tab="club"><span class="g">Exercices du club<small>Partages publics à valider, avis négatifs, signalements</small></span>${c.exos ? `<span class="pill wait">${c.exos} à valider</span>` : ''}</button>
     <button class="row" data-act="cstats"><span class="g">Statistiques des équipes<small>Assiduité, retards, fiabilité des réponses</small></span></button>
@@ -246,7 +242,7 @@ function boardTodo() {
 }
 export function exosPage() {
   const tab = S.ctab || 'mine';
-  let h = `<div class="chips">${[['mine', 'Ma banque'], ['club', 'Club'], ['libre', 'Libre'], ['seance', `Ma séance${S.plan?.items?.length ? ' (' + S.plan.items.length + ')' : ''}`]].map(([k, l]) => `<button class="chip" data-act="ctab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
+  let h = `<div class="chips">${[['mine', 'Ma banque'], ['club', 'Club'], ['libre', 'Libre'], ['seance', `Séance en préparation${S.plan?.items?.length ? ' (' + S.plan.items.length + ')' : ''}`]].map(([k, l]) => `<button class="chip" data-act="ctab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
   if (tab === 'seance') return h + planEditor();
   if (!S.exos) return h + loading();
   h += `<button class="btn main" data-act="cexnew">${icon('plus', 20)}Nouvel exercice</button>`;
@@ -552,13 +548,13 @@ async function hoursXlsx() {
 
 // ---------- titres des écrans (lus par app.js) ----------
 export const COACH_VIEWS = {
-  exos: () => ['Espace coach', 'Exercices', exosPage],
+  exos: () => ['Coach', 'Exercices', exosPage],
   exo: (v) => ['Exercice', esc((S.exos || []).find((x) => x.id === v.id)?.title || 'Exercice'), () => exoPage(v.id)],
   exoform: () => ['Exercices', S.exf?.id ? 'Modifier l’exercice' : 'Nouvel exercice', exoForm],
-  expick: () => ['Ma séance', 'Ajouter un exercice', pickPage],
-  plans: () => ['Espace coach', 'Mes séances', plansPage],
-  stats: () => ['Espace coach', 'Statistiques', statsPage],
-  hours: () => ['Espace coach', 'Mes heures', hoursPage],
+  expick: () => ['Séance en préparation', 'Ajouter un exercice', pickPage],
+  plans: () => ['Coach', 'Mes séances', plansPage],
+  stats: () => ['Coach', 'Statistiques', statsPage],
+  hours: () => ['Coach', 'Mes heures', hoursPage],
   hoursb: () => ['Bureau', 'Heures des coachs', hoursBoardPage],
   schemas: () => ['Administration', 'Demandes de schéma', schemasPage],
 };

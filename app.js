@@ -12,7 +12,7 @@ import { agendaTab, eventForm, eventPage, appelPage } from './js/agenda.js';
 import { messagesTab, groupForm, groupPage, grp, scrollEnd, bump, forwardPage } from './js/messages.js';
 import { teamTab, teamPage, importPage } from './js/equipe.js';
 import { playerPage } from './js/joueur.js';
-import { clubTab, memberPage } from './js/club.js';
+import { clubTab, memberPage, gestionPage } from './js/club.js';
 import { accountScreen, deletedScreen } from './js/compte.js';
 import { COACH_VIEWS, loadCoachCounts, loadEvPlans } from './js/coach.js';
 import { VIE_VIEWS } from './js/vie.js';
@@ -35,6 +35,7 @@ function viewScreen(v) {
     case 'appel': return [header({ back: true, kicker: 'Appel · ' + (e?.type || ''), title: esc(e?.title || 'Appel') }), appelPage(v.id)];
     case 'gform': return [header({ back: true, kicker: 'Messages', title: 'Nouveau groupe' }), groupForm()];
     case 'group': return [header({ back: true, kicker: "Groupe d'échange", title: esc(grp(v.id)?.name || 'Groupe') }), groupPage(v.id)];
+    case 'gestion': return [header({ back: true, kicker: 'Président et bureau', title: 'Gestion du club' }), gestionPage()]; // n° 88
     case 'msgfwd': return [header({ back: true, kicker: 'Messages', title: 'Transférer' }), forwardPage()]; // n° 84
     case 'player': { const p = pl(v.id); return [header({ back: true, kicker: 'Fiche joueur', title: esc(p ? pname(p) : 'Fiche') }), playerPage(v.id)]; }
     case 'team': { const t = team(v.id); return [header({ back: true, kicker: 'Équipe', title: esc(t?.name || 'Équipe'), tags: t ? [t.category !== t.name ? t.category : '', t.gender, 'Saison ' + t.season].filter(Boolean) : [] }), teamPage(v.id)]; }

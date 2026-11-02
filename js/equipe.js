@@ -49,7 +49,7 @@ function coachBlock(tid) {
   const ps = playersOfTeam(tid).sort((a, b) => pname(a).localeCompare(pname(b), 'fr'));
   const next = upcoming(S.events.filter((e) => evTeams(e).includes(tid) && !e.cancelled && ['Entraînement', 'Match', 'Plateau', 'Tournoi'].includes(e.type)))[0];
   let h = '';
-  if (next) h += `<div class="card yellow"><span class="kick" style="color:var(--pc-encre)">Prochaine séance</span><b style="font-family:var(--pc-titre);font-size:24px;line-height:1.05">${esc(next.title)}</b><span>${esc(fmtShort(next.starts_at))}${next.place ? ' · ' + esc(next.place) : ''}</span><button class="btn ink" data-act="appel" data-id="${next.id}">Faire l'appel</button></div>`;
+  if (next) h += `<div class="card yellow"><span class="kick" style="color:var(--pc-encre)">Prochaine séance</span><b style="font-family:var(--pc-titre);font-size:24px;line-height:1.05">${esc(next.title)}</b><span>${esc(fmtShort(next.starts_at))}${next.place ? ' · ' + esc(next.place) : ''}</span></div>`; // n° 88 : l'appel se fait depuis l'Accueil (carte du jour) ou l'Espace coach
   const lic = ps.filter((p) => adminOf(p.id)?.licence_state === 'Licencié').length, noBirth = ps.filter((p) => !p.birth_date).length;
   h += `<div class="sec"><h2>Joueurs</h2><span class="det">${ps.length} · ${lic} licenciés</span></div>`;
   if (noBirth) h += `<div class="card warn"><b>${plural(noBirth, 'date de naissance manque', 'dates de naissance manquent')}</b><span class="note" style="color:var(--pc-encre)">Sans elle, le joueur est traité comme mineur pour les autorisations.</span></div>`;
