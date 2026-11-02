@@ -1,4 +1,4 @@
-# Pocket Club (nom provisoire) · alpha 3.5.1
+# Pocket Club (nom provisoire) · alpha 3.6.0
 
 Application web installable (PWA) pour les clubs sportifs : agenda avec réponses « Je viens / Je ne viens pas », appel, fiches joueurs, licences et cotisations, groupes d'échange (messages en direct, sondages), équipes, membres, corbeille de 30 jours.
 
@@ -24,11 +24,15 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 ## Tests (jamais sur la base réelle)
 
 `PGHOST=… PGPORT=… PGUSER=postgres sh tests/lancer.sh` : base PostgreSQL 16 locale (`tests/prelude.sql` imite Supabase), puis
-- `tests/vie_de_club.py` : faux club complet et saison simulée, 539 vérifications des droits (visiteur non connecté compris) ;
+- `tests/vie_de_club.py` : faux club complet et saison simulée, 566 vérifications des droits (visiteur non connecté compris) ;
 - `tests/import.test.mjs` : lecture de listes de joueurs (14 tests) ;
-- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (213 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
+- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (216 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
 
 Toutes les personnes des tests sont fictives.
+
+## Alpha 3.6.0
+
+Mise à jour d'une base 3.5.0 : `supabase/MAJ_ALPHA_3_6_0.sql` (source `supabase/alpha_3_6_0.sql`, ajoutée au RESET), sans perte de données, relançable. N° 82 à 92 : taux horaire des coachs, pièces jointes et transfert des messages, espaces sans logo et rangée des rôles visible, formulaire d'exercice avec tags et demandes de schéma, refonte de l'arborescence (gestion du club dans l'Espace, cartes du coach sur l'Accueil), « Tout le club » avec ou sans les supporteurs, écran d'ouverture avec le grand logo, ballons par sport et icône 4/4, nom « pocket club », blason du club sur les convocations. Ballons et icônes : `img/` et `tools/fabriquer_logos.py` ; la refonte est dans `js/v36.js`, `js/club.js` (page « Gestion du club ») et `js/coach.js`.
 
 ## Alpha 3.5.1
 
