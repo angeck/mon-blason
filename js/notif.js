@@ -74,11 +74,13 @@ export function pushCard() {
   return `<div class="sec"><h2>Notifications</h2></div><div class="card">${body}</div>`;
 }
 
-// Rappel discret sur l'Accueil, tant que l'appareil n'est pas inscrit (masquable)
+// Encart en tête de l'Accueil, à chaque ouverture, tant que la personne n'a fait aucun choix sur cet appareil :
+// activer (l'encart disparaît) ou « Masquer le message » (pc_hidepush, l'encart disparaît aussi).
+// Ensuite, les notifications restent réglables dans Mon compte.
 export function pushHome() {
   if (!['off', 'ios-install'].includes(N.state) || store.get('pc_hidepush')) return '';
   const msg = N.state === 'off' ? 'Active les notifications pour ne rater aucun rendez-vous.' : `Installe ${BRAND.name} sur l'écran d'accueil pour recevoir les notifications.`;
-  return `<div class="card pale"><b>${msg}</b><div class="btns">${N.state === 'off' ? '<button class="btn small main" data-act="pushon">Activer</button>' : '<button class="btn small main" data-act="account">Comment faire</button>'}<button class="btn small ghost" data-act="pushhide">Plus tard</button></div></div>`;
+  return `<div class="card pale"><b>${msg}</b><div class="btns">${N.state === 'off' ? '<button class="btn small main" data-act="pushon">Activer</button>' : '<button class="btn small main" data-act="account">Comment faire</button>'}<button class="btn small ghost" data-act="pushhide">Masquer le message</button></div></div>`;
 }
 
 CHANGES.push(async (t) => {
@@ -105,5 +107,5 @@ Object.assign(ACTIONS, {
     try { await N.sub?.unsubscribe(); } catch { /* */ }
     N.sub = null; N.state = 'off'; store.set('pc_hidepush', '1'); toast('Notifications coupées sur cet appareil.'); render(true);
   },
-  pushhide: () => { store.set('pc_hidepush', '1'); toast('Rappel masqué. Tu peux activer plus tard dans « Mon compte ».'); render(true); },
+  pushhide: () => { store.set('pc_hidepush', '1'); toast('Message masqué. Tu pourras activer les notifications quand tu veux dans « Mon compte ».'); render(true); },
 });

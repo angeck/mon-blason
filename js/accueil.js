@@ -15,7 +15,7 @@ export function homeTitle() {
 }
 export function homeTab() {
   const fut = homeEvents(), todo = fut.filter(needsAnswer), next = todo[0];
-  let h = '';
+  let h = pushHome(); // encart des notifications en premier, tant que la personne n'a pas activé ni masqué
   const vp = toValidate().length;
   // n° 94 : président et bureau → une seule touche, la page « Gestion du club » s'ouvre à l'endroit des demandes ; le coach garde l'onglet Club
   if (vp) h += isBoard() ? `<button class="btn main" data-act="gestion" data-v="demandes">${plural(vp, 'demande à valider', 'demandes à valider')}</button>` : `<button class="btn main" data-act="tab" data-i="4">${plural(vp, 'demande à valider', 'demandes à valider')}</button>`;
@@ -32,7 +32,6 @@ export function homeTab() {
   h += missionsHome() + otherClubsHome();
   const last = S.lastMsgs.slice(0, 3);
   if (last.length) h += `<div class="sec"><h2>Derniers messages</h2><button data-act="tab" data-i="2">Messages</button></div>` + last.map((m) => `<button class="card dark" data-act="group" data-id="${m.group_id}" style="flex-direction:row;align-items:center;gap:14px;border:0;text-align:left;font:inherit"><span style="width:40px;height:40px;border-radius:20px;background:var(--pc-bleu);display:flex;align-items:center;justify-content:center;flex:none">${icon('msg', 22, '#FFFFFF')}</span><span style="display:flex;flex-direction:column;min-width:0"><b>${esc(grp(m.group_id)?.name || 'Groupe')}</b><span class="det" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nick(m.user_id))} : ${esc(m.body.slice(0, 80))}</span></span></button>`).join('');
-  h += pushHome();
   if (!store.get('pc_hiderq_' + S.clubId) && active().length) h += `<div class="card pale"><b>Tu joues, coaches ou es parent dans une autre équipe du club ?</b><p class="note">Ajoute tes autres rôles : chacun est validé par le club.</p><div class="btns"><button class="btn small main" data-act="rqgo">Demander un autre rôle</button><button class="btn small ghost" data-act="rqhide">Ne plus afficher</button></div></div>`;
   return h;
 }

@@ -207,6 +207,7 @@ with sync_playwright() as p:
     check('notifications : encadré « Activer » dans Mon compte', has('Activer les notifications') and has('pour tous tes clubs'))
     act('[data-act=back]')
     check('notifications : rappel discret sur l’Accueil', pg.evaluate("!!document.querySelector('.card.pale [data-act=pushon]')"))
+    check('notifications : l’encart est la première carte de l’Accueil, avec « Masquer le message »', pg.evaluate("(() => { const c = document.querySelector('[data-act=pushon]').closest('.card'); return c === document.querySelector('.card') && !!c.querySelector('[data-act=pushhide]') && c.querySelector('[data-act=pushhide]').textContent.trim() === 'Masquer le message'; })()"))
     act('.card.pale [data-act=pushon]'); pg.wait_for_timeout(300)
     check('notifications : appareil inscrit avec la clé publique et rangé dans la base', pg.evaluate("window.__PUSHOPT && window.__PUSHOPT.applicationServerKey.length === 65 && window.__CALLS.some(c => c[1] === 'push_subscribe' && c[2].p_endpoint.endsWith('901234') && c[2].p_auth === 'secret-fictif')"))
     check('notifications : rappel retiré une fois activé', pg.evaluate("!document.querySelector('[data-act=pushon]')"))
