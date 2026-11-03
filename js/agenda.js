@@ -1,7 +1,7 @@
 // mypocketclub · agenda : rendez-vous (une ou plusieurs équipes, personnes choisies), réponses, appel, séries, suppression.
 import {
   S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, CHANGES, INPUTS, TEAM_TYPES, club, active, isBoard, coachOf, coachTeams,
-  teamName, teamsLabel, evTeams, name, pl, pname, parentsOf, myKidsIn, iPlayIn, inTeam, playersOfTeam, fmtDate, hm, localDay, inHolidays,
+  teamName, teamsLabel, catsLabel, evTeams, name, pl, pname, parentsOf, myKidsIn, iPlayIn, inTeam, playersOfTeam, fmtDate, hm, localDay, inHolidays,
   toLocalInput, fmtDay, plural, download, norm, follows, hooks, hasArea, myMem, isPresident,
   SEASON, durOf, endOf, timeRange, fmtDur, DEF_DUR, fmtShort,
 } from './core.js';
@@ -288,20 +288,43 @@ function durField(f) {
   if (f.starts_at) { const st = new Date(f.starts_at); if (!isNaN(st)) end = cur === 'jour' ? `${st.toLocaleDateString('fr-FR', { weekday: 'long' })} · toute la journée` : `${st.toLocaleDateString('fr-FR', { weekday: 'long' })} ${hm(st)} → ${hm(new Date(st.getTime() + +cur * 60000))}`; }
   return field('edu', 'Durée', `<select id="edu" name="dur" data-evdur="1">${opts.join('')}</select>`) + (end ? `<p class="note" id="evend" style="margin-top:-6px">${esc(end)}</p>` : '');
 }
+// N° 111 · titre écrit tout seul à partir du type, de l'adversaire (ou de la catégorie) et de la date ; il reste modifiable.
+// Entraînement : catégorie et genre de l'équipe (jamais son nom interne), jour et heure, « chaque mercredi » si la séance se répète.
+const WD = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+export function autoTitle(f) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(f.starts_at || ''), opp = String(f.opponents || '').trim().replace(/\s*,\s*/g, ', ');
+  const date = m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : '', hour = m ? `${+m[4]}h${m[5]}` : '';
+  const dash = (a, ...b) => [a, ...b.filter(Boolean)].join(' - ');
+  if (f.type === 'Entraînement') {
+    const cats = f.aud === 'team' ? catsLabel([...(f.teams || [])]) : '';
+    const when = !m ? '' : f.repeat && !f.id ? `chaque ${WD[new Date(+m[1], +m[2] - 1, +m[3]).getDay()]} ${hour}` : `${date} ${hour}`;
+    return dash(['Entraînement', cats].filter(Boolean).join(' '), when).slice(0, 120);
+  }
+  if (['Match', 'Plateau', 'Tournoi'].includes(f.type)) return dash(opp ? `${f.type} vs ${opp}` : f.type, opp ? '' : String(f.place || '').trim(), date).slice(0, 120);
+  return dash(f.type || 'Événement', String(f.place || '').trim(), date).slice(0, 120);
+}
+const isAuto = (f) => f.titleAuto !== false;
+function titleField(f) {
+  const val = isAuto(f) ? autoTitle(f) : f.title || '';
+  return `<div class="field evtitle"><label for="et">Titre</label><input id="et" name="title" required maxlength="120" data-evtitle="1" value="${esc(val)}" placeholder="Rempli tout seul avec l'adversaire et la date">
+  <p class="note" id="etnote">${isAuto(f) ? 'Écrit tout seul. Tu peux le modifier.' : `Modifié à la main. <button type="button" class="linkbtn" data-act="evtauto">Revenir au titre automatique</button>`}</p></div>`;
+}
 export function eventForm() {
-  const f = S.form;
+  const f = S.form, matchy = ['Match', 'Plateau', 'Tournoi'].includes(f.type);
+  // N° 108 : la case « Match à domicile » se voit dès qu'on choisit un match, un plateau ou un tournoi, quel que soit son rôle
   return `<form id="evf" class="card lift">
   <div class="field"><span class="lab">Type</span><div class="chips">${types().map((t) => `<button type="button" class="chip" data-act="evtype" data-v="${t}" aria-pressed="${f.type === t}">${t}</button>`).join('')}</div></div>
-  ${field('et', 'Titre', `<input id="et" name="title" required maxlength="120" value="${esc(f.title || '')}" placeholder="${f.type === 'Match' ? 'Ex. Match contre Val Vert' : 'Ex. ' + esc(f.type)}">`)}
-  ${['Match', 'Plateau', 'Tournoi'].includes(f.type) ? field('eo', f.type === 'Match' ? 'Adversaire' : 'Adversaires (séparés par des virgules)', `<input id="eo" name="opponents" value="${esc(f.opponents || '')}">`) : ''}
-  ${['Match', 'Plateau', 'Tournoi'].includes(f.type) ? `<label class="check"><input type="checkbox" name="at_home" data-evhome="1" ${f.at_home === false ? '' : 'checked'}><span>Nous recevons (rencontre à domicile)</span></label>` : ''}
+  ${audienceField(f)}
+  ${matchy ? field('eo', f.type === 'Match' ? 'Adversaire' : 'Adversaires (séparés par des virgules)', `<input id="eo" name="opponents" data-evauto="1" value="${esc(f.opponents || '')}" placeholder="${f.type === 'Match' ? 'Ex. Palaiseau' : 'Ex. Palaiseau, Massy'}">`) : ''}
+  ${matchy ? `<label class="check homebox"><input type="checkbox" name="at_home" data-evhome="1" ${f.at_home === false ? '' : 'checked'}><span><b>Match à domicile</b> (nous recevons)</span></label>` : ''}
   ${field('ed', 'Date et heure', `<input id="ed" name="starts_at" type="datetime-local" required value="${esc(f.starts_at || '')}" data-evdur="1">`)}
   ${durField(f)}
   ${repeatFields(f)}
-  ${field('el', 'Lieu', `<input id="el" name="place" value="${esc(f.place || '')}" placeholder="Ex. Gymnase de Boissy">`)}
-  ${audienceField(f)}
+  ${titleField(f)}
+  ${field('el', 'Lieu', `<input id="el" name="place" data-evauto="1" value="${esc(f.place || '')}" placeholder="Ex. Gymnase de Boissy">`)}
   ${convField(f)}
-  ${!f.id && ['Match', 'Plateau', 'Tournoi'].includes(f.type) && f.at_home !== false && f.aud === 'team' && hasArea('evenements') ? `<label class="check"><input type="checkbox" name="mkconv" ${f.mkconv ? 'checked' : ''}><span>Préparer la convocation des clubs reçus après l'enregistrement</span></label>` : ''}
+  ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && hasArea('evenements') ? `<label class="check"><input type="checkbox" name="mkconv" ${f.mkconv ? 'checked' : ''}><span>Préparer la convocation des clubs reçus après l'enregistrement</span></label>` : ''}
+  ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && !hasArea('evenements') ? '<p class="note">Le coordinateur du club sera prévenu pour préparer la convocation des clubs reçus.</p>' : ''}
   <button class="btn main" type="submit">${f.id ? 'Enregistrer les changements' : 'Enregistrer'}</button></form>`;
 }
 function keepForm() {
@@ -446,11 +469,12 @@ Object.assign(ACTIONS, {
   },
   evedit: (el, d) => {
     const e = S.events.find((x) => x.id === d.id);
-    S.form = { id: e.id, type: e.type, title: e.title, opponents: e.opponents, place: e.place, starts_at: toLocalInput(new Date(e.starts_at)), aud: e.audience, sup: e.with_supporters !== false, supSet: true, teams: new Set(evTeams(e)), people: new Set(e.people || []), pq: '', conv: new Set(e.convoked || []), convMode: (e.convoked || []).length ? 'some' : 'all', at_home: e.at_home !== false, dur: e.all_day ? 'jour' : String(durOf(e)) };
+    S.form = { id: e.id, type: e.type, title: e.title, opponents: e.opponents, place: e.place, starts_at: toLocalInput(new Date(e.starts_at)), aud: e.audience, sup: e.with_supporters !== false, supSet: true, teams: new Set(evTeams(e)), people: new Set(e.people || []), pq: '', conv: new Set(e.convoked || []), convMode: (e.convoked || []).length ? 'some' : 'all', at_home: e.at_home !== false, dur: e.all_day ? 'jour' : String(durOf(e)), titleAuto: false };
     S.view = { type: 'evform' }; render();
   },
   evtype: (el, d) => { keepForm(); S.form.type = d.v; if (!S.form.supSet && !S.form.id) S.form.sup = supDefault(d.v); S.form.dur = String(usualDur(d.v, S.form.teams)); render(true); },
   evaud: (el, d) => { keepForm(); S.form.aud = d.v; render(true); },
+  evtauto: () => { keepForm(); S.form.titleAuto = true; render(true); },
   evsup: (el, d) => { keepForm(); S.form.sup = d.v === '1'; S.form.supSet = true; render(true); },
   evteam: (el, d) => { keepForm(); S.form.teams[S.form.teams.has(d.id) ? 'delete' : 'add'](d.id); S.form.conv = new Set(); render(true); },
   evconvm: (el, d) => { keepForm(); S.form.convMode = d.v; render(true); },
@@ -569,6 +593,8 @@ CHANGES.push(async (t) => {
   return false;
 });
 INPUTS.push((t) => {
+  if (t.dataset.evtitle && S.form) { S.form.title = t.value; const was = isAuto(S.form); S.form.titleAuto = !t.value.trim(); if (was !== isAuto(S.form)) { const n = document.getElementById('etnote'); if (n) n.innerHTML = isAuto(S.form) ? 'Écrit tout seul : il se remplira avec les autres champs.' : 'Modifié à la main. <button type="button" class="linkbtn" data-act="evtauto">Revenir au titre automatique</button>'; } return true; }
+  if (t.dataset.evauto && S.form) { S.form[t.name] = t.value; if (isAuto(S.form)) { const n = document.getElementById('et'); if (n) n.value = autoTitle(S.form); } return true; }
   if (t.dataset.evpq) { keepForm(); S.form.pq = t.value; const pos = t.selectionStart; render(true); const n = document.getElementById('epq'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch { /* */ } } return true; }
   return false;
 });

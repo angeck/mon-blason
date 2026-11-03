@@ -3,7 +3,7 @@
 // sans gymnase ni horaire) puis convocation (étape 2 sur 2, avec gymnase, adresse, date et heure).
 // Réservé à la rubrique Événements (coordinateur, vice-président, président) ; la base le vérifie (convocation_data).
 import { BRAND } from '../config.js';
-import { S, sb, esc, run, toast, render, ACTIONS, hooks, hasArea, onColor, contrast } from './core.js';
+import { S, sb, esc, run, toast, render, ACTIONS, hooks, hasArea, onColor, contrast, catGender } from './core.js';
 import { header, icon, crest, ballSrc } from './ui.js';
 import { VIE_VIEWS } from './vie.js';
 
@@ -36,7 +36,14 @@ export function reference(clubName, from, step) {
 }
 // Teinte claire de la couleur principale (90 % de blanc)
 const tint = (hex) => { const n = parseInt(hex.slice(1), 16), m = (v) => Math.round(v + (255 - v) * 0.9); return '#' + [m(n >> 16), m((n >> 8) & 255), m(n & 255)].map((v) => v.toString(16).padStart(2, '0')).join(''); };
-const catOf = (x) => x.team?.name || x.team?.category || x.title;
+// N° 109 : catégorie et genre (« U9 F ») dans les documents envoyés aux autres clubs, jamais le nom interne de l'équipe (« Les Reines »)
+const catOf = (x) => catGender(x.team) || x.team?.name || x.title;
+// N° 109 · point 4 : nom affiché de l'expéditeur de l'e-mail = nom du club (réglé par le président) + catégories et genres du document.
+// Même règle que la fonction serveur envoyer-email (senderName) ; l'adresse reste notifications@mypocketclub.fr.
+export function mailSender(d) {
+  const cats = [...new Set((d.events || []).filter((x) => !x.cancelled).map((x) => catGender(x.team)).filter(Boolean))];
+  return [String(d.club?.name || '').trim(), cats.join(', ')].filter(Boolean).join(' ').replace(/["<>\r\n]/g, '').slice(0, 70) || 'mypocketclub';
+}
 const competition = (x) => (x.type === 'Match' ? 'Match' : x.type);
 
 // Ce qui manque avant l'envoi (la génération n'est jamais bloquée, sauf l'étape 2 sans gymnase)
@@ -109,7 +116,10 @@ function convocScreen() {
   <div class="det">Week-end du ${esc(weekendLabel(d.from, d.to))} · ${d.events.length} rencontre${d.events.length > 1 ? 's' : ''} à domicile · réf. ${esc(reference(d.club.name, d.from, step))}</div></div>`;
   h += `<div class="card"><div class="list">${d.events.map((x) => `<div class="row static"><span class="g">${esc(catOf(x))} · ${esc(x.opponents || 'club reçu à préciser')}<small>${esc(dayLong(paris(x.starts_at)))} à ${hhmm(x.starts_at)}${x.place ? ' · ' + esc(x.place) : ''}${x.coach ? ' · coach ' + esc(x.coach.name) : ''}</small></span>${x.cancelled ? '<span class="pill ko">Annulée</span>' : ''}</div>`).join('') || '<p class="empty">Aucune rencontre à domicile ce week-end.</p>'}</div></div>`;
   if (miss.length) h += `<div class="card warn"><b>${block ? 'À compléter avant la convocation :' : 'À compléter avant l’envoi (le document reste possible) :'}</b><ul style="margin:6px 0 0 18px;padding:0">${miss.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>`;
-  h += `<button class="btn main" data-act="convpdf" ${block || !d.events.length ? 'disabled' : ''}>${icon('down', 20)}Créer le PDF</button><p class="note">Le document s'ouvre dans une nouvelle fenêtre : choisis « Enregistrer en PDF » pour l'envoyer par e-mail aux clubs reçus (et au comité si besoin).</p>`;
+  // N° 109 : trois façons d'envoyer ; le PDF est prêt, l'e-mail et l'envoi dans mypocketclub arrivent ensuite (n° 107, avis « Légal », n° 84)
+  h += `<div class="card"><div class="kick">Envoyer aux clubs reçus</div><button class="btn main" data-act="convpdf" ${block || !d.events.length ? 'disabled' : ''}>${icon('down', 20)}Créer le PDF</button><p class="note">Le document s'ouvre dans une nouvelle fenêtre : choisis « Enregistrer en PDF » pour l'envoyer aux clubs reçus (et au comité si besoin).</p>
+  <div class="btns"><button class="btn small ghost" disabled>${icon('mail', 18)}Par e-mail · bientôt</button><button class="btn small ghost" disabled>${icon('msg', 18)}Dans mypocketclub · bientôt</button></div>
+  <p class="note">Par e-mail, l’expéditeur affiché sera « ${esc(mailSender(d))} » et les clubs reçus répondront directement à ${d.correspondent?.email ? 'ton correspondant' : 'ton correspondant (à renseigner : Mon compte → Contact du club)'}.</p></div>`;
   return h;
 }
 VIE_VIEWS.convoc = () => ({ head: header({ back: true, kicker: 'Convocation', title: S.convoc?.step === 'P' ? 'Pré-convocation' : 'Convocation' }), body: convocScreen() });

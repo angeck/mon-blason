@@ -108,6 +108,10 @@ export const shortName = (full) => { const p = String(full || '').trim().split(/
 export const team = (id) => S.teams.find((t) => t.id === id);
 export const teamName = (id) => team(id)?.name || '';
 export const teamsLabel = (ids) => (ids || []).map(teamName).filter(Boolean).join(', ');
+// N° 109 et 111 : catégorie et genre d'une équipe (« U9 F »), jamais son nom, qui peut être un nom interne (« Les Reines »)
+const GENRE = { Féminine: 'F', Masculine: 'M', Mixte: 'mixte' };
+export const catGender = (t) => (t ? [String(t.category || '').trim(), GENRE[t.gender] || ''].filter(Boolean).join(' ') : '');
+export const catsLabel = (ids) => [...new Set((ids || []).map((id) => catGender(team(id))).filter(Boolean))].join(', ');
 export const pl = (id) => S.players.find((p) => p.id === id);
 export const pname = (p) => (p.first_name + ' ' + (p.last_name || '')).trim();
 export const adminOf = (pid) => S.padmin.find((a) => a.player_id === pid);

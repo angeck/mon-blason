@@ -1,4 +1,4 @@
-// mypocketclub · alpha 3.8.0 · n° 107 · fonction d'envoi des e-mails (Supabase → Edge Functions)
+// mypocketclub · alpha 3.8.0 (3.9.0 : n° 109, expéditeur des convocations) · n° 107 · fonction d’envoi des e-mails (Supabase → Edge Functions)
 // Nom de la fonction : envoyer-email
 // Première étape : un e-mail de test, envoyé par l'administrateur de mypocketclub à sa propre adresse, depuis
 // notifications@mypocketclub.fr, réponses vers contact@mypocketclub.fr, par Resend (domaine mypocketclub.fr vérifié le 3 novembre 2026).
@@ -27,6 +27,22 @@ export function testMail(name: string, when: Date) {
 <p style="color:#5A6178;font-size:14px">Une réponse à cet e-mail arrive sur contact@mypocketclub.fr.</p>
 <p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
   return { subject: 'mypocketclub · e-mail de test', text, html };
+}
+
+// N° 109 · point 4 (décision de Gaël, 3 novembre 2026) : pour les convocations, le nom affiché de l'expéditeur est le nom du club
+// tel que le président l'a réglé, suivi de la catégorie et du genre (« Boissy Basket 91 U9 F »), jamais le nom interne de l'équipe ;
+// l'adresse reste notifications@mypocketclub.fr (aucune boîte par club) et les réponses vont au correspondant du club, sinon à contact@.
+// Prêt, pas encore branché : l'envoi des convocations par e-mail attend la vérification en vrai et l'avis « Légal » (n° 107).
+const GENRE: Record<string, string> = { Féminine: 'F', Masculine: 'M', Mixte: 'mixte' };
+export const catGender = (t: { category?: string; gender?: string } | null | undefined) => (t ? [String(t.category || '').trim(), GENRE[String(t.gender)] || ''].filter(Boolean).join(' ') : '');
+export function senderName(clubName: string, teams: Array<{ category?: string; gender?: string } | null>) {
+  const cats = [...new Set((teams || []).map(catGender).filter(Boolean))].join(', ');
+  return [String(clubName || '').trim(), cats].filter(Boolean).join(' ').replace(/["<>\\\r\n]/g, '').slice(0, 70) || 'mypocketclub';
+}
+export function convocationEnvelope(env: Env, clubName: string, teams: Array<{ category?: string; gender?: string } | null>, correspondentEmail?: string | null) {
+  const addr = (/<([^>]+)>/.exec(env.from) || [, env.from])[1];
+  const reply = correspondentEmail && /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(correspondentEmail) ? correspondentEmail : env.replyTo;
+  return { from: `"${senderName(clubName, teams)}" <${addr}>`, reply_to: reply };
 }
 
 // Qui appelle ? (le jeton de la personne connectée, vérifié par Supabase)

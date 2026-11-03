@@ -1,4 +1,4 @@
-# mypocketclub · alpha 3.8.0
+# mypocketclub · alpha 3.9.0
 
 Application web installable (PWA) pour les clubs sportifs : agenda avec réponses « Je viens / Je ne viens pas », appel, fiches joueurs, licences et cotisations, groupes d'échange (messages en direct, sondages), équipes, membres, corbeille de 30 jours.
 
@@ -26,10 +26,16 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 `PGHOST=… PGPORT=… PGUSER=postgres sh tests/lancer.sh` : base PostgreSQL 16 locale (`tests/prelude.sql` imite Supabase), puis
 - `tests/vie_de_club.py` : faux club complet et saison simulée, 596 vérifications des droits (visiteur non connecté compris) ;
 - `tests/import.test.mjs` : lecture de listes de joueurs et d'équipes (20 tests) ;
-- `tests/email.test.mjs` : fonction d'envoi des e-mails, Supabase et Resend imités (13 tests) ;
-- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (277 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
+- `tests/email.test.mjs` : fonction d'envoi des e-mails, Supabase et Resend imités (18 tests) ;
+- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (288 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
 
 Toutes les personnes des tests sont fictives.
+
+## Alpha 3.9.0
+
+Mise à jour d'une base 3.8.0 : `supabase/MAJ_ALPHA_3_9_0.sql` (source `supabase/alpha_3_9_0.sql`, ajoutée au RESET), sans perte de données, relançable.
+N° 108 : case « Match à domicile » encadrée, visible dès qu'on choisit un match, un plateau ou un tournoi, quel que soit le rôle ; quand un coach (sans la rubrique Événements) crée un match à domicile ou coche la case après coup, le coordinateur, le vice-président et le président reçoivent une notification « Match à domicile à convoquer » ; carte « Matchs à domicile à convoquer » (30 prochains jours) dans la rubrique Événements. N° 109 : documents de convocation avec la catégorie et le genre (« U9 F »), jamais le nom interne de l'équipe ; écran d'envoi avec trois façons (PDF prêt, e-mail et envoi dans mypocketclub annoncés « bientôt ») et expéditeur prévu « nom du club + catégories » ; règle de l'expéditeur et de l'adresse de réponse (correspondant, sinon contact@) prête dans `envoyer-email` (`senderName`, `convocationEnvelope`), pas encore branchée. N° 111 : titre du rendez-vous écrit tout seul (« Match vs Palaiseau - 10/11/26 », « Entraînement U9 F - chaque mercredi 18h00 »), modifiable, avec « Revenir au titre automatique » ; adversaire, date et équipe avant le titre.
+N° 110 · purge à lancer une fois, à part : `supabase/PURGE_MESSAGES_RENDEZ_VOUS.sql` efface tous les rendez-vous (entraînements et séries compris, réponses, appels, missions, séances liées), les heures des coachs, tous les messages (groupes, sondages, annonces, pièces jointes) et les notifications en attente ; garde clubs, comptes, équipes et créneaux, joueurs, rôles, exercices. **Irréversible.**
 
 ## Alpha 3.8.0
 

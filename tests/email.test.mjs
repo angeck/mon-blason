@@ -40,5 +40,13 @@ check('refus de Resend : message renvoyé (502)', r.status === 502 && /domaine n
 r = await F.handle(new Request('https://x', { method: 'OPTIONS' }), env, fake().f);
 check('appel depuis le navigateur autorisé (CORS)', r.status === 200 && r.headers.get('Access-Control-Allow-Origin') === '*');
 check('HTML : texte de la personne échappé', !/<script>/.test(F.testMail('<script>', new Date()).html));
+// N° 109 · point 4 : nom du club + catégorie et genre, jamais le nom de l'équipe ; réponses vers le correspondant
+const reines = { name: 'Les Reines', category: 'U9', gender: 'Féminine' };
+check('n° 109 : expéditeur = nom du club + catégorie et genre (« Boissy Basket 91 U9 F »)', F.senderName('Boissy Basket 91', [reines]) === 'Boissy Basket 91 U9 F');
+check('n° 109 : jamais le nom interne de l’équipe (« Les Reines »)', !F.senderName('Boissy Basket 91', [reines]).includes('Reines'));
+check('n° 109 : plusieurs catégories, sans doublon', F.senderName('Boissy Basket 91', [reines, { category: 'U11', gender: 'Masculine' }, reines]) === 'Boissy Basket 91 U9 F, U11 M');
+const env9 = F.convocationEnvelope(env, 'Boissy "Basket" <91>', [reines], 'correspondant@exemple.fr');
+check('n° 109 : adresse notifications@ gardée, nom nettoyé des guillemets et chevrons', env9.from === '"Boissy Basket 91 U9 F" <notifications@mypocketclub.fr>');
+check('n° 109 : réponses vers le correspondant, sinon contact@', env9.reply_to === 'correspondant@exemple.fr' && F.convocationEnvelope(env, 'Club', [], null).reply_to === 'contact@mypocketclub.fr' && F.convocationEnvelope(env, 'Club', [], 'pas une adresse').reply_to === 'contact@mypocketclub.fr');
 console.log(`\n   ${ok} réussis sur ${ok + ko} tests d'e-mail`);
 if (ko) process.exitCode = 1;

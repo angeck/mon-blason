@@ -158,6 +158,11 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 .field .doubt{border-color:#F2A33A;background:var(--pc-attente-fond)}
 .check{display:flex;align-items:flex-start;gap:12px;min-height:var(--pc-cible-min);padding:10px 0;cursor:pointer}
 .check input{width:24px;height:24px;flex:none;margin:0;accent-color:var(--pc-bleu)}
+/* N° 108 : case « Match à domicile » bien visible ; n° 111 : titre écrit tout seul, mis en avant */
+.check.homebox{background:var(--pc-bleu-pale);border:2px solid var(--pc-trait);border-radius:16px;padding:10px 14px;align-items:center}
+.evtitle{background:var(--pc-bleu-pale);border-radius:16px;padding:12px}
+.evtitle input{font-family:var(--pc-titre);font-weight:700;font-size:18px;border-color:var(--pc-bleu-clair)}
+.evtitle .linkbtn{color:var(--pc-bleu)}
 .switch{display:flex;align-items:center;gap:12px;min-height:var(--pc-cible-min);cursor:pointer}
 .switch input{appearance:none;-webkit-appearance:none;flex:none;width:52px;height:32px;border-radius:16px;background:var(--pc-trait);position:relative;margin:0;transition:background .15s}
 .switch input::after{content:"";position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:12px;background:#FFFFFF;box-shadow:0 1px 3px rgba(17,22,46,.3);transition:left .15s}
