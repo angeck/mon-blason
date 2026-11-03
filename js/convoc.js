@@ -57,7 +57,7 @@ export function convocHtml(d, step, now = new Date()) {
   const c = d.club, c1 = c.color1 || '#2F5BFF', c2 = c.color2 || '#FFC93C', txt = onColor(c1), soft = tint(c1), ref = reference(c.name, d.from, step);
   const k = d.correspondent, when = weekendLabel(d.from, d.to), pre = step === 'P';
   // n° 92 : le blason du club tel qu'il est dans l'application (même fonction crest, mêmes réglages) ;
-  // n° 97 : sans logo, le ballon du sport du club (ou le ballon médecine mypocketclub pour un autre sport)
+  // n° 97 : sans logo, le ballon du sport du club (ou le ballon de la marque mypocketclub, étoile creuse, pour un autre sport : n° 106)
   const logo = c.logo ? `<span class="lg">${crest(c, 58, c1)}</span>` : `<span class="lg"><img src="${abs(ballSrc(c.sport))}" width="62" height="62" alt=""></span>`;
   const corr = k ? [esc(k.name), k.phone ? esc(k.phone) : '', k.email ? esc(k.email) : ''].filter(Boolean).join(' · ') : '';
   const strike = (x, s) => (x.cancelled ? `<s>${s}</s>` : s);

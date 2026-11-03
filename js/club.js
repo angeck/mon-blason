@@ -139,7 +139,7 @@ export function teamsBlock() {
     const sub = [t.category !== t.name ? t.category : '', t.gender, t.coach ? 'Coach : ' + t.coach : '', t.slots].filter(Boolean).join(' · ');
     return `<div class="row static" style="flex-wrap:wrap"><button class="g" data-act="team" data-id="${t.id}" style="background:none;border:0;text-align:left;padding:0;min-height:44px;color:inherit">${esc(t.name)}<small>${esc(sub)}</small>${t.coaches != null ? `<small>Coachs : ${t.coaches} · Effectif : ${plural(t.players, 'joueur')}</small>` : ''}</button>${t.state === 'Fantôme' ? '<span class="pill wait">Fantôme · en attente de validation</span>' : t.state === 'Archivée' ? '<span class="pill">Archivée</span>' : t.followed ? '<span class="pill blue">Suivie</span>' : ''}</div>`;
   }).join('') : '<p class="empty">Aucune équipe.</p>'}</div></div>`;
-  if (hasArea('technique')) h += `<details class="card"><summary>${icon('plus', 18)} Créer une équipe</summary>${teamForm({}, 'teamnew')}<p class="note">Une nouvelle équipe reste en mode fantôme (invisible des familles) jusqu'à ce que son coach, le bureau ou le président la rende visible.</p></details>`;
+  // n° 101 : la création d'équipe (à la main ou par import) est dans l'espace (Président, rubrique Technique), plus dans l'onglet Club
   return h;
 }
 
@@ -204,8 +204,8 @@ export function effectifsBlock() {
 export function clubTab() {
   const c = club(), vp = toValidate(), board = isBoard();
   let h = '';
-  if (board) h += `<div class="card flat"><div class="kick">Gestion du club</div><p class="note" style="margin:0">Demandes, tarifs, licences, membres, heures des coachs, corbeille : tout est dans la page « Gestion du club », aussi dans ton Espace.</p><button class="btn ${vp.length ? 'main' : ''}" data-act="gestion">${icon('shield', 20)}Gestion du club${vp.length ? ` · ${plural(vp.length, 'demande', 'demandes')} à valider` : ''}</button></div>`;
-  else if (vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>`;
+  // n° 101 : plus de carte « Gestion du club » dans l'onglet : la gestion se fait dans l'espace (bouton aux quatre carrés)
+  if (!board && vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>`;
     h += `<div class="card yellow" style="transform:none"><span class="kick" style="color:var(--pc-encre)">Code pour rejoindre le club</span><span class="codebox">${esc(c.join_code)}</span><button class="btn ink small" data-act="share">${icon('share', 18, '#FFFFFF')}Partager l'invitation</button></div>`;
   h += contactsBlock() + teamsBlock() + (board ? '' : feesBlock() + membersBlock());
   return h;

@@ -13,6 +13,7 @@ import { pendRows } from './club.js';
 import { statusPills, presence } from './joueur.js';
 import { coachEntry } from './coach.js';
 import { topFollowed } from './v37.js';
+import { canTrashTeam, dupBtn } from './v38.js';
 
 // ---------- mes enfants / ma fiche ----------
 // n° 51 : « Moi » (ma fiche de joueur) puis « Mes enfants », séparés
@@ -128,7 +129,8 @@ export function teamPage(tid) {
     h += `<details class="card"><summary>${board ? 'Nommer un coach ou un assistant' : 'Ajouter un coach assistant'}</summary><form id="coachf" data-id="${tid}" class="stack">${field('cfu', 'Membre du club', `<select id="cfu" name="user">${cands.map((x) => `<option value="${x.user_id}">${esc((x.first_name + ' ' + x.last_name).trim())}</option>`).join('')}</select>`)}${board ? '<label class="check"><input type="checkbox" name="assistant"><span>Coach assistant</span></label>' : '<input type="hidden" name="assistant" value="on">'}<button class="btn main" type="submit">Nommer</button><p class="note">La personne doit déjà être membre du club (elle a rejoint avec le code).</p></form></details>`;
   }
   if (board) h += `<div class="btns">${t.state === 'Visible' ? `<button class="btn ghost small" data-act="tstate" data-id="${tid}" data-v="Fantôme">Repasser en mode fantôme</button>` : ''}${t.state !== 'Archivée' ? `<button class="btn ghost small ${isArmed('rn' + tid) ? 'danger armed' : ''}" data-act="trenew" data-id="${tid}">${isArmed('rn' + tid) ? `Confirmer : archiver et recréer pour ${NEXT_SEASON}` : `Archiver et reconduire pour ${NEXT_SEASON}`}</button>` : ''}</div>`;
-  if (isPresident()) h += delBtn('tdel', tid, "Mettre l'équipe à la corbeille", "Confirmer : l'équipe part à la corbeille (30 jours)", isArmed('t' + tid));
+  // n° 103 : « Supprimer (doublon) », séparé d'« Archiver », pour le président et le bureau Technique (corbeille 30 jours, restaurable)
+  if (canTrashTeam()) h += `<div class="sec"><h2>Équipe en double ?</h2></div><div class="card"><p class="note" style="margin:0">Pour une équipe créée deux fois. Elle part à la corbeille pendant 30 jours : le bureau peut la restaurer. Pour la fin de saison, utilise plutôt « Archiver et reconduire ».</p>${dupBtn(tid)}</div>`;
   return h + (board || coach ? teamRoster(tid) : ''); // n° 93 : la liste des familles est dans l'onglet Équipe, pas en double ici
 }
 

@@ -113,7 +113,7 @@ const RPC = {
   create_events: ({ p }) => { p.starts.forEach((s) => D.events.push({ id: uid(), club_id: p.club_id, audience: p.audience, team_ids: p.team_ids || [], people: p.people || [], type: p.type, title: p.title, starts_at: s, place: p.place, opponents: p.opponents, series_id: p.series ? 's-new' : null, cancelled: false, created_by: ME, updated_at: new Date().toISOString() })); return p.starts.length; },
   delete_events: ({ p_event, p_mode, p_dry }) => { const e = D.events.find((x) => x.id === p_event); const del = p_mode === 'one' || !e.series_id ? [e] : D.events.filter((x) => x.series_id === e.series_id && new Date(x.starts_at) >= Date.now()); if (!p_dry) D.events = D.events.filter((x) => !del.includes(x)); return del.length; },
   delete_event_list: ({ p_ids }) => { const n = D.events.filter((e) => p_ids.includes(e.id)).length; D.events = D.events.filter((e) => !p_ids.includes(e.id)); return n; },
-  trash_item: ({ p_kind, p_id }) => { if (p_kind === 'player') D.players.find((p) => p.id === p_id).deleted_at = new Date().toISOString(); if (p_kind === 'poll') { const q = D.polls.find((p) => p.id === p_id); q.deleted_at = new Date().toISOString(); q.deleted_by = ME; } return null; },
+  trash_item: ({ p_kind, p_id }) => { if (p_kind === 'team') D.teams.find((t) => t.id === p_id).deleted_at = new Date().toISOString(); if (p_kind === 'player') D.players.find((p) => p.id === p_id).deleted_at = new Date().toISOString(); if (p_kind === 'poll') { const q = D.polls.find((p) => p.id === p_id); q.deleted_at = new Date().toISOString(); q.deleted_by = ME; } return null; },
   restore_item: ({ p_kind, p_id }) => { if (p_kind === 'player') D.players.find((p) => p.id === p_id).deleted_at = null; if (p_kind === 'poll') D.polls.find((p) => p.id === p_id).deleted_at = null; return null; },
   club_teams: () => D.teams.filter((t) => !t.deleted_at).map((t) => ({ ...t, coach: t.id === 't-u9' ? 'Gaël T.' : null, coaches: 1, players: D.players.filter((p) => p.team_id === t.id && !p.deleted_at).length, followed: D.team_follows.some((f) => f.team_id === t.id) })),
   club_contacts_list: () => [{ kind: 'president', user_id: 'u-pres', name: 'Céline P.', fonction: 'Président' }].concat(D.club_contacts.filter((c) => c.for_licence || c.for_matches).map((c) => ({ kind: 'contact', user_id: c.user_id, name: 'Gaël Test', fonction: 'Membre du bureau', for_licence: c.for_licence, for_matches: c.for_matches, phone: c.show_phone ? '06 00 00 00 00' : null, email: null }))),
@@ -168,5 +168,6 @@ export function createClient() {
     from: (t) => new Q(t),
     rpc: async (n, a) => { window.__CALLS.push(['rpc', n, a]); return RPC[n] ? { data: clone(RPC[n](a || {}) ?? null), error: null } : { data: true, error: null }; },
     channel: () => { const c = { on: () => c, subscribe: () => c }; return c; }, removeChannel: () => {},
+    functions: { invoke: async (n, o) => { window.__CALLS.push(['functions', n, o?.body]); return { data: { envoye: true, to: window.__EMAIL || 'gael@exemple.fr' }, error: null }; } },
   };
 }

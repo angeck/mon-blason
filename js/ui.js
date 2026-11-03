@@ -3,10 +3,11 @@ import { BRAND } from '../config.js';
 import { S, esc, club, onColor, contrast, lum, initials, isActive, toValidate, myTeamIds, casquettes, store } from './core.js';
 
 // ---------- Ballons (n° 97 · charte mypocketclub validée le 3 novembre 2026 · fichiers dans img/, copies de claude/logos/mypocketclub/) ----------
-// Une seule famille, jaune et encre. Hors club, ou club d'un autre sport (ou omnisports) : ballon de la marque « médecine » ;
+// Une seule famille, jaune et encre. Hors club, ou club d'un autre sport (ou omnisports) : ballon de la marque « étoile creuse » (n° 106) ;
 // dans un club de basket, foot, volley ou rugby : le ballon du sport (en-tête, espaces, convocations, blason de secours, « o » du logo).
 const BALLS = { 'Basket-ball': 'basket', 'Basketball': 'basket', 'Volley-ball': 'volley', 'Volleyball': 'volley', 'Football': 'foot', 'Rugby': 'rugby' };
-export const ballName = (sport) => (!sport ? 'medecine' : BALLS[sport] || (/basket/i.test(sport) ? 'basket' : /volley/i.test(sport) ? 'volley' : /foot/i.test(sport) ? 'foot' : /rugby/i.test(sport) ? 'rugby' : 'medecine'));
+export const BRAND_BALL = 'mypocketclub-etoile';
+export const ballName = (sport) => (!sport ? BRAND_BALL : BALLS[sport] || (/basket/i.test(sport) ? 'basket' : /volley/i.test(sport) ? 'volley' : /foot/i.test(sport) ? 'foot' : /rugby/i.test(sport) ? 'rugby' : BRAND_BALL));
 export const ballSrc = (sport) => `img/ballon-${ballName(sport)}.svg`;
 export const ball = (size, sport) => `<img class="ball" src="${ballSrc(sport)}" width="${size}" height="${size}" alt="" aria-hidden="true" style="display:inline-block;vertical-align:middle">`;
 // Mot-symbole « mypocketclub » : « my » en étiquette jaune inclinée, « p●cket » encre (ballon dans le « o »), « club » bleu, sans espace.
@@ -39,6 +40,7 @@ const P = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4.2-4.2"/>',
   flag: '<path d="M6 21V4"/><path d="M6 4h11l-2.5 4L17 12H6"/>',
   crown: '<path d="M4 18h16M5 18L3.5 8l5 4L12 5l3.5 7 5-4L19 18"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>', // n° 98 : directeur sportif
   share: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>',
 };
 export const icon = (n, size = 22, stroke = 'currentColor', w = 2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ''}</svg>`;
@@ -82,19 +84,25 @@ export const espaceBtn = () => `<button class="roundbtn" data-act="espace" aria-
 export const searchBtn = () => `<button class="roundbtn" data-act="csearch" aria-label="Chercher un club">${icon('search', 22, '#11162E', 2.2)}</button>`;
 // opts : { title, kicker, sub, back, tags[], brand, role }
 // N° 27 : même en-tête partout. Bande du haut : (retour) · logo C · loupe (n° 56) · Espace · Mon compte ;
-// dans un espace : (retour) · pastille du rôle · Mon compte (n° 85 : plus de logo, la personne sait où elle est)
+// dans un espace : (retour) · Mon compte (n° 85 : plus de logo ; n° 99 : plus de pastille du rôle)
 export function header(o = {}) {
-  const c = club(), br = o.brand || brandMode(), sport = br ? null : (c?.sport || null); // hors club : ballon médecine (n° 97)
+  const c = club(), br = o.brand || brandMode(), sport = br ? null : (c?.sport || null); // hors club : ballon de la marque, étoile creuse (n° 106)
   const acc = S.session && S.me && S.view?.type !== 'account' && S.me.cgu_version && !S.me.deleted_at;
   const inClub = acc && S.clubId && isActive() && S.onb === null;
   let h;
-  if (o.role) h = `<div class="band">${o.back ? backBtn() : ''}<span class="rolepill">${esc(o.role)}</span><span style="flex:1"></span>${acc ? accountBtn() : ''}</div>`;
+  // n° 99 : plus de pastille du rôle dans l'en-tête de l'espace (le titre et la rangée « Tes casquettes » le disent déjà)
+  if (o.role) h = `<div class="band">${o.back ? backBtn() : ''}<span style="flex:1"></span>${acc ? accountBtn() : ''}</div>`;
   else h = `<div class="band">${o.back ? backBtn() : ''}<span class="logo">${wordmark(22, sport)}</span>${acc && S.view?.type !== 'csearch' ? searchBtn() : ''}${inClub && !o.back && casquettes().length ? espaceBtn() : ''}${acc ? accountBtn() : '<span style="width:44px"></span>'}</div>`;
   if (!br && c && !o.role) h += `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.kicker || o.sub || '')}</span></div></div>`;
   else if (o.kicker) h += `<div class="kicker">${esc(o.kicker)}</div>`;
   const tags = o.tags?.length ? `<div class="tags">${o.tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : '';
   return `<header class="hd">${h}${o.title ? `<h1>${o.title}</h1>` : ''}${o.under ? `<span class="under">${esc(o.under)}</span>` : ''}${tags}</header>`;
 }
+
+// ---------- Icônes des casquettes (n° 85, n° 98) ----------
+export const casqIcon = (k, size = 20) => icon(k === 'coach' || String(k).startsWith('coach:') ? 'flag' : k === 'president' ? 'crown' : k === 'f:Directeur sportif' ? 'target' : 'user', size);
+// Écrans qui font partie d'un espace (le rôle ouvert est allumé dans « Mes rôles » sur ordinateur)
+export const SPACE_VIEWS = ['espace', 'rub', 'gestion', 'fonctions', 'journal', 'timport'];
 
 // ---------- Onglets ----------
 const TABS = [['Accueil', 'home'], ['Agenda', 'cal'], ['Messages', 'msg'], ['Équipe', 'team'], ['Club', 'shield']];
@@ -104,7 +112,18 @@ export function tabBar() {
   return `<div class="tb"><nav aria-label="Onglets">${TABS.map(([t, ic], i) => {
     const cur = i === S.tab && !S.view, n = counts[t] || 0;
     return `<button data-act="tab" data-i="${i}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${icon(ic, 24, 'currentColor', cur ? 2.2 : 2)}</span><span>${t}</span>${n ? `<span class="n" aria-label="${n} ${t === 'Messages' ? 'non lus' : 'à valider'}">${n > 99 ? '99+' : n}</span>` : ''}</button>`;
-  }).join('')}</nav></div>`;
+  }).join('')}</nav>${rolesNav()}</div>`;
+}
+// N° 104 · ordinateur : sous les onglets (consulter et répondre), un bloc « Mes rôles » (agir), un bouton par casquette ;
+// il remplace le bouton aux quatre carrés et la rangée « Tes casquettes » (cachés sur grand écran par style.css).
+// Sur téléphone et tablette étroite, ce bloc est caché : rien ne change.
+function rolesNav() {
+  const l = casquettes(); if (!l.length) return '';
+  const inSpace = SPACE_VIEWS.includes(S.view?.type);
+  return `<nav class="roles" aria-label="Mes rôles"><span class="rolestitle">Mes rôles</span>${l.map((x) => {
+    const cur = inSpace && x.k === S.casq;
+    return `<button data-act="casq" data-v="${esc(x.k)}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${casqIcon(x.k, 22)}</span><span>${esc(x.label)}</span></button>`;
+  }).join('')}</nav>`;
 }
 
 // ---------- Petits éléments ----------

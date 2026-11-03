@@ -7,7 +7,7 @@ import { unlinkPush } from './notif.js';
 
 // ---------- Textes légaux (vouvoiement, provisoires : à relire par un juriste) ----------
 export function legalText() {
-  return `<div class="card"><h3>Mentions légales</h3><p class="note" style="color:var(--pc-encre)">Application ${esc(BRAND.name)}, version ${esc(VERSION)} de test, éditée par ${esc(BRAND.editor)}. Contact : <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>. Application hébergée par GitHub, Inc. (88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, États-Unis). Données hébergées par Supabase, Inc., dans un centre de données situé à Paris (région eu-west-3).</p></div>
+  return `<div class="card"><h3>Mentions légales</h3><p class="note" style="color:var(--pc-encre)">Application ${esc(BRAND.name)}, version ${esc(VERSION)} de test, éditée par ${esc(BRAND.editor)}. Contact : <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>. Site : <a href="${esc(BRAND.siteUrl)}" target="_blank" rel="noopener">${esc(BRAND.site)}</a>. Application hébergée par GitHub, Inc. (88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, États-Unis). Données hébergées par Supabase, Inc., dans un centre de données situé à Paris (région eu-west-3).</p></div>
   <div class="card"><h3>Confidentialité (version courte)</h3><ul class="note" style="color:var(--pc-encre);padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
   <li><b>Qui ?</b> Votre club décide des données utiles à sa vie sportive ; ${esc(BRAND.name)} les héberge et les traite pour lui.</li>
   <li><b>Quoi ?</b> Identité, contact, rôles et équipes, présences et réponses, messages, autorisations datées, état de la licence et de la cotisation. Jamais de donnée médicale : seulement « certificat fourni » oui ou non.</li>
@@ -94,7 +94,7 @@ export function publicHome() {
   return `<div class="splash" style="flex:none;padding:44px 20px 4px">${wordmark(46)}<p>L'agenda, les messages et la vie de ton club, au même endroit.</p></div><main class="bd" style="padding-top:8px">
   <div class="btns"><button class="btn main" data-act="auth" data-v="login">Se connecter</button><button class="btn" data-act="auth" data-v="signup">Créer un compte</button></div>
   ${searchBlock()}
-  <button class="btn link" data-act="legal" style="align-self:center">Mentions légales et données</button><p class="note" style="text-align:center">${esc(BRAND.name)} ${esc(VERSION)} · version de test</p></main>`;
+  <button class="btn link" data-act="legal" style="align-self:center">Mentions légales et données</button><p class="note" style="text-align:center">${esc(BRAND.name)} ${esc(VERSION)} · version de test</p><p class="note" style="text-align:center">Contact : <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a> · Site : <a href="${esc(BRAND.siteUrl)}" target="_blank" rel="noopener">${esc(BRAND.site)}</a></p></main>`;
 }
 export function publicClubScreen(id) {
   const c = (S.pclubs || {})[id];

@@ -15,7 +15,7 @@ import { playerPage } from './js/joueur.js';
 import { clubTab, memberPage, gestionPage } from './js/club.js';
 import { accountScreen, deletedScreen } from './js/compte.js';
 import { COACH_VIEWS, loadCoachCounts, loadEvPlans } from './js/coach.js';
-import { VIE_VIEWS } from './js/vie.js';
+import { VIE_VIEWS, roleKicker, casqTabs, currentCasq } from './js/vie.js';
 import { syncPush } from './js/notif.js';
 import './js/convoc.js';
 import './js/v35.js';
@@ -36,7 +36,7 @@ function viewScreen(v) {
     case 'appel': return [header({ back: true, kicker: 'Appel · ' + (e?.type || ''), title: esc(e?.title || 'Appel') }), appelPage(v.id)];
     case 'gform': return [header({ back: true, kicker: 'Messages', title: 'Nouveau groupe' }), groupForm()];
     case 'group': return [header({ back: true, kicker: "Groupe d'échange", title: esc(grp(v.id)?.name || 'Groupe') }), groupPage(v.id)];
-    case 'gestion': return [header({ back: true, kicker: 'Président et bureau', title: 'Gestion du club' }), gestionPage()]; // n° 88
+    case 'gestion': currentCasq(); return [header({ back: true, kicker: roleKicker('Président et bureau'), title: 'Gestion du club' }), casqTabs() + gestionPage()]; // n° 88 ; n° 101 : rappel du rôle et rangée des casquettes
     case 'msgfwd': return [header({ back: true, kicker: 'Messages', title: 'Transférer' }), forwardPage()]; // n° 84
     case 'player': { const p = pl(v.id); return [header({ back: true, kicker: 'Fiche joueur', title: esc(p ? pname(p) : 'Fiche') }), playerPage(v.id)]; }
     case 'team': { const t = team(v.id); return [header({ back: true, kicker: 'Équipe', title: esc(t?.name || 'Équipe'), tags: t ? [t.category !== t.name ? t.category : '', t.gender, 'Saison ' + t.season].filter(Boolean) : [] }), teamPage(v.id)]; }
@@ -115,7 +115,8 @@ function subscribe() {
 Object.assign(ACTIONS, {
   refresh: () => refresh(true),
   tab: (el, d) => { S.tab = +d.i; S.view = null; S.stack = []; S.sel = null; S.tmpLogo = undefined; render(); },
-  back: () => { S.view = (S.stack || []).pop() || null; S.form = null; S.tmpLogo = undefined; render(); },
+  // n° 101 : le bouton Retour retrouve la position de défilement de l'écran d'avant
+  back: () => { const v = (S.stack || []).pop() || null, y = v?._y || 0; if (v) delete v._y; S.view = v; S.form = null; S.tmpLogo = undefined; render(); if (y) requestAnimationFrame(() => window.scrollTo(0, y)); },
 });
 document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]'); if (!el) return;
@@ -123,10 +124,12 @@ document.addEventListener('click', async (e) => {
   e.preventDefault();
   const a = el.dataset.act, fn = ACTIONS[a]; if (!fn) return console.warn('Action inconnue', a);
   S.delPrev = S.del; S.del = null;
-  const before = S.view;
+  const before = S.view, y0 = window.scrollY;
   try { await fn(el, el.dataset); } catch (err) { console.error(err); toast('Oups, une erreur. Réessaie ou actualise.'); }
-  // pile des écrans pour le bouton Retour
-  if (S.view && before && !['back', 'tab'].includes(a) && (S.view.type !== before.type || S.view.id !== before.id)) { S.stack = (S.stack || []).concat(before).slice(-10); }
+  // pile des écrans pour le bouton Retour (avec la position de défilement, n° 101)
+  // (S.noStack : l'action est déjà revenue à l'écran d'avant, comme « Créer les équipes » : on n'empile pas l'écran quitté)
+  if (S.view && before && !['back', 'tab'].includes(a) && !S.noStack && (S.view.type !== before.type || S.view.id !== before.id)) { S.stack = (S.stack || []).concat({ ...before, _y: y0 }).slice(-10); }
+  S.noStack = false;
   if (S.delPrev && !S.del && S.delPrev !== a) render(true);
 });
 document.addEventListener('input', (e) => { for (const f of INPUTS) if (f(e.target)) return; });

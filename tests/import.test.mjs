@@ -50,4 +50,21 @@ eq('date Excel', smartParse([['Prénom', 'Nom', 'Naissance'], ['Lou', 'Petit', '
   eq('cases douteuses : ligne propre', doubts({ first_name: 'Lucie', last_name: 'DURAND', email: 'a@b.fr', phone: '06 12 34 56 78', birth_date: '2017-01-02' }, true).size, 0);
   console.log(`${ok} réussis, ${ko} échecs (avec les tests 3.0)`);
 }
+// ---------- n° 102 (alpha 3.8.0) · lecture d'une liste d'équipes ----------
+{
+  const { parseTeams, teamDoubts } = await import('../js/equipes_import.js');
+  const brief = (l) => l.map((t) => [t.name, t.category, t.gender, t.slots]);
+  eq('équipes : lignes libres, séparateur « ; »', brief(parseTeams('U13F ; mercredi 17h-18h30 ; gymnase Jean Moulin\nSeniors filles jeudi 20 h salle Coubertin\nU11 masculins samedi 10:00 gymnase\n-15 ans mixte, mardi 18h, COSEC')), [
+    ['U13 F', 'U13', 'Féminine', 'Mercredi 17 h – 18 h 30, gymnase Jean Moulin'], ['Seniors F', 'Seniors', 'Féminine', 'Jeudi 20 h, salle Coubertin'],
+    ['U11 M', 'U11', 'Masculine', 'Samedi 10 h, gymnase'], ['U15', 'U15', 'Mixte', 'Mardi 18 h, COSEC']]);
+  const xl = [['Planning des entraînements 2026-2027'], ['Équipe', 'Catégorie', 'Sexe', 'Jour', 'Horaire', 'Salle'],
+    ['Reines', 'U18', 'F', 'Lundi', '19h-20h30', 'Gymnase Jean-Moulin'], ['Reines', 'U18', 'F', 'Jeudi', '19h', 'Gymnase Jean-Moulin'], ['', '', '', '', '', ''], ['Baby', 'U7', 'Mixte', 'Samedi', '10h-11h', 'Dojo']];
+  eq('équipes : tableau Excel avec titre, créneaux regroupés', brief(parseTeams(xl)), [
+    ['Reines', 'U18', 'Féminine', 'Lundi 19 h – 20 h 30, Gymnase Jean-Moulin ; Jeudi 19 h, Gymnase Jean-Moulin'], ['Baby', 'U7 (baby)', 'Mixte', 'Samedi 10 h – 11 h, Dojo']]);
+  eq('équipes : colonne « Créneau » unique', brief(parseTeams('Catégorie\tGenre\tCréneau\tGymnase\nU9\tmixte\tmercredi 14h\tGymnase B')), [['U9', 'U9', 'Mixte', 'Mercredi 14 h, Gymnase B']]);
+  eq('équipes : ligne sans catégorie ni nom ignorée, total ignoré', parseTeams('mercredi 14h\nTotal 3 équipes').length, 0);
+  eq('équipes : cases douteuses (genre et créneau manquants)', [...teamDoubts(parseTeams('Loisirs')[0])].sort(), ['gender', 'slots']);
+  eq('équipes : catégorie inconnue douteuse', teamDoubts({ name: 'Élite', category: 'Élite', gender: 'Mixte', slots: 'Lundi 20 h' }).has('category'), true);
+  console.log(`${ok} réussis, ${ko} échecs (avec les tests des équipes, n° 102)`);
+}
 process.exit(ko ? 1 : 0);

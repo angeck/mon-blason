@@ -193,6 +193,8 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 .tb button .ic{padding:4px 16px;border-radius:16px;display:flex}
 .tb button[aria-current="page"]{color:var(--pc-bleu);font-weight:700}
 .tb button[aria-current="page"] .ic{background:var(--pc-bleu-pale)}
+.tb nav.roles{display:none}
+.rolestitle{font-size:13px;font-weight:700;color:var(--pc-texte-doux);padding:0 8px 2px;text-transform:uppercase;letter-spacing:.04em}
 .tb button .n{position:absolute;top:0;right:calc(50% - 26px);min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:var(--pc-jaune);color:var(--pc-encre);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 1.5px var(--pc-encre)}
 .unread{min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--pc-jaune);color:var(--pc-encre);font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 0 1.5px var(--pc-encre);flex:none}
 .selbar{position:fixed;left:0;right:0;bottom:84px;z-index:7;display:flex;justify-content:center;padding:0 16px}
@@ -209,6 +211,14 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
   .tb button{flex-direction:row;justify-content:flex-start;gap:10px;font-size:16px;padding:0 8px}
   .tb button .ic{padding:8px 12px}
   .tb button .n{position:static;margin-left:auto}
+  /* n° 104 : bloc « Mes rôles » sous les onglets ; il remplace le bouton aux quatre carrés et la rangée « Tes casquettes » */
+  .tb{flex-direction:column;justify-content:flex-start;gap:16px;overflow-y:auto}
+  .tb nav.roles{display:grid}
+  .tb nav.roles button{text-align:left;line-height:1.2}
+  .tb nav.roles button[aria-current="page"]{color:#FFFFFF}
+  .tb nav.roles button[aria-current="page"] .ic{background:var(--pc-bleu)}
+  .tb nav.roles button[aria-current="page"]{background:var(--pc-bleu);border-radius:16px}
+  .hd .band [data-act=espace],.casq,.casqhint{display:none!important}
   .bd{padding-bottom:60px}
   .compose{bottom:0}
   .selbar{bottom:20px;padding-left:256px}
@@ -232,7 +242,8 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 .casq{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
 .casqhint{margin:0 0 6px;font-size:13px;font-weight:700;color:var(--pc-texte-doux)}
 .casq button{flex:none;display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 18px 0 14px;border-radius:24px;font-weight:700;font-size:16px;border:2px solid var(--pc-encre);background:#FFFFFF;color:var(--pc-encre);box-shadow:0 2px 0 var(--pc-encre)}
-.casq button[aria-selected="true"]{border-color:var(--pc-encre);background:var(--pc-encre);color:#FFFFFF;box-shadow:none}
+/* n° 99 : casquette ouverte en bleu mypocketclub (texte blanc, contraste 5,2:1) ; le jaune reste pour l'action principale de l'écran */
+.casq button[aria-selected="true"]{border-color:var(--pc-bleu);background:var(--pc-bleu);color:#FFFFFF;box-shadow:0 2px 0 var(--pc-encre)}
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .tile{background:var(--pc-papier);border-radius:20px;padding:12px;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(17,22,46,.06);border:0;text-align:left;color:inherit;font:inherit}
 .tile b{font-family:var(--pc-titre);font-size:28px;line-height:1}

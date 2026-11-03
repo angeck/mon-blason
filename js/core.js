@@ -133,13 +133,18 @@ export const hasArea = (a) => (S.areas || []).includes(a);
 export const AREAS = { tresorerie: 'Trésorerie', secretariat: 'Secrétariat', technique: 'Technique', communication: 'Communication', evenements: 'Événements' };
 export const FONCTIONS = ['Vice-président', 'Secrétaire', 'Secrétaire adjoint', 'Trésorier', 'Trésorier adjoint', 'Directeur sportif', 'Coordinateur', 'Correspondant licences', 'Chargé de communication', 'Responsable sponsoring', 'Membre du bureau'];
 // Casquettes de l'espace (charte du 31 octobre) : Coach, Président, chaque fonction du bureau
+// N° 100 : un coach de plusieurs équipes a une casquette par équipe (« Coach U9 », « Coach Reines », clé « coach:<équipe> ») ;
+// un coach d'une seule équipe garde la casquette « coach », comme avant.
 export function casquettes() {
-  const l = [], ct = coachTeams().filter((t) => S.teams.some((x) => x.id === t));
-  if (ct.length) l.push({ k: 'coach', label: 'Coach ' + ct.map((t) => S.teams.find((x) => x.id === t)?.name || '').filter(Boolean).join(' · '), pill: 'Coach' });
+  const l = [], ct = coachTeams().filter((t) => S.teams.some((x) => x.id === t && !x.deleted_at));
+  const tn = (t) => S.teams.find((x) => x.id === t)?.name || '';
+  if (ct.length === 1) l.push({ k: 'coach', label: 'Coach ' + tn(ct[0]), pill: 'Coach', teams: ct });
+  else ct.forEach((t) => l.push({ k: 'coach:' + t, label: 'Coach ' + tn(t), pill: 'Coach', teams: [t] }));
   if (isPresident()) l.push({ k: 'president', label: 'Président', pill: 'Président' });
   active().filter((m) => m.role === 'bureau').forEach((m) => { const f = m.fonction || 'Membre du bureau'; if (!l.some((x) => x.k === 'f:' + f)) l.push({ k: 'f:' + f, label: f, pill: f === 'Membre du bureau' ? 'Bureau' : f.replace(/ adjoint$/, '').replace('Responsable ', '').replace('Chargé de ', '') }); });
   return l;
 }
+export const isCoachCasq = (k) => k === 'coach' || String(k || '').startsWith('coach:');
 export const myFonctions = () => active().filter((m) => m.role === 'bureau').map((m) => m.fonction || 'Membre du bureau');
 export function canValidate(m) {
   if (m.user_id === S.me.id) return false;
