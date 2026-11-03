@@ -1,4 +1,4 @@
-// Pocket Club · espace coach (alpha 3.1) : banque d'exercices (Ma banque, Club, Libre, Ma séance), séances,
+// mypocketclub · espace coach (alpha 3.1) : banque d'exercices (Ma banque, Club, Libre, Ma séance), séances,
 // statistiques de présence et de fiabilité, exports Excel et PDF, heures des coachs et relevé validé par le bureau.
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_1.sql) ; l'écran n'est qu'un confort.
 import { BRAND } from '../config.js';
@@ -288,7 +288,7 @@ export function exoPage(id) {
   ${e.diagram?.length ? courtSvg(e.sport === 'Tous les sports' ? club()?.sport : e.sport, e.diagram, false) : ''}
   ${e.description ? `<div style="white-space:pre-wrap">${esc(e.description)}</div>` : '<p class="note">Pas de description.</p>'}
   <p class="note">${esc(ORIGINS[e.origin])}${e.source ? ' · Source : ' + esc(e.source) : ''}${mine ? ' · par toi' : a ? ' · par ' + esc(a.author) + ' (' + esc(a.club_name) + ')' : ''}</p></div>`;
-  if (mine && !e.video_path && !S.schemaReq?.[e.id]) h += `<button class="btn" data-act="cexschema" data-id="${e.id}">${icon('doc', 20)}Demander le schéma à Pocket Club</button>`;
+  if (mine && !e.video_path && !S.schemaReq?.[e.id]) h += `<button class="btn" data-act="cexschema" data-id="${e.id}">${icon('doc', 20)}Demander le schéma à mypocketclub</button>`;
   const inPlan = (S.plan?.items || []).some((x) => x.exercise_id === e.id);
   h += `<button class="btn ${inPlan ? 'ghost' : 'main'}" data-act="cadd" data-id="${e.id}">${inPlan ? 'Déjà dans ma séance ✓' : icon('plus', 20) + addLabel()}</button>`;
   if (!mine) h += `<div class="card"><div class="kick">Ton avis</div><div class="pair"><button class="btn yes" data-act="cvote" data-id="${e.id}" data-v="1" aria-pressed="${my === true}">👍 Utile (${e.up_count})</button><button class="btn no" data-act="cvote" data-id="${e.id}" data-v="0" aria-pressed="${my === false}">👎 À revoir (${e.down_count})</button></div></div>`;
@@ -325,7 +325,7 @@ function parseAi(txt) {
 export function exoForm() {
   const f = S.exf, sp = club()?.sport || 'Basket-ball', tags = new Set(f.tags || []);
   const dup = !f.id && f.title && (S.exos || []).find((e) => !e.deleted_at && norm(e.title) === norm(f.title) && (e.sport === f.sport || e.sport === 'Tous les sports'));
-  // N° 86 : plus d'aide « Préparer avec une IA » ni de choix vidéo / schéma : le schéma est préparé par Pocket Club sur demande
+  // N° 86 : plus d'aide « Préparer avec une IA » ni de choix vidéo / schéma : le schéma est préparé par mypocketclub sur demande
   return `<form id="exf" class="card lift">
   ${field('exn', 'Nom', `<input id="exn" name="title" required minlength="2" maxlength="80" value="${esc(f.title || '')}" placeholder="Ex. Passe et va en deux colonnes">`)}
   ${dup ? `<div class="card warn"><b>Un exercice « ${esc(dup.title)} » existe déjà.</b><span class="note" style="color:var(--pc-encre)">Vérifie que ce n'est pas un doublon avant d'enregistrer.</span></div>` : ''}
@@ -341,7 +341,7 @@ export function exoForm() {
   <div class="field"><span class="lab">Partage</span><div class="chips">${Object.entries(SHARE).map(([k, l]) => `<label class="chip" style="display:flex;align-items:center;gap:6px"><input type="radio" name="sharing" value="${k}" data-exre="1" ${f.sharing === k ? 'checked' : ''}>${l}</label>`).join('')}</div>
   ${f.sharing === 'public' ? '<p class="note">Tous les clubs le verront après validation par le bureau de ton club. Toute modification du contenu repasse par cette validation.</p>' : ''}</div>
   ${f.sharing !== 'me' ? `<label class="check"><input type="checkbox" name="certified" ${f.certified ? 'checked' : ''} required><span>Je certifie avoir le droit de partager ce contenu : il est de moi, ou adapté avec mes mots en citant la source. Pas de copie de livre, de site ou de vidéo.</span></label>` : ''}
-  ${f.video_path ? '' : `<label class="check"><input type="checkbox" name="askschema" ${f.askschema !== false && f.askschema !== '' ? 'checked' : ''}><span>Demander le schéma à Pocket Club : l'exercice est créé tout de suite dans ta banque, le schéma est ajouté quand il est prêt (tu es prévenu).</span></label>`}
+  ${f.video_path ? '' : `<label class="check"><input type="checkbox" name="askschema" ${f.askschema !== false && f.askschema !== '' ? 'checked' : ''}><span>Demander le schéma à mypocketclub : l'exercice est créé tout de suite dans ta banque, le schéma est ajouté quand il est prêt (tu es prévenu).</span></label>`}
   <button class="btn main" type="submit">${f.id ? 'Enregistrer les changements' : "Enregistrer l'exercice"}</button></form>`;
 }
 function keepEx() { const fm = document.getElementById('exf'); if (!fm) return; const v = Object.fromEntries(new FormData(fm)); Object.assign(S.exf, v); S.exf.certified = !!v.certified; S.exf.askschema = !!v.askschema; }

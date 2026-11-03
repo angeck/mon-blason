@@ -1,4 +1,4 @@
-// Pocket Club · onglet Club : blason et en-tête, code, validations, licences et cotisations, tarifs, équipes, membres, corbeille.
+// mypocketclub · onglet Club : blason et en-tête, code, validations, licences et cotisations, tarifs, équipes, membres, corbeille.
 import { BRAND } from '../config.js';
 import {
   S, sb, esc, roleLabel, hasArea, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, BCATS, SEASON, XLSX_URL, club, isBoard, isPresident,
@@ -186,6 +186,20 @@ export function brandBlock() {
   <button class="btn main" type="submit">Enregistrer</button></form></details>`;
 }
 
+// N° 93 · rubrique « Effectifs » de la gestion du club : une ligne par équipe (joueurs, licenciés, préinscrits, cotisations) ;
+// le détail (noms complets) est sur la fiche de l'équipe. Remplace la liste « Effectif » que le bureau voyait dans l'onglet Équipe.
+export function effectifsBlock() {
+  if (!isBoard()) return '';
+  const ts = S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée');
+  if (!ts.length) return '';
+  const row = (t) => {
+    const ps = S.players.filter((p) => p.team_id === t.id || S.pteams.some((x) => x.player_id === p.id && x.team_id === t.id)), ad = ps.map((p) => adminOf(p.id));
+    const lic = ad.filter((a) => a?.licence_state === 'Licencié').length, pre = ad.filter((a) => /^Préinscrit/.test(a?.licence_state || '')).length, fee = ad.filter((a) => a && a.fee_amount != null), paid = fee.filter((a) => +a.fee_paid >= +a.fee_amount).length;
+    return `<button class="row" data-act="team" data-id="${t.id}"><span class="g">${esc(t.name)}${t.state === 'Fantôme' ? ' · fantôme' : ''}<small>${esc([plural(ps.length, 'joueur'), plural(lic, 'licencié'), plural(pre, 'préinscrit'), fee.length ? `cotisations ${paid}/${fee.length}` : ''].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`;
+  };
+  return `<div class="sec" id="effectifs"><h2>Effectifs</h2><span class="det">${plural(ts.length, 'équipe')}</span></div><div class="card"><div class="list">${ts.map(row).join('')}</div></div>`;
+}
+
 // N° 88 · l'onglet Club montre la vie du club (infos, contacts, équipes) ; la gestion passe dans l'Espace (page « Gestion du club »)
 export function clubTab() {
   const c = club(), vp = toValidate(), board = isBoard();
@@ -199,13 +213,14 @@ export function clubTab() {
 export function gestionPage() {
   const vp = toValidate();
   let h = '';
-  if (vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>`;
-  h += brandBlock() + feesBlock() + licencesBlock() + namesToCheck() + coachClubBlock() + membersBlock() + trashBlock();
+  if (vp.length) h += `<div class="sec" id="demandes"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>`;
+  h += effectifsBlock() + brandBlock() + feesBlock() + licencesBlock() + namesToCheck() + coachClubBlock() + membersBlock() + trashBlock();
   return h || '<p class="empty">Rien à gérer pour ta fonction.</p>';
 }
 
 Object.assign(ACTIONS, {
-  gestion: () => { S.stack = (S.stack || []).concat(S.view ? [S.view] : []); S.view = { type: 'gestion' }; render(); },
+  // n° 94 : ouverture directe à l'endroit des demandes (data-v="demandes") ; la pile du bouton Retour est tenue par l'aiguillage (app.js)
+  gestion: (el, d) => { S.view = { type: 'gestion' }; render(); if (d?.v) document.getElementById(d.v)?.scrollIntoView({ block: 'start' }); },
   share: async () => { const c = club(), txt = `Rejoins ${c.name} sur ${BRAND.name} : ouvre ${location.href.split('#')[0]} puis « Rejoindre un club » avec le code ${c.join_code}.`; if (navigator.share) { try { await navigator.share({ title: BRAND.name, text: txt }); } catch { /* annulé */ } } else { try { await navigator.clipboard.writeText(txt); toast('Invitation copiée.'); } catch { toast(txt); } } },
   mok: async (el, d) => {
     let t = (S.vt || {})[d.id] || null;

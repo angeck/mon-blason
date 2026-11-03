@@ -1,4 +1,4 @@
-// Pocket Club · alpha 3.4 · convocations inter-clubs (document de référence : claude/09-convocations-inter-clubs.md)
+// mypocketclub · alpha 3.4 · convocations inter-clubs (document de référence : claude/09-convocations-inter-clubs.md)
 // Le club qui reçoit envoie aux clubs reçus un document commun pour le week-end : pré-convocation (étape 1 sur 2,
 // sans gymnase ni horaire) puis convocation (étape 2 sur 2, avec gymnase, adresse, date et heure).
 // Réservé à la rubrique Événements (coordinateur, vice-président, président) ; la base le vérifie (convocation_data).
@@ -56,8 +56,9 @@ export const blocking = (d, step) => step === 'C' && d.events.some((x) => !x.can
 export function convocHtml(d, step, now = new Date()) {
   const c = d.club, c1 = c.color1 || '#2F5BFF', c2 = c.color2 || '#FFC93C', txt = onColor(c1), soft = tint(c1), ref = reference(c.name, d.from, step);
   const k = d.correspondent, when = weekendLabel(d.from, d.to), pre = step === 'P';
-  // n° 92 : le blason du club tel qu'il est dans l'application (même fonction crest, mêmes réglages) ; sans logo, le ballon 4/4 Pocket Club
-  const logo = c.logo ? `<span class="lg">${crest(c, 58, c1)}</span>` : `<span class="lg"><img src="${abs(ballSrc(null))}" width="62" height="62" alt="Pocket Club"></span>`;
+  // n° 92 : le blason du club tel qu'il est dans l'application (même fonction crest, mêmes réglages) ;
+  // n° 97 : sans logo, le ballon du sport du club (ou le ballon médecine mypocketclub pour un autre sport)
+  const logo = c.logo ? `<span class="lg">${crest(c, 58, c1)}</span>` : `<span class="lg"><img src="${abs(ballSrc(c.sport))}" width="62" height="62" alt=""></span>`;
   const corr = k ? [esc(k.name), k.phone ? esc(k.phone) : '', k.email ? esc(k.email) : ''].filter(Boolean).join(' · ') : '';
   const strike = (x, s) => (x.cancelled ? `<s>${s}</s>` : s);
   const status = (x) => (x.cancelled ? '<span class="st">Annulée</span>' : '');
@@ -89,11 +90,11 @@ table{border-collapse:collapse;width:100%;margin:12px 0}th{color:${c1};text-alig
 .box{background:${soft};border-left:4px solid ${c1};padding:10px 12px;border-radius:6px;margin:14px 0}.note{margin-top:10px}.st{display:inline-block;align-self:flex-start;background:#FFE1DA;color:#A52A12;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700}
 .cards{display:flex;flex-direction:column;gap:10px;margin:12px 0}.cv{display:flex;gap:12px;border:1px solid #D8DCEA;border-radius:12px;padding:12px;page-break-inside:avoid}.cv.off{opacity:.65}.cvl{flex:1;display:flex;flex-direction:column;gap:3px}.cvr{text-align:right;flex:none}
 .cat{align-self:flex-start;background:${c2};color:${onColor(c2)};border-radius:10px;padding:2px 10px;font-weight:700;font-size:11px}.hr{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:30px;color:${c1}}
-.sig{margin-top:18px}.ft{background:#F7F8FC;border-top:1px solid #D8DCEA;padding:5mm 14mm;display:flex;align-items:center;gap:12px;font-size:10.5px;color:#4A5068}.wm{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:16px;color:#11162E;white-space:nowrap}.ft .r{margin-left:auto;text-align:right}
+.sig{margin-top:18px}.ft{background:#F7F8FC;border-top:1px solid #D8DCEA;padding:5mm 14mm;display:flex;align-items:center;gap:12px;font-size:10.5px;color:#4A5068}.wm{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:16px;letter-spacing:-.04em;color:#11162E;white-space:nowrap}.wm .my{display:inline-block;background:#FFC93C;color:#11162E;border-radius:.2em;padding:0 .09em .12em;letter-spacing:-.03em;transform:rotate(-5deg);margin-right:.07em}.wm .cl{color:#2F5BFF}.ft .r{margin-left:auto;text-align:right}
 @media screen{body{background:#E9ECF5}.page{margin:12px auto;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.12)}}</style></head><body><div class="page">
 <div class="hd">${logo}<div><div class="nm">${esc(c.name)}</div>${corr ? `<div class="co">Correspondant : ${corr}</div>` : ''}</div><span class="tag">${pre ? 'Pré-convocation · Étape 1 sur 2' : 'Convocation · Étape 2 sur 2'}</span></div><div class="lis"></div>
 <div class="ct">${body}<p class="sig">Sportivement,<br><b>${k ? esc(k.name) : '…………'}</b>, correspondant de ${esc(c.name)}</p></div>
-<div class="ft"><span class="wm">p${ballSvg(13, c.sport)}cket club</span><span>Convocation créée et générée avec ${esc(BRAND.name)}</span><span class="r">Émise le ${now.toLocaleDateString('fr-FR')}<br>Réf. ${esc(ref)}</span></div>
+<div class="ft"><span class="wm" role="img" aria-label="${esc(BRAND.aria)}"><span class="my">my</span>p${ballSvg(13, c.sport)}cket<span class="cl">club</span></span><span>Convocation créée et générée avec ${esc(BRAND.name)}</span><span class="r">Émise le ${now.toLocaleDateString('fr-FR')}<br>Réf. ${esc(ref)}</span></div>
 </div><script>document.fonts&&document.fonts.ready.then(function(){setTimeout(function(){print()},300)})</script></body></html>`;
 }
 

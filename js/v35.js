@@ -1,10 +1,11 @@
-// Pocket Club · alpha 3.5.0 : vérification des heures (n° 75), ordre des blocs des espaces (n° 76),
+// mypocketclub · alpha 3.5.0 : vérification des heures (n° 75), ordre des blocs des espaces (n° 76),
 // résultats sur l'Accueil (n° 77), équipe en entente (n° 78).
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_5_0.sql) ; l'écran n'est qu'un confort.
 import {
   S, sb, esc, run, toast, render, refresh, ACTIONS, FORMS, CHANGES, club, isPresident, hasArea, coachOf, coachTeams, follows, iPlayIn, myKidsIn,
   evTeams, teamName, teamsLabel, name, plural, store, fmtShort, team,
 } from './core.js';
+import { BRAND } from '../config.js';
 import { icon, field } from './ui.js';
 import { scoreSum } from './agenda.js';
 
@@ -98,7 +99,7 @@ export function partnerBlock(t) {
   }
   if (S.pf?.tid === t.id) {
     const P = S.pf;
-    h += `<div class="chips"><button type="button" class="chip" data-act="pfmode" data-v="in" aria-pressed="${P.mode === 'in'}">Club sur ${esc('Pocket Club')}</button><button type="button" class="chip" data-act="pfmode" data-v="out" aria-pressed="${P.mode === 'out'}">Club absent</button></div>`;
+    h += `<div class="chips"><button type="button" class="chip" data-act="pfmode" data-v="in" aria-pressed="${P.mode === 'in'}">Club sur ${esc(BRAND.name)}</button><button type="button" class="chip" data-act="pfmode" data-v="out" aria-pressed="${P.mode === 'out'}">Club absent</button></div>`;
     if (P.mode === 'in') {
       h += field('pfq', 'Chercher le club partenaire', `<input id="pfq" type="search" value="${esc(P.q || '')}" placeholder="Nom ou ville" data-pfq="1">`);
       h += (P.res || []).length ? `<div class="list">${P.res.filter((c) => c.id !== S.clubId).map((c) => `<button class="row" data-act="pfpick" data-id="${c.id}"><span class="g">${esc(c.name)}<small>${esc(c.city || '')}</small></span><span class="pill blue">Choisir</span></button>`).join('')}</div>` : P.q ? '<p class="note">Aucun club trouvé. Essaie « Club absent » pour l’inviter.</p>' : '';
@@ -114,7 +115,7 @@ export function partnerBlock(t) {
   if (canPartner(t)) h += `<button class="btn ghost small" data-act="pfoff" data-id="${t.id}">Retirer l’entente</button>`;
   return h + '<p class="note">Sur la fiche de chaque joueur, choisis son club : « Notre club » (par défaut) ou le club partenaire.</p></div>';
 }
-const inviteText = (t) => `${club()?.name || 'Notre club'} a créé l’équipe ${t.name} en entente avec votre club sur Pocket Club ; rejoignez-la pour suivre vos joueurs : ${location.origin + location.pathname}`;
+const inviteText = (t) => `${club()?.name || 'Notre club'} a créé l’équipe ${t.name} en entente avec votre club sur ${BRAND.name} ; rejoignez-la pour suivre vos joueurs : ${location.origin + location.pathname}`;
 // Demandes reçues par le club partenaire (président et Technique)
 export function partnerRequests() {
   const L = S.partnerTeams || []; if (!L.length) return '';

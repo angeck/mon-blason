@@ -1,6 +1,6 @@
 {
-  "name": "pocket club",
-  "short_name": "pocket club",
+  "name": "mypocketclub",
+  "short_name": "mypocketclub",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",

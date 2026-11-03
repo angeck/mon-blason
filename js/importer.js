@@ -1,4 +1,4 @@
-// Pocket Club · lecture « intelligente » d'une liste de joueurs (copier-coller, Excel/CSV, texte lu sur une photo)
+// mypocketclub · lecture « intelligente » d'une liste de joueurs (copier-coller, Excel/CSV, texte lu sur une photo)
 // Reconnaît : en-tête n'importe où dans les 10 premières lignes, colonne « Nom, prénom » combinée ou colonnes séparées,
 // « Prénom NOM » comme « NOM Prénom » (le nom en capitales), noms composés (LE LAY, DA COSTA MOREIRA),
 // annotations entre parenthèses, dates jj/mm/aaaa ou aa ou nombres Excel, e-mail et téléphone du parent.

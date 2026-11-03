@@ -1,12 +1,13 @@
-// Pocket Club · connexion, inscription, conditions, premier club (créer ou rejoindre), textes légaux.
+// mypocketclub · connexion, inscription, conditions, premier club (créer ou rejoindre), textes légaux.
 import { BRAND, VERSION, CGU_VERSION, TURNSTILE_SITEKEY } from '../config.js';
+import { notListedLine } from './v37.js';
 import { S, sb, esc, run, toast, render, refresh, store, remember, ROLES, JOIN_ROLES, SPORTS, FONCTIONS, niceFirst, niceLast, lum, onColor, isActive, club, ACTIONS, FORMS, INPUTS, CHANGES } from './core.js';
 import { header, wordmark, crest, field, icon } from './ui.js';
 import { unlinkPush } from './notif.js';
 
 // ---------- Textes légaux (vouvoiement, provisoires : à relire par un juriste) ----------
 export function legalText() {
-  return `<div class="card"><h3>Mentions légales</h3><p class="note" style="color:var(--pc-encre)">Application ${esc(BRAND.name)} (nom provisoire), version ${esc(VERSION)} de test, éditée par ${esc(BRAND.editor)}. Contact : <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>. Application hébergée par GitHub, Inc. (88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, États-Unis). Données hébergées par Supabase, Inc., dans un centre de données situé à Paris (région eu-west-3).</p></div>
+  return `<div class="card"><h3>Mentions légales</h3><p class="note" style="color:var(--pc-encre)">Application ${esc(BRAND.name)}, version ${esc(VERSION)} de test, éditée par ${esc(BRAND.editor)}. Contact : <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>. Application hébergée par GitHub, Inc. (88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, États-Unis). Données hébergées par Supabase, Inc., dans un centre de données situé à Paris (région eu-west-3).</p></div>
   <div class="card"><h3>Confidentialité (version courte)</h3><ul class="note" style="color:var(--pc-encre);padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
   <li><b>Qui ?</b> Votre club décide des données utiles à sa vie sportive ; ${esc(BRAND.name)} les héberge et les traite pour lui.</li>
   <li><b>Quoi ?</b> Identité, contact, rôles et équipes, présences et réponses, messages, autorisations datées, état de la licence et de la cotisation. Jamais de donnée médicale : seulement « certificat fourni » oui ou non.</li>
@@ -87,7 +88,7 @@ export function searchBlock() {
   return `<form id="psf" class="card lift" role="search">${field('psq', 'Chercher un club', `<input id="psq" type="search" data-psq="1" value="${esc(P.q)}" placeholder="Nom du club, ville ou code postal" autocomplete="off" minlength="2">`)}
   <div class="chips">${[['', 'Tous les sports'], ['Basket-ball', 'Basket'], ['Volley-ball', 'Volley']].map(([v, l]) => `<button type="button" class="chip" data-act="pssport" data-v="${v}" aria-pressed="${P.sport === v}">${l}</button>`).join('')}</div>
   <button class="btn main" type="submit">Chercher</button></form>
-  ${P.res === null ? '' : P.res.length ? `<div class="stack">${P.res.map((c) => `<button class="card" data-act="pclub" data-id="${c.id}" style="flex-direction:row;align-items:center;gap:14px;border:0;text-align:left;font:inherit;color:inherit">${crest(c, 40, '#FFFFFF')}<span style="display:flex;flex-direction:column;min-width:0;flex:1"><b>${esc(c.name)}</b><span class="det">${esc([c.city, c.postal_code].filter(Boolean).join(' · '))}${c.city || c.postal_code ? ' · ' : ''}${esc(c.sport)}</span></span>${memberOf(c.id) ? '<span class="pill ok">Déjà membre</span>' : '<span class="chev"></span>'}</button>`).join('')}</div>` : '<p class="empty">Aucun club trouvé. Essaie la ville, ou demande le code du club à ton coach.</p>'}`;
+  ${P.res === null ? '' : P.res.length ? `<div class="stack">${P.res.map((c) => `<button class="card" data-act="pclub" data-id="${c.id}" style="flex-direction:row;align-items:center;gap:14px;border:0;text-align:left;font:inherit;color:inherit">${crest(c, 40, '#FFFFFF')}<span style="display:flex;flex-direction:column;min-width:0;flex:1"><b>${esc(c.name)}</b><span class="det">${esc([c.city, c.postal_code].filter(Boolean).join(' · '))}${c.city || c.postal_code ? ' · ' : ''}${esc(c.sport)}</span></span>${memberOf(c.id) ? '<span class="pill ok">Déjà membre</span>' : '<span class="chev"></span>'}</button>`).join('')}</div>` : '<p class="empty">Aucun club trouvé. Essaie la ville, ou demande le code du club à ton coach.</p>'}${P.res === null ? '' : notListedLine(P.done, P.res.length > 0)}`;
 }
 export function publicHome() {
   return `<div class="splash" style="flex:none;padding:44px 20px 4px">${wordmark(46)}<p>L'agenda, les messages et la vie de ton club, au même endroit.</p></div><main class="bd" style="padding-top:8px">
@@ -305,7 +306,7 @@ async function doSearch() {
   const P = S.ps, q = (P.q || '').trim(); if (q.length < 2) return toast('Tape au moins 2 lettres ou chiffres.');
   const { data, error } = await sb.rpc('public_search_clubs', { p_query: q, p_sport: P.sport || null });
   if (error) return toast(error.message || 'Recherche impossible pour le moment.');
-  P.res = data || []; render(true);
+  P.res = data || []; P.done = q; render(true); // n° 96 : les mots tapés, repris tels quels dans « Mon club n'est pas dans la liste »
 }
 FORMS.psf = () => doSearch();
 INPUTS.push((t) => {

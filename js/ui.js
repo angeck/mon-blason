@@ -1,18 +1,18 @@
-// Pocket Club · éléments d'interface communs : logos, icônes, blason du club, en-tête, onglets, thème.
+// mypocketclub · éléments d'interface communs : logos, icônes, blason du club, en-tête, onglets, thème.
 import { BRAND } from '../config.js';
 import { S, esc, club, onColor, contrast, lum, initials, isActive, toValidate, myTeamIds, casquettes, store } from './core.js';
 
-// ---------- Ballons (charte validée le 1er novembre 2026 au soir · fichiers dans img/, fabriqués par tools/fabriquer_logos.py) ----------
-// Hors club : ballon 4/4 (basket, foot, volley, rugby) ; dans un club : le ballon du sport du club.
-// Le rugby ovale sert dans les espaces des clubs de rugby (option oval), la version ronde dans le « o » du logo.
-const BALLS = { 'Basket-ball': 'basket', 'Volley-ball': 'volley', 'Football': 'foot', 'Rugby': 'rugby-rond' };
-export const ballSrc = (sport, oval) => `img/ballon-${!sport ? '4-4' : oval && /rugby/i.test(sport) ? 'rugby-ovale' : BALLS[sport] || (/rugby/i.test(sport) ? 'rugby-rond' : 'basket')}.svg`;
-// sport absent = hors club = ballon 4/4
-export const ball = (size, sport, oval) => `<img class="ball" src="${ballSrc(sport, oval)}" width="${size}" height="${size}" alt="" aria-hidden="true" style="display:inline-block;vertical-align:middle">`;
-// Mot-symbole « pocket club » sur une ligne, en minuscules, le ballon dans le « o » (le logo empilé est abandonné partout)
+// ---------- Ballons (n° 97 · charte mypocketclub validée le 3 novembre 2026 · fichiers dans img/, copies de claude/logos/mypocketclub/) ----------
+// Une seule famille, jaune et encre. Hors club, ou club d'un autre sport (ou omnisports) : ballon de la marque « médecine » ;
+// dans un club de basket, foot, volley ou rugby : le ballon du sport (en-tête, espaces, convocations, blason de secours, « o » du logo).
+const BALLS = { 'Basket-ball': 'basket', 'Basketball': 'basket', 'Volley-ball': 'volley', 'Volleyball': 'volley', 'Football': 'foot', 'Rugby': 'rugby' };
+export const ballName = (sport) => (!sport ? 'medecine' : BALLS[sport] || (/basket/i.test(sport) ? 'basket' : /volley/i.test(sport) ? 'volley' : /foot/i.test(sport) ? 'foot' : /rugby/i.test(sport) ? 'rugby' : 'medecine'));
+export const ballSrc = (sport) => `img/ballon-${ballName(sport)}.svg`;
+export const ball = (size, sport) => `<img class="ball" src="${ballSrc(sport)}" width="${size}" height="${size}" alt="" aria-hidden="true" style="display:inline-block;vertical-align:middle">`;
+// Mot-symbole « mypocketclub » : « my » en étiquette jaune inclinée, « p●cket » encre (ballon dans le « o »), « club » bleu, sans espace.
+// Les tailles sont en em (règles de 04-jetons-design.css), le style est dans style.css (.wordmark).
 export function wordmark(px, sport) {
-  const b = Math.round(px * 0.62);
-  return `<span class="wordmark" role="img" aria-label="${esc(BRAND.name)}" style="font-size:${px}px">${esc(BRAND.word1)}${ball(b, sport)}${esc(BRAND.word2)}<span style="width:${Math.round(px * 0.22)}px"></span><span class="club">${esc(BRAND.word3)}</span></span>`;
+  return `<span class="wordmark" role="img" aria-label="${esc(BRAND.aria || BRAND.name)}" style="font-size:${px}px"><span class="my">my</span><span class="pocket">p${ball(Math.round(px * 0.62), sport)}cket</span><span class="club">club</span></span>`;
 }
 
 // ---------- Icônes au trait ----------
@@ -61,8 +61,8 @@ export function crest(c, size = 44, bg) {
   return `<span aria-hidden="true" style="flex:none;display:flex;align-items:center;justify-content:center;width:${size + 6}px;height:${h + 7}px;background:${o};${clip}">${inner}</span>`;
 }
 
-// ---------- Thème : en-tête Pocket Club, ou aux couleurs du club si le président l'a activé ----------
-export function brandMode() { return !S.session || !S.me || !S.clubId || !isActive() || S.onb !== null || ['account', 'legal', 'cgu'].includes(S.view?.type); }
+// ---------- Thème : en-tête mypocketclub, ou aux couleurs du club si le président l'a activé ----------
+export function brandMode() { return !S.session || !S.me || !S.clubId || !isActive() || S.onb !== null || ['account', 'legal', 'cgu', 'creq', 'creqs', 'creqmail'].includes(S.view?.type); }
 export function applyTheme() {
   const c = club(), r = document.documentElement.style, perso = !brandMode() && c?.custom_header;
   const bg = perso ? c.color1 : '#2F5BFF';
@@ -84,7 +84,7 @@ export const searchBtn = () => `<button class="roundbtn" data-act="csearch" aria
 // N° 27 : même en-tête partout. Bande du haut : (retour) · logo C · loupe (n° 56) · Espace · Mon compte ;
 // dans un espace : (retour) · pastille du rôle · Mon compte (n° 85 : plus de logo, la personne sait où elle est)
 export function header(o = {}) {
-  const c = club(), br = o.brand || brandMode(), sport = br ? null : (c?.sport || 'Basket-ball'); // hors club : ballon multisport
+  const c = club(), br = o.brand || brandMode(), sport = br ? null : (c?.sport || null); // hors club : ballon médecine (n° 97)
   const acc = S.session && S.me && S.view?.type !== 'account' && S.me.cgu_version && !S.me.deleted_at;
   const inClub = acc && S.clubId && isActive() && S.onb === null;
   let h;

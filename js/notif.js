@@ -1,4 +1,4 @@
-// Pocket Club · notifications sur le téléphone (étape B, partie application).
+// mypocketclub · notifications sur le téléphone (étape B, partie application).
 // Chaque appareil s'inscrit une fois (« Activer les notifications ») ; l'inscription est rangée dans la base
 // (fonction push_subscribe, ajoutée par le script de l'étape 2) et rattachée au compte connecté.
 // Une seule activation vaut pour tous les profils et tous les clubs du compte.

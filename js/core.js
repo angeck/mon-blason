@@ -1,4 +1,4 @@
-// Pocket Club · cœur de l'application : connexion à la base, état, outils, chargement des données, droits vus à l'écran.
+// mypocketclub · cœur de l'application : connexion à la base, état, outils, chargement des données, droits vus à l'écran.
 // Rappel : l'écran n'est qu'un confort. Chaque droit est vérifié par la base (règles d'accès et fonctions).
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_KEY, VERSION } from '../config.js';
@@ -166,10 +166,10 @@ export async function loadNames(ids) {
 }
 export async function loadMe() {
   const uid = S.session.user.id;
-  const [prof, mems] = await Promise.all([sb.rpc('my_profile'), sb.from('memberships').select('*').eq('user_id', uid)]);
+  const [prof, mems, adm] = await Promise.all([sb.rpc('my_profile'), sb.from('memberships').select('*').eq('user_id', uid), sb.rpc('is_app_admin')]);
   S.me = prof.data || { id: uid, full_name: '', first_name: '', last_name: '' };
   S.mems = mems.data || [];
-  sb.rpc('is_app_admin').then((r) => { S.isAdmin = r.data === true; }, () => {}); // n° 86 : administrateur Pocket Club (demandes de schéma)
+  S.isAdmin = adm?.data === true; // n° 86 : administrateur mypocketclub (demandes de schéma, n° 96 : demandes de clubs)
   const ids = [...new Set(S.mems.map((m) => m.club_id))];
   S.clubs = {};
   if (ids.length) { const { data } = await sb.from('clubs').select('*').in('id', ids); (data || []).forEach((c) => (S.clubs[c.id] = c)); }

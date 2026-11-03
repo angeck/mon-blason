@@ -1,4 +1,4 @@
-// Pocket Club · fiche joueur : informations, parents, autorisations datées, licence et cotisation, corbeille.
+// mypocketclub · fiche joueur : informations, parents, autorisations datées, licence et cotisation, corbeille.
 import { BRAND } from '../config.js';
 import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, club, isBoard, team, teamName, pl, pname, adminOf, parentsOf, isParentOf, canManagePlayer, canAdminPlayer, outranks, isMajor, name, num, plural } from './core.js';
 import { icon, delBtn, field } from './ui.js';

@@ -1,4 +1,4 @@
-// Pocket Club (nom provisoire) · alpha 3.2 · point d'entrée : affichage des écrans, aiguillage des actions, connexion, temps réel.
+// mypocketclub · point d'entrée : affichage des écrans, aiguillage des actions, connexion, temps réel.
 // Organisation : js/core.js (état, données, droits), js/ui.js (logos, en-tête, onglets), puis un module par onglet.
 import { BRAND, VERSION } from './config.js';
 import {
@@ -19,6 +19,7 @@ import { VIE_VIEWS } from './js/vie.js';
 import { syncPush } from './js/notif.js';
 import './js/convoc.js';
 import './js/v35.js';
+import { V37_TOP, loadAdminCounts } from './js/v37.js';
 import { switchBar, saveSwitch, resetUser } from './js/profils.js';
 
 const TAB_TITLES = ['', 'Agenda', 'Messages', 'Équipe', 'Le club'];
@@ -49,7 +50,7 @@ function render(keep) {
   applyTheme();
   let html;
   const vt = S.view?.type;
-  if (!S.session) html = vt === 'legal' ? legalScreen() : vt === 'auth' ? authScreen() : vt === 'pclub' ? publicClubScreen(S.view.id) : publicHome();
+  if (!S.session) html = vt === 'legal' ? legalScreen() : vt === 'auth' ? authScreen() : vt === 'pclub' ? publicClubScreen(S.view.id) : vt === 'creq' ? V37_TOP.creq(S.view) : publicHome(); // n° 96 : demande d'ajout d'un club, aussi sans compte
   else if (S.recovery) html = recoveryScreen();
   else if (!S.me) html = `<div class="splash bigsplash">${wordmark(Math.min(92, Math.round(innerWidth * 0.145)))}</div>`; // n° 90
   else if (vt === 'legal') html = legalScreen();
@@ -57,6 +58,7 @@ function render(keep) {
   else if (S.me.deleted_at) html = deletedScreen();
   else if (!S.me.cgu_version) html = cguScreen();
   else if (S.view?.type === 'account') html = accountScreen();
+  else if (V37_TOP[vt]) html = V37_TOP[vt](S.view); // n° 96 : demande d'ajout d'un club, page Admin
   else if (!S.clubId || !isActive() || S.onb !== null) html = onboarding();
   else {
     const vs = S.view && viewScreen(S.view);
@@ -64,8 +66,8 @@ function render(keep) {
     if (vs) [hd, bd] = vs;
     else {
       const t = S.tab;
+      bd = [homeTab, agendaTab, messagesTab, teamTab, clubTab][t](); // avant l'en-tête : l'onglet Équipe choisit l'équipe affichée (titre)
       hd = header(t === 0 ? { home: true, title: homeTitle(), sub: profileLine() } : { title: t === 3 ? esc(teamName(S.teamSel) || TAB_TITLES[t]) : TAB_TITLES[t], sub: profileLine() });
-      bd = [homeTab, agendaTab, messagesTab, teamTab, clubTab][t]();
     }
     html = hd + `<main class="bd">${S.view ? '' : syncBar()}${bd}</main>` + tabBar();
   }
@@ -80,7 +82,7 @@ async function refresh(msg) {
   if (!S.joinChecked) { S.joinChecked = true; await openPendingJoin(); }
   if (!S.purged) { S.purged = true; sb.rpc('purge_trash').then(() => {}, () => {}); }
   await loadClub();
-  await Promise.all([loadCoachCounts(), loadEvPlans()]).catch(() => {});
+  await Promise.all([loadCoachCounts(), loadEvPlans(), loadAdminCounts()]).catch(() => {});
   if (S.view?.type === 'group') await loadGroup(S.view.id);
   render(true); subscribe(); if (msg) toast('À jour.');
   syncPush().then(() => render(true), () => {});

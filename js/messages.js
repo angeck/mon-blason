@@ -1,4 +1,4 @@
-// Pocket Club · messages : groupes d'échange, messages en direct, sondages (supprimables, restaurables par le bureau).
+// mypocketclub · messages : groupes d'échange, messages en direct, sondages (supprimables, restaurables par le bureau).
 import { annoncesBlock } from './vie.js';
 import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, isBoard, name, nick, teamName, fmtShort, loadGroup, parentsOf, playersOfTeam, plural, norm } from './core.js';
 import { icon, delBtn, field } from './ui.js';

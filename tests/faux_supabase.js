@@ -65,6 +65,7 @@ const D = {
   announcements: [{ id: 'a1', club_id: C, audience: 'club', team_ids: [], people: [], kind: 'annonce', event_id: null, title: 'Gymnase fermé samedi', body: 'Travaux : entraînements déplacés.', created_by: 'u-pres', created_at: at(-1, 12), deleted_at: null }],
   announcement_reads: [], event_missions: [], mission_signups: [], board_areas: [],
   exercise_votes: [], exercise_reports: [], training_plans: [], coach_hours: [{ id: 'h0', club_id: C, user_id: 'u-c11', team_id: T11, day: at(-4).slice(0, 10), minutes: 90, kind: 'Entraînement', note: '' }],
+  club_requests: [],
   coach_statements: [{ id: 'st1', club_id: C, user_id: 'u-c11', month: (() => { const d = new Date(); return d.toLocaleDateString('sv-SE').slice(0, 8) + '01'; })(), status: 'submitted', total_minutes: 90 }],
 };
 // Le relevé de Karim porte sur le mois des dernières séances passées (le test ne dépend pas du jour où il tourne)
@@ -154,6 +155,10 @@ const RPC = {
   relance_hours: () => 1,
   set_team_partner: ({ p_team, p_club, p_name }) => { const t = D.teams.find((x) => x.id === p_team); t.partner_state = p_club ? 'demandee' : p_name ? 'invitee' : 'aucune'; t.partner_name = p_name || (p_club ? 'Volley Ailleurs' : ''); return t.partner_state; },
   partner_teams: () => [{ team_id: 't-x', team_name: 'U15 M', host_club: 'ES Voisins', state: 'demandee', coaches: 'Paul R.', my_players: ['Ana L.'], players_count: 9 }],
+  top_followed_teams: () => window.__TOP || [],
+  request_club: (a) => { const id = uid(); D.club_requests.unshift({ id, created_at: new Date().toISOString(), first_name: a.p_first, last_name: a.p_last, email: a.p_email, club_name: a.p_club, city: a.p_city, sport: a.p_sport, age_ok: a.p_age_ok, consent: a.p_consent, user_id: null, status: 'new' }); return id; },
+  set_club_request: ({ p_id, p_status }) => { D.club_requests.find((r) => r.id === p_id).status = p_status; return null; },
+  is_app_admin: () => true,
   export_my_data: () => ({ profil: D.profiles[0] }), validate_membership: ({ mid }) => { D.memberships.find((m) => m.id === mid).status = 'active'; return null; },
 };
 export function createClient() {

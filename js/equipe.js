@@ -1,17 +1,18 @@
-// Pocket Club · onglet Équipe, fiche d'équipe, ajout et import de joueurs (n° 7, 8, 26).
+// mypocketclub · onglet Équipe, fiche d'équipe, ajout et import de joueurs (n° 7, 8, 26).
 import {
   S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, BCATS, GENRES, SEASON, NEXT_SEASON, XLSX_URL,
   active, isBoard, isPresident, coachOf, team, teamName, myTeamIds, myPlayers, playersOfTeam, pname, adminOf, toValidate, niceFirst, niceLast, norm,
-  loadJs, plural, fmtShort, evTeams, follows, mySelf, myKids,
+  loadJs, plural, fmtShort, evTeams, follows, mySelf, myKids, pl,
 } from './core.js';
 export { importFile };
 import { smartParse, analyse, fromMapping, doubts, COLS, decodeText, bestSheet } from './importer.js';
-import { icon, delBtn, field } from './ui.js';
+import { icon, delBtn, field, crest } from './ui.js';
 import { evCard, upcoming } from './agenda.js';
 import { partnerBlock } from './v35.js';
 import { pendRows } from './club.js';
 import { statusPills, presence } from './joueur.js';
 import { coachEntry } from './coach.js';
+import { topFollowed } from './v37.js';
 
 // ---------- mes enfants / ma fiche ----------
 // n° 51 : « Moi » (ma fiche de joueur) puis « Mes enfants », séparés
@@ -24,7 +25,7 @@ export function kidsBlock() {
 // ---------- effectif ----------
 function people(rows) {
   const map = new Map();
-  rows.forEach((x) => { const key = x.user_id || 'p:' + x.ref; if (!map.has(key)) map.set(key, { name: (x.first_name + ' ' + (x.last_name || '')).trim(), first: x.first_name, tags: [], player: null }); const p = map.get(key); if (x.kind === 'joueur') p.player = x.ref; p.tags.push(x); });
+  rows.forEach((x) => { const key = x.user_id || 'p:' + x.ref; if (!map.has(key)) map.set(key, { name: (x.first_name + ' ' + (x.last_name || '')).trim(), first: x.first_name, last: x.last_name || '', tags: [], player: null }); const p = map.get(key); if (x.kind === 'joueur') p.player = x.ref; p.tags.push(x); });
   return [...map.values()];
 }
 // N° 31 : coachs et joueurs comptés à part (un joueur-entraîneur apparaît dans les deux)
@@ -44,32 +45,62 @@ function followView(tid) {
   <div class="sec"><h2>Prochains matchs</h2></div>${evs.length ? evs.slice(0, 6).map((e) => evCard(e)).join('') : `<p class="empty">${follows(tid) ? 'Aucun match prévu pour l’instant.' : 'Suis l’équipe pour voir ses matchs dans ton agenda.'}</p>`}`;
 }
 export const followBtn = (tid) => (team(tid)?.state === 'Fantôme' ? '' : follows(tid) ? `<button class="btn small ghost" data-act="unfollow" data-id="${tid}">Ne plus suivre</button>` : `<button class="btn small main" data-act="follow" data-id="${tid}">Suivre cette équipe</button>`);
+// N° 93 · une seule liste de personnes par équipe, selon mon rôle dans cette équipe (jamais « Joueurs » + « Effectif » ensemble)
+// « Prénom N. » (le nom arrive déjà réduit pour les familles ; réduit ici aussi pour un membre du bureau qui regarde en parent)
+const short = (p) => (p.first + (p.last ? ' ' + p.last.replace(/^[\s.'-]+/, '').charAt(0).toUpperCase() + '.' : '')).trim();
+// Coachs de l'équipe en une ligne, sous la liste (« Prénom N. » pour les familles)
+function coachLine(tid, full) {
+  const cs = people(S.roster.filter((x) => x.team_id === tid && x.role === 'coach'));
+  if (!cs.length) return '<p class="note">Pas encore de coach.</p>';
+  return `<p class="note">${cs.length > 1 ? 'Coachs' : 'Coach'} : ${cs.map((p) => esc(full ? p.name : short(p)) + (p.tags.some((x) => x.assistant) ? ' (assistant)' : '')).join(' · ')}</p>`;
+}
+// Coach de l'équipe : liste « Joueurs » en noms complets, chiffres de l'effectif en une ligne au-dessus
 function coachBlock(tid) {
-  if (!coachOf(tid) && !isBoard()) return '';
   const ps = playersOfTeam(tid).sort((a, b) => pname(a).localeCompare(pname(b), 'fr'));
   const next = upcoming(S.events.filter((e) => evTeams(e).includes(tid) && !e.cancelled && ['Entraînement', 'Match', 'Plateau', 'Tournoi'].includes(e.type)))[0];
   let h = '';
   if (next) h += `<div class="card yellow"><span class="kick" style="color:var(--pc-encre)">Prochaine séance</span><b style="font-family:var(--pc-titre);font-size:24px;line-height:1.05">${esc(next.title)}</b><span>${esc(fmtShort(next.starts_at))}${next.place ? ' · ' + esc(next.place) : ''}</span></div>`; // n° 88 : l'appel se fait depuis l'Accueil (carte du jour) ou l'Espace coach
-  const lic = ps.filter((p) => adminOf(p.id)?.licence_state === 'Licencié').length, noBirth = ps.filter((p) => !p.birth_date).length;
-  h += `<div class="sec"><h2>Joueurs</h2><span class="det">${ps.length} · ${lic} licenciés</span></div>`;
+  const ad = ps.map((p) => adminOf(p.id)), lic = ad.filter((a) => a?.licence_state === 'Licencié').length, pre = ad.filter((a) => /^Préinscrit/.test(a?.licence_state || '')).length;
+  const withFee = ad.filter((a) => a && a.fee_amount != null), paid = withFee.filter((a) => +a.fee_paid >= +a.fee_amount).length, noBirth = ps.filter((p) => !p.birth_date).length;
+  const sum = [plural(ps.length, 'joueur'), plural(lic, 'licencié'), plural(pre, 'préinscrit'), withFee.length ? `cotisations ${paid}/${withFee.length} payées` : ''].filter(Boolean).join(' · ');
+  h += `<div class="sec"><h2>Joueurs</h2><span class="det">${ps.length}</span></div><p class="note" style="margin:-4px 0 0">${esc(sum)}</p>`;
   if (noBirth) h += `<div class="card warn"><b>${plural(noBirth, 'date de naissance manque', 'dates de naissance manquent')}</b><span class="note" style="color:var(--pc-encre)">Sans elle, le joueur est traité comme mineur pour les autorisations.</span></div>`;
-  h += `<div class="card"><div class="list">${ps.length ? ps.map((p) => { const pr = presence(p.id), a = adminOf(p.id); return `<button class="row" data-act="player" data-id="${p.id}"><span class="g">${esc(pname(p))}<small>${[pr.n ? 'présence ' + Math.round((100 * pr.ok) / pr.n) + ' %' : '', a?.licence_state || '', p.birth_date ? '' : 'date de naissance à compléter'].filter(Boolean).join(' · ')}</small></span><span class="chev"></span></button>`; }).join('') : '<p class="empty">Aucune fiche joueur.</p>'}</div></div>`;
-  return h + `<button class="btn ghost" data-act="import" data-id="${tid}">${icon('plus', 20)}Ajouter des joueurs</button>`;
+  h += `<div class="card"><div class="list">${ps.length ? ps.map((p) => { const pr = presence(p.id), a = adminOf(p.id); return `<button class="row" data-act="player" data-id="${p.id}"><span class="g">${esc(pname(p))}<small>${[pr.n ? 'présence ' + Math.round((100 * pr.ok) / pr.n) + ' %' : '', a?.licence_state || '', p.birth_date ? '' : 'date de naissance à compléter'].filter(Boolean).join(' · ')}</small></span><span class="chev"></span></button>`; }).join('') : '<p class="empty">Aucune fiche joueur. Ajoute tes joueurs depuis ton espace coach.</p>'}</div></div>`;
+  return h + coachLine(tid, true);
+}
+// Parent ou joueur de l'équipe : une seule liste en « Prénom N. » (cahier des charges § 6) ; ses propres fiches restent ouvrables
+function familyBlock(tid) {
+  const ps = people(S.roster.filter((x) => x.team_id === tid && x.kind === 'joueur')).sort((a, b) => a.first.localeCompare(b.first, 'fr'));
+  const mineIds = new Set(myPlayers().map((p) => p.id));
+  let h = `<div class="sec"><h2>Joueurs</h2><span class="det">${ps.length}</span></div><div class="card"><div class="list">`;
+  h += ps.length ? ps.map((p) => { const own = p.player && mineIds.has(p.player), label = esc(short(p)), av = `<span class="avatar">${esc(initialsOf(p.name))}</span>`;
+    return own ? `<button class="row" data-act="player" data-id="${p.player}">${av}<span class="g">${label}<small>${pl(p.player)?.user_id === S.me.id ? 'Moi' : 'Mon enfant'}</small></span><span class="chev"></span></button>` : `<div class="row static">${av}<span class="g">${label}</span></div>`; }).join('') : '<p class="empty">Aucun joueur pour l’instant.</p>';
+  return h + `</div></div>` + coachLine(tid, false);
+}
+const initialsOf = (n) => String(n || '').split(' ').map((w) => w[0]).slice(0, 2).join('');
+// Personne sans équipe (supporteur surtout) : message positif, équipes du club à suivre, top 5 des équipes les plus suivies
+function startFollow() {
+  const list = (S.cteams || []).filter((t) => t.state === 'Visible' && !t.followed && !follows(t.id));
+  let h = `<div class="card lift"><b style="font-family:var(--pc-titre);font-size:22px;line-height:1.1">Tu veux commencer à suivre une équipe ?</b><p class="note" style="margin:0">Ses matchs, plateaux et tournois apparaîtront dans ton agenda.</p></div>`;
+  h += `<div class="sec"><h2>Les équipes du club</h2><span class="det">${list.length || ''}</span></div><div class="card"><div class="list">${list.length ? list.map((t) => `<div class="row static"><button class="g" data-act="team" data-id="${t.id}" style="background:none;border:0;text-align:left;padding:0;min-height:44px;color:inherit">${esc(t.name)}<small>${esc([t.category !== t.name ? t.category : '', t.gender, t.slots].filter(Boolean).join(' · '))}</small></button><button class="btn small main" style="flex:none" data-act="follow" data-id="${t.id}">Suivre</button></div>`).join('') : '<p class="empty">Le club n’a pas encore d’équipe visible.</p>'}</div></div>`;
+  return h + topFollowed();
 }
 export function teamTab() {
   const mine = myTeamIds().filter((t) => team(t)), fol = S.follows.filter((t) => team(t) && !mine.includes(t)), ids = mine.concat(fol);
-  if (!ids.length) return kidsBlock() + coachEntry() + (myPlayers().length ? '' : '<div class="card"><p class="empty">Tu n’es rattaché à aucune équipe dans ce club.</p></div>') + '<button class="btn ghost" data-act="rqgo">Demander un rôle dans une équipe</button><button class="btn ghost" data-act="tab" data-i="4">Suivre une équipe du club</button>';
+  if (!ids.length) { S.teamSel = null; return kidsBlock() + coachEntry() + startFollow() + '<button class="btn ghost" data-act="rqgo">Demander un rôle dans une équipe</button>'; }
   if (!ids.includes(S.teamSel)) S.teamSel = ids[0];
   const tid = S.teamSel, coach = coachOf(tid);
   let h = kidsBlock() + coachEntry();
+  // n° 93 : chaque équipe une seule fois, même avec plusieurs profils (coach et parent dans la même équipe, etc.)
   if (ids.length > 1) h += `<div class="chips">${ids.map((i) => `<button class="chip" data-act="teamsel" data-id="${i}" aria-pressed="${i === tid}">${esc(teamName(i))}${fol.includes(i) ? ' · Suivie' : ''}</button>`).join('')}</div>`;
-  if (fol.includes(tid)) return h + '<span class="pill blue">Équipe suivie</span>' + followView(tid);
+  if (fol.includes(tid)) return h + '<span class="pill blue">Équipe suivie</span>' + followView(tid) + '<button class="btn ghost" data-act="tab" data-i="4">Suivre une autre équipe du club</button>';
   const vp = toValidate().filter((m) => m.team_id === tid);
   if (vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card">${pendRows(vp)}</div>`;
-  h += coachBlock(tid);
   const evs = upcoming(S.events.filter((e) => evTeams(e).includes(tid)));
-  h += `<div class="sec"><h2>Prochains rendez-vous</h2>${coach ? `<button data-act="evnew" data-team="${tid}">${icon('plus', 18)} Ajouter</button>` : ''}</div>` + (evs.length ? evs.slice(0, 5).map((e) => evCard(e, { answer: true })).join('') : '<p class="empty">Aucun rendez-vous prévu pour l’équipe.</p>');
-  return h + `<button class="btn ghost" data-act="team" data-id="${tid}">Fiche de l'équipe ${esc(teamName(tid))}</button>` + teamRoster(tid);
+  const rdv = `<div class="sec"><h2>Prochains rendez-vous</h2>${coach ? `<button data-act="evnew" data-team="${tid}">${icon('plus', 18)} Ajouter</button>` : ''}</div>` + (evs.length ? evs.slice(0, 5).map((e) => evCard(e, { answer: true })).join('') : '<p class="empty">Aucun rendez-vous prévu pour l’équipe.</p>');
+  // coach de l'équipe : liste complète ; sinon (parent, joueur, et bureau dans ce rôle) : « Prénom N. » ; le détail pour le bureau reste dans « Gestion du club »
+  h += coach ? coachBlock(tid) + rdv : rdv + familyBlock(tid);
+  return h + `<button class="btn ghost" data-act="team" data-id="${tid}">Fiche de l'équipe ${esc(teamName(tid))}</button>`;
 }
 
 // ---------- fiche d'équipe ----------
@@ -98,7 +129,7 @@ export function teamPage(tid) {
   }
   if (board) h += `<div class="btns">${t.state === 'Visible' ? `<button class="btn ghost small" data-act="tstate" data-id="${tid}" data-v="Fantôme">Repasser en mode fantôme</button>` : ''}${t.state !== 'Archivée' ? `<button class="btn ghost small ${isArmed('rn' + tid) ? 'danger armed' : ''}" data-act="trenew" data-id="${tid}">${isArmed('rn' + tid) ? `Confirmer : archiver et recréer pour ${NEXT_SEASON}` : `Archiver et reconduire pour ${NEXT_SEASON}`}</button>` : ''}</div>`;
   if (isPresident()) h += delBtn('tdel', tid, "Mettre l'équipe à la corbeille", "Confirmer : l'équipe part à la corbeille (30 jours)", isArmed('t' + tid));
-  return h + teamRoster(tid);
+  return h + (board || coach ? teamRoster(tid) : ''); // n° 93 : la liste des familles est dans l'onglet Équipe, pas en double ici
 }
 
 // ---------- ajout et import de joueurs ----------

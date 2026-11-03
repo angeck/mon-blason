@@ -1,4 +1,4 @@
-// Pocket Club · vie du club (alpha 3.2) : espaces par casquette (charte du 31 octobre), rubriques du bureau (n° 55),
+// mypocketclub · vie du club (alpha 3.2) : espaces par casquette (charte du 31 octobre), rubriques du bureau (n° 55),
 // fonctions (n° 54), annonces officielles et relances, bénévoles (n° 53), accueil multi-clubs, recherche connectée (n° 56).
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_2.sql) ; l'écran n'est qu'un confort.
 import {
@@ -54,6 +54,15 @@ function espaceView() {
 }
 const teamsLabelSafe = (ids) => ids.map(teamName).filter(Boolean).join(', ');
 
+// N° 95 · ajout de joueurs (un par un, liste, Excel, photo) dans les espaces, plus dans l'onglet Équipe ; une touche par équipe
+export function addPlayersBlock(tids) {
+  const l = tids.filter((t) => { const x = team(t); return x && !x.deleted_at && x.state !== 'Archivée'; });
+  if (!l.length) return '';
+  if (l.length === 1) return `<button class="btn" data-act="import" data-id="${l[0]}">${icon('plus', 20)}Ajouter des joueurs · ${esc(teamName(l[0]))}</button>`;
+  return `<div class="sec"><h2>Ajouter des joueurs</h2></div><div class="card"><p class="note" style="margin:0">Un par un, une liste copiée, un fichier Excel ou une photo. Choisis l’équipe :</p><div class="chips">${l.map((t) => `<button class="chip" data-act="import" data-id="${t}">${icon('plus', 16)} ${esc(teamName(t))}</button>`).join('')}</div></div>`;
+}
+const clubTeamIds = () => S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').map((t) => t.id);
+
 function coachSpace() {
   const ct = coachTeams(), soon = Date.now() + 14 * 864e5;
   const evs = upcoming(S.events.filter((e) => !e.cancelled && evTeams(e).some(coachOf) && ['Entraînement', 'Match', 'Plateau', 'Tournoi'].includes(e.type) && new Date(e.starts_at) < soon)).slice(0, 4);
@@ -76,6 +85,7 @@ function coachSpace() {
     { id: 'ajout', pin: true, html: `<button class="bigadd" data-act="cexnew">${icon('plus', 24, '#11162E', 2.6)}Ajouter un exercice</button>` },
     { id: 'appel', label: 'Pointer', html: rollH },
     { id: 'seances', label: 'Séances à préparer', html: sea },
+    { id: 'joueurs', label: 'Ajouter des joueurs', html: addPlayersBlock(ct) },
     { id: 'banque', label: "Banque d'exercices", html: bank },
     { id: 'outils', label: 'Raccourcis', html: tools },
   ]);
@@ -85,7 +95,7 @@ function presidentSpace() {
   const vp = toValidate(), byRole = {};
   vp.forEach((m) => { const r = m.role === 'parent' ? 'parent de joueur' : m.role === 'bureau' ? 'bureau' : m.role; byRole[r] = (byRole[r] || 0) + 1; });
   let alert = '';
-  if (vp.length) alert = `<div class="card" style="flex-direction:row;align-items:center;gap:12px;border:3px solid var(--pc-jaune)"><span style="display:flex;flex-direction:column;flex:1"><b style="font-size:18px">${plural(vp.length, 'demande à valider', 'demandes à valider')}</b><span class="det">${esc(Object.entries(byRole).map(([r, n]) => n + ' ' + r).join(', '))}</span></span><button class="btn main small" style="flex:none" data-act="tab" data-i="4">Voir</button></div>`;
+  if (vp.length) alert = `<div class="card" style="flex-direction:row;align-items:center;gap:12px;border:3px solid var(--pc-jaune)"><span style="display:flex;flex-direction:column;flex:1"><b style="font-size:18px">${plural(vp.length, 'demande à valider', 'demandes à valider')}</b><span class="det">${esc(Object.entries(byRole).map(([r, n]) => n + ' ' + r).join(', '))}</span></span><button class="btn main small" style="flex:none" data-act="gestion" data-v="demandes">Voir</button></div>`;
   const fees = S.padmin.filter((a) => a.fee_amount != null), due = fees.reduce((a, x) => a + +x.fee_amount, 0), paid = fees.reduce((a, x) => a + Math.min(+x.fee_paid || 0, +x.fee_amount), 0);
   const tiles = `<div class="tiles"><button class="tile" data-act="rub" data-id="secretariat"><b>${S.players.filter((p) => !p.from_partner).length}</b><span>Licenciés</span></button><button class="tile" data-act="rub" data-id="technique"><b>${S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').length}</b><span>Équipes</span></button><button class="tile ok" data-act="rub" data-id="tresorerie"><b>${due ? Math.round((100 * paid) / due) + ' %' : '—'}</b><span>Cotisations</span></button></div>`;
   const benev = !S.vstats ? '' : `<button class="card" data-act="rub" data-id="evenements" style="border:0;text-align:left;font:inherit;color:inherit;flex-direction:row;align-items:center;gap:12px"><span class="g" style="flex:1"><b>Bénévoles</b><span class="det" style="display:block">Membres : ${(S.vstats.members?.yes || []).length} bénévoles · ${(S.vstats.members?.no || []).length} non${S.vstats.supporters ? ` · supporteurs : ${(S.vstats.supporters.yes || []).length} · ${(S.vstats.supporters.no || []).length} non · ${(S.vstats.supporters.none || []).length} sans réponse` : ''}</span></span><span class="chev"></span></button>`;
@@ -105,6 +115,7 @@ function presidentSpace() {
   return arrange('president', [
     { id: 'alerte', pin: true, html: alert },
     { id: 'chiffres', label: 'Chiffres du club', html: tiles },
+    { id: 'joueurs', label: 'Ajouter des joueurs', html: addPlayersBlock(clubTeamIds()) },
     { id: 'heures', label: 'Heures des coachs', html: hoursCheckBlock() },
     { id: 'resultats', label: 'Derniers résultats', html: clubResults() },
     { id: 'ententes', label: 'Ententes', html: partnerRequests() },
@@ -132,6 +143,7 @@ function fonctionSpace(f) {
   if (own.includes('tresorerie') || extra.includes('tresorerie')) bl.push({ id: 'heures', label: 'Heures des coachs', html: hoursCheckBlock() });
   if (own.includes('technique')) bl.push({ id: 'ententes', label: 'Ententes', html: partnerRequests() }, { id: 'resultats', label: 'Derniers résultats', html: clubResults() });
   own.forEach((a, i) => bl.push({ id: a, label: AREAS[a], html: (i || own.length > 1 ? `<div class="sec"><h2>${esc(AREAS[a])}</h2></div>` : '') + rubBody(a) }));
+  if (['technique', 'secretariat'].some((x) => own.includes(x) || extra.includes(x))) bl.push({ id: 'joueurs', label: 'Ajouter des joueurs', html: addPlayersBlock(clubTeamIds()) }); // n° 95
   bl.push({ id: 'rubriques', label: 'Rubriques', html: rubList((own.length ? ['commun'] : []).concat(extra)) });
   bl.push({ id: 'gestion', label: 'Gestion du club', html: `<button class="btn" data-act="gestion">${icon('shield', 20)}Gestion du club</button>` }); // n° 88
   return arrange('f:' + f, bl);

@@ -1,4 +1,4 @@
-// Pocket Club · alpha 3.6.0 · n° 88 : cartes du coach sur l'Accueil (raccourcis vers l'Espace, pas des pages en double)
+// mypocketclub · alpha 3.6.0 · n° 88 : cartes du coach sur l'Accueil (raccourcis vers l'Espace, pas des pages en double)
 // « Prépare ta séance » : 3 jours avant chaque entraînement de ses équipes, tant que la séance n'est pas préparée
 // et que le coach n'a pas touché « Non merci » (pour cette séance seulement ; « Ne plus jamais proposer » dans Mon compte).
 // « Faire l'appel » : le jour de l'entraînement, du match, du plateau ou du tournoi.

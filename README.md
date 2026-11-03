@@ -1,17 +1,17 @@
-# Pocket Club (nom provisoire) · alpha 3.6.0
+# mypocketclub · alpha 3.7.0
 
 Application web installable (PWA) pour les clubs sportifs : agenda avec réponses « Je viens / Je ne viens pas », appel, fiches joueurs, licences et cotisations, groupes d'échange (messages en direct, sondages), équipes, membres, corbeille de 30 jours.
 
 - Données : Supabase (PostgreSQL, comptes, temps réel). Tous les droits sont vérifiés par la base (règles d'accès et fonctions) dans `supabase/schema.sql`.
 - Interface : HTML, CSS et JavaScript, sans étape de compilation. Hébergement : GitHub Pages.
-- Le nom de l'application n'est écrit qu'à un endroit : `config.js` (plus `manifest.webmanifest`, lu à l'installation sur le téléphone).
+- Le nom de l'application, « mypocketclub » (toujours en minuscules), n'est écrit qu'à un endroit : `config.js` (plus `manifest.webmanifest` et `index.html`, lus à l'installation sur le téléphone).
 
 ## Fichiers
 
 - `app.js` : affichage des écrans, aiguillage des actions, connexion, temps réel.
-- `js/core.js` (état, données, droits vus à l'écran) · `js/ui.js` (logos, en-tête, onglets) · un module par partie : `auth`, `accueil`, `agenda`, `messages`, `equipe`, `joueur`, `club`, `compte`, `coach` (espace coach), `vie` (espaces, rubriques, annonces, bénévoles), `importer` (lecture des listes), `profils` (liste déroulante « Profil de test », alpha 3.3.1), `v35` (alpha 3.5.0 : vérification des heures, ordre des blocs des espaces, résultats, ententes). L'appel en tuiles est dans `agenda`.
+- `js/core.js` (état, données, droits vus à l'écran) · `js/ui.js` (logos, en-tête, onglets) · un module par partie : `auth`, `accueil`, `agenda`, `messages`, `equipe`, `joueur`, `club`, `compte`, `coach` (espace coach), `vie` (espaces, rubriques, annonces, bénévoles), `importer` (lecture des listes), `profils` (liste déroulante « Profil de test », alpha 3.3.1), `v35` (alpha 3.5.0 : vérification des heures, ordre des blocs des espaces, résultats, ententes), `v36` (cartes du coach sur l'Accueil), `v37` (alpha 3.7.0 : top 5 des équipes suivies, demandes d'ajout d'un club et page Admin). L'appel en tuiles est dans `agenda`.
 - `js/vendor/xlsx.bundle.js` : lecture et écriture Excel (xlsx-js-style 1.2.0, licence Apache 2.0, copie locale pour ne pas dépendre d'un CDN).
-- `style.css` : styles Pocket Club, d'après les jetons de la charte (`04-jetons-design.css` du projet).
+- `style.css` : styles mypocketclub, d'après les jetons de la charte (`04-jetons-design.css` du projet).
 - `supabase/schema.sql` (3.0), puis `alpha_3_0_1.sql`, `alpha_3_0_2.sql`, `alpha_3_1.sql`, `alpha_3_2.sql`, `alpha_3_2_1.sql` et `alpha_3_2_4.sql` (mises à jour). `supabase/build_reset.sh` fabrique `RESET_ALPHA_3_0.sql` (efface tout, comptes compris, puis installe tout), `MAJ_ALPHA_3_2.sql` et `MAJ_ALPHA_3_2_4.sql` (mises à jour sans perte).
 
 ## Installation (une fois)
@@ -29,6 +29,10 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 - `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (216 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
 
 Toutes les personnes des tests sont fictives.
+
+## Alpha 3.7.0
+
+Mise à jour d'une base 3.6.0 : `supabase/MAJ_ALPHA_3_7_0.sql` (source `supabase/alpha_3_7_0.sql`, ajoutée au RESET), sans perte de données, relançable. N° 93 : onglet Équipe avec une seule liste par rôle (coach : « Joueurs » en noms complets et chiffres de l'effectif en une ligne ; parent et joueur : « Prénom N. » ; bureau : rubrique « Effectifs » de la gestion du club ; supporteur sans équipe : « Tu veux commencer à suivre une équipe ? », équipes du club et top 5 des équipes les plus suivies dès 10 équipes visibles). N° 94 : « N demandes à valider » de l'Accueil et « Voir » de l'espace Président ouvrent directement la gestion du club. N° 95 : « Ajouter des joueurs » dans les espaces (coach, président, bureau Technique ou Secrétariat) et sur la fiche de l'équipe, plus dans l'onglet Équipe. N° 96 : « Mon club n'est pas dans la liste » (version test, sans e-mail) et page Admin. N° 97 : nom et charte mypocketclub (logo « my » en étiquette, ballons jaune et encre, ballon médecine, icône et favicon) ; fichiers dans `img/`, icônes PNG fabriquées par `tools/fabriquer_logos.py`.
 
 ## Alpha 3.6.0
 

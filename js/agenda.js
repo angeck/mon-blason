@@ -1,4 +1,4 @@
-// Pocket Club · agenda : rendez-vous (une ou plusieurs équipes, personnes choisies), réponses, appel, séries, suppression.
+// mypocketclub · agenda : rendez-vous (une ou plusieurs équipes, personnes choisies), réponses, appel, séries, suppression.
 import {
   S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, CHANGES, INPUTS, TEAM_TYPES, club, active, isBoard, coachOf, coachTeams,
   teamName, teamsLabel, evTeams, name, pl, pname, parentsOf, myKidsIn, iPlayIn, inTeam, playersOfTeam, fmtDate, hm, localDay, inHolidays,
@@ -378,7 +378,7 @@ function initAp(eid) {
 }
 export function teamStrip(e, cur) {
   const t = S.teams.find((x) => x.id === evTeams(e)[0]), c = club();
-  const logo = c?.logo ? crest(c, 40, '#FFFFFF') : ball(44, c?.sport || 'Basket-ball');
+  const logo = c?.logo ? crest(c, 40, '#FFFFFF') : ball(44, c?.sport);
   const tabs = [['Pointer', 'appel', e.id], ['Programme', 'appprog', e.id], ['Stats', 'cstats', ''], ['Séances', 'cplans', ''], ['Effectif', 'team', t?.id || '']];
   return `<div class="tstrip"><div class="tsid">${logo}<span><b>${esc(t?.name || teamsLabel(evTeams(e)))}</b><small>${esc(c?.name || '')} · saison ${esc(t?.season || SEASON)}</small></span></div>
   <nav class="ttabs" aria-label="Équipe">${tabs.map(([l, a, id]) => `<button data-act="${a}" data-id="${esc(id)}" ${l === cur ? 'aria-current="page"' : ''}>${l}</button>`).join('')}</nav></div>`;
@@ -431,7 +431,7 @@ function deroule(e) {
 function icsFor(e) {
   const f = (d) => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, ''), end = endOf(e);
   const clean = (s) => String(s || '').replace(/[\\;,]/g, (m) => '\\' + m).replace(/\n/g, ' ');
-  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Pocket Club//FR', 'BEGIN:VEVENT', 'UID:' + e.id + '@pocketclub', 'DTSTAMP:' + f(Date.now()), 'DTSTART:' + f(e.starts_at), 'DTEND:' + f(end), 'SUMMARY:' + clean(e.title + ' · ' + (club()?.name || '')), 'LOCATION:' + clean(e.place), 'BEGIN:VALARM', 'TRIGGER:-PT2H', 'ACTION:DISPLAY', 'DESCRIPTION:Rappel', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//mypocketclub//FR', 'BEGIN:VEVENT', 'UID:' + e.id + '@mypocketclub.fr', 'DTSTAMP:' + f(Date.now()), 'DTSTART:' + f(e.starts_at), 'DTEND:' + f(end), 'SUMMARY:' + clean(e.title + ' · ' + (club()?.name || '')), 'LOCATION:' + clean(e.place), 'BEGIN:VALARM', 'TRIGGER:-PT2H', 'ACTION:DISPLAY', 'DESCRIPTION:Rappel', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
 }
 
 // ---------- actions ----------

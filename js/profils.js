@@ -1,4 +1,4 @@
-// Pocket Club · alpha 3.2.5 · profils de test : une liste déroulante pour passer d'un compte de test à l'autre.
+// mypocketclub · alpha 3.2.5 · profils de test : une liste déroulante pour passer d'un compte de test à l'autre.
 // Visible seulement quand on est connecté avec un des comptes de la liste SWITCH_PROFILES (config.js).
 // Les comptes restent de vrais comptes : la base applique leurs vrais droits. Les connexions sont gardées sur CET appareil seulement.
 import { SWITCH_PROFILES } from '../config.js';
