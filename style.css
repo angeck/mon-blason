@@ -46,6 +46,7 @@ a{color:var(--pc-bleu)}
 .hd>*{position:relative}
 .hd .band{display:flex;align-items:center;gap:10px;min-height:44px}
 .hd .band .logo{flex:1;min-width:0;display:flex;align-items:center;overflow:hidden}
+.hd .band .logo .wordmark{font-size:clamp(15px,5.1vw,22px)!important}
 .hd .top{display:flex;align-items:center;gap:12px;min-height:44px}
 .hd .who{display:flex;flex-direction:column;flex:1;min-width:0}
 .hd .who b{font-size:17px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -62,8 +63,8 @@ a{color:var(--pc-bleu)}
 .bd{flex:1;padding:18px 20px 130px;display:flex;flex-direction:column;gap:14px}
 .bd h2{margin:6px 0 0;font-family:var(--pc-titre);font-weight:800;font-size:22px;letter-spacing:-.02em;line-height:1.15}
 .sec{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:4px}
-.sec h2{margin:0}
-.sec button{background:none;border:0;color:var(--pc-bleu);font-weight:700;font-size:16px;min-height:44px;padding:0}
+.sec h2{margin:0;min-width:0;font-size:20px}
+.sec button{background:none;border:0;color:var(--pc-bleu);font-weight:700;font-size:16px;min-height:44px;padding:0;flex:none;white-space:nowrap}
 .kick{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--pc-texte-doux)}
 .det{color:var(--pc-texte-doux);font-size:15px}
 .note{font-size:14px;color:var(--pc-texte-doux);margin:0}
@@ -260,7 +261,9 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 
 /* Alpha 3.2.5 · profils de test */
 .swbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:10px;background:var(--pc-encre);color:#fff;padding:calc(6px + env(safe-area-inset-top)) 14px 6px;font-size:14px;font-weight:700}
-.swbar select{flex:1;min-height:40px;border-radius:12px;border:2px solid #fff;background:#fff;color:var(--pc-encre);font-weight:700;font-size:16px;padding:0 10px}
+.swbar{box-sizing:border-box;width:100%;max-width:100%}
+.swbar label{flex:none;white-space:nowrap}
+.swbar select{flex:1;min-width:0;width:100%;min-height:40px;border-radius:12px;border:2px solid #fff;background:#fff;color:var(--pc-encre);font-weight:700;font-size:16px;padding:0 10px}
 
 
 /* ---------- 3.5.0 · appel en tuiles (n° 81, claude/10-appel-en-tuiles.md) : couleurs de la charte uniquement ---------- */
