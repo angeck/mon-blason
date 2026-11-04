@@ -98,7 +98,7 @@ FORMS.proff = async (v) => {
   if (await run(sb.from('profiles').update({ first_name: niceFirst(v.first_name), last_name: niceLast(v.last_name), nickname: (v.nickname || '').trim() || null, phone: (v.phone || '').trim() || null, optin_emails: !!v.optin }).eq('id', S.me.id), 'Profil enregistré.')) await refresh();
 };
 INPUTS.push((t) => { if (t.dataset.r && t.type !== 'checkbox') { S.rq[t.dataset.r] = t.value; return true; } return false; });
-// n° 66 : décocher le bénévolat demande confirmation ; le coordinateur et le président sont prévenus (par la base)
+// n° 66 : décocher le bénévolat demande confirmation ; le correspondant rencontres et le président sont prévenus (par la base)
 CHANGES.push(async (t) => {
   if (!t.dataset.supvol) return false;
   if (await run(sb.rpc('set_supporter_volunteer', { p_on: t.checked }), t.checked ? 'Merci ! Tu participes au bénévolat du club.' : 'C’est noté.')) S.me.supporter_volunteer = t.checked; else t.checked = !t.checked;
@@ -108,7 +108,7 @@ CHANGES.push(async (t) => {
   if (!t.dataset.volunteer) return false;
   const on = t.checked;
   if (!on && !confirm('Le club compte sur chacun pour aider au moins une fois dans la saison. Ne plus être sollicité ?')) { t.checked = true; return true; }
-  if (await run(sb.rpc('set_volunteer', { p_on: on }), on ? 'Merci ! Tu participes au bénévolat du club.' : 'C’est noté : tu ne seras plus sollicité. Le coordinateur et le président sont prévenus.')) S.me.volunteer = on; else t.checked = !on;
+  if (await run(sb.rpc('set_volunteer', { p_on: on }), on ? 'Merci ! Tu participes au bénévolat du club.' : 'C’est noté : tu ne seras plus sollicité. Le correspondant rencontres et le président sont prévenus.')) S.me.volunteer = on; else t.checked = !on;
   return true;
 });
 CHANGES.push(async (t) => {

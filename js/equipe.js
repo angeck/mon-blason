@@ -116,11 +116,14 @@ export function teamPage(tid) {
   const t = team(tid); if (!t) return '<p class="empty">Équipe introuvable.</p>';
   const board = isBoard(), coach = coachOf(tid), ct = cteam(tid);
   if (!board && !coach && !myTeamIds().includes(tid)) return followView(tid);
-  let h = `<div class="card lift">${ct && ct.coaches != null ? `<div class="chips"><span class="pill blue">Coachs : ${ct.coaches}</span><span class="pill blue">Effectif : ${plural(ct.players, 'joueur')}</span></div>` : ''}<div class="kick">Créneaux et gymnase</div><div>${esc(t.slots || 'Non renseignés')}</div>${t.state === 'Fantôme' ? `<span class="pill wait">Fantôme · en attente de validation</span><p class="note">Visible du bureau et de ses coachs seulement, aucune notification. Les familles la verront une fois validée.</p><button class="btn main ${isArmed('tv' + tid) ? 'ink' : ''}" data-act="tvisible" data-id="${tid}">${isArmed('tv' + tid) ? "Confirmer : l'équipe devient visible des familles" : "Rendre l'équipe visible"}</button>` : t.state === 'Archivée' ? '<span class="pill">Archivée</span>' : ''}${!myTeamIds().includes(tid) ? followBtn(tid) : ''}</div>`;
+  let h = `<div class="card lift">${ct && ct.coaches != null ? `<div class="chips"><span class="pill blue">Coachs : ${ct.coaches}</span><span class="pill blue">Effectif : ${plural(ct.players, 'joueur')}</span></div>` : ''}<div class="kick">Créneaux et gymnase</div><div>${esc(t.slots || 'Non renseignés')}</div>${t.state === 'Fantôme' ? `<span class="pill wait">Fantôme · en attente de validation</span><p class="note">Visible du bureau et de ses coachs seulement, aucune notification. Les familles la verront une fois validée.</p>${!S.tsp ? '' : `<button class="btn main ${isArmed('tv' + tid) ? 'ink' : ''}" data-act="tvisible" data-id="${tid}">${isArmed('tv' + tid) ? "Confirmer : l'équipe devient visible des familles" : "Rendre l'équipe visible"}</button>`}` : t.state === 'Archivée' ? '<span class="pill">Archivée</span>' : ''}${!myTeamIds().includes(tid) ? followBtn(tid) : ''}</div>`;
+  // n° 113 (n° 101 point 2) : la fiche reste consultable ; les boutons de gestion sont dans l'espace de l'équipe (onglet Effectif)
+  const manage = (board || coach) && !!S.tsp;
+  if ((board || coach) && !S.tsp) h += `<button class="btn" data-act="tsgo" data-id="${tid}" data-tab="effectif">${icon('shield', 20)}Gérer dans l'espace de l'équipe</button>`;
   const vp = toValidate().filter((m) => m.team_id === tid);
-  if ((board || coach) && vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card">${pendRows(vp)}</div>`;
-  if (board || coach) h += partnerBlock(t);
-  if (board || coach) {
+  if (manage && vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card">${pendRows(vp)}</div>`;
+  if (manage) h += partnerBlock(t);
+  if (manage) {
     h += `<button class="btn main" data-act="import" data-id="${tid}">${icon('plus', 20)}Ajouter des joueurs (un par un, liste, Excel, photo)</button>`;
     h += `<details class="card"><summary>${board ? "Réglages de l'équipe" : "Créneaux de l'équipe"}</summary>${board ? teamForm(t, 'teamedit') : `<form id="teamslots" data-id="${tid}" class="stack">${field('tsl', 'Créneaux et gymnase', `<input id="tsl" name="slots" value="${esc(t.slots || '')}">`)}<button class="btn main" type="submit">Enregistrer</button></form>`}</details>`;
     const cands = S.roster.filter((x) => x.user_id).reduce((a, x) => (a.some((y) => y.user_id === x.user_id) ? a : a.concat(x)), [])
@@ -128,9 +131,9 @@ export function teamPage(tid) {
       .reduce((a, x) => (a.some((y) => y.user_id === x.user_id) ? a : a.concat(x)), []);
     h += `<details class="card"><summary>${board ? 'Nommer un coach ou un assistant' : 'Ajouter un coach assistant'}</summary><form id="coachf" data-id="${tid}" class="stack">${field('cfu', 'Membre du club', `<select id="cfu" name="user">${cands.map((x) => `<option value="${x.user_id}">${esc((x.first_name + ' ' + x.last_name).trim())}</option>`).join('')}</select>`)}${board ? '<label class="check"><input type="checkbox" name="assistant"><span>Coach assistant</span></label>' : '<input type="hidden" name="assistant" value="on">'}<button class="btn main" type="submit">Nommer</button><p class="note">La personne doit déjà être membre du club (elle a rejoint avec le code).</p></form></details>`;
   }
-  if (board) h += `<div class="btns">${t.state === 'Visible' ? `<button class="btn ghost small" data-act="tstate" data-id="${tid}" data-v="Fantôme">Repasser en mode fantôme</button>` : ''}${t.state !== 'Archivée' ? `<button class="btn ghost small ${isArmed('rn' + tid) ? 'danger armed' : ''}" data-act="trenew" data-id="${tid}">${isArmed('rn' + tid) ? `Confirmer : archiver et recréer pour ${NEXT_SEASON}` : `Archiver et reconduire pour ${NEXT_SEASON}`}</button>` : ''}</div>`;
+  if (board && manage) h += `<div class="btns">${t.state === 'Visible' ? `<button class="btn ghost small" data-act="tstate" data-id="${tid}" data-v="Fantôme">Repasser en mode fantôme</button>` : ''}${t.state !== 'Archivée' ? `<button class="btn ghost small ${isArmed('rn' + tid) ? 'danger armed' : ''}" data-act="trenew" data-id="${tid}">${isArmed('rn' + tid) ? `Confirmer : archiver et recréer pour ${NEXT_SEASON}` : `Archiver et reconduire pour ${NEXT_SEASON}`}</button>` : ''}</div>`;
   // n° 103 : « Supprimer (doublon) », séparé d'« Archiver », pour le président et le bureau Technique (corbeille 30 jours, restaurable)
-  if (canTrashTeam()) h += `<div class="sec"><h2>Équipe en double ?</h2></div><div class="card"><p class="note" style="margin:0">Pour une équipe créée deux fois. Elle part à la corbeille pendant 30 jours : le bureau peut la restaurer. Pour la fin de saison, utilise plutôt « Archiver et reconduire ».</p>${dupBtn(tid)}</div>`;
+  if (canTrashTeam() && manage) h += `<div class="sec"><h2>Équipe en double ?</h2></div><div class="card"><p class="note" style="margin:0">Pour une équipe créée deux fois. Elle part à la corbeille pendant 30 jours : le bureau peut la restaurer. Pour la fin de saison, utilise plutôt « Archiver et reconduire ».</p>${dupBtn(tid)}</div>`;
   return h + (board || coach ? teamRoster(tid) : ''); // n° 93 : la liste des familles est dans l'onglet Équipe, pas en double ici
 }
 
@@ -206,7 +209,8 @@ export function importPage(tid) {
 
 Object.assign(ACTIONS, {
   teamsel: (el, d) => { S.teamSel = d.id; render(true); },
-  team: (el, d) => { S.view = { type: 'team', id: d.id }; render(); },
+  // n° 113 : ouverte depuis un espace (président, bureau, rubrique), la fiche de l'équipe est son espace (onglet Effectif)
+  team: (el, d) => { if (['espace', 'rub', 'gestion', 'tspace', 'fview'].includes(S.view?.type)) S.tsp = d.id; S.view = { type: 'team', id: d.id }; render(); },
   tvisible: async (el, d) => { if (!armed('tv' + d.id)) return; if (await run(sb.from('teams').update({ state: 'Visible' }).eq('id', d.id), 'Équipe visible : les familles peuvent la voir et la rejoindre.')) await refresh(); },
   follow: async (el, d) => { if (await run(sb.from('team_follows').insert({ user_id: S.me.id, team_id: d.id }), 'Équipe suivie : ses matchs apparaissent dans ton agenda.')) await refresh(); },
   unfollow: async (el, d) => { if (await run(sb.from('team_follows').delete().eq('user_id', S.me.id).eq('team_id', d.id), 'Tu ne suis plus cette équipe.')) await refresh(); },

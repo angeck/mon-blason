@@ -324,7 +324,7 @@ export function eventForm() {
   ${field('el', 'Lieu', `<input id="el" name="place" data-evauto="1" value="${esc(f.place || '')}" placeholder="Ex. Gymnase de Boissy">`)}
   ${convField(f)}
   ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && hasArea('evenements') ? `<label class="check"><input type="checkbox" name="mkconv" ${f.mkconv ? 'checked' : ''}><span>Préparer la convocation des clubs reçus après l'enregistrement</span></label>` : ''}
-  ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && !hasArea('evenements') ? '<p class="note">Le coordinateur du club sera prévenu pour préparer la convocation des clubs reçus.</p>' : ''}
+  ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && !hasArea('evenements') ? '<p class="note">Le correspondant rencontres du club sera prévenu pour préparer la convocation des clubs reçus.</p>' : ''}
   <button class="btn main" type="submit">${f.id ? 'Enregistrer les changements' : 'Enregistrer'}</button></form>`;
 }
 function keepForm() {
@@ -399,12 +399,14 @@ function initAp(eid) {
   S.ap = { eid, st: {}, arr: {}, done: rows.length > 0, open: rows.length === 0, reopened: false, late: null, editTime: false };
   rows.forEach((x) => { if (x.status !== 'absent') S.ap.st[x.player_id] = x.status; if (x.arrived_at) S.ap.arr[x.player_id] = x.arrived_at; });
 }
-export function teamStrip(e, cur) {
-  const t = S.teams.find((x) => x.id === evTeams(e)[0]), c = club();
+export function teamStrip(e, cur) { return teamBand(evTeams(e)[0], cur, teamsLabel(evTeams(e))); }
+// N° 113 : bandeau de l'espace de l'équipe, toujours visible ; « Programme » disparaît (il ouvrait seulement la page du rendez-vous)
+export function teamBand(tid, cur, fallback = '') {
+  const t = S.teams.find((x) => x.id === tid), c = club();
   const logo = c?.logo ? crest(c, 40, '#FFFFFF') : ball(44, c?.sport);
-  const tabs = [['Pointer', 'appel', e.id], ['Programme', 'appprog', e.id], ['Stats', 'cstats', ''], ['Séances', 'cplans', ''], ['Effectif', 'team', t?.id || '']];
-  return `<div class="tstrip"><div class="tsid">${logo}<span><b>${esc(t?.name || teamsLabel(evTeams(e)))}</b><small>${esc(c?.name || '')} · saison ${esc(t?.season || SEASON)}</small></span></div>
-  <nav class="ttabs" aria-label="Équipe">${tabs.map(([l, a, id]) => `<button data-act="${a}" data-id="${esc(id)}" ${l === cur ? 'aria-current="page"' : ''}>${l}</button>`).join('')}</nav></div>`;
+  const tabs = [['Pointer', 'pointer'], ['Planifier', 'planifier'], ['Préparer', 'preparer'], ['Stats', 'stats'], ['Effectif', 'effectif']];
+  return `<div class="tstrip"><div class="tsid">${logo}<span><b>${esc(t?.name || fallback)}</b><small>${esc(c?.name || '')} · saison ${esc(t?.season || SEASON)}</small></span></div>
+  <nav class="ttabs" aria-label="Équipe">${tabs.map(([l, k]) => `<button data-act="tsgo" data-id="${esc(tid || '')}" data-tab="${k}" ${l === cur ? 'aria-current="page"' : ''}>${l}</button>`).join('')}</nav></div>`;
 }
 export function appelPage(eid) {
   const e = S.events.find((x) => x.id === eid); if (!e) return '<p class="empty">Rendez-vous introuvable.</p>';
@@ -503,9 +505,8 @@ Object.assign(ACTIONS, {
   hide: async (el, d) => { if (await run(sb.from('event_hidden').upsert({ event_id: d.id, user_id: S.me.id, hidden_at: new Date().toISOString() }), 'Masqué. Ta réponse reste enregistrée ; filtre « Masqués » pour le retrouver.')) { S.hidden = S.hidden.filter((h) => h.event_id !== d.id).concat({ event_id: d.id, hidden_at: new Date().toISOString() }); render(true); } },
   unhide: async (el, d) => { if (await run(sb.from('event_hidden').delete().eq('event_id', d.id).eq('user_id', S.me.id), 'Réaffiché.')) { S.hidden = S.hidden.filter((h) => h.event_id !== d.id); render(true); } },
   ics: (el, d) => { const e = S.events.find((x) => x.id === d.id); download(new Blob([icsFor(e)], { type: 'text/calendar' }), 'rendez-vous-' + e.starts_at.slice(0, 10) + '.ics'); toast("Ouvre le fichier pour l'ajouter à ton agenda."); },
-  appel: (el, d) => { S.ap = null; S.view = { type: 'appel', id: d.id }; render(); },
+  appel: (el, d) => { S.ap = null; const e = S.events.find((x) => x.id === d.id); if (e && !S.tsp) S.tsp = evTeams(e)[0] || null; S.view = { type: 'appel', id: d.id }; render(); },
   appgo: (el, d) => { if (!d.id || d.id === S.ap?.eid) return; S.ap = null; S.view = { type: 'appel', id: d.id }; render(); },
-  appprog: (el, d) => { S.view = { type: 'event', id: d.id }; render(); },
   apptap: async (el, d) => {
     const A = S.ap, e = S.events.find((x) => x.id === A.eid);
     if (!A.done) { A.st[d.id] = A.st[d.id] === 'present' ? '' : 'present'; return render(true); }

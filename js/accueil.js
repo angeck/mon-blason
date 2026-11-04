@@ -8,6 +8,7 @@ import { pushHome } from './notif.js';
 import { hoursHome, resultsHome } from './v35.js';
 import { coachHome } from './v36.js';
 import { adminHome } from './v37.js';
+import { presidencyCard, clubTrashBanner } from './v310.js';
 
 export function homeTitle() {
   const todo = homeEvents().filter(needsAnswer).length, first = S.me.nickname || S.me.first_name || '';
@@ -15,7 +16,7 @@ export function homeTitle() {
 }
 export function homeTab() {
   const fut = homeEvents(), todo = fut.filter(needsAnswer), next = todo[0];
-  let h = pushHome(); // encart des notifications en premier, tant que la personne n'a pas activé ni masqué
+  let h = clubTrashBanner() + presidencyCard() + pushHome(); // n° 114 : club dans la corbeille, présidence proposée ; puis l'encart des notifications
   const vp = toValidate().length;
   // n° 94 : président et bureau → une seule touche, la page « Gestion du club » s'ouvre à l'endroit des demandes ; le coach garde l'onglet Club
   if (vp) h += isBoard() ? `<button class="btn main" data-act="gestion" data-v="demandes">${plural(vp, 'demande à valider', 'demandes à valider')}</button>` : `<button class="btn main" data-act="tab" data-i="4">${plural(vp, 'demande à valider', 'demandes à valider')}</button>`;

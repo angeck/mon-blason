@@ -12,12 +12,15 @@ import { ensureExos, plansForEvent, planForEvent, fmtMin } from './coach.js';
 import { searchBlock } from './auth.js';
 import { arrange, hoursHome, hoursCheckBlock, clubResults, partnerRequests } from './v35.js';
 import { teamToolsBlock, teamImportPage } from './v38.js';
+import { coachHub, coachSingle, defaultAsk, defaultCasq, presidentSpace310, licencesOnlyBlock, clubTrashBanner, payTreasurerSoon, rightsNote } from './v310.js';
 
 // Rubriques de chaque fonction (même table que la base : fonction_areas)
-const FONCTION_AREAS = {
+export const FONCTION_AREAS = {
   'Vice-président': Object.keys(AREAS), 'Trésorier': ['tresorerie'], 'Trésorier adjoint': ['tresorerie'], 'Secrétaire': ['secretariat'], 'Secrétaire adjoint': ['secretariat'],
-  'Correspondant licences': ['secretariat'], 'Directeur sportif': ['technique'], 'Coordinateur': ['technique', 'evenements'], 'Chargé de communication': ['communication'],
-  'Responsable sponsoring': ['communication'], 'Membre du bureau': [],
+  // n° 114 : « Correspondant licences » = les licences seulement (sous-rubrique « licences », hors AREAS) ; « Correspondant rencontres » (ex-coordinateur)
+  // sans la rubrique Technique ; « Directeur technique » (ex-directeur sportif) ; le sponsoring n'a pas encore d'espace
+  'Correspondant licences': [], 'Directeur technique': ['technique'], 'Correspondant rencontres': ['evenements'], 'Chargé de communication': ['communication'],
+  'Responsable sponsoring': [], 'Membre du bureau': [],
 };
 const AREA_ICON = { tresorerie: 'doc', secretariat: 'user', technique: 'team', communication: 'msg', evenements: 'cal', commun: 'shield' };
 const TITLES = {
@@ -60,11 +63,13 @@ function espaceView() {
   const k = areaKey(c), title = (TITLES[k] || '').replace('{club}', esc(club()?.name || 'Le club'));
   // n° 100 : sous le titre, l'équipe ouverte
   const under = isCoachCasq(c.k) ? teamsLabelSafe(c.teams) + ' · ' + (club()?.name || '') : SEASON_LABEL;
-  let body = casqTabs();
-  if (isCoachCasq(c.k)) body += coachSpace(c.teams);
-  else if (c.k === 'president') body += presidentSpace();
+  let body = casqTabs() + defaultAsk() + clubTrashBanner();
+  // n° 113 : une équipe → l'espace de l'équipe directement ; plusieurs → la liste des équipes (niveau 2)
+  if (isCoachCasq(c.k)) body += c.teams.length === 1 ? coachSingle(c.teams[0]) : coachHub(c.teams);
+  else if (c.k === 'president') body += presidentSpace310(); // n° 114 : cinq onglets
   else body += fonctionSpace(c.k.slice(2));
-  return { head: header({ back: true, role: c.pill, title, under }), body };
+  const t1 = isCoachCasq(c.k) && c.teams.length === 1 ? esc(teamName(c.teams[0])) : isCoachCasq(c.k) ? 'Espace coach' : title;
+  return { head: header({ back: true, role: c.pill, title: t1, under }), body };
 }
 const teamsLabelSafe = (ids) => ids.map(teamName).filter(Boolean).join(', ');
 
@@ -77,37 +82,9 @@ export function addPlayersBlock(tids) {
 }
 const clubTeamIds = () => S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').map((t) => t.id);
 
-// n° 100 : l'espace coach montre les séances, l'appel, les joueurs et les raccourcis de l'équipe ouverte seulement
-// (heures, exercices et annonces restent pour toutes les équipes du coach)
-function coachSpace(ids = coachTeams()) {
-  const ct = ids, mine = (t) => ids.includes(t), soon = Date.now() + 14 * 864e5;
-  const evs = upcoming(S.events.filter((e) => !e.cancelled && evTeams(e).some(mine) && ['Entraînement', 'Match', 'Plateau', 'Tournoi'].includes(e.type) && new Date(e.starts_at) < soon)).slice(0, 4);
-  let sea = `<div class="sec"><h2>Séances à préparer</h2><button data-act="cplan">Séance en préparation</button></div>`;
-  sea += evs.length ? evs.map((e) => {
-    const p = plansForEvent(e.id)[0];
-    const st = p ? `<span class="pill ok">Prête</span>` : `<span class="pill ko">À préparer</span>`;
-    return `<button class="card" data-act="${p ? 'pview' : 'cplanfor'}" data-id="${p ? p.id : e.id}" style="flex-direction:row;align-items:center;gap:12px;border:0;text-align:left;font:inherit;color:inherit">${dayBadge(e.starts_at)}<span style="display:flex;flex-direction:column;flex:1;min-width:0"><b>${esc(teamsLabelSafe(evTeams(e)))} · ${esc(hm(new Date(e.starts_at)))}</b><span class="det">${p ? plural(p.items.length, 'exercice') + ' · ' + fmtMin(p.items.reduce((a, x) => a + (+x.minutes || 0), 0)) : esc(e.type + (e.title ? ' · ' + e.title : ''))}</span></span>${st}</button>`;
-  }).join('') : '<p class="empty">Aucune séance dans les 14 prochains jours.</p>';
-  // Appel du jour : accès direct à la page Pointer (appel en tuiles)
-  const roll = upcoming(S.events.filter((e) => !e.cancelled && evTeams(e).some(mine) && ['Entraînement', 'Match', 'Plateau', 'Tournoi'].includes(e.type) && new Date(e.starts_at) > Date.now() - 6 * 3600e3))[0];
-  const rollH = roll ? `<button class="card yellow" data-act="appel" data-id="${roll.id}" style="border:0;text-align:left;font:inherit;color:inherit"><span class="kick" style="color:var(--pc-encre)">Pointer · prochaine séance</span><b style="font-family:var(--pc-titre);font-size:22px">${esc(teamsLabelSafe(evTeams(roll)))} · ${esc(fmtShort(roll.starts_at))}</b><span>Faire l’appel en tuiles</span></button>` : '';
-  const ex = S.exos;
-  const bank = `<div class="sec"><h2>Banque d'exercices</h2><button data-act="cexos" data-tab="mine">Ma banque</button></div>
-  <div class="tiles"><button class="tile blue" data-act="cexos" data-tab="mine"><b>${ex ? ex.filter((e) => e.created_by === S.me.id && !e.deleted_at).length : '…'}</b><span>Ma banque</span></button><button class="tile" data-act="cexos" data-tab="club"><b>${ex ? ex.filter((e) => e.club_id === S.clubId && e.sharing !== 'me' && !e.deleted_at).length : '…'}</b><span>Du club</span></button><button class="tile" data-act="cexos" data-tab="libre"><b>${ex ? ex.filter((e) => e.sharing === 'public' && e.public_state === 'validated' && !e.deleted_at).length : '…'}</b><span>Libre</span></button></div>`;
-  const tools = `<div class="grid2"><button class="btn small" data-act="cstats">${icon('team', 18)}Statistiques</button><button class="btn small" data-act="chours">${icon('check', 18)}Mes heures</button>
-  <button class="btn small" data-act="evnew" data-type="Match" data-team="${ct[0] || ''}">${icon('calplus', 18)}Convoquer un match</button><button class="btn small" data-act="annnew">${icon('msg', 18)}Annonce à l'équipe</button></div>`;
-  return arrange('coach', [
-    { id: 'heures', pin: true, html: hoursHome() },
-    { id: 'ajout', pin: true, html: `<button class="bigadd" data-act="cexnew">${icon('plus', 24, '#11162E', 2.6)}Ajouter un exercice</button>` },
-    { id: 'appel', label: 'Pointer', html: rollH },
-    { id: 'seances', label: 'Séances à préparer', html: sea },
-    { id: 'joueurs', label: 'Ajouter des joueurs', html: addPlayersBlock(ct) },
-    { id: 'banque', label: "Banque d'exercices", html: bank },
-    { id: 'outils', label: 'Raccourcis', html: tools },
-  ]);
-}
+// n° 113 (3.10.0) : l'ancien espace coach (une seule page) est remplacé par js/v310.js (liste des équipes, puis espace de l'équipe)
 
-function presidentSpace() {
+export function presidentOverview() {
   const vp = toValidate(), byRole = {};
   vp.forEach((m) => { const r = m.role === 'parent' ? 'parent de joueur' : m.role === 'bureau' ? 'bureau' : m.role; byRole[r] = (byRole[r] || 0) + 1; });
   let alert = '';
@@ -139,11 +116,11 @@ function presidentSpace() {
     { id: 'benevoles', label: 'Bénévoles', html: benev },
     { id: 'suivre', label: 'À suivre', html: suivre },
     { id: 'rubriques', label: 'Rubriques', html: rubList(Object.keys(AREAS).concat('commun')) },
-    { id: 'reglages', label: 'Réglages du club', html: regl },
-    { id: 'outils', label: 'Fonctions et journal', html: outils },
-  ]);
+    { id: 'gestion', label: 'Gestion du club', html: `<button class="btn" data-act="gestion">${icon('shield', 20)}Gestion du club</button>` },
+  ]); // n° 114 : réglages, fonctions et journal sont dans leurs onglets
+  void regl; void outils;
 }
-const sw = (k, t, d, on) => `<label class="switch"><input type="checkbox" data-clubset="${k}" ${on ? 'checked' : ''}><span><b>${esc(t)}</b><br><span class="det">${esc(d)}</span></span></label>`;
+export const sw = (k, t, d, on) => `<label class="switch"><input type="checkbox" data-clubset="${k}" ${on ? 'checked' : ''}><span><b>${esc(t)}</b><br><span class="det">${esc(d)}</span></span></label>`;
 function rubList(keys) {
   return `<div class="sec"><h2>Rubriques</h2></div><div class="card"><div class="list">${keys.map((a) => `<button class="row" data-act="rub" data-id="${a}"><span style="width:40px;height:40px;border-radius:14px;background:var(--pc-bleu-pale);display:flex;align-items:center;justify-content:center;flex:none">${icon(AREA_ICON[a], 20, 'var(--pc-bleu)')}</span><span class="g">${esc(AREAS[a] || 'Commun')}<small>${esc(RUB_SUB[a])}</small></span><span class="chev"></span></button>`).join('')}</div></div>`;
 }
@@ -152,10 +129,12 @@ const RUB_SUB = {
   technique: 'Équipes, coachs, heures, exercices, statistiques', communication: 'Annonces, contacts, blason et couleurs',
   evenements: 'Bénévoles, missions par défaut, événements', commun: 'Agenda, messages, annonces, corbeille, journal',
 };
-function fonctionSpace(f) {
+export function fonctionSpace(f) {
   const own = (FONCTION_AREAS[f] || []).filter(hasArea), extra = (S.areas || []).filter((a) => !own.includes(a));
   let h = '';
-  if (!own.length) h += `<div class="card pale"><b>${esc(f)}</b><p class="note">Ta fonction donne accès à la rubrique Commun. Le président peut t'ouvrir d'autres rubriques.</p></div>` + rubBody('commun');
+  const lic = licencesOnlyBlock(); // n° 114 : correspondant licences sans tout le Secrétariat
+  if (!own.length && !lic) h += `<div class="card pale"><b>${esc(f)}</b><p class="note">Ta fonction donne accès à la rubrique Commun. Le président peut t'ouvrir d'autres rubriques.</p></div>` + rubBody('commun');
+  h += lic;
   const bl = [{ id: 'alerte', pin: true, html: h }];
   if (own.includes('tresorerie') || extra.includes('tresorerie')) bl.push({ id: 'heures', label: 'Heures des coachs', html: hoursCheckBlock() });
   if (own.includes('technique')) bl.push({ id: 'ententes', label: 'Ententes', html: partnerRequests() }, { id: 'resultats', label: 'Derniers résultats', html: clubResults() });
@@ -174,7 +153,7 @@ function rubView(a) {
   return { head: header({ back: true, kicker: 'Rubrique', title: esc(AREAS[a] || 'Commun') }), body: ok ? casqTabs() + rubBody(a) : '<div class="card"><p class="empty">Cette rubrique n’est pas ouverte pour toi. Le président peut l’ouvrir dans « Fonctions du bureau ».</p></div>' };
 }
 function rubBody(a) {
-  if (a === 'tresorerie') return tresoSummary() + feesBlock() + licencesBlock();
+  if (a === 'tresorerie') return payTreasurerSoon() + tresoSummary() + feesBlock() + licencesBlock(); // n° 115
   if (a === 'secretariat') { const vp = toValidate(); return (vp.length ? `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>` : '') + namesToCheck() + licencesBlock() + membersBlock(); }
   if (a === 'technique') return `<div class="grid2"><button class="btn small" data-act="choursb">${icon('check', 18)}Heures des coachs</button><button class="btn small" data-act="cexos" data-tab="club">${icon('doc', 18)}Exercices du club</button><button class="btn small" data-act="cstats">${icon('team', 18)}Statistiques</button><button class="btn small" data-act="evnew" data-type="Match">${icon('calplus', 18)}Nouveau match</button></div>` + teamToolsBlock() + teamsBlock();
   if (a === 'communication') return `<button class="btn main" data-act="annnew">${icon('plus', 20)}Nouvelle annonce</button>` + annList(S.annonces.slice(0, 8), true) + contactsBlock() + brandBlock();
@@ -350,6 +329,7 @@ function fonctionsView() {
   }).join('') : '<p class="empty">Aucun membre du bureau pour l’instant.</p>';
   const cand = [...new Set(S.members.filter((m) => m.status === 'active' && m.user_id !== S.me.id).map((m) => m.user_id))].sort((a, c) => name(a).localeCompare(name(c), 'fr'));
   b += `<form id="nomf" class="card"><div class="kick">Nommer quelqu'un</div><div class="grid2">${field('nu', 'Membre du club', `<select id="nu" name="user" required><option value="">Choisir…</option>${cand.map((u) => `<option value="${u}">${esc(name(u))}</option>`).join('')}</select>`)}${field('nf', 'Fonction', `<select id="nf" name="fonction">${FONCTIONS.map((f) => `<option>${f}</option>`).join('')}</select>`)}</div><button class="btn main small" type="submit">Nommer</button><p class="note">Une seule personne pour la vice-présidence, le secrétariat et la trésorerie ; plusieurs pour les adjoints et les membres. Chaque nomination est inscrite au journal.</p></form>`;
+  b += rightsNote(); // n° 114 : les droits de chaque fonction avant de confirmer
   return { head: header({ back: true, kicker: roleKicker('Espace Président'), title: 'Fonctions du bureau' }), body: casqTabs() + b }; // n° 101
 }
 function journalView() {
@@ -389,9 +369,11 @@ async function markRead(id) {
   if (await run(sb.from('announcement_reads').insert({ announcement_id: id, user_id: S.me.id }))) S.annRead.add(id);
 }
 Object.assign(ACTIONS, {
-  espace: async () => { S.view = { type: 'espace' }; currentCasq(); render(); if (isCoachCasq(S.casq)) { await ensureExos(); render(true); } },
+  // n° 113 : le bouton de rôle ouvre la vue choisie par défaut, sinon le dernier espace utilisé
+  espace: async () => { const def = defaultCasq(); if (def) S.casq = resolveCasq(def); S.view = { type: 'espace' }; currentCasq(); render(); if (isCoachCasq(S.casq)) { await ensureExos(); render(true); } },
   casq: async (el, d) => {
     const k = resolveCasq(d.v); S.casq = k; store.set('pc_casq_' + S.clubId, k);
+    S.defAsk = k !== defaultCasq() ? k : null; // n° 113 : « Ouvrir cet espace par défaut ? »
     // n° 101 : un autre espace s'ouvre en haut de page ; la même casquette garde la position
     if (S.view?.type !== 'espace') { S.view = { type: 'espace' }; render(); } else render(true);
     if (isCoachCasq(k)) { await ensureExos(); render(true); }

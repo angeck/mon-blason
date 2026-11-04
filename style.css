@@ -287,7 +287,7 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 .tsid{display:flex;align-items:center;gap:12px}.tsid>span{display:flex;flex-direction:column;min-width:0}
 .tsid b{font:800 22px/1.05 var(--pc-titre)}.tsid small{font-size:13px;opacity:.85}
 .ttabs{display:flex;overflow-x:auto;gap:2px;margin:0 -4px}
-.ttabs button{flex:none;min-height:48px;padding:0 12px;border:0;background:none;color:inherit;font-weight:700;font-size:15px;border-bottom:4px solid transparent;opacity:.85}
+.ttabs button{flex:1 0 auto;min-height:48px;padding:0 6px;border:0;background:none;color:inherit;font-weight:700;font-size:14px;border-bottom:4px solid transparent;opacity:.85}
 .ttabs button[aria-current="page"]{border-bottom-color:var(--pc-jaune);opacity:1}
 .rollnav{display:flex;align-items:center;gap:8px}.rollnav>span{flex:1;display:flex;flex-direction:column;align-items:center;text-align:center}
 .rollnav b{font-size:17px;display:block}.rollnav b::first-letter{text-transform:uppercase}.rollnav small{color:var(--pc-texte-doux);font-size:14px}

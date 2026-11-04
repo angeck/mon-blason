@@ -1,4 +1,4 @@
-# mypocketclub · alpha 3.9.0
+# mypocketclub · alpha 3.10.0
 
 Application web installable (PWA) pour les clubs sportifs : agenda avec réponses « Je viens / Je ne viens pas », appel, fiches joueurs, licences et cotisations, groupes d'échange (messages en direct, sondages), équipes, membres, corbeille de 30 jours.
 
@@ -9,7 +9,7 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 ## Fichiers
 
 - `app.js` : affichage des écrans, aiguillage des actions, connexion, temps réel.
-- `js/core.js` (état, données, droits vus à l'écran) · `js/ui.js` (logos, en-tête, onglets) · un module par partie : `auth`, `accueil`, `agenda`, `messages`, `equipe`, `joueur`, `club`, `compte`, `coach` (espace coach), `vie` (espaces, rubriques, annonces, bénévoles), `importer` (lecture des listes), `profils` (liste déroulante « Profil de test », alpha 3.3.1), `v35` (alpha 3.5.0 : vérification des heures, ordre des blocs des espaces, résultats, ententes), `v36` (cartes du coach sur l'Accueil), `v37` (alpha 3.7.0 : top 5 des équipes suivies, demandes d'ajout d'un club et page Admin), `v38` (alpha 3.8.0 : création, import et doublons d'équipes dans l'espace, e-mail de test), `equipes_import` (lecture des listes d'équipes, sans dépendance). L'appel en tuiles est dans `agenda`.
+- `js/core.js` (état, données, droits vus à l'écran) · `js/ui.js` (logos, en-tête, onglets) · un module par partie : `auth`, `accueil`, `agenda`, `messages`, `equipe`, `joueur`, `club`, `compte`, `coach` (espace coach), `vie` (espaces, rubriques, annonces, bénévoles), `importer` (lecture des listes), `profils` (liste déroulante « Profil de test », alpha 3.3.1), `v35` (alpha 3.5.0 : vérification des heures, ordre des blocs des espaces, résultats, ententes), `v36` (cartes du coach sur l'Accueil), `v37` (alpha 3.7.0 : top 5 des équipes suivies, demandes d'ajout d'un club et page Admin), `v38` (alpha 3.8.0 : création, import et doublons d'équipes dans l'espace, e-mail de test), `v310` (alpha 3.10.0 : espace coach en deux niveaux et espace de l'équipe, espace du président en cinq onglets, « Qui s'occupe de quoi », présidence, suppression du club, paiement « bientôt »), `equipes_import` (lecture des listes d'équipes, sans dépendance). L'appel en tuiles est dans `agenda`.
 - `js/vendor/xlsx.bundle.js` : lecture et écriture Excel (xlsx-js-style 1.2.0, licence Apache 2.0, copie locale pour ne pas dépendre d'un CDN).
 - `style.css` : styles mypocketclub, d'après les jetons de la charte (`04-jetons-design.css` du projet).
 - `supabase/schema.sql` (3.0), puis `alpha_3_0_1.sql`, `alpha_3_0_2.sql`, `alpha_3_1.sql`, `alpha_3_2.sql`, `alpha_3_2_1.sql` et `alpha_3_2_4.sql` (mises à jour). `supabase/build_reset.sh` fabrique `RESET_ALPHA_3_0.sql` (efface tout, comptes compris, puis installe tout), `MAJ_ALPHA_3_2.sql` et `MAJ_ALPHA_3_2_4.sql` (mises à jour sans perte).
@@ -24,12 +24,19 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 ## Tests (jamais sur la base réelle)
 
 `PGHOST=… PGPORT=… PGUSER=postgres sh tests/lancer.sh` : base PostgreSQL 16 locale (`tests/prelude.sql` imite Supabase), puis
-- `tests/vie_de_club.py` : faux club complet et saison simulée, 596 vérifications des droits (visiteur non connecté compris) ;
+- `tests/vie_de_club.py` : faux club complet et saison simulée, 635 vérifications des droits (visiteur non connecté compris) ;
 - `tests/import.test.mjs` : lecture de listes de joueurs et d'équipes (20 tests) ;
 - `tests/email.test.mjs` : fonction d'envoi des e-mails, Supabase et Resend imités (18 tests) ;
-- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (288 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
+- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (309 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
 
 Toutes les personnes des tests sont fictives.
+
+## Alpha 3.10.0
+
+Mise à jour d'une base 3.9.0 : `supabase/MAJ_ALPHA_3_10_0.sql` (source `supabase/alpha_3_10_0.sql`, ajoutée au RESET), sans perte de données, relançable.
+N° 113 : une seule casquette « Coach » ; avec plusieurs équipes, l'« Espace coach » liste les équipes (cartes), « À faire », « Mes exercices », « Mes heures » ; une équipe ouvre son espace avec un bandeau et cinq onglets toujours visibles : Pointer · Planifier · Préparer · Stats · Effectif (« Programme » retiré) ; coach d'une seule équipe : l'espace de l'équipe directement. Fiche joueur et boutons de l'équipe modifiables dans l'espace (onglet Effectif) ; ouverts depuis un onglet du bas, en lecture seule avec « Gérer dans l'espace de l'équipe ». Le bouton de rôle ouvre la vue choisie par défaut (encart « Garder par défaut » au changement de rôle), sinon le dernier espace.
+N° 114 : « Coordinateur » devient « Correspondant rencontres » (rubrique Événements seulement), « Directeur sportif » devient « Directeur technique », « Correspondant licences » n'a plus que les licences (sous-rubrique `licences`) ; espace du président : bandeau, dépliants « Bureau » (espace de chaque fonction, actions à son nom) et « Équipes », onglets Vue d'ensemble · Demandes · Qui s'occupe de quoi · Réglages · Journal ; désignations (`club_designations`, `set_designation`) ; fonctions réservées aux adultes, personne prévenue à l'attribution et au retrait ; état de licence modifiable par la trésorerie ; blason et informations du club réservés au président et au vice-président ; transfert de la présidence accepté par le nouveau président (`offer_presidency`, `answer_presidency`) ; suppression du club en corbeille 30 jours, nom à taper (`delete_club`, `restore_club`).
+N° 115 : « Payer ma cotisation · Bientôt disponible » (fiche de l'enfant ou du joueur) et « Paiement en ligne · Bientôt » (trésorerie), sans action.
 
 ## Alpha 3.9.0
 

@@ -40,7 +40,7 @@ const P = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4.2-4.2"/>',
   flag: '<path d="M6 21V4"/><path d="M6 4h11l-2.5 4L17 12H6"/>',
   crown: '<path d="M4 18h16M5 18L3.5 8l5 4L12 5l3.5 7 5-4L19 18"/>',
-  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>', // n° 98 : directeur sportif
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>', // n° 98 : directeur technique (ex-directeur sportif, n° 114)
   share: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>',
 };
 export const icon = (n, size = 22, stroke = 'currentColor', w = 2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ''}</svg>`;
@@ -100,7 +100,7 @@ export function header(o = {}) {
 }
 
 // ---------- Icônes des casquettes (n° 85, n° 98) ----------
-export const casqIcon = (k, size = 20) => icon(k === 'coach' || String(k).startsWith('coach:') ? 'flag' : k === 'president' ? 'crown' : k === 'f:Directeur sportif' ? 'target' : 'user', size);
+export const casqIcon = (k, size = 20) => icon(k === 'coach' || String(k).startsWith('coach:') ? 'flag' : k === 'president' ? 'crown' : (k === 'f:Directeur technique' || k === 'f:Directeur sportif') ? 'target' : 'user', size);
 // Écrans qui font partie d'un espace (le rôle ouvert est allumé dans « Mes rôles » sur ordinateur)
 export const SPACE_VIEWS = ['espace', 'rub', 'gestion', 'fonctions', 'journal', 'timport'];
 

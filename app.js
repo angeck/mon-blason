@@ -21,6 +21,7 @@ import './js/convoc.js';
 import './js/v35.js';
 import { V37_TOP, loadAdminCounts } from './js/v37.js';
 import { switchBar, saveSwitch, resetUser } from './js/profils.js';
+import { V310_VIEWS, syncTeamCtx, teamWrap, loadV310, clubGoneScreen } from './js/v310.js';
 
 const TAB_TITLES = ['', 'Agenda', 'Messages', 'Équipe', 'Le club'];
 function profileLine() { return [...new Set(active().map((m) => roleLabel(m) + (m.team_id ? ' ' + teamName(m.team_id) : '')))].join(' · '); }
@@ -42,7 +43,7 @@ function viewScreen(v) {
     case 'team': { const t = team(v.id); return [header({ back: true, kicker: 'Équipe', title: esc(t?.name || 'Équipe'), tags: t ? [t.category !== t.name ? t.category : '', t.gender, 'Saison ' + t.season].filter(Boolean) : [] }), teamPage(v.id)]; }
     case 'member': return [header({ back: true, kicker: 'Fiche du membre', title: esc(S.names[v.id] || 'Membre') }), memberPage(v.id)];
     case 'import': return [header({ back: true, kicker: 'Ajouter des joueurs', title: esc(teamName(v.id)) }), importPage(v.id)];
-    default: { if (VIE_VIEWS[v.type]) { const o = VIE_VIEWS[v.type](v); return [o.head, o.body]; } const cv = COACH_VIEWS[v.type]; if (!cv) return null; const [k, t, fn] = cv(v); return [header({ back: true, kicker: k, title: t }), fn()]; }
+    default: { if (V310_VIEWS[v.type]) { const o = V310_VIEWS[v.type](v); return [o.head, o.body]; } if (VIE_VIEWS[v.type]) { const o = VIE_VIEWS[v.type](v); return [o.head, o.body]; } const cv = COACH_VIEWS[v.type]; if (!cv) return null; const [k, t, fn] = cv(v); return [header({ back: true, kicker: k, title: t }), fn()]; }
   }
 }
 function render(keep) {
@@ -60,10 +61,12 @@ function render(keep) {
   else if (S.view?.type === 'account') html = accountScreen();
   else if (V37_TOP[vt]) html = V37_TOP[vt](S.view); // n° 96 : demande d'ajout d'un club, page Admin
   else if (!S.clubId || !isActive() || S.onb !== null) html = onboarding();
+  else if (club()?.deleted_at && !active().some((m) => m.role === 'president')) html = clubGoneScreen(); // n° 114 : club dans la corbeille
   else {
+    syncTeamCtx(); // n° 113 : on quitte l'espace de l'équipe dès qu'on va ailleurs
     const vs = S.view && viewScreen(S.view);
     let hd, bd;
-    if (vs) [hd, bd] = vs;
+    if (vs) { [hd, bd] = vs; bd = teamWrap(S.view, bd); } // n° 113 : bandeau de l'équipe sur toutes ses pages
     else {
       const t = S.tab;
       bd = [homeTab, agendaTab, messagesTab, teamTab, clubTab][t](); // avant l'en-tête : l'onglet Équipe choisit l'équipe affichée (titre)
@@ -82,7 +85,7 @@ async function refresh(msg) {
   if (!S.joinChecked) { S.joinChecked = true; await openPendingJoin(); }
   if (!S.purged) { S.purged = true; sb.rpc('purge_trash').then(() => {}, () => {}); }
   await loadClub();
-  await Promise.all([loadCoachCounts(), loadEvPlans(), loadAdminCounts()]).catch(() => {});
+  await Promise.all([loadCoachCounts(), loadEvPlans(), loadAdminCounts(), loadV310()]).catch(() => {});
   if (S.view?.type === 'group') await loadGroup(S.view.id);
   render(true); subscribe(); if (msg) toast('À jour.');
   syncPush().then(() => render(true), () => {});
