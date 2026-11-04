@@ -89,15 +89,20 @@ export function header(o = {}) {
   const c = club(), br = o.brand || brandMode(), sport = br ? null : (c?.sport || null); // hors club : ballon de la marque, étoile creuse (n° 106)
   const acc = S.session && S.me && S.view?.type !== 'account' && S.me.cgu_version && !S.me.deleted_at;
   const inClub = acc && S.clubId && isActive() && S.onb === null;
-  let h;
-  // n° 99 : plus de pastille du rôle dans l'en-tête de l'espace (le titre et la rangée « Tes casquettes » le disent déjà)
-  if (o.role) h = `<div class="band">${o.back ? backBtn() : ''}<span style="flex:1"></span>${acc ? accountBtn() : ''}</div>`;
-  else h = `<div class="band">${o.back ? backBtn() : ''}<span class="logo">${wordmark(22, sport)}</span>${acc && S.view?.type !== 'csearch' ? searchBtn() : ''}${inClub && !o.back && casquettes().length ? espaceBtn() : ''}${acc ? accountBtn() : '<span style="width:44px"></span>'}</div>`;
-  if (!br && c && !o.role) h += `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.kicker || o.sub || '')}</span></div></div>`;
-  else if (o.kicker) h += `<div class="kicker">${esc(o.kicker)}</div>`;
+  let h = `<div class="band">${o.back ? backBtn() : ''}<span class="logo">${wordmark(22, sport)}</span>${acc && S.view?.type !== 'csearch' ? searchBtn() : ''}${inClub && !o.back && casquettes().length ? espaceBtn() : ''}${acc ? accountBtn() : '<span style="width:44px"></span>'}</div>`;
   const tags = o.tags?.length ? `<div class="tags">${o.tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : '';
-  return `<header class="hd">${h}${o.title ? `<h1>${o.title}</h1>` : ''}${o.under ? `<span class="under">${esc(o.under)}</span>` : ''}${tags}</header>`;
+  // N° 116 (alpha 4.1.0) : un seul bloc bleu dans les espaces : en-tête, puis qui (blason, équipe ou rôle, « club · saison »),
+  // puis la rangée des casquettes, puis les onglets de l'espace. Chaque information n'apparaît qu'une fois.
+  if (o.space) {
+    h += `<div class="top">${c ? crest(c, 44) : ''}<div class="who sp"><b>${o.title || ''}</b>${o.under ? `<span>${esc(o.under)}</span>` : ''}</div></div>`;
+    return `<header class="hd${o.tabs ? ' tabbed' : ''}">${h}${o.casq || ''}${o.tabs || ''}</header>`;
+  }
+  if (!br && c) h += `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.kicker || o.sub || '')}</span></div></div>`;
+  else if (o.kicker) h += `<div class="kicker">${esc(o.kicker)}</div>`;
+  return `<header class="hd${o.tabs ? ' tabbed' : ''}">${h}${o.title ? `<h1>${o.title}</h1>` : ''}${o.under ? `<span class="under">${esc(o.under)}</span>` : ''}${tags}${o.casq || ''}${o.tabs || ''}</header>`;
 }
+// N° 116 : la saison affichée sous le nom (« Boissy Basket 91 · saison 2026-2027 »)
+export const clubSeason = (season) => [club()?.name, season ? 'saison ' + season : ''].filter(Boolean).join(' · ');
 
 // ---------- Icônes des casquettes (n° 85, n° 98) ----------
 export const casqIcon = (k, size = 20) => icon(k === 'coach' || String(k).startsWith('coach:') ? 'flag' : k === 'president' ? 'crown' : (k === 'f:Directeur technique' || k === 'f:Directeur sportif') ? 'target' : 'user', size);

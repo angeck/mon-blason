@@ -34,10 +34,11 @@ function viewScreen(v) {
   switch (v.type) {
     case 'event': return [header({ back: true, kicker: e ? e.type + (evTeams(e).length ? ' · ' + teamsLabel(evTeams(e)) : '') : 'Rendez-vous', title: esc(e?.title || 'Rendez-vous'), tags: e ? [fmtShort(e.starts_at).split(' · ')[0], timeRange(e), e.place].filter(Boolean) : [] }), eventPage(v.id)];
     case 'evform': return [header({ back: true, kicker: 'Agenda', title: S.form?.id ? 'Modifier' : 'Nouveau rendez-vous' }), eventForm()];
-    case 'appel': return [header({ back: true, kicker: 'Appel · ' + (e?.type || ''), title: esc(e?.title || 'Appel') }), appelPage(v.id)];
+    case 'appel': if (e && !S.tsp && evTeams(e).length) S.tsp = evTeams(e)[0]; // n° 116 : l'appel est une page de l'équipe (onglets dans l'en-tête)
+      return [header({ back: true, kicker: 'Appel · ' + (e?.type || ''), title: esc(e?.title || 'Appel') }), appelPage(v.id)];
     case 'gform': return [header({ back: true, kicker: 'Messages', title: 'Nouveau groupe' }), groupForm()];
     case 'group': return [header({ back: true, kicker: "Groupe d'échange", title: esc(grp(v.id)?.name || 'Groupe') }), groupPage(v.id)];
-    case 'gestion': currentCasq(); return [header({ back: true, kicker: roleKicker('Président et bureau'), title: 'Gestion du club' }), casqTabs() + gestionPage()]; // n° 88 ; n° 101 : rappel du rôle et rangée des casquettes
+    case 'gestion': currentCasq(); return [header({ back: true, kicker: roleKicker('Président et bureau'), title: 'Gestion du club', casq: casqTabs() }), gestionPage()]; // n° 88 ; n° 101 : rappel du rôle et rangée des casquettes
     case 'msgfwd': return [header({ back: true, kicker: 'Messages', title: 'Transférer' }), forwardPage()]; // n° 84
     case 'player': { const p = pl(v.id); return [header({ back: true, kicker: 'Fiche joueur', title: esc(p ? pname(p) : 'Fiche') }), playerPage(v.id)]; }
     case 'team': { const t = team(v.id); return [header({ back: true, kicker: 'Équipe', title: esc(t?.name || 'Équipe'), tags: t ? [t.category !== t.name ? t.category : '', t.gender, 'Saison ' + t.season].filter(Boolean) : [] }), teamPage(v.id)]; }
@@ -66,7 +67,7 @@ function render(keep) {
     syncTeamCtx(); // n° 113 : on quitte l'espace de l'équipe dès qu'on va ailleurs
     const vs = S.view && viewScreen(S.view);
     let hd, bd;
-    if (vs) { [hd, bd] = vs; bd = teamWrap(S.view, bd); } // n° 113 : bandeau de l'équipe sur toutes ses pages
+    if (vs) [hd, bd] = teamWrap(S.view, ...vs); // n° 113 ; n° 116 : onglets de l'équipe dans l'en-tête, sur toutes ses pages
     else {
       const t = S.tab;
       bd = [homeTab, agendaTab, messagesTab, teamTab, clubTab][t](); // avant l'en-tête : l'onglet Équipe choisit l'équipe affichée (titre)

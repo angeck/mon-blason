@@ -1,4 +1,4 @@
-# mypocketclub · alpha 3.10.0
+# mypocketclub · alpha 4.1.0
 
 Application web installable (PWA) pour les clubs sportifs : agenda avec réponses « Je viens / Je ne viens pas », appel, fiches joueurs, licences et cotisations, groupes d'échange (messages en direct, sondages), équipes, membres, corbeille de 30 jours.
 
@@ -27,9 +27,14 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 - `tests/vie_de_club.py` : faux club complet et saison simulée, 635 vérifications des droits (visiteur non connecté compris) ;
 - `tests/import.test.mjs` : lecture de listes de joueurs et d'équipes (20 tests) ;
 - `tests/email.test.mjs` : fonction d'envoi des e-mails, Supabase et Resend imités (18 tests) ;
-- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (309 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
+- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (312 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
 
 Toutes les personnes des tests sont fictives.
+
+## Alpha 4.1.0
+
+Rien à lancer dans Supabase (aucun changement de la base) ; mise à jour de l'écran seulement.
+N° 116 : un seul bloc bleu dans les espaces : en-tête (retour, logo, loupe, Mon compte), puis qui (blason, équipe ou rôle, « club · saison »), puis la rangée des casquettes, puis les onglets de l'espace (Pointer · Planifier · Préparer · Stats · Effectif pour une équipe, Vue d'ensemble · Demandes · Qui s'occupe de quoi · Réglages · Journal pour le président) ; plus de carte bleue de l'équipe dans la page (le blason, le club et l'équipe ne sont dits qu'une fois) ; casquette ouverte en jaune ; plus de phrase « Tes casquettes · touche pour changer d'espace » ; « Ouvrir … par défaut ? » devient une ligne en bas de page ; « Mes heures » et « Mes exercices » sous le contenu de l'onglet ; un appel ouvert depuis l'Agenda ou l'Accueil est une page de l'équipe (onglets dans l'en-tête). Président : plus de « Rubriques » (doublon du dépliant « Bureau »), ni de carte « demandes à valider » (doublon de la tuile du bandeau) ; « Créer une équipe », l'import et les doublons dans le dépliant « Équipes » ; la corbeille du club dans Réglages, zone sensible.
 
 ## Alpha 3.10.0
 

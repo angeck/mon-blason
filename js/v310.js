@@ -7,13 +7,14 @@
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_10_0.sql) ; l'écran n'est qu'un confort.
 import {
   S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, club, active, isBoard, isPresident, coachTeams, coachOf,
-  team, teamName, name, plural, fmtShort, hm, evTeams, store, toValidate, playersOfTeam, isMajor, myKids, mySelf, FONCTIONS, hasArea,
+  SEASON, team, teamName, name, plural, fmtShort, hm, evTeams, store, toValidate, playersOfTeam, isMajor, myKids, mySelf, FONCTIONS, hasArea,
 } from './core.js';
-import { icon, header, dayBadge, field } from './ui.js';
-import { upcoming, evCard, canCallRoll, appelPage, teamBand } from './agenda.js';
+import { icon, header, dayBadge, field, clubSeason } from './ui.js';
+import { upcoming, evCard, canCallRoll, appelPage, teamTabs } from './agenda.js';
 import { plansForEvent, fmtMin } from './coach.js';
 import { casqTabs, currentCasq, roleKicker, fonctionSpace, presidentOverview, sw, FONCTION_AREAS } from './vie.js';
-import { pendRows, brandBlock, contactsBlock, licencesBlock } from './club.js';
+import { pendRows, brandBlock, contactsBlock, licencesBlock, trashBlock } from './club.js';
+import { teamToolsBlock } from './v38.js';
 import { arrange, hoursHome } from './v35.js';
 
 const ROLL = ['Entraînement', 'Match', 'Plateau', 'Tournoi'];
@@ -42,17 +43,18 @@ function inCtx(v) {
 }
 // Appelé au début de chaque affichage : on quitte l'espace de l'équipe dès qu'on va ailleurs (onglet du bas, autre espace)
 export function syncTeamCtx() { if (!inCtx(S.view)) S.tsp = null; }
-export function teamWrap(v, body) {
-  if (!inCtx(v) || v.type === 'tspace' || String(body).includes('class="tstrip"')) return body;
-  return teamBand(S.tsp, TEAM_CTX[v.type]) + body;
+// N° 116 : les onglets de l'équipe sont au bas du bloc bleu de l'en-tête (plus de bandeau de l'équipe dans la page)
+export function teamWrap(v, head, body) {
+  if (!inCtx(v) || v.type === 'tspace' || String(head).includes('class="ttabs"')) return [head, body];
+  return [String(head).replace(/<header class="hd([^"]*)">/, '<header class="hd$1 tabbed">').replace(/<\/header>\s*$/, teamTabs(S.tsp, TEAM_CTX[v.type]) + '</header>'), body];
 }
 const nextRoll = (tid) => upcoming(S.events.filter((e) => !e.cancelled && evTeams(e).includes(tid) && ROLL.includes(e.type) && canCallRoll(e) && new Date(e.starts_at) > Date.now() - 6 * 3600e3))[0];
 
 // Onglet « Pointer » : l'appel du prochain rendez-vous (avec son bandeau), sinon un bandeau et une invitation à planifier
 export function teamPointer(tid) {
   const e = nextRoll(tid);
-  if (e) return appelPage(e.id);
-  return teamBand(tid, 'Pointer') + `<div class="card"><p class="empty">Aucun entraînement ni match à pointer pour l’instant.</p><button class="btn main" data-act="tsgo" data-id="${tid}" data-tab="planifier">${icon('calplus', 20)}Planifier un rendez-vous</button></div>`;
+  if (e) return appelPage(e.id, false);
+  return `<div class="card"><p class="empty">Aucun entraînement ni match à pointer pour l’instant.</p><button class="btn main" data-act="tsgo" data-id="${tid}" data-tab="planifier">${icon('calplus', 20)}Planifier un rendez-vous</button></div>`;
 }
 function planifierBody(tid) {
   const list = S.events.filter((e) => evTeams(e).includes(tid) && !e.cancelled), fut = upcoming(list).slice(0, 40), sel = !!S.sel;
@@ -72,12 +74,13 @@ function preparerBody(tid) {
   h += `<div class="grid2"><button class="btn small" data-act="cplan">${icon('doc', 18)}Composer une séance</button><button class="btn small" data-act="cexnew">${icon('plus', 18)}Ajouter un exercice</button></div>`;
   return h;
 }
+// N° 116 : même bloc bleu que l'espace : en-tête, équipe et « club · saison », casquettes, onglets de l'équipe
 function tspaceView(v) {
   const t = team(v.id), tab = v.tab || 'pointer';
-  S.tsp = v.id;
-  const head = header({ back: true, kicker: S.casq === 'president' || !coachOf(v.id) ? roleKicker('Équipes') : 'Espace coach', title: esc(t?.name || 'Équipe') });
+  S.tsp = v.id; currentCasq();
+  const head = header({ back: true, space: true, title: esc(t?.name || 'Équipe'), under: clubSeason(t?.season || SEASON), casq: casqTabs(), tabs: t ? teamTabs(v.id, TAB_LABEL[tab]) : '' });
   if (!t) return { head, body: '<p class="empty">Équipe introuvable.</p>' };
-  const body = tab === 'pointer' ? teamPointer(v.id) : teamBand(v.id, TAB_LABEL[tab]) + (tab === 'planifier' ? planifierBody(v.id) : preparerBody(v.id));
+  const body = tab === 'pointer' ? teamPointer(v.id) : tab === 'planifier' ? planifierBody(v.id) : preparerBody(v.id);
   return { head, body };
 }
 
@@ -106,19 +109,19 @@ export function coachHub(ids) {
   const ex = S.exos;
   const bank = `<div class="sec"><h2>Mes exercices</h2><button data-act="cexos" data-tab="mine">Ma banque</button></div><div class="tiles"><button class="tile blue" data-act="cexos" data-tab="mine"><b>${ex ? ex.filter((e) => e.created_by === S.me.id && !e.deleted_at).length : '…'}</b><span>Ma banque</span></button><button class="tile" data-act="cexos" data-tab="club"><b>${ex ? ex.filter((e) => e.club_id === S.clubId && e.sharing !== 'me' && !e.deleted_at).length : '…'}</b><span>Du club</span></button><button class="tile" data-act="cexos" data-tab="libre"><b>${ex ? ex.filter((e) => e.sharing === 'public' && e.public_state === 'validated' && !e.deleted_at).length : '…'}</b><span>Libre</span></button></div><button class="bigadd" data-act="cexnew">${icon('plus', 24, '#11162E', 2.6)}Ajouter un exercice</button>`;
   return arrange('coach2', [
-    { id: 'equipes', pin: true, html: `<div class="sec"><h2>Mes équipes</h2></div>${cards || '<p class="empty">Aucune équipe.</p>'}` },
+    { id: 'equipes', pin: true, html: cards || '<p class="empty">Aucune équipe.</p>' }, // n° 116 : « Mes équipes » est le titre de l'en-tête
     { id: 'afaire', label: 'À faire', html: todoH.trim() ? `<div class="sec"><h2>À faire</h2></div>${todoH}` : '' },
     { id: 'exercices', label: 'Mes exercices', html: bank },
     { id: 'heures', label: 'Mes heures', html: `<button class="btn" data-act="chours">${icon('check', 20)}Mes heures · relevé du mois</button>` },
   ]);
 }
-// Coach d'une seule équipe : l'espace de l'équipe directement (onglet Pointer), avec ses alertes au-dessus
+// Coach d'une seule équipe : l'espace de l'équipe directement (onglet Pointer) ; les onglets sont dans l'en-tête (n° 116)
 export function coachSingle(tid) {
   S.tsp = tid;
   const vp = toValidate().filter((m) => m.team_id === tid).length;
-  // ce qui est à la personne (heures, banque d'exercices) reste à portée, au-dessus de l'équipe
+  // alertes au-dessus ; « Mes heures » et « Mes exercices » (à la personne) sous le contenu de l'onglet (n° 116)
   return hoursHome() + (vp ? `<button class="btn main" data-act="tsgo" data-id="${tid}" data-tab="effectif">${plural(vp, 'demande à valider', 'demandes à valider')}</button>` : '')
-    + `<div class="grid2"><button class="btn small" data-act="chours">${icon('check', 18)}Mes heures</button><button class="btn small" data-act="cexos" data-tab="mine">${icon('doc', 18)}Mes exercices</button></div>` + teamPointer(tid);
+    + teamPointer(tid) + `<div class="grid2"><button class="btn small" data-act="chours">${icon('check', 18)}Mes heures</button><button class="btn small" data-act="cexos" data-tab="mine">${icon('doc', 18)}Mes exercices</button></div>`;
 }
 
 // ---------- vue par défaut du bouton de rôle (n° 113) ----------
@@ -126,7 +129,8 @@ const defKey = () => 'pc_casqdef_' + S.clubId;
 export const defaultCasq = () => store.get(defKey());
 export function defaultAsk() {
   const c = currentCasq(); if (!c || !S.defAsk || S.defAsk !== c.k) return '';
-  return `<div class="card pale"><b>Ouvrir « ${esc(c.label)} » par défaut ?</b><span class="det">Le bouton de rôle t’amènera ici directement.</span><div class="btns"><button class="btn small main" data-act="casqdef" data-v="${esc(c.k)}">Garder par défaut</button><button class="btn small ghost" data-act="casqdefno">Non merci</button></div></div>`;
+  // n° 116 : une ligne discrète en bas de page, plus un encart en haut
+  return `<p class="defline">Ouvrir « ${esc(c.label)} » directement avec le bouton de rôle ? <button data-act="casqdef" data-v="${esc(c.k)}">Oui, par défaut</button> · <button data-act="casqdefno">Non merci</button></p>`;
 }
 
 // ---------- n° 114 · espace du président ----------
@@ -179,14 +183,20 @@ export function teamsFold() {
   const many = l.length > 8;
   const row = (t) => `<button class="row" data-act="tsopen" data-id="${t.id}"><span class="g">${esc(t.name)}<small>${esc([t.category !== t.name ? t.category : '', t.gender].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`;
   const inner = !l.length ? '<p class="empty">Aucune équipe.</p>' : many ? cats.map((c) => `<div class="kick" style="margin-top:8px">${esc(c)}</div><div class="list">${l.filter((t) => (t.category || 'Autres') === c).map(row).join('')}</div>`).join('') : `<div class="list">${l.map(row).join('')}</div>`;
-  return `<details class="card" ${S.pfold === 'equipes' ? 'open' : ''} data-pfold="equipes"><summary>${icon('team', 18)} Équipes</summary>${inner}</details>`;
+  // n° 116 : créer, importer et doublons dans le même dépliant (plus de bloc « Créer des équipes » à part)
+  return `<details class="card" ${S.pfold === 'equipes' ? 'open' : ''} data-pfold="equipes"><summary>${icon('team', 18)} Équipes</summary>${inner}${teamToolsBlock(true)}</details>`;
 }
 const PTABS = [['ensemble', 'Vue d’ensemble'], ['demandes', 'Demandes'], ['qui', 'Qui s’occupe de quoi'], ['reglages', 'Réglages'], ['journal', 'Journal']];
+// N° 116 : les cinq onglets du président au bas du bloc bleu de l'en-tête, juste sous les casquettes
+export function presidentTabs() {
+  const t = S.ptab || 'ensemble';
+  return `<nav class="ttabs" aria-label="Espace du président">${PTABS.map(([k, l]) => `<button data-act="ptab" data-v="${k}" ${t === k ? 'aria-current="page"' : ''}>${l}</button>`).join('')}</nav>`;
+}
 export function presidentSpace310() {
   const t = S.ptab || 'ensemble';
-  let h = presBand() + bureauFold() + teamsFold();
-  h += `<nav class="seg" role="tablist" aria-label="Espace du président" style="flex-wrap:wrap">${PTABS.map(([k, l]) => `<button role="tab" data-act="ptab" data-v="${k}" aria-pressed="${t === k}">${l}</button>`).join('')}</nav>`;
-  if (t === 'ensemble') h += presidentOverview();
+  let h = '';
+  // n° 116 : bandeau et dépliants « Bureau » et « Équipes » dans « Vue d'ensemble »
+  if (t === 'ensemble') h += presBand() + bureauFold() + teamsFold() + presidentOverview();
   else if (t === 'demandes') { const vp = toValidate(); h += vp.length ? `<div class="card lift">${pendRows(vp)}</div><p class="note">Toi seul valides les demandes des membres du bureau. Le secrétariat et les coachs valident aussi les autres.</p>` : '<p class="empty">Aucune demande à valider.</p>'; }
   else if (t === 'qui') h += quiView();
   else if (t === 'reglages') h += reglagesView();
@@ -213,6 +223,8 @@ function reglagesView() {
   if (off) h += `<p class="note">Proposée à <b>${esc(name(off.to_user))}</b> le ${esc(new Date(off.created_at).toLocaleDateString('fr-FR'))}. Tu restes président tant que la personne n’a pas accepté (14 jours au plus).</p><button class="btn ghost small" data-act="poffercancel">Annuler la proposition</button>`;
   else h += `<p class="note">La personne choisie doit accepter. Ensuite, tu restes au bureau comme membre.</p><div class="grid2" style="align-items:end">${field('pto', 'Nouveau président', `<select id="pto"><option value="">Choisir…</option>${ad.map((u) => `<option value="${u}">${esc(name(u))}</option>`).join('')}</select>`)}<button class="btn small ${isArmed('poffer') ? 'danger armed' : ''}" data-act="poffer">${isArmed('poffer') ? 'Confirmer la proposition' : 'Proposer'}</button></div>`;
   h += `<hr style="border:0;border-top:1px solid var(--pc-ligne, #E3E6F0);margin:12px 0"><b>Supprimer le club</b><p class="note">Le club part à la corbeille pendant 30 jours : les membres ne le voient plus, toi seul peux le restaurer. Ensuite, tout est effacé. Tape le nom du club pour confirmer.</p>${field('cdel', 'Nom du club', `<input id="cdel" autocomplete="off" placeholder="${esc(c.name)}">`)}<button class="btn ghost small danger" data-act="clubdel">Supprimer le club</button></div>`;
+  // n° 116 : la corbeille du club (30 jours), venue de l'ancienne rubrique « Commun »
+  h += trashBlock();
   return h;
 }
 function journalBody() {
@@ -226,7 +238,7 @@ function journalBody() {
 // Espace d'une fonction vu par le président (dépliant « Bureau ») : ses actions restent à son nom
 function fviewView(v) {
   const f = v.f;
-  return { head: header({ back: true, kicker: 'Espace Président · Bureau', title: esc(f) }), body: `<div class="card pale"><p class="note" style="margin:0">Tu vois l’espace « ${esc(f)} » avec ton compte : ce que tu fais ici est inscrit au journal <b>à ton nom</b>.${holder(f).length ? ' Titulaire : ' + esc(holder(f).join(', ')) + '.' : ' Personne n’a cette fonction : c’est toi qui t’en occupes.'}</p></div>` + fonctionSpace(f) };
+  return { head: header({ back: true, kicker: 'Espace Président · Bureau', title: esc(f) }), body: `<div class="card pale"><p class="note" style="margin:0">Tu vois l’espace « ${esc(f)} » avec ton compte : ce que tu fais ici est inscrit au journal <b>à ton nom</b>.${holder(f).length ? ' Titulaire : ' + esc(holder(f).join(', ')) + '.' : ' Personne n’a cette fonction : c’est toi qui t’en occupes.'}</p></div>` + fonctionSpace(f, true) };
 }
 
 // ---------- correspondant licences (sans tout le Secrétariat) ----------

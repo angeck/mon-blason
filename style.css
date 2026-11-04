@@ -249,6 +249,16 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 .casq button{flex:none;display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 18px 0 14px;border-radius:24px;font-weight:700;font-size:16px;border:2px solid var(--pc-encre);background:#FFFFFF;color:var(--pc-encre);box-shadow:0 2px 0 var(--pc-encre)}
 /* n° 99 : casquette ouverte en bleu mypocketclub (texte blanc, contraste 5,2:1) ; le jaune reste pour l'action principale de l'écran */
 .casq button[aria-selected="true"]{border-color:var(--pc-bleu);background:var(--pc-bleu);color:#FFFFFF;box-shadow:0 2px 0 var(--pc-encre)}
+/* n° 116 (alpha 4.1.0) : un seul bloc bleu dans les espaces : en-tête, qui, casquettes, onglets.
+   Casquette ouverte en jaune, texte encre (contraste 12:1) ; les autres au contour, couleur du texte de l'en-tête. */
+.hd .casq button{background:transparent;color:inherit;border-color:currentColor;box-shadow:none;min-height:44px;font-size:15px}
+.hd .casq button[aria-selected="true"]{background:var(--pc-jaune);border-color:var(--pc-jaune);color:var(--pc-encre);box-shadow:none}
+.hd.tabbed{padding-bottom:0}
+.hd .ttabs{margin:0 -12px}
+.hd .ttabs button{color:inherit}
+.hd .who.sp b{font:800 30px/1.02 var(--pc-titre);letter-spacing:-.02em;white-space:normal}
+.defline{margin:8px 0 0;font-size:14px;color:var(--pc-texte-doux);text-align:center}
+.defline button{border:0;background:none;padding:12px 4px;font:inherit;font-weight:700;color:var(--pc-encre);text-decoration:underline}
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .tile{background:var(--pc-papier);border-radius:20px;padding:12px;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(17,22,46,.06);border:0;text-align:left;color:inherit;font:inherit}
 .tile b{font-family:var(--pc-titre);font-size:28px;line-height:1}

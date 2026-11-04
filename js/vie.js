@@ -3,16 +3,16 @@
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_2.sql) ; l'écran n'est qu'un confort.
 import {
   S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, club, active, isBoard, isPresident, coachTeams, coachOf,
-  hasArea, AREAS, FONCTIONS, casquettes, isCoachCasq, team, teamName, name, nick, plural, fmtShort, hm, evTeams, store, playersOfTeam, toValidate, myKids, loadNames,
+  SEASON, hasArea, AREAS, FONCTIONS, casquettes, isCoachCasq, team, teamName, name, nick, plural, fmtShort, hm, evTeams, store, playersOfTeam, toValidate, myKids, loadNames,
 } from './core.js';
-import { icon, crest, delBtn, field, header, dayBadge, casqIcon } from './ui.js';
-import { upcoming } from './agenda.js';
+import { icon, crest, delBtn, field, header, dayBadge, casqIcon, clubSeason } from './ui.js';
+import { upcoming, teamTabs } from './agenda.js';
 import { pendRows, licencesBlock, namesToCheck, feesBlock, teamsBlock, brandBlock, contactsBlock, trashBlock, membersBlock } from './club.js';
 import { ensureExos, plansForEvent, planForEvent, fmtMin } from './coach.js';
 import { searchBlock } from './auth.js';
 import { arrange, hoursHome, hoursCheckBlock, clubResults, partnerRequests } from './v35.js';
 import { teamToolsBlock, teamImportPage } from './v38.js';
-import { coachHub, coachSingle, defaultAsk, defaultCasq, presidentSpace310, licencesOnlyBlock, clubTrashBanner, payTreasurerSoon, rightsNote } from './v310.js';
+import { coachHub, coachSingle, defaultAsk, defaultCasq, presidentSpace310, presidentTabs, licencesOnlyBlock, clubTrashBanner, payTreasurerSoon, rightsNote } from './v310.js';
 
 // Rubriques de chaque fonction (même table que la base : fonction_areas)
 export const FONCTION_AREAS = {
@@ -23,12 +23,6 @@ export const FONCTION_AREAS = {
   'Responsable sponsoring': [], 'Membre du bureau': [],
 };
 const AREA_ICON = { tresorerie: 'doc', secretariat: 'user', technique: 'team', communication: 'msg', evenements: 'cal', commun: 'shield' };
-const TITLES = {
-  coach: 'Salut coach,<br>on prépare la suite ?', president: '{club},<br>où en est-on ?', tresorerie: 'Les cotisations,<br>en un coup d’œil',
-  secretariat: 'Les membres,<br>bien rangés', technique: 'Les équipes,<br>sur le terrain', communication: 'Le club,<br>bien informé',
-  evenements: 'Les bénévoles,<br>au rendez-vous', commun: 'Le bureau,<br>en commun',
-};
-const SEASON_LABEL = 'Saison 2026-2027';
 const eur = (n) => (Math.round((+n || 0) * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €';
 
 // ---------- espaces ----------
@@ -48,30 +42,29 @@ export function currentCasq() {
 export function casqTabs() {
   const l = casquettes(); if (l.length < 2) return '';
   // n° 85 : rangée bien visible, reconnaissable comme des boutons de rôle (contour marqué, icône devant chaque nom)
-  // n° 98 : icône « cible » pour le directeur sportif ; n° 99 : casquette ouverte en bleu (style.css)
-  return `<p class="casqhint">Tes casquettes · touche pour changer d'espace</p><div class="casq" role="tablist" aria-label="Mes casquettes">${l.map((x) => `<button role="tab" data-act="casq" data-v="${esc(x.k)}" aria-selected="${x.k === S.casq}">${casqIcon(x.k)}<span>${esc(x.label)}</span></button>`).join('')}</div>`;
+  // n° 98 : icône « cible » pour le directeur sportif ; n° 116 : rangée dans le bloc bleu de l'en-tête, casquette ouverte
+  // en jaune (style.css), sans la phrase « Tes casquettes · touche pour changer d'espace »
+  return `<div class="casq" role="tablist" aria-label="Mes casquettes">${l.map((x) => `<button role="tab" data-act="casq" data-v="${esc(x.k)}" aria-selected="${x.k === S.casq}">${casqIcon(x.k)}<span>${esc(x.label)}</span></button>`).join('')}</div>`;
 }
 // N° 101 : rappel du rôle dans l'en-tête des pages ouvertes depuis un espace (« Gestion du club », « Fonctions du bureau », journal)
 export function roleKicker(fallback) {
   const c = currentCasq(); if (!c) return fallback;
   return 'Espace ' + (c.k === 'president' ? 'Président' : isCoachCasq(c.k) ? c.label : 'Bureau · ' + c.label);
 }
-const areaKey = (c) => (isCoachCasq(c.k) ? 'coach' : c.k === 'president' ? c.k : (FONCTION_AREAS[c.k.slice(2)] || [])[0] || 'commun');
 function espaceView() {
   const c = currentCasq();
   if (!c) return { head: header({ back: true, title: 'Espace' }), body: '<p class="empty">Aucune fonction dans ce club.</p>' };
-  const k = areaKey(c), title = (TITLES[k] || '').replace('{club}', esc(club()?.name || 'Le club'));
-  // n° 100 : sous le titre, l'équipe ouverte
-  const under = isCoachCasq(c.k) ? teamsLabelSafe(c.teams) + ' · ' + (club()?.name || '') : SEASON_LABEL;
-  let body = casqTabs() + defaultAsk() + clubTrashBanner();
+  // N° 116 : un seul bloc bleu (en-tête, qui, casquettes, onglets) ; le titre dit l'équipe ou le rôle, une seule fois
+  const one = isCoachCasq(c.k) && c.teams.length === 1;
+  let body = clubTrashBanner(), tabs = '', title = esc(c.label), under = clubSeason(SEASON);
   // n° 113 : une équipe → l'espace de l'équipe directement ; plusieurs → la liste des équipes (niveau 2)
-  if (isCoachCasq(c.k)) body += c.teams.length === 1 ? coachSingle(c.teams[0]) : coachHub(c.teams);
-  else if (c.k === 'president') body += presidentSpace310(); // n° 114 : cinq onglets
+  if (one) { const t = team(c.teams[0]); title = esc(teamName(c.teams[0])); under = clubSeason(t?.season || SEASON); tabs = teamTabs(c.teams[0], 'Pointer'); body += coachSingle(c.teams[0]); }
+  else if (isCoachCasq(c.k)) { title = 'Mes équipes'; body += coachHub(c.teams); }
+  else if (c.k === 'president') { title = 'Président'; tabs = presidentTabs(); body += presidentSpace310(); } // n° 114 : cinq onglets
   else body += fonctionSpace(c.k.slice(2));
-  const t1 = isCoachCasq(c.k) && c.teams.length === 1 ? esc(teamName(c.teams[0])) : isCoachCasq(c.k) ? 'Espace coach' : title;
-  return { head: header({ back: true, role: c.pill, title: t1, under }), body };
+  body += defaultAsk(); // n° 116 : une ligne discrète en bas de page
+  return { head: header({ back: true, space: true, title, under, casq: casqTabs(), tabs }), body };
 }
-const teamsLabelSafe = (ids) => ids.map(teamName).filter(Boolean).join(', ');
 
 // N° 95 · ajout de joueurs (un par un, liste, Excel, photo) dans les espaces, plus dans l'onglet Équipe ; une touche par équipe
 export function addPlayersBlock(tids) {
@@ -106,19 +99,17 @@ export function presidentOverview() {
     ${sw('coach_sees_fees', 'Les coachs voient licences et cotisations', 'De leurs joueurs seulement, sans les réductions.', c.coach_sees_fees !== false)}</div>`;
   const outils = `<button class="btn main" data-act="gestion">${icon('shield', 20)}Gestion du club</button><div class="grid2"><button class="btn small" data-act="fonctions">${icon('user', 18)}Fonctions du bureau</button><button class="btn small" data-act="journal">${icon('doc', 18)}Journal des actions</button></div>`; // n° 88 : la gestion venue de l'onglet Club
   return arrange('president', [
-    { id: 'alerte', pin: true, html: alert },
+    // n° 116 : plus de carte « N demandes à valider » (la tuile du bandeau le dit déjà et ouvre l'onglet Demandes)
     { id: 'chiffres', label: 'Chiffres du club', html: tiles },
-    { id: 'equipes', label: 'Créer des équipes', html: teamToolsBlock() }, // n° 101, 102, 103
     { id: 'joueurs', label: 'Ajouter des joueurs', html: addPlayersBlock(clubTeamIds()) },
     { id: 'heures', label: 'Heures des coachs', html: hoursCheckBlock() },
     { id: 'resultats', label: 'Derniers résultats', html: clubResults() },
     { id: 'ententes', label: 'Ententes', html: partnerRequests() },
     { id: 'benevoles', label: 'Bénévoles', html: benev },
     { id: 'suivre', label: 'À suivre', html: suivre },
-    { id: 'rubriques', label: 'Rubriques', html: rubList(Object.keys(AREAS).concat('commun')) },
     { id: 'gestion', label: 'Gestion du club', html: `<button class="btn" data-act="gestion">${icon('shield', 20)}Gestion du club</button>` },
-  ]); // n° 114 : réglages, fonctions et journal sont dans leurs onglets
-  void regl; void outils;
+  ]); // n° 114 : réglages, fonctions et journal sont dans leurs onglets ; n° 116 : plus de « Rubriques » (doublon du dépliant « Bureau »), « Créer des équipes » dans le dépliant « Équipes »
+  void regl; void outils; void alert;
 }
 export const sw = (k, t, d, on) => `<label class="switch"><input type="checkbox" data-clubset="${k}" ${on ? 'checked' : ''}><span><b>${esc(t)}</b><br><span class="det">${esc(d)}</span></span></label>`;
 function rubList(keys) {
@@ -129,7 +120,7 @@ const RUB_SUB = {
   technique: 'Équipes, coachs, heures, exercices, statistiques', communication: 'Annonces, contacts, blason et couleurs',
   evenements: 'Bénévoles, missions par défaut, événements', commun: 'Agenda, messages, annonces, corbeille, journal',
 };
-export function fonctionSpace(f) {
+export function fonctionSpace(f, asPresident = false) {
   const own = (FONCTION_AREAS[f] || []).filter(hasArea), extra = (S.areas || []).filter((a) => !own.includes(a));
   let h = '';
   const lic = licencesOnlyBlock(); // n° 114 : correspondant licences sans tout le Secrétariat
@@ -140,7 +131,7 @@ export function fonctionSpace(f) {
   if (own.includes('technique')) bl.push({ id: 'ententes', label: 'Ententes', html: partnerRequests() }, { id: 'resultats', label: 'Derniers résultats', html: clubResults() });
   own.forEach((a, i) => bl.push({ id: a, label: AREAS[a], html: (i || own.length > 1 ? `<div class="sec"><h2>${esc(AREAS[a])}</h2></div>` : '') + rubBody(a) }));
   if (['technique', 'secretariat'].some((x) => own.includes(x) || extra.includes(x))) bl.push({ id: 'joueurs', label: 'Ajouter des joueurs', html: addPlayersBlock(clubTeamIds()) }); // n° 95
-  bl.push({ id: 'rubriques', label: 'Rubriques', html: rubList((own.length ? ['commun'] : []).concat(extra)) });
+  if (!asPresident) bl.push({ id: 'rubriques', label: 'Rubriques', html: rubList((own.length ? ['commun'] : []).concat(extra)) }); // n° 116 : le président passe par « Bureau »
   bl.push({ id: 'gestion', label: 'Gestion du club', html: `<button class="btn" data-act="gestion">${icon('shield', 20)}Gestion du club</button>` }); // n° 88
   return arrange('f:' + f, bl);
 }
@@ -150,7 +141,7 @@ function rubView(a) {
   const ok = a === 'commun' ? isBoard() : hasArea(a);
   // n° 60 : la rangée des casquettes reste visible dans les rubriques, pour changer de casquette sans revenir en arrière
   currentCasq();
-  return { head: header({ back: true, kicker: 'Rubrique', title: esc(AREAS[a] || 'Commun') }), body: ok ? casqTabs() + rubBody(a) : '<div class="card"><p class="empty">Cette rubrique n’est pas ouverte pour toi. Le président peut l’ouvrir dans « Fonctions du bureau ».</p></div>' };
+  return { head: header({ back: true, kicker: 'Rubrique', title: esc(AREAS[a] || 'Commun'), casq: ok ? casqTabs() : '' }), body: ok ? rubBody(a) : '<div class="card"><p class="empty">Cette rubrique n’est pas ouverte pour toi. Le président peut l’ouvrir dans « Fonctions du bureau ».</p></div>' };
 }
 function rubBody(a) {
   if (a === 'tresorerie') return payTreasurerSoon() + tresoSummary() + feesBlock() + licencesBlock(); // n° 115
@@ -330,7 +321,7 @@ function fonctionsView() {
   const cand = [...new Set(S.members.filter((m) => m.status === 'active' && m.user_id !== S.me.id).map((m) => m.user_id))].sort((a, c) => name(a).localeCompare(name(c), 'fr'));
   b += `<form id="nomf" class="card"><div class="kick">Nommer quelqu'un</div><div class="grid2">${field('nu', 'Membre du club', `<select id="nu" name="user" required><option value="">Choisir…</option>${cand.map((u) => `<option value="${u}">${esc(name(u))}</option>`).join('')}</select>`)}${field('nf', 'Fonction', `<select id="nf" name="fonction">${FONCTIONS.map((f) => `<option>${f}</option>`).join('')}</select>`)}</div><button class="btn main small" type="submit">Nommer</button><p class="note">Une seule personne pour la vice-présidence, le secrétariat et la trésorerie ; plusieurs pour les adjoints et les membres. Chaque nomination est inscrite au journal.</p></form>`;
   b += rightsNote(); // n° 114 : les droits de chaque fonction avant de confirmer
-  return { head: header({ back: true, kicker: roleKicker('Espace Président'), title: 'Fonctions du bureau' }), body: casqTabs() + b }; // n° 101
+  return { head: header({ back: true, kicker: roleKicker('Espace Président'), title: 'Fonctions du bureau', casq: casqTabs() }), body: b }; // n° 101 ; n° 116 : casquettes dans l'en-tête
 }
 function journalView() {
   const l = S.journal;

@@ -404,12 +404,18 @@ export function teamStrip(e, cur) { return teamBand(evTeams(e)[0], cur, teamsLab
 export function teamBand(tid, cur, fallback = '') {
   const t = S.teams.find((x) => x.id === tid), c = club();
   const logo = c?.logo ? crest(c, 40, '#FFFFFF') : ball(44, c?.sport);
-  const tabs = [['Pointer', 'pointer'], ['Planifier', 'planifier'], ['Préparer', 'preparer'], ['Stats', 'stats'], ['Effectif', 'effectif']];
   return `<div class="tstrip"><div class="tsid">${logo}<span><b>${esc(t?.name || fallback)}</b><small>${esc(c?.name || '')} · saison ${esc(t?.season || SEASON)}</small></span></div>
-  <nav class="ttabs" aria-label="Équipe">${tabs.map(([l, k]) => `<button data-act="tsgo" data-id="${esc(tid || '')}" data-tab="${k}" ${l === cur ? 'aria-current="page"' : ''}>${l}</button>`).join('')}</nav></div>`;
+  ${teamTabs(tid, cur)}</div>`;
 }
-export function appelPage(eid) {
+// N° 116 : les cinq onglets de l'équipe, placés au bas du bloc bleu de l'en-tête dans l'espace de l'équipe
+const TEAM_TABS = [['Pointer', 'pointer'], ['Planifier', 'planifier'], ['Préparer', 'preparer'], ['Stats', 'stats'], ['Effectif', 'effectif']];
+export function teamTabs(tid, cur) {
+  return `<nav class="ttabs" aria-label="Équipe">${TEAM_TABS.map(([l, k]) => `<button data-act="tsgo" data-id="${esc(tid || '')}" data-tab="${k}" ${l === cur ? 'aria-current="page"' : ''}>${l}</button>`).join('')}</nav>`;
+}
+// strip : bandeau de l'équipe dans la page ; jamais dans l'espace de l'équipe, où les onglets sont dans l'en-tête (n° 116)
+export function appelPage(eid, strip) {
   const e = S.events.find((x) => x.id === eid); if (!e) return '<p class="empty">Rendez-vous introuvable.</p>';
+  if (strip === undefined) strip = !(S.tsp && evTeams(e).includes(S.tsp));
   const ps = playersOf(e).sort((a, b) => pname(a).localeCompare(pname(b), 'fr'));
   if (!S.ap || S.ap.eid !== eid) initAp(eid);
   const A = S.ap, ended = Date.now() > endOf(e).getTime(), N = ps.length;
@@ -418,7 +424,7 @@ export function appelPage(eid) {
   const ann = { oui: 0, non: 0, '': 0 }; ps.forEach((p) => ann[announced(p, eid)]++);
   // Navigation : séance précédente / suivante de l'équipe, type de rendez-vous
   const list = rollEvents(e), i = list.findIndex((x) => x.id === eid), prev = list[i - 1], next = list[i + 1];
-  let h = teamStrip(e, 'Pointer');
+  let h = strip ? teamStrip(e, 'Pointer') : '';
   h += `<div class="rollnav"><button class="roundbtn" data-act="appgo" data-id="${prev?.id || ''}" ${prev ? '' : 'disabled'} aria-label="Séance précédente">${icon('back', 20, '#11162E', 2.4)}</button><span><b>${esc(new Date(e.starts_at).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }))}</b><small>${esc(timeRange(e))}${e.place ? ' · ' + esc(e.place) : ''}</small></span><button class="roundbtn" data-act="appgo" data-id="${next?.id || ''}" ${next ? '' : 'disabled'} aria-label="Séance suivante" style="transform:scaleX(-1)">${icon('back', 20, '#11162E', 2.4)}</button></div>`;
   h += `<div class="seg" role="group" aria-label="Type">${ROLL_TYPES.map((t) => { const near = list.filter((x) => x.type === t).sort((a, b) => Math.abs(new Date(a.starts_at) - new Date(e.starts_at)) - Math.abs(new Date(b.starts_at) - new Date(e.starts_at)))[0]; return `<button data-act="appgo" data-id="${near?.id || ''}" aria-pressed="${e.type === t}" ${near || e.type === t ? '' : 'disabled'}>${t}</button>`; }).join('')}</div>`;
   if (!N) return h + '<div class="card"><p class="empty">Aucune fiche joueur dans cette équipe.</p></div>';
