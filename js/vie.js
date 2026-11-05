@@ -2,7 +2,7 @@
 // fonctions (n° 54), annonces officielles et relances, bénévoles (n° 53), accueil multi-clubs, recherche connectée (n° 56).
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_2.sql) ; l'écran n'est qu'un confort.
 import {
-  S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, club, active, isBoard, isPresident, coachTeams, coachOf,
+  S, sb, esc, hooks, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, club, active, isBoard, isPresident, coachTeams, coachOf,
   SEASON, hasArea, AREAS, FONCTIONS, casquettes, isCoachCasq, team, teamName, name, nick, plural, fmtShort, hm, evTeams, store, playersOfTeam, toValidate, myKids, loadNames,
 } from './core.js';
 import { icon, crest, delBtn, field, header, dayBadge, casqIcon, clubSeason } from './ui.js';
@@ -31,7 +31,8 @@ const eur = (n) => (Math.round((+n || 0) * 100) / 100).toLocaleString('fr-FR', {
 export function resolveCasq(k) {
   const l = casquettes(); if (!l.length) return null;
   if (!l.some((x) => x.k === k) && isCoachCasq(k)) { const want = l.find((x) => x.k === 'coach:' + S.teamSel) || l.find((x) => isCoachCasq(x.k)); if (want) k = want.k; }
-  if (!l.some((x) => x.k === k)) k = l[0].k;
+  // n° 120 : sans choix enregistré, la fonction du bureau (Directeur technique…) s'ouvre avant la casquette « Coach »
+  if (!l.some((x) => x.k === k)) k = (l.find((x) => x.k.startsWith('f:')) && isCoachCasq(l[0].k) ? l.find((x) => x.k.startsWith('f:')) : l[0]).k;
   return k;
 }
 export function currentCasq() {
@@ -113,6 +114,7 @@ export function presidentOverview() {
 }
 export const sw = (k, t, d, on) => `<label class="switch"><input type="checkbox" data-clubset="${k}" ${on ? 'checked' : ''}><span><b>${esc(t)}</b><br><span class="det">${esc(d)}</span></span></label>`;
 function rubList(keys) {
+  keys = [...new Set(keys)].filter((a) => RUB_SUB[a]); // n° 119 : « licences » (correspondant licences) n'a pas de ligne à part
   return `<div class="sec"><h2>Rubriques</h2></div><div class="card"><div class="list">${keys.map((a) => `<button class="row" data-act="rub" data-id="${a}"><span style="width:40px;height:40px;border-radius:14px;background:var(--pc-bleu-pale);display:flex;align-items:center;justify-content:center;flex:none">${icon(AREA_ICON[a], 20, 'var(--pc-bleu)')}</span><span class="g">${esc(AREAS[a] || 'Commun')}<small>${esc(RUB_SUB[a])}</small></span><span class="chev"></span></button>`).join('')}</div></div>`;
 }
 const RUB_SUB = {
@@ -147,7 +149,9 @@ function rubBody(a) {
   if (a === 'tresorerie') return payTreasurerSoon() + tresoSummary() + feesBlock() + licencesBlock(); // n° 115
   if (a === 'secretariat') { const vp = toValidate(); return (vp.length ? `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>` : '') + namesToCheck() + licencesBlock() + membersBlock(); }
   if (a === 'technique') return `<div class="grid2"><button class="btn small" data-act="choursb">${icon('check', 18)}Heures des coachs</button><button class="btn small" data-act="cexos" data-tab="club">${icon('doc', 18)}Exercices du club</button><button class="btn small" data-act="cstats">${icon('team', 18)}Statistiques</button><button class="btn small" data-act="evnew" data-type="Match">${icon('calplus', 18)}Nouveau match</button></div>` + teamToolsBlock() + teamsBlock();
-  if (a === 'communication') return `<button class="btn main" data-act="annnew">${icon('plus', 20)}Nouvelle annonce</button>` + annList(S.annonces.slice(0, 8), true) + contactsBlock() + brandBlock();
+  // n° 121 : dans l'espace Communication, seulement ce qui incombe à la personne (ses annonces et leurs lecteurs) ;
+  // les annonces des autres fonctions restent dans l'onglet Messages, comme pour tout le monde
+  if (a === 'communication') { const mine = S.annonces.filter((x) => x.created_by === S.me.id); return `<button class="btn main" data-act="annnew">${icon('plus', 20)}Nouvelle annonce</button><div class="sec"><h2>Mes annonces</h2><span class="det">${mine.length || ''}</span></div>` + (mine.length ? annList(mine.slice(0, 8), false) : '<p class="empty">Tu n’as pas encore écrit d’annonce. Les annonces du club sont dans l’onglet Messages.</p>') + '<p class="note">Ouvre une annonce pour voir qui l’a lue.</p>' + contactsBlock() + brandBlock(); }
   if (a === 'evenements') return eventsRub();
   return `<div class="grid2"><button class="btn small" data-act="tab" data-i="1">${icon('cal', 18)}Agenda</button><button class="btn small" data-act="tab" data-i="2">${icon('msg', 18)}Messages</button><button class="btn small" data-act="annlist">${icon('msg', 18)}Annonces</button>${isPresident() ? `<button class="btn small" data-act="journal">${icon('doc', 18)}Journal</button>` : ''}</div>` + trashBlock();
 }
@@ -198,7 +202,7 @@ function eventsRub() {
   const dm = S.dm || (S.dm = (club()?.default_missions || []).map((x) => ({ ...x })));
   h += `<div class="sec"><h2>Missions par défaut du club</h2></div><div class="card"><div class="list">${dm.map((x, i) => `<div class="row static"><input aria-label="Mission ${i + 1}" data-dml="${i}" value="${esc(x.label)}" maxlength="40" style="flex:1;min-width:0;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 10px"><input type="number" aria-label="Places" data-dms="${i}" value="${esc(x.slots)}" min="1" max="20" style="width:70px;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 8px"><button class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="dmrm" data-i="${i}" aria-label="Retirer">${icon('trash', 18)}</button></div>`).join('')}</div>
   <div class="btns"><button class="btn ghost small" data-act="dmadd">${icon('plus', 18)}Ajouter</button><button class="btn main small" data-act="dmsave">Enregistrer</button></div><p class="note">Proposées en un geste sur chaque match, plateau, tournoi ou événement.</p></div>`;
-  return h;
+  return (hooks.receivedBlock ? hooks.receivedBlock() : '') + h; // n° 109 : convocations reçues des autres clubs, en tête (js/v42.js)
 }
 
 // ---------- bénévoles (n° 53) ----------

@@ -1,4 +1,5 @@
 // mypocketclub · connexion, inscription, conditions, premier club (créer ou rejoindre), textes légaux.
+import { contactCardHtml } from './club.js'; // n° 122
 import { BRAND, VERSION, CGU_VERSION, TURNSTILE_SITEKEY } from '../config.js';
 import { notListedLine } from './v37.js';
 import { S, sb, esc, run, toast, render, refresh, store, remember, ROLES, JOIN_ROLES, SPORTS, FONCTIONS, niceFirst, niceLast, lum, onColor, isActive, club, ACTIONS, FORMS, INPUTS, CHANGES } from './core.js';
@@ -104,6 +105,7 @@ export function publicClubScreen(id) {
   return pubHeader({ back: true, kicker: c.sport, title: esc(c.name) }) + `<main class="bd"><div class="card lift" style="flex-direction:row;align-items:center;gap:14px">${crest(c, 52, '#FFFFFF')}<span style="display:flex;flex-direction:column"><b style="font-size:18px">${esc(c.name)}</b><span class="det">${esc([c.city, c.postal_code].filter(Boolean).join(' · ') || 'Ville non renseignée')} · ${esc(c.sport)}</span></span></div>
   ${memberOf(c.id) ? `<span class="pill ok">Déjà membre</span><button class="btn main" data-act="club" data-id="${c.id}">Ouvrir le club</button>` : `<button class="btn main" data-act="pjoin" data-id="${c.id}">Rejoindre ce club</button>`}
   <div class="sec"><h2>Équipes</h2></div><div class="card"><div class="list">${teams.length ? teams.map((t) => `<div class="row static"><span class="g">${esc(t.name)}<small>${esc([t.category !== t.name ? t.category : '', t.gender].filter(Boolean).join(' · '))}</small>${t.slots ? `<small>${icon('cal', 14)} ${esc(t.slots)}</small>` : ''}</span></div>`).join('') : '<p class="empty">Pas encore d’équipe affichée.</p>'}</div></div>
+  ${S.session && !memberOf(c.id) && (S.pcards || {})[c.id] ? `<div class="sec"><h2>Contacter le club</h2></div><div class="card">${contactCardHtml(S.pcards[c.id])}</div>` : ''}
   <p class="note">${S.session ? '' : 'Les matchs, les messages et les contacts du club sont réservés aux membres connectés.'}</p></main>`;
 }
 
@@ -133,6 +135,8 @@ export async function loadPublicClub(id) {
   S.pclubs = S.pclubs || {};
   const { data, error } = await sb.rpc('public_club', { p_club: id });
   if (error) { toast(error.message || 'Club introuvable.'); S.pclubs[id] = null; } else S.pclubs[id] = data || null;
+  // n° 122 : visiteur connecté (autre club ou autre sport) : contact licences ; clubs du même sport : aussi le correspondant rencontres
+  if (S.session && S.pclubs[id]) { const k = await sb.rpc('contact_card', { p_club: id }); S.pcards = S.pcards || {}; S.pcards[id] = k.data && typeof k.data === 'object' ? k.data : null; }
 }
 // Après connexion : ouvrir la demande d'adhésion au club choisi dans la recherche
 export async function openPendingJoin() {

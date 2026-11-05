@@ -1,7 +1,7 @@
 // mypocketclub · alpha 3.10.0
 // N° 113 : espace coach en deux niveaux (liste des équipes, puis espace de l'équipe avec bandeau et onglets
 //          Pointer · Planifier · Préparer · Stats · Effectif, toujours visibles) ; vue par défaut du bouton de rôle.
-// N° 114 : espace du président en cinq onglets, dépliants « Bureau » et « Équipes », « Qui s'occupe de quoi »,
+// N° 114 : espace du président en cinq onglets, dépliants « Bureau » et « Équipes », « Fonctions »,
 //          transfert de la présidence accepté par le nouveau président, suppression du club en corbeille.
 // N° 115 : « Payer · Bientôt disponible ».
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_10_0.sql) ; l'écran n'est qu'un confort.
@@ -186,7 +186,7 @@ export function teamsFold() {
   // n° 116 : créer, importer et doublons dans le même dépliant (plus de bloc « Créer des équipes » à part)
   return `<details class="card" ${S.pfold === 'equipes' ? 'open' : ''} data-pfold="equipes"><summary>${icon('team', 18)} Équipes</summary>${inner}${teamToolsBlock(true)}</details>`;
 }
-const PTABS = [['ensemble', 'Vue d’ensemble'], ['demandes', 'Demandes'], ['qui', 'Qui s’occupe de quoi'], ['reglages', 'Réglages'], ['journal', 'Journal']];
+const PTABS = [['ensemble', 'Vue d’ensemble'], ['demandes', 'Demandes'], ['qui', 'Fonctions'], ['reglages', 'Réglages'], ['journal', 'Journal']];
 // N° 116 : les cinq onglets du président au bas du bloc bleu de l'en-tête, juste sous les casquettes
 export function presidentTabs() {
   const t = S.ptab || 'ensemble';
@@ -266,7 +266,8 @@ export function clubGoneScreen() {
 // ---------- n° 115 · paiement en ligne : bientôt ----------
 export function payFamilySoon(p) {
   if (!p || !(myKids().some((k) => k.id === p.id) || mySelf().some((k) => k.id === p.id))) return '';
-  return `<button class="btn ghost" disabled aria-disabled="true" style="opacity:.6">${icon('doc', 20)}Payer ma cotisation · Bientôt disponible</button>`;
+  // n° 114 (décision du 5 novembre 2026) : le bouton reste « bientôt », mais chaque toucher est compté pour mesurer l'intérêt
+  return `<button class="btn ghost" data-act="paytap" aria-disabled="true" style="opacity:.6">${icon('doc', 20)}Payer ma cotisation · Bientôt disponible</button>`;
 }
 export const payTreasurerSoon = () => `<div class="card pale" style="flex-direction:row;align-items:center;gap:12px"><span class="g" style="flex:1"><b>Paiement en ligne</b><br><span class="det">Bientôt disponible. L’argent ira directement sur le compte du club.</span></span><span class="pill">Bientôt</span></div>`;
 
@@ -284,6 +285,8 @@ Object.assign(ACTIONS, {
     if (tab === 'effectif') { S.view = { type: 'team', id: tid }; render(); return; }
     S.view = { type: 'tspace', id: tid, tab }; render();
   },
+  paytap: async () => { await sb.rpc('tap_feature', { p_feature: 'payer', p_club: S.clubId }); toast('Le paiement en ligne arrive bientôt. Merci, ton intérêt est noté.'); },
+  tapcounts: async () => { const r = await run(sb.rpc('feature_tap_counts')); if (!r) return; const p = (Array.isArray(r) ? r : []).find((x) => x.feature === 'payer'); toast(p ? `« Payer » : ${p.people} personne${p.people > 1 ? 's' : ''}, ${p.clubs} club${p.clubs > 1 ? 's' : ''} (dernier toucher le ${new Date(p.last_day + 'T12:00').toLocaleDateString('fr-FR')}).` : '« Payer » : aucun toucher pour l’instant.'); },
   casqdef: (el, d) => { store.set(defKey(), d.v); S.defAsk = null; toast('C’est noté : cet espace s’ouvrira par défaut.'); render(true); },
   casqdefno: () => { S.defAsk = null; render(true); },
   ptab: (el, d) => { S.ptab = d.v; if (d.v === 'journal') S.journal = undefined; if (S.view?.type !== 'espace' || S.casq !== 'president') { S.casq = 'president'; S.view = { type: 'espace' }; } render(true); },
@@ -303,7 +306,7 @@ Object.assign(ACTIONS, {
   },
   clubrestore: async () => { if (await run(sb.rpc('restore_club', { p_club: S.clubId }), 'Club restauré.')) await refresh(); },
 });
-// Choix d'une personne dans « Qui s'occupe de quoi »
+// Choix d'une personne dans « Fonctions »
 document.addEventListener('change', async (e) => {
   const k = e.target?.dataset?.desig; if (!k) return;
   const u = e.target.value || null;

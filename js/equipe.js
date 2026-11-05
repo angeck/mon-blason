@@ -33,9 +33,12 @@ function people(rows) {
 export function teamRoster(tid) {
   const rows = S.roster.filter((x) => x.team_id === tid), coaches = people(rows.filter((x) => x.role === 'coach')), players = people(rows.filter((x) => x.kind === 'joueur')).sort((a, b) => a.first.localeCompare(b.first, 'fr'));
   if (!coaches.length && !players.length && !isBoard() && !coachOf(tid)) return '';
-  const line = (p, sub) => `<div class="row static"><span class="avatar">${esc(p.name.split(' ').map((w) => w[0]).slice(0, 2).join(''))}</span><span class="g">${esc(p.name)}<small>${sub}</small></span></div>`;
+  const av = (p) => `<span class="avatar">${esc(p.name.split(' ').map((w) => w[0]).slice(0, 2).join(''))}</span>`;
+  const line = (p, sub) => `<div class="row static">${av(p)}<span class="g">${esc(p.name)}<small>${sub}</small></span></div>`;
+  // n° 118 : chaque joueur de l'Effectif ouvre sa fiche (modifiable dans l'espace de l'équipe, en lecture seule ailleurs)
+  const pline = (p) => (p.player && pl(p.player) ? `<button class="row" data-act="player" data-id="${p.player}">${av(p)}<span class="g">${esc(p.name)}<small>Joueur</small></span><span class="chev"></span></button>` : line(p, 'Joueur'));
   return `<div class="sec"><h2>Coachs</h2><span class="det">${coaches.length}</span></div><div class="card"><div class="list">${coaches.length ? coaches.map((p) => line(p, p.tags.some((x) => x.assistant) ? 'Coach assistant' : 'Coach')).join('') : '<p class="empty">Pas encore de coach.</p>'}</div></div>
-  <div class="sec"><h2>Effectif</h2><span class="det">${plural(players.length, 'joueur')}</span></div><div class="card"><div class="list">${players.length ? players.map((p) => line(p, 'Joueur')).join('') : '<p class="empty">Aucun joueur pour l’instant.</p>'}</div></div><p class="note">Les parents figurent sur la fiche de leur enfant.</p>`;
+  <div class="sec"><h2>Effectif</h2><span class="det">${plural(players.length, 'joueur')}</span></div><div class="card"><div class="list">${players.length ? players.map(pline).join('') : '<p class="empty">Aucun joueur pour l’instant.</p>'}</div></div><p class="note">Les parents figurent sur la fiche de leur enfant.</p>`;
 }
 const cteam = (tid) => S.cteams.find((x) => x.id === tid);
 // Vue d'une équipe suivie ou d'une autre équipe du club (sans les joueurs ni leur nombre, n° 41)
@@ -125,7 +128,7 @@ export function teamPage(tid) {
   if (manage) h += partnerBlock(t);
   if (manage) {
     h += `<button class="btn main" data-act="import" data-id="${tid}">${icon('plus', 20)}Ajouter des joueurs (un par un, liste, Excel, photo)</button>`;
-    h += `<details class="card"><summary>${board ? "Réglages de l'équipe" : "Créneaux de l'équipe"}</summary>${board ? teamForm(t, 'teamedit') : `<form id="teamslots" data-id="${tid}" class="stack">${field('tsl', 'Créneaux et gymnase', `<input id="tsl" name="slots" value="${esc(t.slots || '')}">`)}<button class="btn main" type="submit">Enregistrer</button></form>`}</details>`;
+    h += `<details class="card"><summary>${board ? "Réglages de l'équipe" : "Créneaux de l'équipe"}</summary>${board ? teamForm(t, 'teamedit') : `<form id="teamslots" data-id="${tid}" class="stack">${field('tsl', 'Créneaux et gymnase', `<input id="tsl" name="slots" value="${esc(t.slots || '')}">`)}<button class="btn main" type="submit">Enregistrer</button></form>`}${t.partner_hidden && (t.partner_state || 'aucune') === 'aucune' ? `<button class="btn ghost small" data-act="pfshow" data-id="${tid}">Réafficher « Équipe en entente ? »</button>` : ''}</details>`;
     const cands = S.roster.filter((x) => x.user_id).reduce((a, x) => (a.some((y) => y.user_id === x.user_id) ? a : a.concat(x)), [])
       .concat(S.members.filter((m) => m.status === 'active' && !S.roster.some((x) => x.user_id === m.user_id)).map((m) => ({ user_id: m.user_id, first_name: S.names[m.user_id] || 'Membre', last_name: '' })))
       .reduce((a, x) => (a.some((y) => y.user_id === x.user_id) ? a : a.concat(x)), []);

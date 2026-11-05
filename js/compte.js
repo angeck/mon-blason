@@ -34,17 +34,14 @@ export function accountScreen() {
   h += benevolatCard();
   h += pushCard();
   // n° 42 : le président et les membres du bureau peuvent se déclarer contacts du club
-  if (c && isBoard()) {
-    const k = S.myContact || {}, box = (n, l) => `<label class="check"><input type="checkbox" data-contact="${n}" ${k[n] ? 'checked' : ''}><span>${l}</span></label>`;
-    h += `<details class="card" ${k.for_licence || k.for_matches ? 'open' : ''}><summary>Contact du club (${esc(c.name)})</summary>${box('for_licence', 'Contact pour les demandes de licence')}${box('for_matches', 'Contact pour la planification des matchs')}<div class="kick">Moyens visibles</div>${box('show_phone', 'Mon téléphone' + (S.me.phone ? ' · ' + esc(S.me.phone) : ''))}${box('show_email', 'Mon adresse e-mail · ' + esc(S.session.user.email))}${(k.for_licence || k.for_matches) && k.show_phone && !S.me.phone ? '<div class="card warn"><b>Ajoute ton téléphone dans « Mon profil » ci-dessus pour qu’il apparaisse.</b></div>' : ''}<p class="note">Tes coordonnées seront visibles des membres et des autres clubs connectés. Tu peux les retirer à tout moment.</p></details>`;
-  }
-  h += `<div class="sec"><h2>Mes clubs et profils</h2></div><div class="card"><div class="list">${clubs.map((x) => `<button class="row" data-act="club" data-id="${x.id}">${crest(x, 30)}<span class="g">${esc(x.name)}<small>${S.mems.filter((m) => m.club_id === x.id).map((m) => ROLES[m.role] + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</small></span>${x.id === S.clubId ? '<span class="pill ok">Affiché</span>' : '<span class="chev"></span>'}</button>`).join('') || '<p class="empty">Aucun club pour l’instant.</p>'}</div></div>
+  if (c && S.cstate) h += contactChoice(c); // n° 122 : la fonction décide du contact, je choisis seulement ce que je montre
+  h += `<div class="sec"><h2>Mes clubs et profils</h2></div><div class="card"><div class="list">${clubs.map((x) => `<button class="row" data-act="club" data-id="${x.id}">${crest(x, 30)}<span class="g">${esc(x.name)}<small>${S.mems.filter((m) => m.club_id === x.id).map((m) => (m.role === 'bureau' && m.fonction ? m.fonction : ROLES[m.role]) + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</small></span>${x.id === S.clubId ? '<span class="pill ok">Affiché</span>' : '<span class="chev"></span>'}</button>`).join('') || '<p class="empty">Aucun club pour l’instant.</p>'}</div></div>
   <button class="btn ghost" data-act="onbopen">Rejoindre ou créer un autre club</button>`;
   if (c) h += `<button class="btn ghost ${isArmed('leave') ? 'danger armed' : ''}" data-act="leave">${isArmed('leave') ? `Confirmer : quitter ${esc(c.name)}` : `Quitter ${esc(c.name)}`}</button>`;
   h += `<details class="card"><summary>Changer mon mot de passe</summary><form id="npwf" class="stack">${newPwdFields('cp')}<button class="btn main" type="submit">Changer le mot de passe</button></form></details>
   <button class="btn" data-act="logout">${icon('back', 20)}Me déconnecter</button>`;
   if (coachTeams().length) h += `<div class="sec"><h2>Coach</h2></div><div class="card"><label class="check"><input type="checkbox" data-act="prepoff" ${prepOff() ? '' : 'checked'}><span>Me proposer « Prépare ta séance » sur l’Accueil, 3 jours avant chaque entraînement</span></label></div>`; // n° 88
-  if (S.isAdmin) h += `<div class="sec"><h2>Administration mypocketclub</h2></div><div class="card"><button class="btn" data-act="cschemas">${icon('doc', 20)}Demandes de schéma</button><p class="note">Exercices envoyés par les coachs : dépose la vidéo du schéma, l’exercice est mis à jour et le coach prévenu.</p><button class="btn" data-act="creqs">${icon('search', 20)}Demandes de clubs${S.creqNew ? ' · ' + S.creqNew + ' à traiter' : ''}</button><p class="note">« Mon club n’est pas dans la liste » : clubs demandés par les visiteurs et les membres (simulation, aucun e-mail envoyé).</p></div>` + mailTestBlock(); // n° 86, n° 107
+  if (S.isAdmin) h += `<div class="sec"><h2>Administration mypocketclub</h2></div><div class="card"><button class="btn" data-act="cschemas">${icon('doc', 20)}Demandes de schéma</button><p class="note">Exercices envoyés par les coachs : dépose la vidéo du schéma, l’exercice est mis à jour et le coach prévenu.</p><button class="btn" data-act="creqs">${icon('search', 20)}Demandes de clubs${S.creqNew ? ' · ' + S.creqNew + ' à traiter' : ''}</button><p class="note">« Mon club n’est pas dans la liste » : clubs demandés par les visiteurs et les membres (simulation, aucun e-mail envoyé).</p><button class="btn" data-act="tapcounts">${icon('doc', 20)}Intérêt pour « Payer ma cotisation »</button><p class="note">Nombre de personnes qui ont touché le bouton « Bientôt disponible » (n° 114).</p></div>` + mailTestBlock(); // n° 86, n° 107
   h += `<div class="sec"><h2>Mes données</h2></div><div class="card"><button class="btn ghost" data-act="export">${icon('down', 20)}Télécharger mes données</button><p class="note">Un fichier avec ton profil, tes rôles, les fiches de tes enfants, tes réponses, tes messages et tes votes.</p>
   ${delBtn('delacc', 'me', 'Supprimer mon compte', 'Confirmer : supprimer mon compte dans 30 jours', isArmed('delacc'))}<p class="note">Tu es retiré tout de suite de tes clubs et groupes. Pendant 30 jours, tu peux annuler en te reconnectant ; ensuite tout est effacé. Les fiches de joueurs restent au club.</p></div>
   <button class="btn ghost" data-act="legal">Mentions légales, confidentialité et conditions</button>
@@ -121,3 +118,23 @@ CHANGES.push(async (t) => {
   return true;
 });
 CHANGES.push((t) => { if (t.dataset.r) { S.rq[t.dataset.r] = t.type === 'checkbox' ? t.checked : t.value; return true; } return false; });
+
+// ---------- n° 122 · mes coordonnées de contact ----------
+// Le président attribue la fonction ; la personne confirme ici ce qu'elle montre (téléphone, e-mail, les deux ou rien).
+// Le choix vaut pour toutes ses fonctions du moment ; une nouvelle fonction demande une nouvelle confirmation.
+function contactChoice(c) {
+  const k = S.cstate, roles = k.roles.join(', ');
+  const box = (n, l, on) => `<label class="check"><input type="checkbox" name="${n}" ${on ? 'checked' : ''}><span>${l}</span></label>`;
+  return `<form id="contactf" class="card ${k.confirmed ? '' : 'yellow'}" data-anchor="moncontact"><div class="kick">${k.confirmed ? 'Mes coordonnées de contact' : 'À confirmer'} · ${esc(c.name)}</div><b>${esc(roles)}</b>
+  <p class="note" style="margin:0">Ce que tu montres aux personnes qui veulent joindre le club : les membres du club (pas les supporteurs) voient le bureau ; les supporteurs et les visiteurs connectés voient le correspondant licences ; les clubs du même sport voient aussi le correspondant rencontres.</p>
+  ${box('phone', 'Mon téléphone' + (S.me.phone ? ' · ' + esc(S.me.phone) : ' (à ajouter dans « Mon profil »)'), k.show_phone)}${box('email', 'Mon adresse e-mail · ' + esc(S.session.user.email), k.show_email)}
+  <button class="btn main" type="submit">${k.confirmed ? 'Enregistrer mon choix' : 'Confirmer mon choix'}</button><p class="note">Rien de coché : aucune coordonnée, on t’écrit par l’application. Tu peux changer à tout moment.</p></form>`;
+}
+Object.assign(FORMS, {
+  contactf: async (v) => {
+    if (await run(sb.rpc('confirm_contact', { p_club: S.clubId, p_phone: !!v.phone, p_email: !!v.email }), 'C’est noté.')) {
+      if (v.phone && !S.me.phone) toast('Ajoute ton téléphone dans « Mon profil » pour qu’il apparaisse.');
+      await refresh();
+    }
+  },
+});

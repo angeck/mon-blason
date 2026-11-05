@@ -93,9 +93,10 @@ export function partnerBlock(t) {
   if (!t) return '';
   const st = t.partner_state || 'aucune', mine = S.players.filter((p) => p.team_id === t.id && !p.deleted_at), partners = mine.filter((p) => p.from_partner);
   let h = `<div class="sec"><h2>Entente</h2></div><div class="card">`;
+  if (st === 'aucune' && !S.pf && t.partner_hidden) return ''; // n° 117 : invitation masquée (réaffichable dans les réglages de l'équipe)
   if (st === 'aucune' && !S.pf) {
     h += '<p class="note">Une équipe en entente réunit des joueurs de deux clubs. Ton club porte l’équipe (agenda, matchs, convocations) ; les joueurs du club partenaire n’entrent jamais dans ta trésorerie.</p>';
-    return h + (canPartner(t) ? `<button class="btn ghost small" data-act="pfopen" data-id="${t.id}">Équipe en entente</button>` : '') + '</div>';
+    return h + (canPartner(t) ? `<div class="btns"><button class="btn ghost small" data-act="pfopen" data-id="${t.id}">Équipe en entente</button><button class="btn ghost small" data-act="pfhide" data-id="${t.id}">Masquer</button></div><p class="note">« Masquer » retire cette invitation pour tous les coachs de l’équipe. Tu peux la réafficher dans les réglages de l’équipe.</p>` : '') + '</div>';
   }
   if (S.pf?.tid === t.id) {
     const P = S.pf;
@@ -137,6 +138,8 @@ Object.assign(ACTIONS, {
   hcwho: (el, d) => { const m = document.getElementById('hcm'); if (m) S.hcform.month = m.value; S.hcform.who = d.v; render(true); },
   hcrel: async (el, d) => { const n = await run(sb.rpc('relance_hours', { p_check: d.id, p_user: d.u })); if (n !== null) { toast('Relance envoyée.'); const c = S.hconf.find((x) => x.check_id === d.id && x.user_id === d.u); if (c) c.relanced_at = new Date().toISOString(); render(true); } },
   scread: (el, d) => { store.set('pc_sr_' + d.id, '1'); S.view = { type: 'event', id: d.id }; render(); },
+  pfhide: async (el, d) => { if (await run(sb.rpc('set_partner_hidden', { p_team: d.id, p_hidden: true }), 'Invitation masquée pour l’équipe.')) await refresh(); },
+  pfshow: async (el, d) => { if (await run(sb.rpc('set_partner_hidden', { p_team: d.id, p_hidden: false }), 'Invitation réaffichée.')) await refresh(); },
   pfopen: (el, d) => { S.pf = { tid: d.id, mode: 'in', q: '', res: [] }; render(true); },
   pfclose: () => { S.pf = null; render(true); },
   pfmode: (el, d) => { S.pf.mode = d.v; render(true); },

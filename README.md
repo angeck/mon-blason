@@ -1,4 +1,4 @@
-# mypocketclub · alpha 4.1.0
+# mypocketclub · alpha 4.2.0
 
 Application web installable (PWA) pour les clubs sportifs : agenda avec réponses « Je viens / Je ne viens pas », appel, fiches joueurs, licences et cotisations, groupes d'échange (messages en direct, sondages), équipes, membres, corbeille de 30 jours.
 
@@ -9,7 +9,7 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 ## Fichiers
 
 - `app.js` : affichage des écrans, aiguillage des actions, connexion, temps réel.
-- `js/core.js` (état, données, droits vus à l'écran) · `js/ui.js` (logos, en-tête, onglets) · un module par partie : `auth`, `accueil`, `agenda`, `messages`, `equipe`, `joueur`, `club`, `compte`, `coach` (espace coach), `vie` (espaces, rubriques, annonces, bénévoles), `importer` (lecture des listes), `profils` (liste déroulante « Profil de test », alpha 3.3.1), `v35` (alpha 3.5.0 : vérification des heures, ordre des blocs des espaces, résultats, ententes), `v36` (cartes du coach sur l'Accueil), `v37` (alpha 3.7.0 : top 5 des équipes suivies, demandes d'ajout d'un club et page Admin), `v38` (alpha 3.8.0 : création, import et doublons d'équipes dans l'espace, e-mail de test), `v310` (alpha 3.10.0 : espace coach en deux niveaux et espace de l'équipe, espace du président en cinq onglets, « Qui s'occupe de quoi », présidence, suppression du club, paiement « bientôt »), `equipes_import` (lecture des listes d'équipes, sans dépendance). L'appel en tuiles est dans `agenda`.
+- `js/core.js` (état, données, droits vus à l'écran) · `js/ui.js` (logos, en-tête, onglets) · un module par partie : `auth`, `accueil`, `agenda`, `messages`, `equipe`, `joueur`, `club`, `compte`, `coach` (espace coach), `vie` (espaces, rubriques, annonces, bénévoles), `importer` (lecture des listes), `profils` (liste déroulante « Profil de test », alpha 3.3.1), `v35` (alpha 3.5.0 : vérification des heures, ordre des blocs des espaces, résultats, ententes), `v36` (cartes du coach sur l'Accueil), `v37` (alpha 3.7.0 : top 5 des équipes suivies, demandes d'ajout d'un club et page Admin), `v38` (alpha 3.8.0 : création, import et doublons d'équipes dans l'espace, e-mail de test), `v42` (alpha 4.2.0 : envoi des convocations, recherche du club reçu, suivi, versions -v2), `pdfmin` (petit fabricant de PDF sans dépendance, n° 112), `v310` (alpha 3.10.0 : espace coach en deux niveaux et espace de l'équipe, espace du président en cinq onglets, « Qui s'occupe de quoi », présidence, suppression du club, paiement « bientôt »), `equipes_import` (lecture des listes d'équipes, sans dépendance). L'appel en tuiles est dans `agenda`.
 - `js/vendor/xlsx.bundle.js` : lecture et écriture Excel (xlsx-js-style 1.2.0, licence Apache 2.0, copie locale pour ne pas dépendre d'un CDN).
 - `style.css` : styles mypocketclub, d'après les jetons de la charte (`04-jetons-design.css` du projet).
 - `supabase/schema.sql` (3.0), puis `alpha_3_0_1.sql`, `alpha_3_0_2.sql`, `alpha_3_1.sql`, `alpha_3_2.sql`, `alpha_3_2_1.sql` et `alpha_3_2_4.sql` (mises à jour). `supabase/build_reset.sh` fabrique `RESET_ALPHA_3_0.sql` (efface tout, comptes compris, puis installe tout), `MAJ_ALPHA_3_2.sql` et `MAJ_ALPHA_3_2_4.sql` (mises à jour sans perte).
@@ -24,12 +24,21 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 ## Tests (jamais sur la base réelle)
 
 `PGHOST=… PGPORT=… PGUSER=postgres sh tests/lancer.sh` : base PostgreSQL 16 locale (`tests/prelude.sql` imite Supabase), puis
-- `tests/vie_de_club.py` : faux club complet et saison simulée, 635 vérifications des droits (visiteur non connecté compris) ;
+- `tests/vie_de_club.py` : faux club complet et saison simulée, 684 vérifications des droits (visiteur non connecté compris) ;
 - `tests/import.test.mjs` : lecture de listes de joueurs et d'équipes (20 tests) ;
-- `tests/email.test.mjs` : fonction d'envoi des e-mails, Supabase et Resend imités (18 tests) ;
-- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (312 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
+- `tests/email.test.mjs` : fonction d'envoi des e-mails, Supabase et Resend imités (31 tests, dont l'envoi des convocations) ;
+- `tests/pdf.test.mjs` : petit fabricant de PDF (9 tests) ;
+- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (333 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
 
 Toutes les personnes des tests sont fictives.
+
+## Alpha 4.2.0
+
+Mise à jour d'une base 4.1.0 (même base que la 3.10.0) : `supabase/MAJ_ALPHA_4_2_0.sql` (source `supabase/alpha_4_2_0.sql`, ajoutée au RESET), sans perte de données, relançable. **Puis redéployer la fonction `envoyer-email`** (Edge Functions → envoyer-email → coller `supabase/functions/envoyer-email/index.ts` → Deploy) : elle envoie maintenant les convocations.
+Bugs : n° 118 (les joueurs de l'onglet Effectif ouvrent leur fiche), n° 119 (plus de seconde ligne « Commun » sans nom chez le secrétaire : la sous-rubrique « licences » n'a pas de ligne à part), n° 120 (sans choix enregistré, la fonction du bureau s'ouvre avant la casquette « Coach » ; profil de test « Directeur technique »).
+N° 117 : « Masquer » à côté de « Équipe en entente » (par équipe, pour tous ses coachs ; « Réafficher » dans les réglages de l'équipe). N° 121 : l'espace Communication ne montre que les annonces de la personne (et leurs lecteurs). N° 114 : « Qui s'occupe de quoi » devient « Fonctions » ; les touchers sur « Payer · Bientôt disponible » sont comptés (Mon compte → Administration). N° 80 : « Ajouter mes séances du mois » reprend la durée de chaque rendez-vous.
+N° 122 : le contact du club suit la fonction attribuée (licences : la personne désignée, sinon le correspondant licences, sinon le secrétaire, sinon le président ; rencontres : la personne désignée, sinon le correspondant rencontres, sinon le président) ; coordonnées montrées seulement si la personne les a confirmées pour ses fonctions du moment (Mon compte, encart jaune sur l'Accueil ; une nouvelle fonction demande une nouvelle confirmation) ; « Écrire au correspondant » par l'application (au plus 5 nouvelles conversations par jour) ; qui voit quoi : membres hors supporteurs = le bureau, supporteurs et visiteurs connectés = le contact licences, clubs du même sport = aussi le correspondant rencontres, club hors recherche = rien à l'extérieur ; cases « Contact pour… » retirées ; le correspondant des convocations est le correspondant rencontres.
+N° 109, 112, 107 : écran de la convocation : chercher le club reçu ; trouvé → envoi dans mypocketclub (le club reçu est prévenu, l'ouverture vaut accusé de lecture) ; pas trouvé → fenêtre e-mail (Madame ou Monsieur, prénom, nom, e-mail), PDF fabriqué dans l'application et joint, expéditeur « club + catégories » depuis notifications@, réponses et copie à la personne qui envoie, contact non gardé (adresse masquée dans le suivi) ; document modifié après un envoi = « Mise à jour » et référence -v2 ; suivi des envois du week-end (envoyé, lu, échec) avec « Renvoyer », personne prévenue d'un échec ; limite de 20 e-mails par club et 80 en tout par jour (Resend gratuit : 100).
 
 ## Alpha 4.1.0
 

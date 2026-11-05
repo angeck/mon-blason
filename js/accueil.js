@@ -16,7 +16,7 @@ export function homeTitle() {
 }
 export function homeTab() {
   const fut = homeEvents(), todo = fut.filter(needsAnswer), next = todo[0];
-  let h = clubTrashBanner() + presidencyCard() + pushHome(); // n° 114 : club dans la corbeille, présidence proposée ; puis l'encart des notifications
+  let h = clubTrashBanner() + presidencyCard() + contactAsk() + pushHome(); // n° 122 : encart jaune de la fonction reçue // n° 114 : club dans la corbeille, présidence proposée ; puis l'encart des notifications
   const vp = toValidate().length;
   // n° 94 : président et bureau → une seule touche, la page « Gestion du club » s'ouvre à l'endroit des demandes ; le coach garde l'onglet Club
   if (vp) h += isBoard() ? `<button class="btn main" data-act="gestion" data-v="demandes">${plural(vp, 'demande à valider', 'demandes à valider')}</button>` : `<button class="btn main" data-act="tab" data-i="4">${plural(vp, 'demande à valider', 'demandes à valider')}</button>`;
@@ -36,7 +36,16 @@ export function homeTab() {
   if (!store.get('pc_hiderq_' + S.clubId) && active().length) h += `<div class="card pale"><b>Tu joues, coaches ou es parent dans une autre équipe du club ?</b><p class="note">Ajoute tes autres rôles : chacun est validé par le club.</p><div class="btns"><button class="btn small main" data-act="rqgo">Demander un autre rôle</button><button class="btn small ghost" data-act="rqhide">Ne plus afficher</button></div></div>`;
   return h;
 }
+// N° 122 · encart jaune : une seule carte qui liste toutes mes fonctions du moment (dont celles reçues par défaut),
+// tant que je n'ai pas confirmé ce que je montre ; « Confirmer » ouvre Mon compte à cet endroit
+function contactAsk() {
+  const k = S.cstate; if (!k || k.confirmed) return '';
+  const extra = k.roles.filter((r) => /^Correspondant/.test(r)), main = k.roles.filter((r) => !extra.includes(r));
+  const said = main.length ? `Tu es ${main.join(', ')}${extra.length ? ` et aussi ${extra.join(', ').toLowerCase()}` : ''}.` : `Tu es ${extra.join(', ').toLowerCase()}.`;
+  return `<div class="card yellow"><span class="kick" style="color:var(--pc-encre)">Ta fonction au club</span><b style="font-family:var(--pc-titre);font-size:22px;line-height:1.1">${esc(said)}</b><p style="margin:0">Choisis ce que les membres voient de toi : ton téléphone, ton e-mail, les deux, ou rien (on t’écrira par l’application).</p><div class="btns"><button class="btn small main" data-act="contactgo">Confirmer</button></div></div>`;
+}
 export { forLabel };
 Object.assign(ACTIONS, {
+  contactgo: () => { S.view = { type: 'account' }; render(); setTimeout(() => document.getElementById('contactf')?.scrollIntoView({ block: 'start' }), 60); },
   supvol: async (el, d) => { const on = d.v === '1'; if (await run(sb.rpc('set_supporter_volunteer', { p_on: on }), on ? 'Merci ! Tu recevras les demandes de bénévoles.' : 'C’est noté. Tu peux changer d’avis dans Mon compte.')) { S.me.supporter_volunteer = on; render(true); } },
 });

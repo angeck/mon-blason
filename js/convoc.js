@@ -6,6 +6,7 @@ import { BRAND } from '../config.js';
 import { S, sb, esc, run, toast, render, ACTIONS, hooks, hasArea, onColor, contrast, catGender } from './core.js';
 import { header, icon, crest, ballSrc } from './ui.js';
 import { VIE_VIEWS } from './vie.js';
+import { sendCard, loadSends, sendsSummary } from './v42.js'; // n° 112, 109, 107
 
 const MATCHY = ['Match', 'Plateau', 'Tournoi'];
 export const canConvoke = (e) => !!e && MATCHY.includes(e.type) && e.at_home !== false && e.audience === 'team' && hasArea('evenements');
@@ -14,7 +15,7 @@ export const canConvoke = (e) => !!e && MATCHY.includes(e.type) && e.at_home !==
 export function convocBlock(e) {
   if (!canConvoke(e)) return '';
   return `<div class="card flat"><div class="kick">Convocation des clubs reçus</div><p class="note">Un seul document pour toutes les rencontres à domicile du week-end, à envoyer aux clubs reçus.</p>
-  <div class="btns"><button class="btn small ghost" data-act="convoc" data-id="${e.id}" data-v="P">${icon('doc', 18)}Pré-convocation</button><button class="btn small main" data-act="convoc" data-id="${e.id}" data-v="C">${icon('doc', 18)}Convocation</button></div></div>`;
+  <div class="btns"><button class="btn small ghost" data-act="convoc" data-id="${e.id}" data-v="P">${icon('doc', 18)}Pré-convocation</button><button class="btn small main" data-act="convoc" data-id="${e.id}" data-v="C">${icon('doc', 18)}Convocation</button></div>${sendsSummary(e.id)}</div>`;
 }
 
 const abs = (u) => { try { return new URL(u, location.href).href; } catch { return u; } };
@@ -50,8 +51,8 @@ const competition = (x) => (x.type === 'Match' ? 'Match' : x.type);
 export function missing(d, step) {
   const m = [], live = d.events.filter((x) => !x.cancelled);
   if (!d.club.logo) m.push('le logo du club (onglet Club → Blason)');
-  if (!d.correspondent) m.push('le correspondant : un membre du bureau coche « Contact pour la planification des matchs » dans Mon compte');
-  else if (!d.correspondent.phone && !d.correspondent.email) m.push('le téléphone ou l’e-mail du correspondant (Mon compte → Contact du club)');
+  if (!d.correspondent) m.push('le correspondant rencontres : le président le choisit dans Espace › Président › Fonctions');
+  else if (!d.correspondent.phone && !d.correspondent.email) m.push('les coordonnées du correspondant : il les confirme dans Mon compte (téléphone, e-mail)');
   live.filter((x) => !x.coach).forEach((x) => m.push(`le coach de ${catOf(x)}`));
   live.filter((x) => !x.opponents).forEach((x) => m.push(`le club reçu pour ${catOf(x)} (champ Adversaire du rendez-vous)`));
   if (step === 'C') live.filter((x) => !x.place).forEach((x) => m.push(`le gymnase de ${catOf(x)} (champ Lieu du rendez-vous)`));
@@ -60,8 +61,10 @@ export function missing(d, step) {
 export const blocking = (d, step) => step === 'C' && d.events.some((x) => !x.cancelled && !x.place);
 
 // Le document A4 (HTML imprimé en PDF par le téléphone ou l'ordinateur)
-export function convocHtml(d, step, now = new Date()) {
-  const c = d.club, c1 = c.color1 || '#2F5BFF', c2 = c.color2 || '#FFC93C', txt = onColor(c1), soft = tint(c1), ref = reference(c.name, d.from, step);
+export function convocHtml(d, step, now = new Date(), o = {}) {
+  // n° 112 : version (-v2 « Mise à jour ») et sans impression automatique pour la lecture d'une convocation reçue
+  const ver = o.version || 1, upd = ver > 1;
+  const c = d.club, c1 = c.color1 || '#2F5BFF', c2 = c.color2 || '#FFC93C', txt = onColor(c1), soft = tint(c1), ref = reference(c.name, d.from, step) + (upd ? '-v' + ver : '');
   const k = d.correspondent, when = weekendLabel(d.from, d.to), pre = step === 'P';
   // n° 92 : le blason du club tel qu'il est dans l'application (même fonction crest, mêmes réglages) ;
   // n° 97 : sans logo, le ballon du sport du club (ou le ballon de la marque mypocketclub, étoile creuse, pour un autre sport : n° 106)
@@ -99,10 +102,10 @@ table{border-collapse:collapse;width:100%;margin:12px 0}th{color:${c1};text-alig
 .cat{align-self:flex-start;background:${c2};color:${onColor(c2)};border-radius:10px;padding:2px 10px;font-weight:700;font-size:11px}.hr{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:30px;color:${c1}}
 .sig{margin-top:18px}.ft{background:#F7F8FC;border-top:1px solid #D8DCEA;padding:5mm 14mm;display:flex;align-items:center;gap:12px;font-size:10.5px;color:#4A5068}.wm{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:16px;letter-spacing:-.04em;color:#11162E;white-space:nowrap}.wm .my{display:inline-block;background:#FFC93C;color:#11162E;border-radius:.2em;padding:0 .09em .12em;letter-spacing:-.03em;transform:rotate(-5deg);margin-right:.07em}.wm .cl{color:#2F5BFF}.ft .r{margin-left:auto;text-align:right}
 @media screen{body{background:#E9ECF5}.page{margin:12px auto;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.12)}}</style></head><body><div class="page">
-<div class="hd">${logo}<div><div class="nm">${esc(c.name)}</div>${corr ? `<div class="co">Correspondant : ${corr}</div>` : ''}</div><span class="tag">${pre ? 'Pré-convocation · Étape 1 sur 2' : 'Convocation · Étape 2 sur 2'}</span></div><div class="lis"></div>
+<div class="hd">${logo}<div><div class="nm">${esc(c.name)}</div>${corr ? `<div class="co">Correspondant : ${corr}</div>` : ''}</div><span class="tag">${pre ? 'Pré-convocation · Étape 1 sur 2' : 'Convocation · Étape 2 sur 2'}${upd ? ' · Mise à jour' : ''}</span></div><div class="lis"></div>
 <div class="ct">${body}<p class="sig">Sportivement,<br><b>${k ? esc(k.name) : '…………'}</b>, correspondant de ${esc(c.name)}</p></div>
 <div class="ft"><span class="wm" role="img" aria-label="${esc(BRAND.aria)}"><span class="my">my</span>p${ballSvg(13, c.sport)}cket<span class="cl">club</span></span><span>Convocation créée et générée avec ${esc(BRAND.name)}</span><span class="r">Émise le ${now.toLocaleDateString('fr-FR')}<br>Réf. ${esc(ref)}</span></div>
-</div><script>document.fonts&&document.fonts.ready.then(function(){setTimeout(function(){print()},300)})</script></body></html>`;
+</div>${o.print === false ? '' : '<script>document.fonts&&document.fonts.ready.then(function(){setTimeout(function(){print()},300)})</script>'}</body></html>`;
 }
 
 hooks.convocBlock = convocBlock;
@@ -116,10 +119,8 @@ function convocScreen() {
   <div class="det">Week-end du ${esc(weekendLabel(d.from, d.to))} · ${d.events.length} rencontre${d.events.length > 1 ? 's' : ''} à domicile · réf. ${esc(reference(d.club.name, d.from, step))}</div></div>`;
   h += `<div class="card"><div class="list">${d.events.map((x) => `<div class="row static"><span class="g">${esc(catOf(x))} · ${esc(x.opponents || 'club reçu à préciser')}<small>${esc(dayLong(paris(x.starts_at)))} à ${hhmm(x.starts_at)}${x.place ? ' · ' + esc(x.place) : ''}${x.coach ? ' · coach ' + esc(x.coach.name) : ''}</small></span>${x.cancelled ? '<span class="pill ko">Annulée</span>' : ''}</div>`).join('') || '<p class="empty">Aucune rencontre à domicile ce week-end.</p>'}</div></div>`;
   if (miss.length) h += `<div class="card warn"><b>${block ? 'À compléter avant la convocation :' : 'À compléter avant l’envoi (le document reste possible) :'}</b><ul style="margin:6px 0 0 18px;padding:0">${miss.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>`;
-  // N° 109 : trois façons d'envoyer ; le PDF est prêt, l'e-mail et l'envoi dans mypocketclub arrivent ensuite (n° 107, avis « Légal », n° 84)
-  h += `<div class="card"><div class="kick">Envoyer aux clubs reçus</div><button class="btn main" data-act="convpdf" ${block || !d.events.length ? 'disabled' : ''}>${icon('down', 20)}Créer le PDF</button><p class="note">Le document s'ouvre dans une nouvelle fenêtre : choisis « Enregistrer en PDF » pour l'envoyer aux clubs reçus (et au comité si besoin).</p>
-  <div class="btns"><button class="btn small ghost" disabled>${icon('mail', 18)}Par e-mail · bientôt</button><button class="btn small ghost" disabled>${icon('msg', 18)}Dans mypocketclub · bientôt</button></div>
-  <p class="note">Par e-mail, l’expéditeur affiché sera « ${esc(mailSender(d))} » et les clubs reçus répondront directement à ${d.correspondent?.email ? 'ton correspondant' : 'ton correspondant (à renseigner : Mon compte → Contact du club)'}.</p></div>`;
+  // N° 109, 112 : chercher le club reçu (envoi dans mypocketclub), sinon e-mail avec le PDF joint ; suivi des envois du week-end
+  h += sendCard(d, step);
   return h;
 }
 VIE_VIEWS.convoc = () => ({ head: header({ back: true, kicker: 'Convocation', title: S.convoc?.step === 'P' ? 'Pré-convocation' : 'Convocation' }), body: convocScreen() });
@@ -128,14 +129,14 @@ export async function openConvoc(eid, step) {
   S.convoc = { eid, step: step || 'P', data: null }; S.view = { type: 'convoc', id: eid }; render();
   const d = await run(sb.rpc('convocation_data', { p_event: eid }));
   if (!d) { S.view = { type: 'event', id: eid }; render(); return; }
-  S.convoc.data = d; render(true);
+  S.convoc.data = d; await loadSends(eid); render(true);
 }
 Object.assign(ACTIONS, {
   convoc: (el, d) => openConvoc(d.id, d.v),
-  convstep: (el, d) => { S.convoc.step = d.v; render(true); },
+  convstep: (el, d) => { S.convoc.step = d.v; S.convoc.version = 0; if (S.convoc.send) { S.convoc.send.mail = null; S.convoc.send.pick = null; } render(true); },
   convpdf: () => {
     const v = S.convoc; if (!v?.data || blocking(v.data, v.step)) return;
     const w = window.open('', '_blank'); if (!w) return toast('Autorise les fenêtres pour créer le PDF.');
-    w.document.open(); w.document.write(convocHtml(v.data, v.step)); w.document.close();
+    w.document.open(); w.document.write(convocHtml(v.data, v.step, new Date(), { version: v.version || 1 })); w.document.close();
   },
 });

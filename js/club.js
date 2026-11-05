@@ -143,16 +143,30 @@ export function teamsBlock() {
   return h;
 }
 
-// ---------- contacts du club (n° 42) ----------
+// ---------- contacts du club (n° 42, refait au n° 122) ----------
+// Le contact suit la fonction attribuée par le président (licences : la personne désignée, sinon le secrétaire, sinon le président ;
+// rencontres : la personne désignée, sinon le président). Coordonnées montrées seulement si la personne les a confirmées ;
+// sinon « Écrire au correspondant » (message dans l'application). Qui voit quoi : la base décide (contact_card).
+const RESP_LAB = { licences: 'correspondant licences', rencontres: 'correspondant rencontres' };
+export function contactPerson(c, resp, canWrite) {
+  const coords = c.phone || c.email;
+  const btns = [c.phone ? `<a class="btn small ghost" href="tel:${esc(c.phone.replace(/\s/g, ''))}">${icon('phone', 18)}Appeler</a>` : '', c.email ? `<a class="btn small ghost" href="mailto:${esc(c.email)}">${icon('mail', 18)}Écrire un e-mail</a>` : '',
+    resp && canWrite && c.user_id !== S.me.id ? `<button class="btn small ${coords ? 'ghost' : 'main'}" data-act="msgcontact" data-v="${resp}" aria-label="Écrire au ${RESP_LAB[resp]}">${icon('msg', 18)}${coords ? 'Message' : 'Écrire au ' + RESP_LAB[resp]}</button>` : ''].filter(Boolean);
+  const none = !coords ? `<span class="det">${resp && canWrite ? 'Pas de coordonnées publiées : écris-lui par l’application.' : resp ? 'Pas de coordonnées publiées. Rejoins le club (même comme supporteur) pour lui écrire.' : 'Pas de coordonnées publiées : écris-lui depuis Messages.'}</span>` : '';
+  return `<div class="row static" style="flex-direction:column;align-items:stretch;gap:8px"><span class="g">${esc(c.name)}<small>${esc(c.fonction || '')}${c.phone ? ' · ' + esc(c.phone) : ''}${c.email ? ' · ' + esc(c.email) : ''}</small></span>${btns.length ? `<div class="btns">${btns.join('')}</div>` : ''}${none}</div>`;
+}
+export function contactCardHtml(k) {
+  if (!k) return '<p class="note">Aucun contact disponible pour l’instant.</p>';
+  const part = (lab, arr) => (arr.length ? `<div class="kick">${lab}</div><div class="list">${arr.join('')}</div>` : '');
+  let h = '';
+  if (k.licences) h += part('Pour une licence', [contactPerson(k.licences, 'licences', k.can_write)]);
+  if (k.rencontres) h += part('Pour organiser un match', [contactPerson(k.rencontres, 'rencontres', k.can_write)]);
+  if (k.bureau?.length) h += part('Le bureau', k.bureau.map((c) => contactPerson(c, null, k.can_write)));
+  return h || '<p class="note">Aucun contact disponible pour l’instant.</p>';
+}
 export function contactsBlock() {
-  const L = S.contacts.filter((x) => x.kind === 'contact'), pres = S.contacts.find((x) => x.kind === 'president');
-  const one = (c) => `<div class="row static" style="flex-direction:column;align-items:stretch;gap:8px"><span class="g">${esc(c.name)}<small>${esc(c.fonction)}${c.phone ? ' · ' + esc(c.phone) : ''}${c.email ? ' · ' + esc(c.email) : ''}</small></span>${c.phone || c.email ? `<div class="btns">${c.phone ? `<a class="btn small ghost" href="tel:${esc(c.phone.replace(/\s/g, ''))}">${icon('phone', 18)}Appeler</a>` : ''}${c.email ? `<a class="btn small ghost" href="mailto:${esc(c.email)}">${icon('mail', 18)}Écrire un e-mail</a>` : ''}</div>` : '<span class="det">Pas de coordonnées publiées : écris-lui depuis Messages.</span>'}</div>`;
-  const part = (lab, arr) => (arr.length ? `<div class="kick">${lab}</div><div class="list">${arr.map(one).join('')}</div>` : '');
-  let h = `<details class="card"><summary>${icon('phone', 18)} Contacter le club</summary>`;
-  if (L.length) h += part('Pour une licence', L.filter((c) => c.for_licence)) + part('Pour organiser un match', L.filter((c) => c.for_matches));
-  else h += `<p class="note">Contact : président du club${pres ? ' (' + esc(pres.name) + ')' : ''}.</p>`;
-  if (pres && pres.user_id !== S.me.id) h += `<button class="btn small ghost" data-act="msgpres">${icon('msg', 18)}Envoyer un message au président</button>`;
-  if (isBoard() && !L.length) h += '<p class="note">Président et bureau : cochez « Contact du club » dans Mon compte pour apparaître ici.</p>';
+  let h = `<details class="card"><summary>${icon('phone', 18)} Contacter le club</summary>` + contactCardHtml(S.ccard);
+  if (isBoard()) h += '<p class="note">Le contact suit la fonction donnée par le président (Espace › Président › Fonctions). Chaque personne choisit ses coordonnées visibles dans Mon compte.</p>';
   return h + '</details>';
 }
 
@@ -249,6 +263,7 @@ Object.assign(ACTIONS, {
     S.fimp = null; S.fimpText = ''; S.fimpDel = false; await refresh();
   },
   member: (el, d) => { S.view = { type: 'member', id: d.id }; render(); },
+  msgcontact: async (el, d) => { const gid = await run(sb.rpc('message_contact', { p_club: S.clubId, p_resp: d.v })); if (gid) { await refresh(); const { openGroup } = await import('./messages.js'); await openGroup(gid); } }, // n° 122
   msgpres: async () => { const gid = await run(sb.rpc('message_president', { p_club: S.clubId })); if (gid) { await refresh(); const { openGroup } = await import('./messages.js'); await openGroup(gid); } },
   restore: async (el, d) => { if (await run(sb.rpc('restore_item', { p_kind: d.k, p_id: d.id }), 'Restauré.')) { await refresh(); await loadTrash(); render(true); } },
 });

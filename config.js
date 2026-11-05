@@ -8,7 +8,7 @@ export const BRAND = { name: 'mypocketclub', title: 'mypocketclub', aria: 'my po
 // les données sont protégées par les règles d'accès (RLS) de la base.
 export const SUPABASE_URL = 'https://rmdszovbpmagtvugfrpr.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_KsSQGA_bD3QSpX1vjnYjUw_eYBXXJ2u';
-export const VERSION = 'alpha 4.1.0';
+export const VERSION = 'alpha 4.2.0';
 // Alpha 3.2.5 · profils de test : liste déroulante « Profil de test » visible seulement quand on est connecté avec un de ces comptes.
 // Les adresses ne sont pas des secrets (aucun mot de passe ici). Pour ajouter un profil : une ligne.
 export const SWITCH_PROFILES = [
@@ -16,7 +16,7 @@ export const SWITCH_PROFILES = [
   { label: 'Président', email: 'gael.monblason@gmail.com' },
   { label: 'Secrétaire', email: 'gael.monblason+secretaire@gmail.com' },
   { label: 'Trésorier', email: 'gael.monblason+tresorier@gmail.com' },
-  { label: 'Directeur sportif', email: 'gael.monblason+directeursportif@gmail.com' },
+  { label: 'Directeur technique', email: 'gael.monblason+directeursportif@gmail.com' },
   { label: 'Coordinateur', email: 'gael.monblason+coordinateur@gmail.com' },
   { label: 'Communication', email: 'gael.monblason+communication@gmail.com' },
   { label: 'Sponsoring', email: 'gael.monblason+sponsoring@gmail.com' },

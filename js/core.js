@@ -242,10 +242,15 @@ export async function loadClub() {
   S.optouts = S.areas.includes('evenements') ? (await sb.rpc('volunteer_optouts', { p_club: cid })).data : [];
   if (!Array.isArray(S.optouts)) S.optouts = [];
   S.vstats = S.areas.includes('evenements') ? (await sb.rpc('volunteer_stats', { p_club: cid })).data || null : null;
+  // n° 109 : convocations reçues d'autres clubs dans mypocketclub (rubrique Événements)
+  const crv = S.areas.includes('evenements') ? await sb.rpc('convocations_received', { p_club: cid }) : { data: [] }; S.creceived = Array.isArray(crv.data) ? crv.data : [];
   const clubIds = [...new Set(S.mems.filter((m) => m.status === 'active').map((m) => m.club_id))];
   S.overview = clubIds.length > 1 ? ((await sb.rpc('my_clubs_overview')).data || []) : [];
   S.payments = pay.data || []; S.follows = (fol.data || []).map((x) => x.team_id); S.cteams = ct.data || []; S.myGroups = mg.data || [];
   S.contacts = cl.data || []; S.myContact = mc.data || null;
+  // n° 122 : contact du club selon la fonction attribuée, et mon choix de coordonnées pour mes fonctions du moment
+  const [ccd, cst] = await Promise.all([sb.rpc('contact_card', { p_club: cid }), sb.rpc('my_contact_state', { p_club: cid })]);
+  S.ccard = ccd.data && typeof ccd.data === 'object' ? ccd.data : null; S.cstate = cst.data && typeof cst.data === 'object' && Array.isArray(cst.data.roles) ? cst.data : null;
   S.previews = {}; (gp.data || []).forEach((x) => (S.previews[x.group_id] = x));
   await loadNames((gp.data || []).map((x) => x.user_id));
   // n° 36 : messages non lus par groupe (depuis la dernière ouverture)

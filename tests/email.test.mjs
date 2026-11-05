@@ -48,5 +48,45 @@ check('n° 109 : plusieurs catégories, sans doublon', F.senderName('Boissy Bask
 const env9 = F.convocationEnvelope(env, 'Boissy "Basket" <91>', [reines], 'correspondant@exemple.fr');
 check('n° 109 : adresse notifications@ gardée, nom nettoyé des guillemets et chevrons', env9.from === '"Boissy Basket 91 U9 F" <notifications@mypocketclub.fr>');
 check('n° 109 : réponses vers le correspondant, sinon contact@', env9.reply_to === 'correspondant@exemple.fr' && F.convocationEnvelope(env, 'Club', [], null).reply_to === 'contact@mypocketclub.fr' && F.convocationEnvelope(env, 'Club', [], 'pas une adresse').reply_to === 'contact@mypocketclub.fr');
+// N° 112 · convocation envoyée au contact du club reçu (PDF joint, réponses et copie à la personne qui envoie)
+const CD = { club: { name: 'Boissy Basket 91' }, from: '2026-11-14', to: '2026-11-15', sender: { name: 'Rémi Rencontres', email: 'remi@exemple.fr' },
+  events: [{ id: 'e1', type: 'Match', title: 'Match', starts_at: '2026-11-14T14:00:00Z', place: 'Gymnase Jean-Moulin, 1 rue X', opponents: 'Étampes BC', cancelled: false, team: reines }] };
+function fakeC({ data = true, left = 20, resendOk = true } = {}) {
+  const calls = [];
+  const f = async (url, o = {}) => {
+    calls.push([url, o]);
+    const res = (s, b) => ({ ok: s < 300, status: s, json: async () => b });
+    if (url.endsWith('/auth/v1/user')) return res(200, { email: 'remi@exemple.fr' });
+    if (url.endsWith('/rpc/is_app_admin')) return res(200, false);
+    if (url.endsWith('/rpc/my_profile')) return res(200, { first_name: 'Rémi' });
+    if (url.endsWith('/rpc/convocation_data')) return data ? res(200, CD) : res(400, { message: 'réservé' });
+    if (url.endsWith('/rpc/convocation_prepare')) return res(200, { version: 1, email_left: left });
+    if (url === 'https://api.resend.com/emails') return resendOk ? res(200, { id: 'em_2' }) : res(422, { message: 'adresse refusée' });
+    return res(404, {});
+  };
+  return { f, calls };
+}
+const PDF = Buffer.from('%PDF-1.4\n' + 'x'.repeat(400)).toString('base64');
+const conv = (o = {}) => ({ convocation: { event_id: 'e1', step: 'C', version: 2, to: { civ: 'Monsieur', first: 'Jean', last: 'Dupont', email: 'jean@club.fr' }, filename: 'Convocation-BB-20261114-C-v2.pdf', pdf: PDF, ...o } });
+k = fakeC(); r = await F.handle(req(conv()), env, k.f); b = await r.json();
+const cm = JSON.parse((k.calls.find((c) => c[0] === 'https://api.resend.com/emails') || [, { body: '{}' }])[1].body);
+check('n° 112 : convocation envoyée par un membre qui a la rubrique Événements (pas besoin d’être administrateur)', r.status === 200 && b.envoye === true);
+check('n° 112 : expéditeur = nom du club + catégorie, adresse notifications@', cm.from === '"Boissy Basket 91 U9 F" <notifications@mypocketclub.fr>');
+check('n° 112 : réponses vers la personne qui envoie, et copie à cette personne', cm.reply_to === 'remi@exemple.fr' && JSON.stringify(cm.cc) === '["remi@exemple.fr"]');
+check('n° 112 : un seul destinataire, le contact saisi', JSON.stringify(cm.to) === '["jean@club.fr"]');
+check('n° 112 : objet « Convocation Boissy Basket 91 U9 F (mise à jour) » pour une -v2', cm.subject === 'Convocation Boissy Basket 91 U9 F (mise à jour)');
+check('n° 112 : « Bonjour Monsieur Dupont », rencontre, gymnase, signature', /Bonjour Monsieur Dupont,/.test(cm.text) && /Étampes BC/.test(cm.text) && /15h00/.test(cm.text) && /Gymnase Jean-Moulin/.test(cm.text) && /Rémi Rencontres, Boissy Basket 91/.test(cm.text));
+check('n° 112 : le PDF est joint avec son nom', cm.attachments?.[0]?.filename === 'Convocation-BB-20261114-C-v2.pdf' && cm.attachments[0].content === PDF);
+k = fakeC({ data: false }); r = await F.handle(req(conv()), env, k.f);
+check('n° 112 : sans la rubrique Événements : refusé (403), rien envoyé', r.status === 403 && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeC({ left: 0 }); r = await F.handle(req(conv()), env, k.f);
+check('n° 112 : limite du jour atteinte : refusé (429), rien envoyé', r.status === 429 && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeC(); r = await F.handle(req(conv({ to: { civ: 'Madame', last: 'X', email: 'pas une adresse' } })), env, k.f);
+check('n° 112 : adresse du contact invalide : refusé (400)', r.status === 400 && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeC(); r = await F.handle(req(conv({ pdf: Buffer.from('<html>' + 'x'.repeat(400)).toString('base64') })), env, k.f);
+check('n° 112 : pièce jointe qui n’est pas un PDF : refusée (400)', r.status === 400 && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeC({ resendOk: false }); r = await F.handle(req(conv()), env, k.f); b = await r.json();
+check('n° 107 : refus de Resend renvoyé (502) pour que l’échec soit noté', r.status === 502 && /adresse refusée/.test(b.detail));
+check('n° 112 : HTML de la convocation : texte échappé', !/<script>/.test(F.convocationMail({ ...CD, club: { name: '<script>' } }, 'P', 1, { last: '<b>' }).html));
 console.log(`\n   ${ok} réussis sur ${ok + ko} tests d'e-mail`);
 if (ko) process.exitCode = 1;
