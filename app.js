@@ -23,6 +23,7 @@ import { V37_TOP, loadAdminCounts } from './js/v37.js';
 import { switchBar, saveSwitch, resetUser } from './js/profils.js';
 import { V310_VIEWS, syncTeamCtx, teamWrap, loadV310, clubGoneScreen } from './js/v310.js';
 import { loadV43 } from './js/v43.js'; // 4.3.0 : n° 124 (validation des envois), n° 126 (profils de test)
+import { loadV44 } from './js/v44.js'; // 4.4.0 : n° 114 (bandeau et onglets de chaque fonction, droits, exports, saison)
 
 const TAB_TITLES = ['', 'Agenda', 'Messages', 'Équipe', 'Le club'];
 function profileLine() { return [...new Set(active().map((m) => roleLabel(m) + (m.team_id ? ' ' + teamName(m.team_id) : '')))].join(' · '); }
@@ -87,7 +88,7 @@ async function refresh(msg) {
   if (!S.joinChecked) { S.joinChecked = true; await openPendingJoin(); }
   if (!S.purged) { S.purged = true; sb.rpc('purge_trash').then(() => {}, () => {}); }
   await loadClub();
-  await Promise.all([loadCoachCounts(), loadEvPlans(), loadAdminCounts(), loadV310(), loadV43()]).catch(() => {});
+  await Promise.all([loadCoachCounts(), loadEvPlans(), loadAdminCounts(), loadV310(), loadV43(), loadV44()]).catch(() => {});
   if (S.view?.type === 'group') await loadGroup(S.view.id);
   render(true); subscribe(); if (msg) toast('À jour.');
   syncPush().then(() => render(true), () => {});

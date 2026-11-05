@@ -150,6 +150,8 @@ export function casquettes() {
   return l;
 }
 export const isCoachCasq = (k) => k === 'coach' || String(k || '').startsWith('coach:');
+// 4.4.0 (n° 114) : coordonnées des familles masquées au Directeur technique par le président (vérifié aussi par la base)
+export const contactsHidden = () => club()?.tech_sees_contacts === false && !isPresident() && myFonctions().includes('Directeur technique') && !['secretariat', 'tresorerie', 'licences'].some((a) => S.areas.includes(a));
 export const myFonctions = () => active().filter((m) => m.role === 'bureau').map((m) => m.fonction || 'Membre du bureau');
 export function canValidate(m) {
   if (m.user_id === S.me.id) return false;
@@ -186,6 +188,8 @@ export async function loadMe() {
   if (!S.clubs[S.clubId]) { const act = S.mems.find((m) => m.status === 'active'); S.clubId = act ? act.club_id : ids[0] || null; }
   if (S.clubId) store.set('pc_club', S.clubId);
 }
+// 4.4.0 (n° 114) : la table des fiches ne donne plus les coordonnées (contact du parent importé, contact d'urgence)
+const PLAYER_COLS = 'id,club_id,team_id,user_id,first_name,last_name,birth_date,consents,deleted_at,deleted_by,created_by,created_at,from_partner';
 const inList = (q, col, ids) => (ids.length ? q.in(col, ids) : Promise.resolve({ data: [] }));
 export async function loadClub() {
   if (!S.clubId || !isActive()) return;
@@ -196,7 +200,7 @@ export async function loadClub() {
     sb.from('events').select('*').eq('club_id', cid).gte('starts_at', since).order('starts_at').limit(400),
     sb.from('groups').select('*').eq('club_id', cid).order('created_at', { ascending: false }),
     sb.rpc('club_roster', { p_club: cid }),
-    sb.from('players').select('*').eq('club_id', cid).order('last_name'),
+    sb.from('players').select(PLAYER_COLS).eq('club_id', cid).order('last_name'), // 4.4.0 : coordonnées lues par player_contacts
     sb.from('club_docs').select('id,kind,file_name,created_at').eq('club_id', cid),
     sb.from('fee_grid').select('*').eq('club_id', cid),
     sb.from('event_hidden').select('*').eq('user_id', S.me.id),
@@ -228,6 +232,13 @@ export async function loadClub() {
     inList(sb.from('event_missions').select('*').order('position'), 'event_id', eids),
   ]);
   S.areas = ar.data || []; S.annonces = an.data || [];
+  // 4.4.0 (n° 114) : coordonnées des fiches (sauf pour le Directeur technique si le président les masque) ;
+  // licences du Secrétariat et du correspondant licences, sans les montants (« cotisation à jour » si le président l'active)
+  const lic0 = (S.areas.includes('secretariat') || S.areas.includes('licences')) && !S.areas.includes('tresorerie');
+  const [pc, lc] = await Promise.all([sb.rpc('player_contacts', { p_club: cid }), lic0 ? sb.rpc('club_licences', { p_club: cid }) : Promise.resolve({ data: [] })]);
+  const pcm = new Map((Array.isArray(pc.data) ? pc.data : []).map((x) => [x.id, x]));
+  S.players.forEach((p) => { const x = pcm.get(p.id); Object.assign(p, { parent_email: x?.parent_email || null, parent_phone: x?.parent_phone || null, emergency_name: x?.emergency_name || null, emergency_phone: x?.emergency_phone || null }); });
+  S.licRows = Array.isArray(lc.data) ? lc.data : [];
   // 3.5.0 : vérification des heures (n° 75), ordre des blocs des espaces (n° 76), ententes reçues (n° 78)
   const [hc, hf, up, pt2] = await Promise.all([
     sb.from('hours_checks').select('*').eq('club_id', cid).order('month', { ascending: false }).limit(12),
@@ -261,6 +272,9 @@ export async function loadClub() {
     (un.data || []).forEach((m) => { const g = S.myGroups.find((x) => x.group_id === m.group_id); if (g && m.created_at > g.last_read_at) S.unread[m.group_id] = (S.unread[m.group_id] || 0) + 1; });
   }
   S.pparents = pp.data || []; S.padmin = pa.data || []; S.att = at.data || []; S.pteams = pt.data || [];
+  // 4.4.0 : une ligne de licence sans montant (nofee) pour chaque fiche dont la cotisation n'est pas lisible
+  const seen = new Set(S.padmin.map((a) => a.player_id));
+  S.licRows.forEach((r) => { if (!seen.has(r.player_id)) S.padmin.push({ player_id: r.player_id, licence_state: r.licence_state, licence_number: r.licence_number, health_doc: r.health_doc, fee_ok: r.fee_ok, nofee: true }); });
   S.resp = rs.data || []; S.lastMsgs = lm.data || []; S.discounts = dc.data || [];
   const uids = S.members.map((m) => m.user_id).concat(S.pparents.map((x) => x.user_id), S.lastMsgs.map((m) => m.user_id), S.resp.map((r) => r.user_id), S.signups.map((x) => x.user_id), S.annonces.map((a) => a.created_by));
   await loadNames(uids);

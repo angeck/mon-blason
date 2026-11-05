@@ -6,7 +6,7 @@
 // N° 115 : « Payer · Bientôt disponible ».
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_10_0.sql) ; l'écran n'est qu'un confort.
 import {
-  S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, club, active, isBoard, isPresident, coachTeams, coachOf,
+  S, sb, esc, hooks, run, toast, render, refresh, armed, isArmed, ACTIONS, club, active, isBoard, isPresident, coachTeams, coachOf,
   SEASON, team, teamName, name, plural, fmtShort, hm, evTeams, store, toValidate, playersOfTeam, isMajor, myKids, mySelf, FONCTIONS, hasArea,
 } from './core.js';
 import { icon, header, dayBadge, field, clubSeason } from './ui.js';
@@ -216,8 +216,9 @@ function quiView() {
 function reglagesView() {
   const c = club(), ad = adultMembers().filter((u) => u !== S.me.id), off = S.poffer;
   let h = `<div class="sec"><h2>Club</h2></div><div class="card">${sw('public_listed', 'Apparaître dans la recherche des clubs', 'Nom, ville, équipes visibles et créneaux seulement.', c.public_listed !== false)}</div>` + brandBlock() + contactsBlock();
-  h += `<div class="sec"><h2>Droits</h2></div><div class="card">${sw('coach_sees_fees', 'Les coachs voient licences et cotisations', 'De leurs joueurs seulement, sans les réductions.', c.coach_sees_fees !== false)}${sw('custom_header', 'Aux couleurs du club', 'L’en-tête prend la couleur principale du club.', c.custom_header)}</div>`;
-  h += `<div class="sec"><h2>Saison</h2></div><div class="card"><p class="note" style="margin:0">Renouveler une équipe : Équipes › l’équipe › Effectif › « Archiver et reconduire ». Le passage de saison pour tout le club arrive dans une prochaine version.</p></div>`;
+  // 4.4.0 (n° 114) : « cotisation à jour » pour le Secrétariat (non par défaut) ; coordonnées des familles pour le Directeur technique (oui par défaut)
+  h += `<div class="sec"><h2>Droits</h2></div><div class="card">${sw('coach_sees_fees', 'Les coachs voient licences et cotisations', 'De leurs joueurs seulement, sans les réductions.', c.coach_sees_fees !== false)}${sw('secretary_sees_fees', 'Le secrétariat voit « cotisation à jour »', 'Oui ou non pour chaque joueur, jamais les montants. Vaut aussi pour le correspondant licences.', c.secretary_sees_fees === true)}${sw('tech_sees_contacts', 'Le Directeur technique voit les coordonnées des familles', 'Parents et joueurs : téléphone, e-mail, contact d’urgence. Celles de ses propres équipes restent visibles s’il est aussi coach.', c.tech_sees_contacts !== false)}${sw('custom_header', 'Aux couleurs du club', 'L’en-tête prend la couleur principale du club.', c.custom_header)}</div>`;
+  h += `<div class="sec"><h2>Saison</h2></div>` + (hooks.seasonBlock ? hooks.seasonBlock() : '');
   // Zone sensible
   h += `<div class="sec"><h2>Zone sensible</h2></div><div class="card" style="border:2px solid var(--pc-erreur, #D93A3A)"><b>Transférer la présidence</b>`;
   if (off) h += `<p class="note">Proposée à <b>${esc(name(off.to_user))}</b> le ${esc(new Date(off.created_at).toLocaleDateString('fr-FR'))}. Tu restes président tant que la personne n’a pas accepté (14 jours au plus).</p><button class="btn ghost small" data-act="poffercancel">Annuler la proposition</button>`;
@@ -238,7 +239,8 @@ function journalBody() {
 // Espace d'une fonction vu par le président (dépliant « Bureau ») : ses actions restent à son nom
 function fviewView(v) {
   const f = v.f;
-  return { head: header({ back: true, kicker: 'Espace Président · Bureau', title: esc(f) }), body: `<div class="card pale"><p class="note" style="margin:0">Tu vois l’espace « ${esc(f)} » avec ton compte : ce que tu fais ici est inscrit au journal <b>à ton nom</b>.${holder(f).length ? ' Titulaire : ' + esc(holder(f).join(', ')) + '.' : ' Personne n’a cette fonction : c’est toi qui t’en occupes.'}</p></div>` + fonctionSpace(f, true) };
+  const o = hooks.fnSpace ? hooks.fnSpace(f, false) : null; // 4.4.0 (n° 114) : même présentation que la personne qui a la fonction
+  return { head: header({ back: true, kicker: 'Espace Président · Bureau', title: esc(f), tabs: o?.tabs || '' }), body: `<div class="card pale"><p class="note" style="margin:0">Tu vois l’espace « ${esc(f)} » avec ton compte : ce que tu fais ici est inscrit au journal <b>à ton nom</b>.${holder(f).length ? ' Titulaire : ' + esc(holder(f).join(', ')) + '.' : ' Personne n’a cette fonction : c’est toi qui t’en occupes.'}</p></div>` + (o ? o.body : fonctionSpace(f, true)) };
 }
 
 // ---------- correspondant licences (sans tout le Secrétariat) ----------

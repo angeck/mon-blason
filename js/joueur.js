@@ -1,6 +1,6 @@
 // mypocketclub · fiche joueur : informations, parents, autorisations datées, licence et cotisation, corbeille.
 import { BRAND } from '../config.js';
-import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, club, isBoard, team, teamName, pl, pname, adminOf, parentsOf, isParentOf, canManagePlayer, canAdminPlayer, outranks, isMajor, name, num, plural } from './core.js';
+import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, club, isBoard, hasArea, coachOf, contactsHidden, team, teamName, pl, pname, adminOf, parentsOf, isParentOf, canManagePlayer, canAdminPlayer, outranks, isMajor, name, num, plural } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 import { payFamilySoon } from './v310.js';
 
@@ -20,7 +20,16 @@ export function feeState(a) {
 const cls = (v) => (['Licencié', 'Payée'].includes(v) ? 'ok' : ['À payer', 'Préinscrit club'].includes(v) ? 'ko' : 'wait');
 export function statusPills(p) {
   const a = adminOf(p.id); if (!a) return '';
-  return `<span class="pill ${cls(a.licence_state)}">${esc(a.licence_state)}</span><span class="pill ${cls(feeState(a))}">Cotisation : ${esc(feeState(a).toLowerCase())}</span>${a.health_doc ? '' : '<span class="pill ko">Certificat manquant</span>'}`;
+  // 4.4.0 (n° 114) : sans accès aux montants, « cotisation à jour » seulement si le président l'a activé
+  const fee = a.nofee ? (a.fee_ok == null ? '' : `<span class="pill ${a.fee_ok ? 'ok' : 'ko'}">Cotisation ${a.fee_ok ? 'à jour' : 'pas à jour'}</span>`) : `<span class="pill ${cls(feeState(a))}">Cotisation : ${esc(feeState(a).toLowerCase())}</span>`;
+  return `<span class="pill ${cls(a.licence_state)}">${esc(a.licence_state)}</span>${fee}${a.health_doc ? '' : '<span class="pill ko">Certificat manquant</span>'}`;
+}
+// Licence (et réduction pour la trésorerie) ; la licence passe par set_licence (4.4.0)
+function licForm(pid, A, disc, D = {}) {
+  return `<form id="padminf" data-id="${pid}" class="card"><div class="kick">${disc ? 'Licence et réduction' : 'Licence'}</div>${field('g1', 'Licence', `<select id="g1" name="licence_state">${LIC.map((x) => `<option ${A.licence_state === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}${field('g2', 'Numéro de licence', `<input id="g2" name="licence_number" value="${esc(A.licence_number || '')}">`)}
+    <label class="check"><input type="checkbox" name="health_doc" ${A.health_doc ? 'checked' : ''}><span>Certificat ou questionnaire de santé fourni</span></label>
+    ${disc ? `<div class="grid2">${field('g7', 'Réduction (€)', `<input id="g7" name="disc" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(D.amount ?? '')}">`)}${field('g8', 'Motif (bureau seulement)', `<input id="g8" name="disc_reason" value="${esc(D.reason || '')}" placeholder="Fratrie, aide de la mairie…">`)}</div>` : ''}
+    <button class="btn main" type="submit">Enregistrer</button></form><p class="note">${disc ? 'Le montant dû vient de la grille des tarifs du club, moins la réduction. ' : ''}Aucune donnée de santé : seulement « fourni » ou non.</p>`;
 }
 export function presence(pid) {
   const r = S.att.filter((x) => x.player_id === pid), ok = r.filter((x) => x.status !== 'absent').length;
@@ -47,15 +56,17 @@ export function playerPage(pid) {
   h += payFamilySoon(p); // n° 115
   // informations
   h += '<div class="sec"><h2>Informations</h2></div>';
+  const hid = contactsHidden() && !coachOf(p.team_id) && !isParentOf(p.id) && p.user_id !== S.me.id; // 4.4.0 : coordonnées masquées par le président
+  if (hid) h += '<div class="card pale"><p class="note" style="margin:0">Coordonnées de la famille et contact d’urgence masqués par le président (Réglages › Droits).</p></div>';
   if (ed) {
     const em = (p.emergency_name || '').split(' ');
     h += `<form id="plf" data-id="${pid}" class="card"><div class="grid2">${field('f1', 'Prénom', `<input id="f1" name="first_name" value="${esc(p.first_name)}" required>`)}${field('f2', 'Nom', `<input id="f2" name="last_name" value="${esc(p.last_name || '')}" required>`)}</div>
     ${field('f3', 'Date de naissance', `<input id="f3" name="birth_date" type="date" value="${esc(p.birth_date || '')}">`)}
     ${canManagePlayer(p) ? field('f6', 'Équipe principale', `<select id="f6" name="team_id">${S.teams.map((t) => `<option value="${t.id}" ${t.id === p.team_id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>`) : ''}
-    <div class="kick">Contact d'urgence</div><div class="grid2">${field('f4', 'Prénom', `<input id="f4" name="em_first" value="${esc(em[0] || '')}">`)}${field('f4b', 'Nom', `<input id="f4b" name="em_last" value="${esc(em.slice(1).join(' '))}">`)}</div>
-    ${field('f5', "Téléphone d'urgence", `<input id="f5" name="emergency_phone" type="tel" value="${esc(p.emergency_phone || '')}">`)}
+    ${hid ? '' : `<div class="kick">Contact d'urgence</div><div class="grid2">${field('f4', 'Prénom', `<input id="f4" name="em_first" value="${esc(em[0] || '')}">`)}${field('f4b', 'Nom', `<input id="f4b" name="em_last" value="${esc(em.slice(1).join(' '))}">`)}</div>
+    ${field('f5', "Téléphone d'urgence", `<input id="f5" name="emergency_phone" type="tel" value="${esc(p.emergency_phone || '')}">`)}`}
     <p class="note">Ne saisis aucune information médicale (maladie, allergie, traitement).</p><button class="btn main" type="submit">Enregistrer</button></form>`;
-  } else h += `<div class="card"><div>Contact d'urgence : ${esc(p.emergency_name || '—')} ${esc(p.emergency_phone || '')}</div></div>`;
+  } else if (!hid) h += `<div class="card"><div>Contact d'urgence : ${esc(p.emergency_name || '—')} ${esc(p.emergency_phone || '')}</div></div>`;
   if (p.emergency_phone && !ed) h += `<a class="btn" href="tel:${esc(tel(p.emergency_phone))}">${icon('phone', 20)}Appeler le contact d'urgence</a>`;
   // contact importé et invitation
   if ((p.parent_email || p.parent_phone) && (canManagePlayer(p) || isParentOf(p.id))) {
@@ -74,6 +85,13 @@ export function playerPage(pid) {
   h += '<div class="sec"><h2>Licence et cotisation</h2></div>';
   // n° 33 : montant dû calculé (grille − réduction), versements, pastille « Payé »
   const A = a || {}, due = A.fee_amount, paid = +A.fee_paid || 0, rest = due == null ? null : Math.max(0, due - paid), pays = S.payments.filter((x) => x.player_id === pid);
+  // 4.4.0 (n° 114) : le Secrétariat et le correspondant licences voient la licence, pas les montants
+  if (A.nofee) {
+    h += `<div class="card"><div class="chips">${statusPills(p)}</div>${A.licence_number ? `<div class="det">Licence n° ${esc(A.licence_number)}</div>` : ''}<p class="note" style="margin:0">Les montants de la cotisation sont réservés à la trésorerie et au président.</p></div>`;
+    if (canAdminPlayer(p)) h += licForm(pid, A, false);
+    if (canAdminPlayer(p)) h += delBtn('pdel', pid, 'Mettre la fiche à la corbeille', 'Confirmer : la fiche part à la corbeille (30 jours)', isArmed('p' + pid));
+    return h;
+  }
   h += `<div class="card"><div class="chips">${statusPills(p)}</div>${A.licence_number ? `<div class="det">Licence n° ${esc(A.licence_number)}</div>` : ''}
   <div class="grid2" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div><div class="kick">Dû</div><b class="big" style="font-size:24px">${eur(due)}</b></div><div><div class="kick">Réglé</div><b class="big" style="font-size:24px">${eur(paid)}</b></div><div><div class="kick">Reste</div><b class="big" style="font-size:24px">${eur(rest)}</b></div></div>
   ${due == null ? '<p class="note">Montant dû inconnu : le tarif de la catégorie ou de l’équipe n’est pas encore dans la grille du club.</p>' : ''}
@@ -83,10 +101,7 @@ export function playerPage(pid) {
     h += `<form id="payf" data-id="${pid}" class="card"><div class="kick">Ajouter un versement</div><div class="grid2">${field('pa1', 'Montant (€)', `<input id="pa1" name="amount" type="number" step="0.01" min="0.01" inputmode="decimal" required value="${rest ? rest : ''}">`)}${field('pa2', 'Moyen', `<select id="pa2" name="method"><option value="">—</option>${PAY.map((x) => `<option>${x}</option>`).join('')}</select>`)}</div><button class="btn main" type="submit">Ajouter le versement</button>
     ${due != null && rest > 0 ? `<button type="button" class="btn ghost ${isArmed('paid' + pid) ? 'ink' : ''}" data-act="paid" data-id="${pid}">${isArmed('paid' + pid) ? `Confirmer : payé (${eur(rest)} enregistrés)` : 'Valider « Payé » en une fois'}</button>` : ''}
     ${pays.length ? `<button type="button" class="btn danger ${isArmed('unpaid' + pid) ? 'armed' : ''}" data-act="unpaid" data-id="${pid}">${isArmed('unpaid' + pid) ? 'Confirmer : retirer tous les versements' : 'Repasser en « À payer »'}</button>` : ''}</form>
-    <form id="padminf" data-id="${pid}" class="card"><div class="kick">Licence et réduction</div>${field('g1', 'Licence', `<select id="g1" name="licence_state">${LIC.map((x) => `<option ${A.licence_state === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}${field('g2', 'Numéro de licence', `<input id="g2" name="licence_number" value="${esc(A.licence_number || '')}">`)}
-    <label class="check"><input type="checkbox" name="health_doc" ${A.health_doc ? 'checked' : ''}><span>Certificat ou questionnaire de santé fourni</span></label>
-    <div class="grid2">${field('g7', 'Réduction (€)', `<input id="g7" name="disc" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(D.amount ?? '')}">`)}${field('g8', 'Motif (bureau seulement)', `<input id="g8" name="disc_reason" value="${esc(D.reason || '')}" placeholder="Fratrie, aide de la mairie…">`)}</div>
-    <button class="btn main" type="submit">Enregistrer</button></form><p class="note">Le montant dû vient de la grille des tarifs du club, moins la réduction. Aucune donnée de santé : seulement « fourni » ou non.</p>`;
+    ${licForm(pid, A, hasArea('tresorerie'), D)}`;
   } else if (board) h += '<p class="note">Cette fiche appartient à quelqu’un de ton niveau ou au-dessus : seul un rang supérieur peut la modifier.</p>';
   if (canAdminPlayer(p)) h += delBtn('pdel', pid, 'Mettre la fiche à la corbeille', 'Confirmer : la fiche part à la corbeille (30 jours)', isArmed('p' + pid));
   return h;
@@ -110,14 +125,16 @@ Object.assign(FORMS, {
   plf: async (v, f) => {
     if (!v.first_name.trim() || !(v.last_name || '').trim()) return toast('Le prénom et le nom sont obligatoires.');
     const em = ((v.em_first || '').trim() + ' ' + (v.em_last || '').trim()).trim();
-    const row = { first_name: v.first_name.trim(), last_name: v.last_name.trim(), birth_date: v.birth_date || null, emergency_name: em || null, emergency_phone: (v.emergency_phone || '').trim() || null };
+    const row = { first_name: v.first_name.trim(), last_name: v.last_name.trim(), birth_date: v.birth_date || null };
+    if (v.em_first !== undefined) Object.assign(row, { emergency_name: em || null, emergency_phone: (v.emergency_phone || '').trim() || null }); // 4.4.0 : rien n'est effacé quand le contact est masqué
     if (v.team_id) row.team_id = v.team_id;
     if (await run(sb.from('players').update(row).eq('id', f.dataset.id), 'Informations enregistrées.')) await refresh();
   },
   padminf: async (v, f) => {
-    const pid = f.dataset.id, row = { player_id: pid, licence_state: v.licence_state, licence_number: (v.licence_number || '').trim() || null, health_doc: !!v.health_doc, updated_by: S.me.id, updated_at: new Date().toISOString() };
-    if (!await run(sb.from('player_admin').upsert(row))) return;
+    const pid = f.dataset.id;
+    if (!await run(sb.rpc('set_licence', { p_player: pid, p_state: v.licence_state, p_number: (v.licence_number || '').trim() || null, p_health: !!v.health_doc }))) return;
     const disc = num(v.disc) || 0, had = S.discounts.find((x) => x.player_id === pid);
+    if (v.disc === undefined) { toast('Licence enregistrée.'); await refresh(); return; }
     if (disc || (v.disc_reason || '').trim() || had) { if (!await run(sb.from('player_discount').upsert({ player_id: pid, amount: disc, reason: (v.disc_reason || '').trim() || null, updated_by: S.me.id, updated_at: new Date().toISOString() }))) return; }
     toast('Licence et réduction enregistrées.'); await refresh();
   },

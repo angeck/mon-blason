@@ -62,7 +62,7 @@ function espaceView() {
   if (one) { const t = team(c.teams[0]); title = esc(teamName(c.teams[0])); under = clubSeason(t?.season || SEASON); tabs = teamTabs(c.teams[0], 'Pointer'); body += coachSingle(c.teams[0]); }
   else if (isCoachCasq(c.k)) { title = 'Mes équipes'; body += coachHub(c.teams); }
   else if (c.k === 'president') { title = 'Président'; tabs = presidentTabs(); body += presidentSpace310(); } // n° 114 : cinq onglets
-  else body += fonctionSpace(c.k.slice(2));
+  else { const f = c.k.slice(2), o = hooks.fnSpace ? hooks.fnSpace(f, true) : null; if (o) { tabs = o.tabs; body += o.body; } else body += fonctionSpace(f); } // 4.4.0 (n° 114) : bandeau + onglets (js/v44.js)
   body += defaultAsk(); // n° 116 : une ligne discrète en bas de page
   return { head: header({ back: true, space: true, title, under, casq: casqTabs(), tabs }), body };
 }
@@ -113,7 +113,7 @@ export function presidentOverview() {
   void regl; void outils; void alert;
 }
 export const sw = (k, t, d, on) => `<label class="switch"><input type="checkbox" data-clubset="${k}" ${on ? 'checked' : ''}><span><b>${esc(t)}</b><br><span class="det">${esc(d)}</span></span></label>`;
-function rubList(keys) {
+export function rubList(keys) {
   keys = [...new Set(keys)].filter((a) => RUB_SUB[a]); // n° 119 : « licences » (correspondant licences) n'a pas de ligne à part
   return `<div class="sec"><h2>Rubriques</h2></div><div class="card"><div class="list">${keys.map((a) => `<button class="row" data-act="rub" data-id="${a}"><span style="width:40px;height:40px;border-radius:14px;background:var(--pc-bleu-pale);display:flex;align-items:center;justify-content:center;flex:none">${icon(AREA_ICON[a], 20, 'var(--pc-bleu)')}</span><span class="g">${esc(AREAS[a] || 'Commun')}<small>${esc(RUB_SUB[a])}</small></span><span class="chev"></span></button>`).join('')}</div></div>`;
 }
@@ -145,7 +145,7 @@ function rubView(a) {
   currentCasq();
   return { head: header({ back: true, kicker: 'Rubrique', title: esc(AREAS[a] || 'Commun'), casq: ok ? casqTabs() : '' }), body: ok ? rubBody(a) : '<div class="card"><p class="empty">Cette rubrique n’est pas ouverte pour toi. Le président peut l’ouvrir dans « Fonctions du bureau ».</p></div>' };
 }
-function rubBody(a) {
+export function rubBody(a) {
   if (a === 'tresorerie') return payTreasurerSoon() + tresoSummary() + feesBlock() + licencesBlock(); // n° 115
   if (a === 'secretariat') { const vp = toValidate(); return (vp.length ? `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>` : '') + namesToCheck() + licencesBlock() + membersBlock(); }
   if (a === 'technique') return `<div class="grid2"><button class="btn small" data-act="choursb">${icon('check', 18)}Heures des coachs</button><button class="btn small" data-act="cexos" data-tab="club">${icon('doc', 18)}Exercices du club</button><button class="btn small" data-act="cstats">${icon('team', 18)}Statistiques</button><button class="btn small" data-act="evnew" data-type="Match">${icon('calplus', 18)}Nouveau match</button></div>` + teamToolsBlock() + teamsBlock();
@@ -155,7 +155,7 @@ function rubBody(a) {
   if (a === 'evenements') return eventsRub();
   return `<div class="grid2"><button class="btn small" data-act="tab" data-i="1">${icon('cal', 18)}Agenda</button><button class="btn small" data-act="tab" data-i="2">${icon('msg', 18)}Messages</button><button class="btn small" data-act="annlist">${icon('msg', 18)}Annonces</button>${isPresident() ? `<button class="btn small" data-act="journal">${icon('doc', 18)}Journal</button>` : ''}</div>` + trashBlock();
 }
-function tresoSummary() {
+export function tresoSummary() {
   const rows = S.players.filter((p) => !p.from_partner).map((p) => ({ p, a: S.padmin.find((x) => x.player_id === p.id) })).filter((x) => x.a && x.a.fee_amount != null);
   const due = rows.reduce((s, x) => s + +x.a.fee_amount, 0), paid = rows.reduce((s, x) => s + Math.min(+x.a.fee_paid || 0, +x.a.fee_amount), 0);
   const full = rows.filter((x) => +x.a.fee_paid >= +x.a.fee_amount).length, part = rows.filter((x) => +x.a.fee_paid > 0 && +x.a.fee_paid < +x.a.fee_amount).length, none = rows.filter((x) => !(+x.a.fee_paid > 0) && +x.a.fee_amount > 0).length;
@@ -168,7 +168,7 @@ function tresoSummary() {
   return h;
 }
 // n° 71 : missions à pourvoir avec relance depuis l'espace ; n° 74 : compteurs ; n° 70 : réglage des supporteurs
-function benevBlock(evs) {
+export function benevBlock(evs) {
   const memAll = [...new Map(S.members.filter((x) => x.status === 'active').map((x) => [x.user_id, x])).keys()].sort((a, b) => name(a).localeCompare(name(b), 'fr'));
   const off = new Set(S.optouts || []), nm = (u) => esc(name(u)) + (off.has(u) ? ' (ne souhaite pas être sollicité)' : '');
   let h = `<div class="sec"><h2>Missions à pourvoir</h2></div>`;
@@ -199,17 +199,22 @@ function eventsRub() {
   const home = upcoming(S.events.filter((e) => !e.cancelled && e.at_home !== false && e.audience === 'team' && ['Match', 'Plateau', 'Tournoi'].includes(e.type) && new Date(e.starts_at) < soon));
   let h = home.length ? `<div class="sec"><h2>Matchs à domicile à convoquer</h2><span class="det">${plural(home.length, 'rencontre')}</span></div><div class="card"><div class="list">${home.map((e) => `<button class="row" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(fmtShort(e.starts_at))} · ${esc(teamName(evTeams(e)[0]) || '')}${e.place ? ' · ' + esc(e.place) : ''}</small></span><span class="chev"></span></button>`).join('')}</div><p class="note">Ouvre une rencontre pour préparer la pré-convocation ou la convocation des clubs reçus.</p></div>` : '';
   h += benevBlock(evs) + `<button class="btn main" data-act="evnew" data-type="Événement">${icon('plus', 20)}Nouvel événement</button>`;
-  const dm = S.dm || (S.dm = (club()?.default_missions || []).map((x) => ({ ...x })));
-  h += `<div class="sec"><h2>Missions par défaut du club</h2></div><div class="card"><div class="list">${dm.map((x, i) => `<div class="row static"><input aria-label="Mission ${i + 1}" data-dml="${i}" value="${esc(x.label)}" maxlength="40" style="flex:1;min-width:0;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 10px"><input type="number" aria-label="Places" data-dms="${i}" value="${esc(x.slots)}" min="1" max="20" style="width:70px;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 8px"><button class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="dmrm" data-i="${i}" aria-label="Retirer">${icon('trash', 18)}</button></div>`).join('')}</div>
-  <div class="btns"><button class="btn ghost small" data-act="dmadd">${icon('plus', 18)}Ajouter</button><button class="btn main small" data-act="dmsave">Enregistrer</button></div><p class="note">Proposées en un geste sur chaque match, plateau, tournoi ou événement.</p></div>`;
+  h += defaultMissionsBlock();
   return (hooks.receivedBlock ? hooks.receivedBlock() : '') + h; // n° 109 : convocations reçues des autres clubs, en tête (js/v42.js)
+}
+
+// Missions par défaut du club (rubrique Événements ; 4.4.0 : onglet Bénévoles du correspondant rencontres)
+export function defaultMissionsBlock() {
+  const dm = S.dm || (S.dm = (club()?.default_missions || []).map((x) => ({ ...x })));
+  return `<div class="sec"><h2>Missions par défaut du club</h2></div><div class="card"><div class="list">${dm.map((x, i) => `<div class="row static"><input aria-label="Mission ${i + 1}" data-dml="${i}" value="${esc(x.label)}" maxlength="40" style="flex:1;min-width:0;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 10px"><input type="number" aria-label="Places" data-dms="${i}" value="${esc(x.slots)}" min="1" max="20" style="width:70px;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 8px"><button class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="dmrm" data-i="${i}" aria-label="Retirer">${icon('trash', 18)}</button></div>`).join('')}</div>
+  <div class="btns"><button class="btn ghost small" data-act="dmadd">${icon('plus', 18)}Ajouter</button><button class="btn main small" data-act="dmsave">Enregistrer</button></div><p class="note">Proposées en un geste sur chaque match, plateau, tournoi ou événement.</p></div>`;
 }
 
 // ---------- bénévoles (n° 53) ----------
 const MISSION_TYPES = ['Match', 'Plateau', 'Tournoi', 'Événement', 'AG'];
 const missionsOf = (eid) => S.missions.filter((m) => m.event_id === eid).sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at));
 const signupsOf = (mid) => S.signups.filter((x) => x.mission_id === mid);
-const missing = (eid) => missionsOf(eid).reduce((a, m) => a + Math.max(0, m.slots - signupsOf(m.id).length), 0);
+export const missing = (eid) => missionsOf(eid).reduce((a, m) => a + Math.max(0, m.slots - signupsOf(m.id).length), 0);
 export const canManageMissions = (e) => (e.audience === 'team' && evTeams(e).some(coachOf)) || e.created_by === S.me.id || hasArea('evenements');
 const supporterOnly = () => active().every((m) => m.role === 'supporteur');
 export function myMissionLabel(e) {
@@ -269,7 +274,7 @@ const KIND = { relance: ['Rappel', 'wait'], missions: ['Bénévoles', 'wait'], c
 const kindOf = (a) => KIND[a.kind] || KIND.annonce;
 const unread = (a) => !S.annRead.has(a.id) && a.created_by !== S.me.id;
 export const canAnnounce = () => hasArea('communication') || isBoard() || coachTeams().length > 0;
-function annList(list, withAll) {
+export function annList(list, withAll) {
   if (!list.length) return '<p class="empty">Aucune annonce pour l’instant.</p>';
   return `<div class="card"><div class="list">${list.map((a) => `<button class="ann" data-act="annopen" data-id="${a.id}"><span class="dot ${unread(a) ? '' : 'read'}" aria-hidden="true"></span><span style="display:flex;flex-direction:column;flex:1;min-width:0"><b style="${unread(a) ? '' : 'font-weight:500'}">${esc(a.title)}</b><span class="det">${esc(nick(a.created_by))} · ${esc(fmtShort(a.created_at))}</span></span><span class="pill ${kindOf(a)[1]}">${kindOf(a)[0]}</span></button>`).join('')}</div></div>${withAll && S.annonces.length > list.length ? '<button class="btn ghost small" data-act="annlist">Toutes les annonces</button>' : ''}`;
 }

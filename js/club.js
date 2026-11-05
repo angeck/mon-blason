@@ -70,18 +70,23 @@ export function membersBlock() {
 
 // ---------- licences, cotisations, dates de naissance ----------
 export function licencesBlock() {
-  if (!hasArea('tresorerie') && !hasArea('secretariat')) return '';
+  if (!hasArea('tresorerie') && !hasArea('secretariat') && !hasArea('licences')) return ''; // 4.4.0 : aussi le correspondant licences
+  // 4.4.0 (n° 114) : sans la Trésorerie, pas de montants ; « cotisation à jour » (oui / non) seulement si le président l'a activé
+  const nf = !hasArea('tresorerie'), seeOk = nf && S.padmin.some((a) => a.nofee && a.fee_ok != null);
   const all = S.players.filter((p) => !p.from_partner), f = S.lf || 'Tous', noBirth = all.filter((p) => !p.birth_date).length;
-  const lic = all.filter((p) => adminOf(p.id)?.licence_state === 'Licencié').length, paid = all.filter((p) => feeState(adminOf(p.id)) === 'Payée').length;
-  const rest = (p) => { const a = adminOf(p.id); return a?.fee_amount == null ? null : Math.max(0, a.fee_amount - (+a.fee_paid || 0)); };
-  const keep = (p) => { const a = adminOf(p.id); return f === 'Tous' || (f === 'Licence à finir' && a?.licence_state !== 'Licencié') || (f === 'Reste à payer' && rest(p) > 0) || (f === 'Certificat manquant' && !a?.health_doc) || (f === 'Date de naissance manquante' && !p.birth_date); };
+  const lic = all.filter((p) => adminOf(p.id)?.licence_state === 'Licencié').length, paid = nf ? all.filter((p) => adminOf(p.id)?.fee_ok).length : all.filter((p) => feeState(adminOf(p.id)) === 'Payée').length;
+  const rest = (p) => { const a = adminOf(p.id); if (nf) return a?.fee_ok === false ? 1 : 0; return a?.fee_amount == null ? null : Math.max(0, a.fee_amount - (+a.fee_paid || 0)); };
+  const keep = (p) => { const a = adminOf(p.id); return f === 'Tous' || (f === 'Licence à finir' && a?.licence_state !== 'Licencié') || (['Reste à payer', 'Cotisation pas à jour'].includes(f) && rest(p) > 0) || (f === 'Certificat manquant' && !a?.health_doc) || (f === 'Date de naissance manquante' && !p.birth_date); };
   const list = all.filter(keep).sort((x, y) => teamName(x.team_id).localeCompare(teamName(y.team_id)) || pname(x).localeCompare(pname(y), 'fr'));
   const eur = (x) => (x == null ? '—' : (+x).toFixed(2).replace('.00', '').replace('.', ',') + ' €');
   const tot = (k) => all.reduce((s0, p) => s0 + (+(adminOf(p.id) || {})[k] || 0), 0);
-  let h = `<div class="sec"><h2>Joueurs, licences et cotisations</h2></div><div class="grid2"><div class="card"><span class="big">${lic}/${all.length}</span><span class="det">licenciés</span></div><div class="card"><span class="big">${paid}/${all.length}</span><span class="det">cotisations payées · ${eur(tot('fee_paid'))} sur ${eur(tot('fee_amount'))}</span></div></div>`;
+  const feeTile = !nf ? `<div class="card"><span class="big">${paid}/${all.length}</span><span class="det">cotisations payées · ${eur(tot('fee_paid'))} sur ${eur(tot('fee_amount'))}</span></div>` : seeOk ? `<div class="card"><span class="big">${paid}/${all.length}</span><span class="det">cotisations à jour</span></div>` : `<div class="card"><span class="big">${all.filter((p) => adminOf(p.id)?.health_doc).length}/${all.length}</span><span class="det">certificats fournis</span></div>`;
+  let h = `<div class="sec"><h2>${nf ? 'Joueurs et licences' : 'Joueurs, licences et cotisations'}</h2></div><div class="grid2"><div class="card"><span class="big">${lic}/${all.length}</span><span class="det">licenciés</span></div>${feeTile}</div>`;
   if (noBirth) h += `<button class="card warn" data-act="lf" data-v="Date de naissance manquante" style="border:0;text-align:left;font:inherit;color:inherit"><b>${plural(noBirth, 'joueur sans date de naissance', 'joueurs sans date de naissance')}</b><span class="note" style="color:var(--pc-encre)">À compléter : sans elle, le joueur est traité comme mineur. Touche pour voir la liste.</span></button>`;
-  h += `<div class="chips">${['Tous', 'Licence à finir', 'Reste à payer', 'Certificat manquant', ...(noBirth ? ['Date de naissance manquante'] : [])].map((x) => `<button class="chip" data-act="lf" data-v="${x}" aria-pressed="${f === x}">${x}</button>`).join('')}</div>`;
-  return h + `<details class="card" ${f !== 'Tous' ? 'open' : ''}><summary>${plural(list.length, 'joueur')}</summary><div class="list">${list.length ? list.map((p) => { const a = adminOf(p.id) || {}; return `<button class="row" data-act="player" data-id="${p.id}"><span class="g">${esc(pname(p))}<small>${esc(teamName(p.team_id) || 'Sans équipe')} · Dû ${eur(a.fee_amount)} · Réglé ${eur(a.fee_paid || 0)} · Reste ${eur(rest(p))}${p.birth_date ? '' : ' · date de naissance à compléter'}</small><span class="chips" style="gap:4px;margin-top:4px">${statusPills(p)}</span></span><span class="chev"></span></button>`; }).join('') : '<p class="empty">Aucun joueur dans ce filtre.</p>'}</div></details>`;
+  const F = ['Tous', 'Licence à finir', ...(!nf ? ['Reste à payer'] : seeOk ? ['Cotisation pas à jour'] : []), 'Certificat manquant', ...(noBirth ? ['Date de naissance manquante'] : [])];
+  const sub = (p, a) => (nf ? '' : ` · Dû ${eur(a.fee_amount)} · Réglé ${eur(a.fee_paid || 0)} · Reste ${eur(rest(p))}`);
+  h += `<div class="chips">${F.map((x) => `<button class="chip" data-act="lf" data-v="${x}" aria-pressed="${f === x}">${x}</button>`).join('')}</div>`;
+  return h + `<details class="card" ${f !== 'Tous' ? 'open' : ''}><summary>${plural(list.length, 'joueur')}</summary><div class="list">${list.length ? list.map((p) => { const a = adminOf(p.id) || {}; return `<button class="row" data-act="player" data-id="${p.id}"><span class="g">${esc(pname(p))}<small>${esc(teamName(p.team_id) || 'Sans équipe')}${sub(p, a)}${p.birth_date ? '' : ' · date de naissance à compléter'}</small><span class="chips" style="gap:4px;margin-top:4px">${statusPills(p)}</span></span><span class="chev"></span></button>`; }).join('') : '<p class="empty">Aucun joueur dans ce filtre.</p>'}</div></details>`;
 }
 export function namesToCheck() {
   if (!hasArea('secretariat')) return '';
@@ -122,6 +127,9 @@ async function buildExport() {
     const a = adminOf(p.id) || {}, d = di(p.id), due = a.fee_amount != null ? +a.fee_amount : null;
     rows.push([teamName(p.team_id), p.first_name, p.last_name, p.birth_date ? p.birth_date.split('-').reverse().join('/') : '', a.licence_state || '', a.licence_number || '', a.health_doc ? 'fourni' : 'manquant', due ?? '', +a.fee_paid || 0, due != null ? Math.max(0, due - (+a.fee_paid || 0)) : '', [...new Set(S.payments.filter((x) => x.player_id === p.id).map((x) => x.method).filter(Boolean))].join(', '), d.amount ? +d.amount : '', d.reason || '']);
   });
+  // 4.4.0 (n° 114) : chaque export est inscrit au journal des actions, avant le fichier
+  const lg = await sb.rpc('log_export', { p_club: S.clubId, p_kind: 'cotisations', p_rows: rows.length - 3 });
+  if (lg.error) return toast('Export refusé : ' + (lg.error.message || 'réservé à la trésorerie') + '.');
   const ws = X.utils.aoa_to_sheet(rows);
   ws.A1.s = { font: { bold: true, sz: 14, color: { rgb: c } } };
   'ABCDEFGHIJKLM'.split('').forEach((k) => { if (ws[k + '3']) ws[k + '3'].s = { font: { bold: true, color: { rgb: onColor('#' + c).slice(1) } }, fill: { fgColor: { rgb: c } } }; });
@@ -130,6 +138,26 @@ async function buildExport() {
   const d = new Date(), stamp = d.toLocaleDateString('sv-SE') + ' ' + String(d.getHours()).padStart(2, '0') + 'h' + String(d.getMinutes()).padStart(2, '0') + 'm' + String(d.getSeconds()).padStart(2, '0');
   download(new Blob([X.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Cotisations ${(club()?.name || 'club').replace(/[\\/:*?"<>|]/g, '')} · ${stamp}.xlsx`);
   toast('Fichier Excel prêt.');
+}
+
+// 4.4.0 (n° 114) · liste des membres avec coordonnées : président, secrétaire et secrétaire adjoint ; la base l'inscrit au journal
+export async function exportMembers() {
+  try {
+    try { await loadXlsx(); } catch { return toast('Export impossible pour l’instant (connexion ?). Réessaie.'); }
+    const r = await sb.rpc('export_members', { p_club: S.clubId });
+    if (r.error) return toast('Export refusé : ' + (r.error.message || 'réservé au président et au secrétariat') + '.');
+    const X = window.XLSX, c = (club()?.color1 || '#2F5BFF').replace('#', '').toUpperCase(), l = Array.isArray(r.data) ? r.data : [];
+    const rows = [[BRAND.name + ' · ' + (club()?.name || '') + ' · membres et coordonnées ' + SEASON], [], ['Équipe', 'Prénom', 'Nom', 'Naissance', 'Licence', 'N° de licence', 'Certificat', 'Parents', 'E-mails', 'Téléphones', "Contact d'urgence"]];
+    l.forEach((x) => rows.push([x.team, x.first_name, x.last_name, x.birth_date ? String(x.birth_date).split('-').reverse().join('/') : '', x.licence_state, x.licence_number, x.health_doc ? 'fourni' : 'manquant', x.parents, x.emails, x.phones, x.emergency]));
+    const ws = X.utils.aoa_to_sheet(rows);
+    ws.A1.s = { font: { bold: true, sz: 14, color: { rgb: c } } };
+    'ABCDEFGHIJK'.split('').forEach((k) => { if (ws[k + '3']) ws[k + '3'].s = { font: { bold: true, color: { rgb: onColor('#' + c).slice(1) } }, fill: { fgColor: { rgb: c } } }; });
+    ws['!cols'] = [12, 14, 16, 12, 16, 16, 11, 26, 34, 26, 26].map((w) => ({ wch: w }));
+    const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, 'Membres');
+    const d = new Date(), stamp = d.toLocaleDateString('sv-SE') + ' ' + String(d.getHours()).padStart(2, '0') + 'h' + String(d.getMinutes()).padStart(2, '0');
+    download(new Blob([X.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Membres ${(club()?.name || 'club').replace(/[\\/:*?"<>|]/g, '')} · ${stamp}.xlsx`);
+    toast('Fichier Excel prêt. L’export est inscrit au journal du club.');
+  } catch (e) { console.error(e); toast("L'export a échoué. Réessaie, ou actualise l'application."); }
 }
 
 // ---------- équipes ----------

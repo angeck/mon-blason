@@ -177,6 +177,14 @@ const RPC = {
   request_club: (a) => { const id = uid(); D.club_requests.unshift({ id, created_at: new Date().toISOString(), first_name: a.p_first, last_name: a.p_last, email: a.p_email, club_name: a.p_club, city: a.p_city, sport: a.p_sport, age_ok: a.p_age_ok, consent: a.p_consent, user_id: null, status: 'new' }); return id; },
   set_club_request: ({ p_id, p_status }) => { D.club_requests.find((r) => r.id === p_id).status = p_status; return null; },
   is_app_admin: () => true,
+  // alpha 4.4.0 · n° 114 : coordonnées et licences lues par des fonctions ; exports, relance, saison
+  player_contacts: () => (window.__NOCONTACTS ? [] : D.players.filter((p) => !p.deleted_at).map((p) => ({ id: p.id, parent_email: p.parent_email || null, parent_phone: p.parent_phone || null, emergency_name: p.emergency_name || null, emergency_phone: p.emergency_phone || null }))),
+  club_licences: () => D.players.filter((p) => !p.deleted_at).map((p) => { const a = (window.__PADMIN || D.player_admin).find((x) => x.player_id === p.id) || {}; return { player_id: p.id, licence_state: a.licence_state || 'Préinscrit club', licence_number: a.licence_number || null, health_doc: !!a.health_doc, fee_ok: window.__FEEOK ? a.fee_amount != null && +a.fee_paid >= +a.fee_amount : null }; }),
+  set_licence: (a) => { window.__SETLIC = a; const r = (window.__PADMIN || D.player_admin).find((x) => x.player_id === a.p_player); if (r) Object.assign(r, { licence_state: a.p_state, licence_number: a.p_number, health_doc: a.p_health }); return null; },
+  remind_fees: () => { window.__FEEALL = (window.__FEEALL || 0) + 1; return { sent: 1, people: 2, skipped: 0 }; },
+  export_members: () => { window.__EXPMEM = (window.__EXPMEM || 0) + 1; return [{ team: 'U9', first_name: 'Tom', last_name: 'Dupont', birth_date: '2017-03-02', licence_state: 'Préinscrit club', licence_number: '', health_doc: false, parents: 'Gaël Test', emails: 'gael@exemple.fr', phones: '06 00 00 00 00', emergency: '' }]; },
+  log_export: (a) => { window.__LOGEXP = a; return null; },
+  renew_club_season: (a) => { window.__SEASON = a; return { teams: D.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').length, kept: 0, volunteers: 1 }; },
   export_my_data: () => ({ profil: D.profiles[0] }), validate_membership: ({ mid }) => { D.memberships.find((m) => m.id === mid).status = 'active'; return null; },
 };
 export function createClient() {
