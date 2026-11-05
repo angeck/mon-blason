@@ -1,4 +1,4 @@
-# mypocketclub · alpha 4.4.0
+# mypocketclub · alpha 4.4.1
 
 Application web installable (PWA) pour les clubs sportifs : agenda avec réponses « Je viens / Je ne viens pas », appel, fiches joueurs, licences et cotisations, groupes d'échange (messages en direct, sondages), équipes, membres, corbeille de 30 jours.
 
@@ -31,6 +31,10 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 - `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (350 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
 
 Toutes les personnes des tests sont fictives.
+
+## Alpha 4.4.1
+
+Correctif, rien à lancer dans Supabase : la liste « Profil de test » ne se chargeait plus depuis la 4.3.0 (`.catch()` sur une requête Supabase, qui n'a que `.then`). Le faux client des tests imite maintenant ce comportement.
 
 ## Alpha 4.4.0
 

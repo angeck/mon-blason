@@ -192,7 +192,8 @@ export function createClient() {
   return {
     auth: { onAuthStateChange: (f) => { cb = f; setTimeout(() => f('SIGNED_IN', window.__LOGGED_OUT ? null : session), 0); return { data: { subscription: { unsubscribe() {} } } }; }, signInWithPassword: async () => { cb('SIGNED_IN', session); return { data: {}, error: null }; }, signUp: async (a) => { window.__SIGNUP = a; return { data: { session: null }, error: null }; }, signOut: async (o) => { window.__SIGNOUT = o || {}; cb('SIGNED_OUT', null); return { error: null }; }, setSession: async (t) => { window.__SET = t; if (/bad/.test(t.refresh_token)) return { data: {}, error: { message: 'refresh token invalide' } }; const em = t.access_token.slice(4); session = { user: { id: ME, email: em }, access_token: t.access_token, refresh_token: t.refresh_token }; cb('SIGNED_IN', session); return { data: { session }, error: null }; }, resetPasswordForEmail: async () => ({ error: null }), updateUser: async () => ({ error: null }) },
     from: (t) => new Q(t),
-    rpc: async (n, a) => { window.__CALLS.push(['rpc', n, a]); return RPC[n] ? { data: clone(RPC[n](a || {}) ?? null), error: null } : { data: true, error: null }; },
+    // comme la vraie bibliothèque : un objet « then » seulement (pas de .catch), pour attraper ce genre d'erreur (4.4.1)
+    rpc: (n, a) => { const p = (async () => { window.__CALLS.push(['rpc', n, a]); return RPC[n] ? { data: clone(RPC[n](a || {}) ?? null), error: null } : { data: true, error: null }; })(); return { then: (f, r) => p.then(f, r) }; },
     channel: () => { const c = { on: () => c, subscribe: () => c }; return c; }, removeChannel: () => {},
     functions: { invoke: async (n, o) => { window.__CALLS.push(['functions', n, o?.body]);
       // n° 124 : window.__MAILFAIL = { status, erreur, code } imite un refus de la fonction (compte non validé, limite, Resend)

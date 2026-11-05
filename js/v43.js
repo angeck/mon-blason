@@ -122,7 +122,8 @@ const setList = (l) => { SWITCH_PROFILES.splice(0, SWITCH_PROFILES.length, ...l.
 try { const l = JSON.parse(localStorage.getItem(LIST_KEY) || '[]'); if (Array.isArray(l)) setList(l); } catch { /* navigation privée */ }
 export async function loadTestProfiles() {
   if (!S.session) return;
-  const r = await sb.rpc('my_test_profiles').catch(() => ({ data: null }));
+  // 4.4.1 : la requête de Supabase n'a pas de .catch (seulement .then) : l'ancien .catch() cassait le chargement de la liste
+  let r = null; try { r = await sb.rpc('my_test_profiles'); } catch { r = null; }
   if (!Array.isArray(r?.data) || !r.data.length) return;   // compte hors liste : on garde ce qui est connu sur l'appareil
   setList(r.data);
   try { localStorage.setItem(LIST_KEY, JSON.stringify(SWITCH_PROFILES)); } catch { /* */ }
