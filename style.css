@@ -79,6 +79,7 @@ a{color:var(--pc-bleu)}
 .card.dark .det,.card.dark .note{color:#D8DCEA}
 .card.pale{background:var(--pc-bleu-pale);box-shadow:none}
 .card.warn{background:var(--pc-attente-fond);box-shadow:none}
+.card.alert{background:var(--pc-non-fond);box-shadow:none;border:2px solid var(--pc-non-texte);color:var(--pc-encre)} /* n° 124 : fin de période (année payée, gratuité) */
 .card.flat{box-shadow:none;border:2px solid var(--pc-trait)}
 .card h3{margin:0;font-family:var(--pc-titre);font-weight:800;font-size:22px;line-height:1.1}
 .card.cancel{opacity:.7}

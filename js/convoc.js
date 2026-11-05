@@ -31,6 +31,17 @@ export function weekendLabel(from, to) {
   if (from === to) return `${dayLong(a)} ${a.getFullYear()}`;
   return a.getMonth() === b.getMonth() ? `${a.getDate()} et ${b.getDate()} ${MONTHS[b.getMonth()]} ${b.getFullYear()}` : `${a.getDate()} ${MONTHS[a.getMonth()]} et ${b.getDate()} ${MONTHS[b.getMonth()]} ${b.getFullYear()}`;
 }
+// N° 127 (décision de Gaël, 5 novembre 2026) : samedi ou dimanche → « Week-end du 14 et 15 novembre 2026 » ;
+// du lundi au vendredi → « Cette semaine · jeudi 5 novembre 2026 » si c'est la semaine où le document est fait (lundi à dimanche,
+// heure de Paris), sinon « Jeudi 12 novembre 2026 ». Même règle dans la fonction serveur envoyer-email (whenPhrase).
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+export function periodOf(from, to, now = new Date()) {
+  const a = dateOf(from), dw = a.getDay(), when = weekendLabel(from, to);
+  if (from !== to || dw === 0 || dw === 6) return { weekend: true, label: `Week-end du ${when}`, receive: 'vous reçoit ce week-end', phrase: `le week-end du ${when}` };
+  const today = paris(now.toISOString()), monday = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)).toDateString();
+  const same = monday(a) === monday(today);
+  return { weekend: false, same, label: same ? `Cette semaine · ${when}` : cap(when), receive: same ? 'vous reçoit cette semaine' : `vous reçoit le ${dayLong(a)}`, phrase: same ? `cette semaine, le ${when}` : `le ${when}` };
+}
 export function reference(clubName, from, step) {
   const ini = String(clubName || 'PC').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z ]/g, '').split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 3) || 'PC';
   return `${ini}-${from.replace(/-/g, '')}-${step}`;
@@ -65,7 +76,7 @@ export function convocHtml(d, step, now = new Date(), o = {}) {
   // n° 112 : version (-v2 « Mise à jour ») et sans impression automatique pour la lecture d'une convocation reçue
   const ver = o.version || 1, upd = ver > 1;
   const c = d.club, c1 = c.color1 || '#2F5BFF', c2 = c.color2 || '#FFC93C', txt = onColor(c1), soft = tint(c1), ref = reference(c.name, d.from, step) + (upd ? '-v' + ver : '');
-  const k = d.correspondent, when = weekendLabel(d.from, d.to), pre = step === 'P';
+  const k = d.correspondent, when = weekendLabel(d.from, d.to), pre = step === 'P', per = periodOf(d.from, d.to, now);
   // n° 92 : le blason du club tel qu'il est dans l'application (même fonction crest, mêmes réglages) ;
   // n° 97 : sans logo, le ballon du sport du club (ou le ballon de la marque mypocketclub, étoile creuse, pour un autre sport : n° 106)
   const logo = c.logo ? `<span class="lg">${crest(c, 58, c1)}</span>` : `<span class="lg"><img src="${abs(ballSrc(c.sport))}" width="62" height="62" alt=""></span>`;
@@ -74,7 +85,7 @@ export function convocHtml(d, step, now = new Date(), o = {}) {
   const status = (x) => (x.cancelled ? '<span class="st">Annulée</span>' : '');
   let body;
   if (pre) {
-    body = `<h2>Week-end du ${esc(when)}</h2><h1>${esc(c.name)} vous reçoit ce week-end</h1>
+    body = `<h2>${esc(per.label)}</h2><h1>${esc(c.name)} ${esc(per.receive)}</h1>
     <p>Nous avons le plaisir de vous confirmer les rencontres suivantes à domicile. Le gymnase et les horaires vous seront communiqués dans la convocation définitive.</p>
     <table><thead><tr><th>Catégorie</th><th>Club(s) reçu(s) · compétition</th><th>Coach de l'équipe</th><th>Horaire</th></tr></thead><tbody>
     ${d.events.map((x) => `<tr><td><b>${strike(x, esc(catOf(x)))}</b></td><td>${strike(x, esc(x.opponents || '—'))}<br><small>${esc(competition(x))}</small> ${status(x)}</td><td>${x.coach ? esc(x.coach.name) + (x.coach.phone ? '<br><small>' + esc(x.coach.phone) + '</small>' : '') : '—'}</td><td>À venir</td></tr>`).join('')}</tbody></table>
@@ -116,7 +127,7 @@ function convocScreen() {
   const d = v.data, step = v.step, miss = missing(d, step), block = blocking(d, step);
   let h = `<div class="card lift"><div class="chips"><button class="chip" data-act="convstep" data-v="P" aria-pressed="${step === 'P'}">Pré-convocation</button><button class="chip" data-act="convstep" data-v="C" aria-pressed="${step === 'C'}">Convocation</button></div>
   <b style="font-family:var(--pc-titre);font-size:22px">${step === 'P' ? 'Étape 1 sur 2 · sans gymnase ni horaire' : 'Étape 2 sur 2 · gymnase, date et heure'}</b>
-  <div class="det">Week-end du ${esc(weekendLabel(d.from, d.to))} · ${d.events.length} rencontre${d.events.length > 1 ? 's' : ''} à domicile · réf. ${esc(reference(d.club.name, d.from, step))}</div></div>`;
+  <div class="det">${esc(periodOf(d.from, d.to).label)} · ${d.events.length} rencontre${d.events.length > 1 ? 's' : ''} à domicile · réf. ${esc(reference(d.club.name, d.from, step))}</div></div>`;
   h += `<div class="card"><div class="list">${d.events.map((x) => `<div class="row static"><span class="g">${esc(catOf(x))} · ${esc(x.opponents || 'club reçu à préciser')}<small>${esc(dayLong(paris(x.starts_at)))} à ${hhmm(x.starts_at)}${x.place ? ' · ' + esc(x.place) : ''}${x.coach ? ' · coach ' + esc(x.coach.name) : ''}</small></span>${x.cancelled ? '<span class="pill ko">Annulée</span>' : ''}</div>`).join('') || '<p class="empty">Aucune rencontre à domicile ce week-end.</p>'}</div></div>`;
   if (miss.length) h += `<div class="card warn"><b>${block ? 'À compléter avant la convocation :' : 'À compléter avant l’envoi (le document reste possible) :'}</b><ul style="margin:6px 0 0 18px;padding:0">${miss.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>`;
   // N° 109, 112 : chercher le club reçu (envoi dans mypocketclub), sinon e-mail avec le PDF joint ; suivi des envois du week-end
@@ -133,7 +144,7 @@ export async function openConvoc(eid, step) {
 }
 Object.assign(ACTIONS, {
   convoc: (el, d) => openConvoc(d.id, d.v),
-  convstep: (el, d) => { S.convoc.step = d.v; S.convoc.version = 0; if (S.convoc.send) { S.convoc.send.mail = null; S.convoc.send.pick = null; } render(true); },
+  convstep: async (el, d) => { S.convoc.step = d.v; S.convoc.version = 0; if (S.convoc.send) S.convoc.send.confirm = false; render(true); await loadSends(S.convoc.eid); render(true); },
   convpdf: () => {
     const v = S.convoc; if (!v?.data || blocking(v.data, v.step)) return;
     const w = window.open('', '_blank'); if (!w) return toast('Autorise les fenêtres pour créer le PDF.');

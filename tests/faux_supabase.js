@@ -69,7 +69,7 @@ const D = {
   coach_statements: [{ id: 'st1', club_id: C, user_id: 'u-c11', month: (() => { const d = new Date(); return d.toLocaleDateString('sv-SE').slice(0, 8) + '01'; })(), status: 'submitted', total_minutes: 90 }],
 };
 // Le relevé de Karim porte sur le mois des dernières séances passées (le test ne dépend pas du jour où il tourne)
-{ const p = D.events.filter((e) => e.type === 'Entraînement' && new Date(e.starts_at) < Date.now()).map((e) => new Date(e.starts_at)).sort((a, b) => b - a)[0]; if (p) D.coach_statements[0].month = p.toLocaleDateString('sv-SE').slice(0, 8) + '01'; }
+{ const p = D.events.filter((e) => e.type === 'Entraînement' && new Date(e.starts_at) < Date.now()).map((e) => new Date(e.starts_at)).sort((a, b) => b - a)[0]; if (p) { D.coach_statements[0].month = p.toLocaleDateString('sv-SE').slice(0, 8) + '01'; D.coach_hours[0].day = p.toLocaleDateString('sv-SE'); } } // les heures de Karim sont dans le même mois que son relevé, quel que soit le jour du test
 window.__FAKE = D; window.__CALLS = [];
 const clone = (x) => JSON.parse(JSON.stringify(x));
 class Q {
@@ -128,7 +128,15 @@ const RPC = {
     rencontres: { user_id: 'u-ren', name: 'Rémi Rencontres', fonction: 'Correspondant rencontres', phone: null, email: null, confirmed: false },
     bureau: [{ user_id: 'u-sec', name: 'Sonia Secrétaire', fonction: 'Secrétaire, Correspondant licences', phone: '06 00 00 00 00', email: null, confirmed: true }] }),
   my_contact_state: () => (window.__CSTATE === undefined ? { roles: ['Président'], confirmed: true, show_phone: true, show_email: false } : window.__CSTATE),
-  convocation_prepare: () => ({ version: window.__CVERSION || 1, email_left: 20 }),
+  convocation_prepare: () => ({ version: window.__CVERSION || 1, email_left: window.__CLEFT ?? 20, can_send: window.__CANSEND ?? true }),
+  // alpha 4.3.0 · n° 124 : état d'envoi, clubs à valider (administrateur) ; n° 126 : profils de test rangés dans la base
+  my_send_state: () => window.__SENDSTATE ?? { can_send: true, validated: true, me_president: false, reason: 'test', ends_at: null, period_over: false },
+  admin_clubs: () => window.__ACLUBS || [
+    { club_id: 'c-9', name: 'ES Nouveau Club', city: 'Ailleurs', sport: 'Basket-ball', color1: '#2F5BFF', created_at: at(-2), president_id: 'u-np', president_name: 'Nadia Présidente', president_email: 'nadia@exemple.invalid', members: 3, reason: null, ends_at: null, note: '', validated_at: null },
+    { club_id: C, name: 'BC Testville', city: 'Testville', sport: 'Basket-ball', color1: '#C2410C', created_at: at(-90), president_id: 'u-pres', president_name: 'Céline Présidente', president_email: 'celine@exemple.invalid', members: 9, reason: 'test', ends_at: null, note: '', validated_at: at(-1) }],
+  admin_validate_sender: (a) => { window.__AVAL = a; const l = RPC.admin_clubs(); const x = l.find((y) => y.club_id === a.p_club); if (x) { x.reason = a.p_reason; x.ends_at = a.p_ends; x.validated_at = new Date().toISOString(); } window.__ACLUBS = l; return null; },
+  admin_unvalidate_sender: (a) => { window.__AUNVAL = a; return null; },
+  my_test_profiles: () => window.__TESTPROFILES || [],
   convocation_sends_of: () => window.__CSENDS || [],
   convocations_received: () => window.__CRECEIVED || [],
   convocation_open: () => ({ step: 'C', version: 2, data: { club: { name: 'Palaiseau Basket', color1: '#123A7A', color2: '#E2001A', sport: 'Basket-ball' }, from: '2026-11-14', to: '2026-11-15', correspondent: { name: 'Rémi Rencontres' }, events: [] } }),
@@ -178,6 +186,9 @@ export function createClient() {
     from: (t) => new Q(t),
     rpc: async (n, a) => { window.__CALLS.push(['rpc', n, a]); return RPC[n] ? { data: clone(RPC[n](a || {}) ?? null), error: null } : { data: true, error: null }; },
     channel: () => { const c = { on: () => c, subscribe: () => c }; return c; }, removeChannel: () => {},
-    functions: { invoke: async (n, o) => { window.__CALLS.push(['functions', n, o?.body]); return { data: { envoye: true, to: window.__EMAIL || 'gael@exemple.fr' }, error: null }; } },
+    functions: { invoke: async (n, o) => { window.__CALLS.push(['functions', n, o?.body]);
+      // n° 124 : window.__MAILFAIL = { status, erreur, code } imite un refus de la fonction (compte non validé, limite, Resend)
+      const f = window.__MAILFAIL; if (f && o?.body?.convocation && (!f.to || f.to === o.body.convocation.to?.email)) return { data: null, error: { message: 'Edge Function returned a non-2xx status code', context: new Response(JSON.stringify({ erreur: f.erreur, code: f.code }), { status: f.status || 502 }) } };
+      return { data: { envoye: true, to: window.__EMAIL || 'gael@exemple.fr' }, error: null }; } },
   };
 }

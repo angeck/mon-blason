@@ -1,5 +1,6 @@
 // mypocketclub · alpha 4.2.0 · n° 112 · petit fabricant de PDF, sans bibliothèque extérieure (npm et les CDN ne sont pas nécessaires).
 // Texte (Helvetica et Helvetica gras, accents français en WinAnsi), rectangles de couleur, plusieurs pages A4.
+// 4.3.0 · n° 128 : images JPEG (blason du club, logo mypocketclub), recopiées telles quelles : le PDF sait lire le JPEG.
 // Unités : millimètres, origine en haut à gauche (comme à l'écran). Sortie : Uint8Array (fichier PDF complet).
 const MM = 72 / 25.4, W = 210, H = 297;
 // Largeurs Helvetica (sur 1000) des caractères 32 à 126 ; les lettres accentuées prennent la largeur de leur lettre de base
@@ -42,9 +43,32 @@ const rgb = (hex) => { const n = parseInt(String(hex || '#000000').replace('#', 
 const hex = (bytes) => bytes.map((b) => b.toString(16).padStart(2, '0')).join('');
 const n2 = (v) => (Math.round(v * 100) / 100).toString();
 
+// Taille et nombre de couleurs d'un JPEG (en-tête SOF) ; null si ce n'est pas un JPEG lisible
+export function jpegInfo(b) {
+  if (!b || b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return null;
+  let i = 2;
+  while (i + 9 < b.length) {
+    if (b[i] !== 0xff) { i++; continue; }
+    const m = b[i + 1], len = (b[i + 2] << 8) | b[i + 3];
+    if (m >= 0xc0 && m <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(m)) return { h: (b[i + 5] << 8) | b[i + 6], w: (b[i + 7] << 8) | b[i + 8], comps: b[i + 9] };
+    if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { i += 2; continue; }
+    i += 2 + len;
+  }
+  return null;
+}
+const binStr = (b) => { let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return s; };
+
 export class Pdf {
-  constructor() { this.pages = []; this.page(); }
+  constructor() { this.pages = []; this.imgs = []; this.page(); }
   page() { this.ops = []; this.pages.push(this.ops); return this; }
+  // Image JPEG (Uint8Array) dans le cadre x, y, w, h (mm) ; renvoie false si l'image n'est pas un JPEG lisible (rien n'est dessiné)
+  image(x, y, w, h, jpeg) {
+    const info = jpegInfo(jpeg); if (!info || !info.w || !info.h || ![1, 3].includes(info.comps)) return false;
+    let k = this.imgs.findIndex((im) => im.bytes === jpeg);
+    if (k < 0) { this.imgs.push({ bytes: jpeg, ...info }); k = this.imgs.length - 1; }
+    this.ops.push(`q ${n2(w * MM)} 0 0 ${n2(h * MM)} ${n2(x * MM)} ${n2((H - y - h) * MM)} cm /Im${k + 1} Do Q`);
+    return true;
+  }
   rect(x, y, w, h, fill, stroke) {
     const Y = (H - y - h) * MM;
     if (fill) this.ops.push(`${rgb(fill)} rg ${n2(x * MM)} ${n2(Y)} ${n2(w * MM)} ${n2(h * MM)} re f`);
@@ -69,12 +93,14 @@ export class Pdf {
     const objs = [], add = (s) => { objs.push(s); return objs.length; };
     const f1 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
     const f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+    const ims = this.imgs.map((im) => add(`<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /${im.comps === 1 ? 'DeviceGray' : 'DeviceRGB'} /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>\nstream\n${binStr(im.bytes)}\nendstream`));
+    const xo = ims.length ? ` /XObject << ${ims.map((id, i) => `/Im${i + 1} ${id} 0 R`).join(' ')} >>` : '';
     const pagesId = objs.length + 1; add(''); // réservé pour /Pages
     const kids = [];
     for (const ops of this.pages) {
       const body = ops.join('\n');
       const c = add(`<< /Length ${body.length} >>\nstream\n${body}\nendstream`);
-      kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${n2(W * MM)} ${n2(H * MM)}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R >> >> /Contents ${c} 0 R >>`));
+      kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${n2(W * MM)} ${n2(H * MM)}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R >>${xo} >> /Contents ${c} 0 R >>`));
     }
     objs[pagesId - 1] = `<< /Type /Pages /Kids [${kids.map((k) => k + ' 0 R').join(' ')}] /Count ${kids.length} >>`;
     const cat = add(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
@@ -83,7 +109,7 @@ export class Pdf {
     const xref = out.length;
     out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('');
     out += `trailer\n<< /Size ${objs.length + 1} /Root ${cat} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-    const b = new Uint8Array(out.length); for (let i = 0; i < out.length; i++) b[i] = out.charCodeAt(i) & 255; // tout est déjà en octets (texte en hexadécimal)
+    const b = new Uint8Array(out.length); for (let i = 0; i < out.length; i++) b[i] = out.charCodeAt(i) & 255; // tout est déjà en octets (texte en hexadécimal, images recopiées octet par octet)
     return b;
   }
 }

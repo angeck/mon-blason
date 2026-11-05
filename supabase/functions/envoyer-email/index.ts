@@ -1,8 +1,9 @@
-// mypocketclub · alpha 3.8.0 (3.9.0 : n° 109, expéditeur des convocations ; 4.2.0 : n° 112, envoi des convocations) · n° 107 · fonction d’envoi des e-mails (Supabase → Edge Functions)
+// mypocketclub · alpha 3.8.0 (3.9.0 : n° 109, expéditeur des convocations ; 4.2.0 : n° 112, envoi des convocations ;
+// 4.3.0 : n° 124, chaque e-mail réservé dans la base avant de partir ; n° 127, « cette semaine » ; n° 129, copie au choix)
+// N° 107 · fonction d’envoi des e-mails (Supabase → Edge Functions)
 // Nom de la fonction : envoyer-email
-// Première étape : un e-mail de test, envoyé par l'administrateur de mypocketclub à sa propre adresse, depuis
-// notifications@mypocketclub.fr, réponses vers contact@mypocketclub.fr, par Resend (domaine mypocketclub.fr vérifié le 3 novembre 2026).
-// Rien d'autre n'est envoyé : les vrais e-mails (convocations…) viendront ensuite, un par un, après l'avis « Légal ».
+// Deux envois possibles : l'e-mail de test (administrateur, à sa propre adresse, réponses vers contact@) et les convocations
+// aux clubs reçus (n° 112), depuis notifications@mypocketclub.fr, par Resend (domaine mypocketclub.fr vérifié le 3 novembre 2026).
 // Aucune bibliothèque extérieure.
 //
 // Secret à créer dans Supabase → Edge Functions → Secrets (par Gaël, jamais dans le code, le projet ou une conversation) :
@@ -32,7 +33,6 @@ export function testMail(name: string, when: Date) {
 // N° 109 · point 4 (décision de Gaël, 3 novembre 2026) : pour les convocations, le nom affiché de l'expéditeur est le nom du club
 // tel que le président l'a réglé, suivi de la catégorie et du genre (« Boissy Basket 91 U9 F »), jamais le nom interne de l'équipe ;
 // l'adresse reste notifications@mypocketclub.fr (aucune boîte par club) et les réponses vont au correspondant du club, sinon à contact@.
-// Prêt, pas encore branché : l'envoi des convocations par e-mail attend la vérification en vrai et l'avis « Légal » (n° 107).
 const GENRE: Record<string, string> = { Féminine: 'F', Masculine: 'M', Mixte: 'mixte' };
 export const catGender = (t: { category?: string; gender?: string } | null | undefined) => (t ? [String(t.category || '').trim(), GENRE[String(t.gender)] || ''].filter(Boolean).join(' ') : '');
 export function senderName(clubName: string, teams: Array<{ category?: string; gender?: string } | null>) {
@@ -46,8 +46,11 @@ export function convocationEnvelope(env: Env, clubName: string, teams: Array<{ c
 }
 
 // ---------- n° 112 · convocation envoyée au contact d'un club reçu ----------
-// La base vérifie que la personne a la rubrique Événements (convocation_data) et la limite du jour (convocation_prepare).
-// Réponses vers la personne qui envoie, copie à cette personne ; le PDF arrive déjà fabriqué par l'application.
+// N° 124 (4.3.0) : la base vérifie que la personne a la rubrique Événements, qu'elle est validée (président validé par
+// l'administrateur, ou fonction donnée par un président validé) et la limite du jour, puis RÉSERVE l'envoi (convocation_reserve),
+// en une seule opération. Resend n'est appelé que si la réservation a réussi ; ensuite la base note « envoyé » ou « échec »
+// (convocation_finish). Toutes les tentatives comptent dans la limite (20 par club, 80 en tout par jour).
+// Réponses vers la personne qui envoie, copie à cette personne si elle la demande (n° 129) ; le PDF arrive déjà fabriqué par l'application.
 const EMAIL = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
 const DAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -61,7 +64,18 @@ function weekend(from: string, to: string) {
   if (from === to) return `${DAYS[a.getUTCDay()]} ${a.getUTCDate()} ${MONTHS[a.getUTCMonth()]} ${a.getUTCFullYear()}`;
   return a.getUTCMonth() === b.getUTCMonth() ? `${a.getUTCDate()} et ${b.getUTCDate()} ${MONTHS[b.getUTCMonth()]} ${b.getUTCFullYear()}` : `${a.getUTCDate()} ${MONTHS[a.getUTCMonth()]} et ${b.getUTCDate()} ${MONTHS[b.getUTCMonth()]} ${b.getUTCFullYear()}`;
 }
-export function convocationMail(d: any, step: string, version: number, to: { civ?: string; last?: string }) {
+// N° 127 (décision de Gaël, 5 novembre 2026) : samedi ou dimanche → « le week-end du 14 et 15 novembre 2026 » ;
+// du lundi au vendredi → « cette semaine, le jeudi 5 novembre 2026 » si c'est la semaine de l'envoi (lundi à dimanche, heure de Paris),
+// sinon « le jeudi 12 novembre 2026 ». Même règle dans l'application (js/convoc.js, periodOf).
+const parisDay = (now: Date) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Paris' }).format(now);
+const mondayOf = (iso: string) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
+export function whenPhrase(from: string, to: string, now = new Date()) {
+  const a = new Date(from + 'T12:00:00Z'), dw = a.getUTCDay();
+  if (from !== to || dw === 0 || dw === 6) return `le week-end du ${weekend(from, to)}`;
+  const day = weekend(from, from);
+  return mondayOf(from) === mondayOf(parisDay(now)) ? `cette semaine, le ${day}` : `le ${day}`;
+}
+export function convocationMail(d: any, step: string, version: number, to: { civ?: string; last?: string }, now = new Date()) {
   const pre = step === 'P', club = String(d?.club?.name || ''), live = (d?.events || []) as any[];
   const teams = live.filter((x) => !x.cancelled).map((x) => x.team);
   const kind = pre ? 'Pré-convocation' : 'Convocation', upd = version > 1;
@@ -71,9 +85,9 @@ export function convocationMail(d: any, step: string, version: number, to: { civ
     const p = parisParts(x.starts_at), cat = catGender(x.team) || x.team?.name || x.title;
     return `${cat} · ${club} – ${x.opponents || 'club reçu'} · ${p.day}${pre ? '' : ' à ' + p.time}${!pre && x.place ? ' · ' + x.place : ''}${x.cancelled ? ' · ANNULÉE' : ''}`;
   });
-  const who = String(d?.sender?.name || '').trim(), when = weekend(String(d?.from || ''), String(d?.to || d?.from || ''));
-  const intro = pre ? `${club} vous confirme les rencontres suivantes à domicile, le week-end du ${when}. Le gymnase et les horaires suivront dans la convocation définitive.`
-    : `${club} aura le plaisir de vous accueillir le week-end du ${when}, aux dates et lieux suivants.`;
+  const who = String(d?.sender?.name || '').trim(), when = whenPhrase(String(d?.from || ''), String(d?.to || d?.from || ''), now);
+  const intro = pre ? `${club} vous confirme les rencontres suivantes à domicile, ${when}. Le gymnase et les horaires suivront dans la convocation définitive.`
+    : `${club} aura le plaisir de vous accueillir ${when}, aux dates et lieux suivants.`;
   const text = `${hello}\n\n${upd ? 'Mise à jour : ce document remplace la version précédente.\n\n' : ''}${intro}\n\n${lines.map((l) => '- ' + l).join('\n')}\n\nLe document est joint en PDF.\n\nSportivement,\n${who}${who ? ', ' : ''}${club}\n\n--\nEnvoyé avec mypocketclub · https://mypocketclub.fr`;
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:600px">
 <p>${escHtml(hello)}</p>${upd ? '<p style="background:#FFF4D6;padding:8px 12px;border-radius:6px"><b>Mise à jour :</b> ce document remplace la version précédente.</p>' : ''}<p>${escHtml(intro)}</p>
@@ -82,12 +96,19 @@ export function convocationMail(d: any, step: string, version: number, to: { civ
 <p style="color:#5A6178;font-size:13px;border-top:1px solid #D8DCEA;padding-top:10px;margin-top:20px">Envoyé avec <span style="display:inline-block;background:#FFC93C;border-radius:4px;padding:0 4px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b> · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
   return { subject, text, html };
 }
+// Contact masqué gardé dans le suivi (le contact saisi n'est pas gardé, décision du 5 novembre 2026) : « Jean D. · j***@club.fr »
+export function contactHint(to: { civ?: string; first?: string; last?: string; email?: string }) {
+  const first = String(to?.first || '').trim(), last = String(to?.last || '').trim(), ini = last ? last.charAt(0).toUpperCase() + '.' : '';
+  const name = first ? `${first} ${ini}`.trim() : `${to?.civ === 'Monsieur' ? 'M.' : 'Mme'} ${ini}`.trim();
+  const [u, dom] = String(to?.email || '').split('@');
+  return [name, dom ? (u.slice(0, 1) || '') + '***@' + dom : ''].filter(Boolean).join(' · ').slice(0, 80);
+}
 async function rpc(env: Env, auth: string, doFetch: typeof fetch, name: string, args: unknown) {
   const r = await doFetch(env.url + '/rest/v1/rpc/' + name, { method: 'POST', headers: { apikey: env.anon, Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
   const b = await r.json().catch(() => null);
   return { ok: r.ok, data: b };
 }
-async function sendConvocation(env: Env, auth: string, doFetch: typeof fetch, who: { email: string }, c: any) {
+async function sendConvocation(env: Env, auth: string, doFetch: typeof fetch, who: { email: string }, c: any, now: Date) {
   const step = c?.step === 'C' ? 'C' : c?.step === 'P' ? 'P' : '', to = c?.to || {}, version = Math.max(1, Number(c?.version) || 1);
   if (!step || typeof c?.event_id !== 'string') return json({ erreur: 'convocation incomplète' }, 400);
   if (!EMAIL.test(String(to.email || '')) || !String(to.last || '').trim()) return json({ erreur: 'contact du club reçu incomplet (nom et e-mail)' }, 400);
@@ -98,21 +119,33 @@ async function sendConvocation(env: Env, auth: string, doFetch: typeof fetch, wh
   const d = data.data;
   const ini = String(d.club.name || 'PC').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z ]/g, '').split(/\s+/).filter(Boolean).map((w: string) => w[0]).join('').slice(0, 3) || 'PC';
   const ref = `${ini}-${String(d.from).replace(/-/g, '')}-${step}`;
-  const prep = await rpc(env, auth, doFetch, 'convocation_prepare', { p_event: c.event_id, p_step: step, p_ref: ref, p_hash: '' });
-  if (!prep.ok) return json({ erreur: 'envoi refusé' }, 403);
-  if (Number(prep.data?.email_left) <= 0) return json({ erreur: 'limite d’envois du jour atteinte' }, 429);
+  // n° 124 : réservation dans la base (validation + limite + ligne « en cours »), avant tout envoi
+  const res = await rpc(env, auth, doFetch, 'convocation_reserve', { p_event: c.event_id, p_step: step, p_ref: ref, p_version: version, p_hash: String(c?.hash || '').slice(0, 64), p_hint: contactHint(to) });
+  const sid = typeof res.data === 'string' ? res.data : '';
+  if (!res.ok || !sid) {
+    const msg = String(res.data?.message || '');
+    if (/Limite/i.test(msg)) return json({ erreur: 'limite d’envois du jour atteinte', code: 'limite' }, 429);
+    if (/valid/i.test(msg)) return json({ erreur: 'envoi réservé aux comptes validés par mypocketclub', code: 'non_valide' }, 403);
+    return json({ erreur: 'envoi refusé' }, 403);
+  }
   const sender = String(d.sender?.email || who.email || '');
   const envl = convocationEnvelope(env, d.club.name, (d.events || []).filter((x: any) => !x.cancelled).map((x: any) => x.team), sender);
-  const m = convocationMail(d, step, version, to);
+  const m = convocationMail(d, step, version, to, now);
   const filename = String(c?.filename || 'Convocation.pdf').replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 80);
-  const r = await doFetch('https://api.resend.com/emails', {
-    method: 'POST', headers: { Authorization: 'Bearer ' + env.resendKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: envl.from, to: [String(to.email)], cc: EMAIL.test(sender) ? [sender] : undefined, reply_to: envl.reply_to, subject: m.subject, text: m.text, html: m.html,
-      attachments: [{ filename: filename.endsWith('.pdf') ? filename : filename + '.pdf', content: pdf }] }),
-  });
-  const out = await r.json().catch(() => ({}));
-  if (!r.ok) return json({ erreur: 'Resend a refusé l’envoi', detail: String(out?.message || r.status).slice(0, 200) }, 502);
-  return json({ envoye: true, id: out?.id || null });
+  const copy = c?.copy !== false && EMAIL.test(sender);   // n° 129 : « M'envoyer une copie », cochée par défaut
+  let ok = false, detail = '';
+  try {
+    const r = await doFetch('https://api.resend.com/emails', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + env.resendKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: envl.from, to: [String(to.email)], cc: copy ? [sender] : undefined, reply_to: envl.reply_to, subject: m.subject, text: m.text, html: m.html,
+        attachments: [{ filename: filename.endsWith('.pdf') ? filename : filename + '.pdf', content: pdf }] }),
+    });
+    const out = await r.json().catch(() => ({}));
+    ok = r.ok; detail = ok ? '' : String(out?.message || r.status).slice(0, 200);
+  } catch (e) { detail = String((e as Error)?.message || e).slice(0, 200); }
+  await rpc(env, auth, doFetch, 'convocation_finish', { p_send: sid, p_ok: ok, p_error: ok ? '' : 'Resend a refusé l’envoi : ' + detail });
+  if (!ok) return json({ erreur: 'Resend a refusé l’envoi', detail, send_id: sid }, 502);
+  return json({ envoye: true, send_id: sid });
 }
 
 // Qui appelle ? (le jeton de la personne connectée, vérifié par Supabase)
@@ -137,7 +170,7 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   const who = await caller(env, auth, doFetch);
   if (!who || !who.email) return json({ erreur: 'connexion demandée' }, 401);
   let body: any = {}; try { body = await req.json(); } catch { /* corps vide */ }
-  if (body?.convocation) return sendConvocation(env, auth, doFetch, who, body.convocation); // n° 112
+  if (body?.convocation) return sendConvocation(env, auth, doFetch, who, body.convocation, now); // n° 112, 124
   if (!body?.test) return json({ erreur: 'seul l’e-mail de test ou une convocation peuvent partir' }, 400);
   if (!who.admin) return json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403);
   const m = testMail(who.name, now);

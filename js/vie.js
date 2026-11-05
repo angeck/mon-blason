@@ -234,7 +234,7 @@ export function missionsBlock(e) {
   }).join('');
   if (man && !past) {
     const mem = [...new Map(S.members.filter((x) => x.status === 'active' && x.role !== 'supporteur').map((x) => [x.user_id, x])).keys()].sort((a, b) => name(a).localeCompare(name(b), 'fr'));
-    if (!ms.length) h += `<button class="btn main small" data-act="mdef" data-id="${e.id}">Ajouter les missions du club (${(club()?.default_missions || []).map((x) => x.label).join(', ')})</button>`;
+    if (!ms.length) h += `<button class="btn main small" data-act="mdef" data-id="${e.id}">Ajouter les missions du club (${(club()?.default_missions || []).map((x) => esc(x.label)).join(', ')})</button>`; // n° 125 (audit S3) : nom de mission échappé
     h += `<form id="mif" data-id="${e.id}" class="grid2" style="align-items:end">${field('mil', 'Autre mission', '<input id="mil" name="label" maxlength="40" placeholder="Ex. Photos, Accueil" required>')}${field('mis', 'Places', '<input id="mis" name="slots" type="number" min="1" max="20" value="1" required>')}<button class="btn ghost small" type="submit">${icon('plus', 18)}Ajouter la mission</button></form>`;
     const off = new Set(S.optouts || []), nm = (u) => esc(name(u)) + (off.has(u) ? ' (ne souhaite pas être sollicité)' : '');
     if (ms.length) h += `<div class="grid2" style="align-items:end">${field('mia', 'Inscrire quelqu’un', `<select id="mia" data-massign="1"><option value="">Choisir…</option>${mem.map((u) => `<option value="${u}">${nm(u)}</option>`).join('')}</select>`)}${field('mim', 'Sur la mission', `<select id="mim">${ms.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('')}</select>`)}</div><div class="btns"><button class="btn small" data-act="vassign">Inscrire</button></div>`;

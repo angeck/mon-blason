@@ -51,7 +51,7 @@ check('n° 109 : réponses vers le correspondant, sinon contact@', env9.reply_to
 // N° 112 · convocation envoyée au contact du club reçu (PDF joint, réponses et copie à la personne qui envoie)
 const CD = { club: { name: 'Boissy Basket 91' }, from: '2026-11-14', to: '2026-11-15', sender: { name: 'Rémi Rencontres', email: 'remi@exemple.fr' },
   events: [{ id: 'e1', type: 'Match', title: 'Match', starts_at: '2026-11-14T14:00:00Z', place: 'Gymnase Jean-Moulin, 1 rue X', opponents: 'Étampes BC', cancelled: false, team: reines }] };
-function fakeC({ data = true, left = 20, resendOk = true } = {}) {
+function fakeC({ data = true, reserve = 'ok', resendOk = true, resendThrows = false } = {}) {
   const calls = [];
   const f = async (url, o = {}) => {
     calls.push([url, o]);
@@ -60,16 +60,19 @@ function fakeC({ data = true, left = 20, resendOk = true } = {}) {
     if (url.endsWith('/rpc/is_app_admin')) return res(200, false);
     if (url.endsWith('/rpc/my_profile')) return res(200, { first_name: 'Rémi' });
     if (url.endsWith('/rpc/convocation_data')) return data ? res(200, CD) : res(400, { message: 'réservé' });
-    if (url.endsWith('/rpc/convocation_prepare')) return res(200, { version: 1, email_left: left });
-    if (url === 'https://api.resend.com/emails') return resendOk ? res(200, { id: 'em_2' }) : res(422, { message: 'adresse refusée' });
+    if (url.endsWith('/rpc/convocation_reserve')) return reserve === 'ok' ? res(200, 'envoi-1') : reserve === 'limite' ? res(400, { message: 'Limite d\'envois du jour atteinte : réessaie demain' }) : res(400, { message: 'Envoi réservé aux comptes validés par mypocketclub' });
+    if (url.endsWith('/rpc/convocation_finish')) return res(200, null);
+    if (url === 'https://api.resend.com/emails') { if (resendThrows) throw new Error('réseau coupé'); return resendOk ? res(200, { id: 'em_2' }) : res(422, { message: 'adresse refusée' }); }
     return res(404, {});
   };
   return { f, calls };
 }
+const bodyOf = (k, end) => JSON.parse((k.calls.find((c) => c[0].endsWith(end)) || [, { body: 'null' }])[1].body);
+const order = (k) => k.calls.map((c) => c[0].replace(/.*\/(rpc\/)?/, '').replace('emails', 'resend'));
 const PDF = Buffer.from('%PDF-1.4\n' + 'x'.repeat(400)).toString('base64');
-const conv = (o = {}) => ({ convocation: { event_id: 'e1', step: 'C', version: 2, to: { civ: 'Monsieur', first: 'Jean', last: 'Dupont', email: 'jean@club.fr' }, filename: 'Convocation-BB-20261114-C-v2.pdf', pdf: PDF, ...o } });
-k = fakeC(); r = await F.handle(req(conv()), env, k.f); b = await r.json();
-const cm = JSON.parse((k.calls.find((c) => c[0] === 'https://api.resend.com/emails') || [, { body: '{}' }])[1].body);
+const conv = (o = {}) => ({ convocation: { event_id: 'e1', step: 'C', version: 2, hash: 'abc123', to: { civ: 'Monsieur', first: 'Jean', last: 'Dupont', email: 'jean@club.fr' }, filename: 'Convocation-BB-20261114-C-v2.pdf', pdf: PDF, ...o } });
+k = fakeC(); r = await F.handle(req(conv()), env, k.f, new Date('2026-11-10T09:00:00Z')); b = await r.json();
+const cm = JSON.parse((k.calls.find((c) => c[0] === 'https://api.resend.com/emails') || [, { body: '{}' }])[1].body), kOk = k;
 check('n° 112 : convocation envoyée par un membre qui a la rubrique Événements (pas besoin d’être administrateur)', r.status === 200 && b.envoye === true);
 check('n° 112 : expéditeur = nom du club + catégorie, adresse notifications@', cm.from === '"Boissy Basket 91 U9 F" <notifications@mypocketclub.fr>');
 check('n° 112 : réponses vers la personne qui envoie, et copie à cette personne', cm.reply_to === 'remi@exemple.fr' && JSON.stringify(cm.cc) === '["remi@exemple.fr"]');
@@ -79,14 +82,30 @@ check('n° 112 : « Bonjour Monsieur Dupont », rencontre, gymnase, signature', 
 check('n° 112 : le PDF est joint avec son nom', cm.attachments?.[0]?.filename === 'Convocation-BB-20261114-C-v2.pdf' && cm.attachments[0].content === PDF);
 k = fakeC({ data: false }); r = await F.handle(req(conv()), env, k.f);
 check('n° 112 : sans la rubrique Événements : refusé (403), rien envoyé', r.status === 403 && !k.calls.some((c) => c[0].includes('resend')));
-k = fakeC({ left: 0 }); r = await F.handle(req(conv()), env, k.f);
-check('n° 112 : limite du jour atteinte : refusé (429), rien envoyé', r.status === 429 && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeC({ reserve: 'limite' }); r = await F.handle(req(conv()), env, k.f);
+check('n° 124 : limite du jour atteinte dans la base : refusé (429), rien envoyé', r.status === 429 && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeC({ reserve: 'non_valide' }); r = await F.handle(req(conv()), env, k.f); b = await r.json();
+check('n° 124 : compte non validé par mypocketclub : refusé (403), rien envoyé', r.status === 403 && b.code === 'non_valide' && !k.calls.some((c) => c[0].includes('resend')));
 k = fakeC(); r = await F.handle(req(conv({ to: { civ: 'Madame', last: 'X', email: 'pas une adresse' } })), env, k.f);
 check('n° 112 : adresse du contact invalide : refusé (400)', r.status === 400 && !k.calls.some((c) => c[0].includes('resend')));
 k = fakeC(); r = await F.handle(req(conv({ pdf: Buffer.from('<html>' + 'x'.repeat(400)).toString('base64') })), env, k.f);
 check('n° 112 : pièce jointe qui n’est pas un PDF : refusée (400)', r.status === 400 && !k.calls.some((c) => c[0].includes('resend')));
 k = fakeC({ resendOk: false }); r = await F.handle(req(conv()), env, k.f); b = await r.json();
-check('n° 107 : refus de Resend renvoyé (502) pour que l’échec soit noté', r.status === 502 && /adresse refusée/.test(b.detail));
+check('n° 107 : refus de Resend renvoyé (502)', r.status === 502 && /adresse refusée/.test(b.detail));
+check('n° 124 : refus de Resend : la base note l’échec de la même réservation', bodyOf(k, '/rpc/convocation_finish')?.p_send === 'envoi-1' && bodyOf(k, '/rpc/convocation_finish')?.p_ok === false && /adresse refusée/.test(bodyOf(k, '/rpc/convocation_finish')?.p_error));
+k = fakeC({ resendThrows: true }); r = await F.handle(req(conv()), env, k.f);
+check('n° 124 : Resend injoignable : échec noté, pas de réservation laissée « en cours »', r.status === 502 && bodyOf(k, '/rpc/convocation_finish')?.p_ok === false);
+check('n° 124 : ordre : vérification, réservation, Resend, puis « envoyé » noté', JSON.stringify(order(kOk).filter((x) => ['convocation_data', 'convocation_reserve', 'resend', 'convocation_finish'].includes(x))) === '["convocation_data","convocation_reserve","resend","convocation_finish"]' && bodyOf(kOk, '/rpc/convocation_finish')?.p_ok === true);
+check('n° 129 : contact masqué gardé dans le suivi : « Jean D. · j***@club.fr »', bodyOf(kOk, '/rpc/convocation_reserve')?.p_hint === 'Jean D. · j***@club.fr' && F.contactHint({ civ: 'Madame', last: 'martin', email: 'a@b.fr' }) === 'Mme M. · a***@b.fr');
+check('n° 124 : version et empreinte du document transmises à la réservation', bodyOf(kOk, '/rpc/convocation_reserve')?.p_version === 2 && bodyOf(kOk, '/rpc/convocation_reserve')?.p_hash === 'abc123');
+k = fakeC(); r = await F.handle(req(conv({ copy: false })), env, k.f);
+check('n° 129 : « M’envoyer une copie » décochée : aucune copie', r.status === 200 && bodyOf(k, 'api.resend.com/emails').cc === undefined);
+// N° 127 : jour de semaine → « cette semaine » (semaine de l'envoi) ou la date seule ; samedi-dimanche → « le week-end du »
+check('n° 127 : week-end : « le week-end du 14 et 15 novembre 2026 »', F.whenPhrase('2026-11-14', '2026-11-15', new Date('2026-11-10T09:00:00Z')) === 'le week-end du 14 et 15 novembre 2026');
+check('n° 127 : jeudi de la semaine de l’envoi : « cette semaine, le jeudi 5 novembre 2026 »', F.whenPhrase('2026-11-05', '2026-11-05', new Date('2026-11-05T11:16:00Z')) === 'cette semaine, le jeudi 5 novembre 2026' && F.whenPhrase('2026-11-05', '2026-11-05', new Date('2026-11-02T06:00:00Z')) === 'cette semaine, le jeudi 5 novembre 2026');
+check('n° 127 : jeudi d’une autre semaine : « le jeudi 12 novembre 2026 »', F.whenPhrase('2026-11-12', '2026-11-12', new Date('2026-11-05T11:00:00Z')) === 'le jeudi 12 novembre 2026' && F.whenPhrase('2026-11-12', '2026-11-12', new Date('2026-11-08T22:30:00Z')) === 'le jeudi 12 novembre 2026');
+const wk = F.convocationMail({ ...CD, from: '2026-11-05', to: '2026-11-05' }, 'C', 1, { civ: 'Monsieur', last: 'Raveneau' }, new Date('2026-11-05T11:16:00Z')).text;
+check('n° 127 : e-mail d’une rencontre en semaine : plus de « week-end du jeudi »', /aura le plaisir de vous accueillir cette semaine, le jeudi 5 novembre 2026, aux dates/.test(wk) && !/week-end/.test(wk));
 check('n° 112 : HTML de la convocation : texte échappé', !/<script>/.test(F.convocationMail({ ...CD, club: { name: '<script>' } }, 'P', 1, { last: '<b>' }).html));
 console.log(`\n   ${ok} réussis sur ${ok + ko} tests d'e-mail`);
 if (ko) process.exitCode = 1;
