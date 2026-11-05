@@ -1,6 +1,6 @@
 // mypocketclub · fiche joueur : informations, parents, autorisations datées, licence et cotisation, corbeille.
 import { BRAND } from '../config.js';
-import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, club, isBoard, hasArea, coachOf, contactsHidden, team, teamName, pl, pname, adminOf, parentsOf, isParentOf, canManagePlayer, canAdminPlayer, outranks, isMajor, name, num, plural } from './core.js';
+import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, club, isBoard, isPresident, hasArea, coachOf, contactsHidden, team, teamName, pl, pname, adminOf, parentsOf, isParentOf, canManagePlayer, canAdminPlayer, outranks, isMajor, name, num, plural } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 import { payFamilySoon } from './v310.js';
 
@@ -18,11 +18,26 @@ export function feeState(a) {
   return +a.fee_paid >= +a.fee_amount ? 'Payée' : +a.fee_paid > 0 ? 'Partielle' : 'À payer';
 }
 const cls = (v) => (['Licencié', 'Payée'].includes(v) ? 'ok' : ['À payer', 'Préinscrit club'].includes(v) ? 'ko' : 'wait');
-export function statusPills(p) {
+// n° 140 : sur la fiche, chaque pastille mène à sa rubrique (plus bas sur la même fiche) ; on n'y voit que ce que ses droits
+// permettent (la pastille n'existe que si la licence est lisible ; les montants restent réservés à la trésorerie et au président)
+export function statusPills(p, links = false) {
   const a = adminOf(p.id); if (!a) return '';
+  const pill = (c, t, k) => (links ? `<button class="pill ${c}" data-act="pljump" data-k="${k}" aria-label="${esc(t)} : aller à la rubrique">${esc(t)}</button>` : `<span class="pill ${c}">${esc(t)}</span>`);
   // 4.4.0 (n° 114) : sans accès aux montants, « cotisation à jour » seulement si le président l'a activé
-  const fee = a.nofee ? (a.fee_ok == null ? '' : `<span class="pill ${a.fee_ok ? 'ok' : 'ko'}">Cotisation ${a.fee_ok ? 'à jour' : 'pas à jour'}</span>`) : `<span class="pill ${cls(feeState(a))}">Cotisation : ${esc(feeState(a).toLowerCase())}</span>`;
-  return `<span class="pill ${cls(a.licence_state)}">${esc(a.licence_state)}</span>${fee}${a.health_doc ? '' : '<span class="pill ko">Certificat manquant</span>'}`;
+  const fee = a.nofee ? (a.fee_ok == null ? '' : pill(a.fee_ok ? 'ok' : 'ko', 'Cotisation ' + (a.fee_ok ? 'à jour' : 'pas à jour'), 'cotis')) : pill(cls(feeState(a)), 'Cotisation : ' + feeState(a).toLowerCase(), 'cotis');
+  return pill(cls(a.licence_state), a.licence_state, 'lic') + fee + (a.health_doc ? '' : pill('ko', 'Certificat manquant', 'certif'));
+}
+// n° 138 : en tête de la fiche, ce qui reste à régler (trésorerie, secrétariat, licences, président), chaque ligne mène à sa rubrique
+function toSettle(p, a) {
+  if (!a || p.from_partner || !(isPresident() || ['tresorerie', 'secretariat', 'licences'].some(hasArea))) return '';
+  const l = [], rest = a.nofee || a.fee_amount == null ? null : Math.max(0, +a.fee_amount - (+a.fee_paid || 0));
+  if (rest) l.push(['cotis', `Cotisation : ${eur(rest)} à régler`, 'ko']);
+  else if (a.nofee && a.fee_ok === false) l.push(['cotis', 'Cotisation pas à jour', 'ko']);
+  else if (!a.nofee && a.fee_amount == null && !+a.fee_paid && (isPresident() || hasArea('tresorerie'))) l.push(['cotis', 'Montant de la cotisation à définir (tarifs du club)', 'wait']);
+  if (a.licence_state !== 'Licencié') l.push(['lic', 'Licence : ' + (a.licence_state || 'Préinscrit club').toLowerCase(), a.licence_state === 'Préinscrit fédé' ? 'wait' : 'ko']);
+  if (!a.health_doc) l.push(['certif', 'Certificat ou questionnaire de santé manquant', 'ko']);
+  if (!l.length) return '';
+  return `<div class="card warn"><b>À régler</b><div class="list">${l.map(([k, t, c]) => `<button class="row" data-act="pljump" data-k="${k}"><span class="g">${esc(t)}</span><span class="pill ${c}" style="flex:none">Voir</span></button>`).join('')}</div></div>`;
 }
 // Licence (et réduction pour la trésorerie) ; la licence passe par set_licence (4.4.0)
 function licForm(pid, A, disc, D = {}) {
@@ -45,7 +60,7 @@ export function playerPage(pid) {
   const p = pl(pid); if (!p) return '<p class="empty">Fiche introuvable (à la corbeille ?).</p>';
   // n° 113 : le staff modifie une fiche depuis l'espace de l'équipe (onglet Effectif) ; ouverte depuis l'onglet Équipe, elle est en lecture seule
   const staff = canEdit(p) && !isParentOf(p.id) && p.user_id !== S.me.id, ed = canEdit(p) && (!staff || !!S.tsp), cons = canConsent(p), board = isBoard(), a = adminOf(pid), c = p.consents || {}, pr = presence(pid), par = parentsOf(pid);
-  let h = `<div class="card lift"><div class="det">${esc(teamName(p.team_id) || 'Sans équipe')}${p.birth_date ? ' · né(e) le ' + p.birth_date.split('-').reverse().join('/') : ' · <b>date de naissance à compléter</b>'}${isMajor(p) ? ' · majeur' : ''}</div>${pr.n ? `<div class="chips"><span class="pill blue">Présence ${pr.ok} / ${pr.n}</span>${pr.late ? `<span class="pill wait">${pr.late} retard${pr.late > 1 ? 's' : ''}</span>` : ''}</div>` : ''}<div class="chips">${statusPills(p)}</div></div>`;
+  let h = `<div class="card lift"><div class="det">${esc(teamName(p.team_id) || 'Sans équipe')}${p.birth_date ? ' · né(e) le ' + p.birth_date.split('-').reverse().join('/') : ' · <b>date de naissance à compléter</b>'}${isMajor(p) ? ' · majeur' : ''}</div>${pr.n ? `<div class="chips"><span class="pill blue">Présence ${pr.ok} / ${pr.n}</span>${pr.late ? `<span class="pill wait">${pr.late} retard${pr.late > 1 ? 's' : ''}</span>` : ''}</div>` : ''}<div class="chips">${statusPills(p, true)}</div></div>` + toSettle(p, a);
   // n° 78 : équipe en entente → club du joueur (seuls les joueurs de notre club entrent dans la trésorerie)
   const tt = team(p.team_id);
   if (tt && tt.partner_state && tt.partner_state !== 'aucune') {
@@ -82,7 +97,7 @@ export function playerPage(pid) {
     return cons ? `<button class="row" data-act="consent" data-id="${pid}" data-k="${k}" aria-pressed="${!!v.ok}"><span class="g">${l}<small>${sub}</small></span>${pill}</button>` : `<div class="row static"><span class="g">${l}<small>${sub}</small></span>${pill}</div>`;
   }).join('')}</div></div>${cons ? '<p class="note">Touche une ligne pour accorder ou retirer. La date est enregistrée.</p>' : ''}<p class="note">${isMajor(p) ? 'Joueur majeur : il donne lui-même ses autorisations.' : 'Joueur mineur : les autorisations sont données par un parent' + (p.birth_date ? '.' : ' (date de naissance à compléter).')}</p>`;
   // licence et cotisation
-  h += '<div class="sec"><h2>Licence et cotisation</h2></div>';
+  h += '<div class="sec" id="pl-lic"><h2>Licence et cotisation</h2></div>'; // n° 140 : arrivée des pastilles
   // n° 33 : montant dû calculé (grille − réduction), versements, pastille « Payé »
   const A = a || {}, due = A.fee_amount, paid = +A.fee_paid || 0, rest = due == null ? null : Math.max(0, due - paid), pays = S.payments.filter((x) => x.player_id === pid);
   // 4.4.0 (n° 114) : le Secrétariat et le correspondant licences voient la licence, pas les montants
@@ -108,6 +123,14 @@ export function playerPage(pid) {
 }
 
 Object.assign(ACTIONS, {
+  // n° 138 et 140 : aller à la rubrique de la fiche (versement, licence, certificat) ; sans droit d'y modifier, la carte de lecture
+  pljump: (el, d) => {
+    const t = (d.k === 'cotis' && document.getElementById('payf')) || (d.k !== 'cotis' && document.getElementById('padminf')) || document.getElementById('pl-lic');
+    if (!t) return;
+    t.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    const f = d.k === 'certif' ? t.querySelector('[name=health_doc]') : d.k === 'lic' ? t.querySelector('[name=licence_state]') : t.querySelector('[name=amount]');
+    if (f) setTimeout(() => f.focus({ preventScroll: true }), 300);
+  },
   plclub: async (el, d) => { const p = pl(d.id), v = d.v === '1'; if (await run(sb.from('players').update({ from_partner: v }).eq('id', d.id), v ? 'Joueur noté au club partenaire.' : 'Joueur noté à notre club.')) { p.from_partner = v; render(true); } },
   player: (el, d) => { S.view = { type: 'player', id: d.id }; render(); },
   tsplayer: (el, d) => { const p = pl(d.id); if (!p) return; S.tsp = p.team_id; S.noStack = true; render(true); }, // n° 113

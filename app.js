@@ -79,6 +79,7 @@ function render(keep) {
   }
   app.innerHTML = switchBar() + html;
   window.scrollTo(0, y);
+  onScroll();
   mountCaptcha();
 }
 async function refresh(msg) {
@@ -94,6 +95,23 @@ async function refresh(msg) {
   syncPush().then(() => render(true), () => {});
 }
 hooks.render = render; hooks.refresh = refresh;
+// n° 139 · ordinateur : l'en-tête réduite apparaît quand le bloc bleu sort de l'écran
+// (copie du retour, du logo, de la première ligne du titre et des onglets ; elle n'existe que pendant le défilement, sur grand écran)
+const onScroll = () => {
+  const hd = document.querySelector('header.hd'), on = !!hd && innerWidth >= 960 && scrollY > hd.offsetHeight - 8;
+  let m = document.querySelector('.hdmini');
+  if (on && !m) {
+    m = document.createElement('div'); m.className = 'hdmini';
+    [hd.querySelector('.band [data-act=back]'), hd.querySelector('.band .logo')].forEach((x) => x && m.appendChild(x.cloneNode(true)));
+    const t = hd.querySelector('h1') || hd.querySelector('.who.sp b');
+    if (t) { const b = document.createElement('b'); b.className = 'mt'; b.innerHTML = t.innerHTML.split(/<br\s*\/?>/i)[0]; m.appendChild(b); }
+    const tabs = hd.querySelector('.ttabs'); if (tabs) m.appendChild(tabs.cloneNode(true));
+    document.getElementById('app').appendChild(m);
+  }
+  if (!on && m) m.remove();
+  document.body.classList.toggle('scrolled', on);
+};
+addEventListener('scroll', onScroll, { passive: true }); addEventListener('resize', onScroll, { passive: true });
 
 // ---------- temps réel ----------
 function subscribe() {

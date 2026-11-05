@@ -93,6 +93,7 @@ export function header(o = {}) {
   const tags = o.tags?.length ? `<div class="tags">${o.tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : '';
   // N° 116 (alpha 4.1.0) : un seul bloc bleu dans les espaces : en-tête, puis qui (blason, équipe ou rôle, « club · saison »),
   // puis la rangée des casquettes, puis les onglets de l'espace. Chaque information n'apparaît qu'une fois.
+  // N° 139 · ordinateur : la version réduite de l'en-tête (retour, logo, titre, onglets) est fabriquée au défilement (app.js)
   if (o.space) {
     h += `<div class="top">${c ? crest(c, 44) : ''}<div class="who sp"><b>${o.title || ''}</b>${o.under ? `<span>${esc(o.under)}</span>` : ''}</div></div>`;
     return `<header class="hd${o.tabs ? ' tabbed' : ''}">${h}${o.casq || ''}${o.tabs || ''}</header>`;
@@ -107,7 +108,7 @@ export const clubSeason = (season) => [club()?.name, season ? 'saison ' + season
 // ---------- Icônes des casquettes (n° 85, n° 98) ----------
 export const casqIcon = (k, size = 20) => icon(k === 'coach' || String(k).startsWith('coach:') ? 'flag' : k === 'president' ? 'crown' : (k === 'f:Directeur technique' || k === 'f:Directeur sportif') ? 'target' : 'user', size);
 // Écrans qui font partie d'un espace (le rôle ouvert est allumé dans « Mes rôles » sur ordinateur)
-export const SPACE_VIEWS = ['espace', 'rub', 'gestion', 'fonctions', 'journal', 'timport'];
+export const SPACE_VIEWS = ['espace', 'rub', 'gestion', 'fonctions', 'journal', 'timport', 'fview']; // n° 133 : l'espace d'une fonction ouvert par le président garde « Président » allumé (Mes rôles, sur ordinateur)
 
 // ---------- Onglets ----------
 const TABS = [['Accueil', 'home'], ['Agenda', 'cal'], ['Messages', 'msg'], ['Équipe', 'team'], ['Club', 'shield']];

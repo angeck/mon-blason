@@ -55,6 +55,7 @@ a{color:var(--pc-bleu)}
 .hd h1{margin:0;font-family:var(--pc-titre);font-weight:800;font-size:32px;line-height:1.02;letter-spacing:-.03em}
 .hd .tags{display:flex;gap:8px;flex-wrap:wrap}
 .hd .tags span{background:#FFFFFF;color:var(--pc-encre);font-weight:700;font-size:14px;padding:6px 12px;border-radius:18px}
+.hdmini{display:none}
 .roundbtn{flex:none;width:44px;height:44px;border-radius:22px;border:0;background:#FFFFFF;color:var(--pc-encre);display:flex;align-items:center;justify-content:center;padding:0;position:relative}
 .roundbtn .dot{position:absolute;top:-2px;right:-2px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--pc-jaune);color:var(--pc-encre);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #FFFFFF}
 .ecu{flex:none;display:flex;align-items:center;justify-content:center;font-family:var(--pc-titre);font-weight:800}
@@ -228,6 +229,15 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
   .bd{padding-bottom:60px}
   .compose{bottom:0}
   .selbar{bottom:20px;padding-left:256px}
+  /* n° 139 : en-tête réduite figée en haut, sur ordinateur seulement, quand le bloc bleu est sorti de l'écran */
+  body.scrolled .hdmini{display:flex;position:fixed;top:0;z-index:8;left:calc(max(0px,50% - 520px) + 240px);right:max(0px,50% - 520px);align-items:center;gap:12px;padding:8px 20px;background:var(--pc-entete);color:var(--pc-entete-texte);border-radius:0 0 20px 20px;box-shadow:var(--pc-ombre)}
+  .hdmini .logo{flex:none;display:flex;align-items:center}
+  .hdmini .wordmark,.hdmini .wordmark .club{color:inherit}
+  .hdmini .wordmark .my{box-shadow:0 0 0 .035em var(--pc-encre)}
+  .hdmini .mt{flex:none;max-width:30%;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hdmini .ttabs{flex:1;min-width:0;margin:0}
+  .hdmini .ttabs button{min-height:44px;color:inherit}
+  .hdmini .roundbtn{width:36px;height:36px}
   #toast{bottom:32px}
 }
 .pwmeter{font-size:14px;font-weight:700;min-height:0}
@@ -273,7 +283,8 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 .ann .dot.read{background:transparent}
 .mission{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--pc-trait)}
 .mission:last-child{border-bottom:0}
-.mission .g{flex:1;min-width:0;display:flex;flex-direction:column;font-weight:700}
+.mission .g{flex:1 1 160px;min-width:0;display:flex;flex-direction:column;font-weight:700} /* n° 142 : les boutons passent dessous sur un écran étroit */
+.mission .ybtns{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px}
 .mission .g small{font-weight:400;color:var(--pc-texte-doux);font-size:14px}
 .progress{height:14px;border-radius:7px;background:#EEF0F7;overflow:hidden}.progress span{display:block;height:100%;background:var(--pc-bleu);border-radius:7px}
 /* vidéos des exercices (3.2.1) */

@@ -40,7 +40,7 @@ async function loadExos() {
     sb.from('exercise_votes').select('exercise_id,up').eq('user_id', S.me.id),
     isBoard() ? sb.from('exercise_reports').select('*').eq('handled', false) : Promise.resolve({ data: [] }),
   ]);
-  S.exos = (ex.data || []).filter((e) => !(e.sharing === 'me' && e.created_by !== S.me.id)); S.myVotes = {};  // les exercices vus seulement comme administrateur restent dans l'espace admin
+  S.exos = (ex.data || []).filter((e) => !(e.sharing === 'me' && e.created_by !== S.me.id)); S.myVotes = {}; S.exosKey = exosKey(); // n° 135 : liste rattachée au compte et au club  // les exercices vus seulement comme administrateur restent dans l'espace admin
   const sr = await sb.from('schema_requests').select('id,exercise_id,status').eq('requested_by', S.me.id).eq('status', 'pending'); S.schemaReq = Object.fromEntries((sr.data || []).map((x) => [x.exercise_id, x.id])); // n° 86
   (vo.data || []).forEach((v) => (S.myVotes[v.exercise_id] = v.up)); S.exReports = rp.data || [];
   const others = S.exos.filter((e) => e.created_by !== S.me.id).map((e) => e.id);
@@ -136,7 +136,16 @@ async function bulkVideos(files) {
   toast(`${plural(ok.length, 'vidéo ajoutée', 'vidéos ajoutées')}.${ko.length ? ' Sans exercice du même nom : ' + ko.join(', ') + '.' : ''}`, ko.length ? 9000 : undefined);
 }
 export async function loadEvPlans() { S.evPlans = canCoachSpace() ? ((await sb.from('training_plans').select('id,title,event_id,team_id,items,notes').not('event_id', 'is', null).is('deleted_at', null).limit(300)).data || []) : []; }
-export async function ensureExos() { if (!S.exos) await loadExos(); }
+// n° 135 : la liste chargée appartient à un compte et à un club ; après un changement de profil de test ou de club, elle est rechargée
+const exosKey = () => (S.me?.id || '') + ':' + (S.clubId || '');
+export const exosFresh = () => !!S.exos && S.exosKey === exosKey();
+export async function ensureExos() { if (!exosFresh()) await loadExos(); }
+// Compteurs de la banque : rechargés en arrière-plan s'ils ne sont pas à jour (affichés « … » en attendant, jamais un faux 0)
+export function exosForCounts() {
+  if (exosFresh()) return S.exos;
+  if (!S.exosLoading) { S.exosLoading = true; loadExos().then(() => { S.exosLoading = false; render(true); }, () => { S.exosLoading = false; }); }
+  return null;
+}
 export function planForEvent(e) { const t = evTeams(e).find((x) => coachOf(x)) || evTeams(e)[0] || ''; S.plan = { club: S.clubId, id: null, title: e.title + ' · ' + new Date(e.starts_at).toLocaleDateString('fr-FR'), team_id: t, event_id: e.id, notes: '', items: [] }; savePlanLocal(); }
 async function loadPlans() { S.plans = (await sb.from('training_plans').select('*').is('deleted_at', null).order('updated_at', { ascending: false }).limit(200)).data || []; }
 // Compteurs pour l'onglet Club (bureau) : relevés d'heures et exercices publics à valider
@@ -569,13 +578,13 @@ function addToPlan(e) {
 }
 Object.assign(ACTIONS, {
   cexos: (el, d) => { if (d.tab) S.ctab = d.tab; else if (!S.ctab || S.ctab === 'seance') S.ctab = 'mine'; return open({ type: 'exos' }, loadExos); },
-  ctab: async (el, d) => { if (d.v === 'seance') keepPlan(); S.ctab = d.v; render(true); if (!S.exos && d.v !== 'seance') { await loadExos(); render(true); } },
+  ctab: async (el, d) => { if (d.v === 'seance') keepPlan(); S.ctab = d.v; render(true); if (!exosFresh() && d.v !== 'seance') { await loadExos(); render(true); } },
   cfsport: (el, d) => { S.cf.sport = d.v; render(true); },
   cfcat: (el, d) => { S.cf.cat = d.v; render(true); },
   cexo: (el, d) => { S.exRep = null; S.view = { type: 'exo', id: d.id }; render(); },
   cadd: (el, d) => { const e = exById(d.id); if (e) addToPlan(e); },
-  padd: () => { keepPlan(); S.pk = { tab: 'mine' }; return open({ type: 'expick' }, async () => { if (!S.exos) await loadExos(); }); },
-  pktab: async (el, d) => { S.pk = { tab: d.v }; render(true); if (!S.exos) { await loadExos(); render(true); } },
+  padd: () => { keepPlan(); S.pk = { tab: 'mine' }; return open({ type: 'expick' }, async () => { if (!exosFresh()) await loadExos(); }); },
+  pktab: async (el, d) => { S.pk = { tab: d.v }; render(true); if (!exosFresh()) { await loadExos(); render(true); } },
   pkcreate: () => { ACTIONS.cexnew(); S.exf.pickAdd = true; },
   cexnew: () => { S.exVid = null; S.exVidRm = false; S.exf = { sport: club()?.sport || 'Basket-ball', category: 'Technique', duration_min: 10, origin: 'perso', sharing: 'me', diagram: [], tags: [], certified: false, askschema: true }; S.dg = { tool: 'a', from: null }; S.view = { type: 'exoform' }; render(); },
   cexedit: (el, d) => { S.exVid = null; S.exVidRm = false; const e = exById(d.id); S.exf = { ...e, diagram: (e.diagram || []).slice(), tags: (e.tags || []).slice(), askschema: false }; S.dg = { tool: 'a', from: null }; S.view = { type: 'exoform', id: d.id }; render(); },
@@ -594,7 +603,7 @@ Object.assign(ACTIONS, {
   cexval: async (el, d) => { if (await run(sb.rpc('validate_exercise', { p_id: d.id, p_ok: d.v === '1' }), d.v === '1' ? 'Exercice validé : visible de tous les clubs.' : 'Partage public refusé.')) { await loadExos(); await loadCoachCounts(); render(true); } },
   cexdel: async (el, d) => { if (!armed('ex' + d.id)) return; if (await run(sb.rpc('trash_exercise', { p_id: d.id }), 'Exercice supprimé (corbeille 30 jours).')) { await loadExos(); S.view = { type: 'exos' }; S.stack = (S.stack || []).filter((v) => v.type !== 'exo'); render(); } },
   cexrest: async (el, d) => { if (await run(sb.rpc('trash_exercise', { p_id: d.id, p_restore: true }), 'Exercice restauré.')) { await loadExos(); render(true); } },
-  cplan: () => { ensurePlan(); S.ctab = 'seance'; return open({ type: 'exos' }, async () => { if (!S.exos) await loadExos(); }); },
+  cplan: () => { ensurePlan(); S.ctab = 'seance'; return open({ type: 'exos' }, async () => { if (!exosFresh()) await loadExos(); }); },
   pmove: (el, d) => { keepPlan(); const p = S.plan, i = +d.i, j = i + +d.v; [p.items[i], p.items[j]] = [p.items[j], p.items[i]]; savePlanLocal(); render(true); },
   prm: (el, d) => { keepPlan(); S.plan.items.splice(+d.i, 1); savePlanLocal(); render(true); },
   pnew: () => { S.plan = null; try { localStorage.removeItem('pc_plan_' + S.clubId); } catch { /* */ } ensurePlan(); render(true); },

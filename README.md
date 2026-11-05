@@ -1,4 +1,4 @@
-# mypocketclub · alpha 4.4.1
+# mypocketclub · alpha 4.5.0
 
 Application web installable (PWA) pour les clubs sportifs : agenda avec réponses « Je viens / Je ne viens pas », appel, fiches joueurs, licences et cotisations, groupes d'échange (messages en direct, sondages), équipes, membres, corbeille de 30 jours.
 
@@ -24,13 +24,23 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 ## Tests (jamais sur la base réelle)
 
 `PGHOST=… PGPORT=… PGUSER=postgres sh tests/lancer.sh` : base PostgreSQL 16 locale (`tests/prelude.sql` imite Supabase), puis
-- `tests/vie_de_club.py` : faux club complet et saison simulée, 749 vérifications des droits (visiteur non connecté compris) ;
+- `tests/vie_de_club.py` : faux club complet et saison simulée, 838 vérifications des droits (visiteur non connecté compris) ;
 - `tests/import.test.mjs` : lecture de listes de joueurs et d'équipes (20 tests) ;
 - `tests/email.test.mjs` : fonction d'envoi des e-mails, Supabase et Resend imités (42 tests, dont l'envoi et la réservation des convocations) ;
 - `tests/pdf.test.mjs` : petit fabricant de PDF (14 tests, images comprises) ;
-- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (350 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
+- `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (407 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
 
 Toutes les personnes des tests sont fictives.
+
+## Alpha 4.5.0
+
+Relecture de la 4.4.0 par Gaël (5 novembre 2026). Mise à jour d'une base 4.4.0 : `supabase/MAJ_ALPHA_4_5_0.sql` (source `supabase/alpha_4_5_0.sql`, ajoutée au RESET), sans perte de données, relançable. Code d'abord, script ensuite (sans le script, la liste des adultes pour nommer un coach reste vide).
+
+- N° 130 : en sélection multiple, la barre des rendez-vous passés reste ouverte. N° 134 : la base laissait déjà le président tout supprimer ; c'est « Tout le club » éteint qui cachait aussi les rendez-vous passés des autres équipes : la barre des passés et la sélection le disent.
+- N° 131 : « Réorganiser » dans chaque onglet des fonctions qui a plusieurs blocs (ordre propre à la personne, à la fonction et à l'onglet ; le bandeau reste en tête). N° 132 : « Ajouter une équipe » au-dessus de « Ajouter des joueurs » chez le président. N° 133 : dans l'espace d'une fonction ouvert par le président, la casquette « Président » reste allumée (rangée des casquettes ; « Mes rôles » sur ordinateur). N° 139 : sur ordinateur, une en-tête réduite (retour, logo, titre, onglets) reste en haut pendant le défilement.
+- N° 135 : la liste d'exercices est rattachée au compte et au club ; après un changement de profil, elle est rechargée avant d'afficher les compteurs. N° 141 : la banque d'exercices du club directement dans l'onglet Exercices du Directeur technique.
+- N° 136 : coach et coach assistant réservés aux adultes (`set_team_coach`) ; la liste proposée vient de la base (`coach_candidates` : tous les adultes du club). N° 137 : dans Mon compte, le choix des coordonnées passe avant l'explication. N° 138 : fiche joueur : carte « À régler » en tête (trésorerie, secrétariat, licences, président). N° 140 : les pastilles de statut mènent à la bonne rubrique de la fiche.
+- N° 142 : relance de l'encart « Souhaites-tu être bénévole ? » par la rubrique Événements (`ask_volunteers`, une fois toutes les 12 heures : membres du bureau sans réponse, supporteurs sans réponse si le club leur ouvre le bénévolat ; jamais un mineur) ; missions « jeunes dès U13 » (`event_missions.youth`, cochée par le président ou le correspondant rencontres, jamais la buvette ; `mission_youth_signups`, `volunteer_youth` : le parent inscrit son enfant ; `unassign_youth` : l'organisateur le retire ; une place prise par un jeune compte comme une autre).
 
 ## Alpha 4.4.1
 

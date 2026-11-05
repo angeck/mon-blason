@@ -9,7 +9,8 @@ import {
 import { icon } from './ui.js';
 import { upcoming } from './agenda.js';
 import { pendRows, licencesBlock, namesToCheck, feesBlock, teamsBlock, membersBlock, exportMembers } from './club.js';
-import { hoursCheckBlock, clubResults, partnerRequests } from './v35.js';
+import { hoursCheckBlock, clubResults, partnerRequests, arrange } from './v35.js';
+import { exosForCounts } from './coach.js';
 import { teamToolsBlock, dupGroups } from './v38.js';
 import { payTreasurerSoon } from './v310.js';
 import { addPlayersBlock, tresoSummary, benevBlock, defaultMissionsBlock, rubBody, rubList, annList, missing } from './vie.js';
@@ -67,8 +68,11 @@ function fnSpace(f, mine) {
   const cur = tabs.find((t) => t.id === S.ftabs[key]) || tabs[0];
   const nav = `<nav class="ttabs" aria-label="Espace ${esc(f)}">${tabs.map((t) => `<button data-act="ftab" data-k="${esc(key)}" data-v="${t.id}" ${t.id === cur.id ? 'aria-current="page"' : ''}>${esc(t.l)}</button>`).join('')}</nav>`;
   const first = cur.set && SETS[cur.set][0][0] === cur.id;
-  // « Gestion du club » (demandes, membres, corbeille) reste en bas de chaque onglet, comme avant (n° 88)
-  const body = (first && BANDS[cur.set] ? BANDS[cur.set](key) : '') + (BODY[cur.id] ? BODY[cur.id]() : '') + `<button class="btn" data-act="gestion">${icon('shield', 20)}Gestion du club</button>`;
+  const band = first && BANDS[cur.set] ? BANDS[cur.set](key) : '', b = BODY[cur.id] ? BODY[cur.id]() : '';
+  // n° 131 : « Réorganiser » dans chaque onglet qui a plusieurs blocs (ordre propre à la personne, à la fonction et à l'onglet) ;
+  // le bandeau reste en tête ; « Gestion du club » (demandes, membres, corbeille) reste en bas de chaque onglet (n° 88)
+  const inner = Array.isArray(b) ? arrange(key + ':' + cur.id, [{ id: 'bandeau', pin: true, html: band }, ...b]) : band + b;
+  const body = inner + `<button class="btn" data-act="gestion">${icon('shield', 20)}Gestion du club</button>`;
   return { tabs: nav, body };
 }
 hooks.fnSpace = fnSpace;
@@ -150,22 +154,27 @@ async function loadReads(ids) {
   (data || []).forEach((x) => (S.v44.reads[x.announcement_id] = (S.v44.reads[x.announcement_id] || 0) + 1));
   render(true);
 }
+const blk = (id, label, html) => ({ id, label, html }); // n° 131 : un bloc déplaçable
 const canExportMembers = () => isPresident() || myFonctions().some((f) => ['Secrétaire', 'Secrétaire adjoint'].includes(f));
 
 const BODY = {
   // Trésorier
   cotis: () => {
     const late = lateFees();
-    return payTreasurerSoon() + tresoSummary()
-      + (late.length ? `<button class="btn ${isArmed('feeall') ? 'ink' : 'main'}" data-act="feeremall">${icon('mail', 20)}${isArmed('feeall') ? `Confirmer : relancer ${plural(late.length, 'cotisation non réglée', 'cotisations non réglées')}` : `Relancer toutes les cotisations non réglées (${late.length})`}</button><p class="note">Un rappel à chaque famille concernée, dans l’application. Une famille déjà relancée cette semaine, ou sans compte relié, est sautée.</p>` : '')
-      + licencesBlock() + `<button class="btn ghost" data-act="xlsxlic">${icon('down', 20)}Exporter la liste des cotisations (Excel)</button><p class="note">Chaque export est inscrit au journal du club.</p>`;
+    return [
+      blk('relance', 'Relancer les cotisations', (late.length ? `<button class="btn ${isArmed('feeall') ? 'ink' : 'main'}" data-act="feeremall">${icon('mail', 20)}${isArmed('feeall') ? `Confirmer : relancer ${plural(late.length, 'cotisation non réglée', 'cotisations non réglées')}` : `Relancer toutes les cotisations non réglées (${late.length})`}</button><p class="note">Un rappel à chaque famille concernée, dans l’application. Une famille déjà relancée cette semaine, ou sans compte relié, est sautée.</p>` : '')),
+      blk('resume', 'Résumé de la trésorerie', tresoSummary()),
+      blk('liste', 'Licences et cotisations', licencesBlock()),
+      blk('export', 'Export Excel', `<button class="btn ghost" data-act="xlsxlic">${icon('down', 20)}Exporter la liste des cotisations (Excel)</button><p class="note">Chaque export est inscrit au journal du club.</p>`),
+      blk('paiement', 'Paiement en ligne', payTreasurerSoon()),
+    ];
   },
   tarifs: () => feesBlock(),
-  heures: () => hoursCheckBlock() + `<button class="btn" data-act="choursb">${icon('check', 20)}Relevés, taux et montants</button>`,
+  heures: () => [blk('verif', 'Vérification des heures', hoursCheckBlock()), blk('releves', 'Relevés, taux et montants', `<button class="btn" data-act="choursb">${icon('check', 20)}Relevés, taux et montants</button>`)],
   // Secrétaire
   licences: () => licencesBlock(),
-  fiches: () => { const vp = toValidate(); return (vp.length ? `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>` : '') + namesToCheck() + membersBlock(); },
-  impexp: () => addPlayersBlock(liveIds()) + `<div class="sec"><h2>Exporter</h2></div><div class="card">${canExportMembers() ? `<button class="btn" data-act="xlsxmem">${icon('down', 20)}Exporter les membres et leurs coordonnées (Excel)</button><p class="note">Équipe, licence, parents, e-mails, téléphones, contact d’urgence. L’export est inscrit au journal du club, à ton nom.</p>` : '<p class="note" style="margin:0">L’export des coordonnées est réservé au président, au secrétaire et au secrétaire adjoint.</p>'}</div>`,
+  fiches: () => { const vp = toValidate(); return [blk('demandes', 'Demandes à valider', vp.length ? `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>` : ''), blk('noms', 'Noms à vérifier', namesToCheck()), blk('membres', 'Membres', membersBlock())]; },
+  impexp: () => [blk('ajout', 'Ajouter des joueurs', addPlayersBlock(liveIds())), blk('export', 'Exporter', `<div class="sec"><h2>Exporter</h2></div><div class="card">${canExportMembers() ? `<button class="btn" data-act="xlsxmem">${icon('down', 20)}Exporter les membres et leurs coordonnées (Excel)</button><p class="note">Équipe, licence, parents, e-mails, téléphones, contact d’urgence. L’export est inscrit au journal du club, à ton nom.</p>` : '<p class="note" style="margin:0">L’export des coordonnées est réservé au président, au secrétaire et au secrétaire adjoint.</p>'}</div>`)],
   // Correspondant licences
   lic: () => licencesBlock(),
   liccontact: () => contactCard('de licence'),
@@ -177,30 +186,40 @@ const BODY = {
   },
   convoc: () => {
     const home = homeSoon();
-    return (hooks.receivedBlock ? hooks.receivedBlock() : '') + `<div class="sec"><h2>Matchs à domicile à convoquer</h2><span class="det">${home.length ? plural(home.length, 'rencontre') : ''}</span></div>`
-      + (home.length ? `<div class="card"><div class="list">${home.map((e) => evRow(e)).join('')}</div></div><p class="note">Ouvre une rencontre pour envoyer la pré-convocation ou la convocation aux clubs reçus.</p>` : '<p class="empty">Aucun match à domicile dans les 30 prochains jours.</p>');
+    return [blk('recues', 'Convocations reçues', hooks.receivedBlock ? hooks.receivedBlock() : ''), blk('aconvoquer', 'Matchs à domicile à convoquer', `<div class="sec"><h2>Matchs à domicile à convoquer</h2><span class="det">${home.length ? plural(home.length, 'rencontre') : ''}</span></div>`
+      + (home.length ? `<div class="card"><div class="list">${home.map((e) => evRow(e)).join('')}</div></div><p class="note">Ouvre une rencontre pour envoyer la pré-convocation ou la convocation aux clubs reçus.</p>` : '<p class="empty">Aucun match à domicile dans les 30 prochains jours.</p>'))];
   },
-  benev: () => benevBlock(clubEvs()) + defaultMissionsBlock(),
+  benev: () => [blk('places', 'Places à pourvoir', benevBlock(clubEvs())), blk('missions', 'Missions par défaut', defaultMissionsBlock())],
   rcontact: () => contactCard('sur les matchs'),
   // Directeur technique
-  equipes: () => teamToolsBlock() + teamsBlock() + addPlayersBlock(liveIds()),
+  equipes: () => [blk('outils', 'Créer, importer, doublons', teamToolsBlock()), blk('equipes', 'Équipes', teamsBlock()), blk('ajout', 'Ajouter des joueurs', addPlayersBlock(liveIds()))],
   coachs: () => {
     const req = toValidate().filter((m) => m.role === 'coach');
     const rows = live().map((t) => { const cs = [...new Set(S.members.filter((m) => m.role === 'coach' && m.status === 'active' && m.team_id === t.id).map((m) => m.user_id))]; return `<button class="row" data-act="tsopen" data-id="${t.id}"><span class="g">${esc(t.name)}<small>${cs.length ? esc(cs.map(name).join(', ')) : 'Sans coach'}</small></span>${cs.length ? '<span class="chev"></span>' : '<span class="pill wait" style="flex:none">Sans coach</span>'}</button>`; }).join('');
-    return (req.length ? `<div class="sec"><h2>Demandes de coachs</h2><span class="pill wait">${req.length}</span></div><div class="card lift">${pendRows(req)}</div>` : '')
-      + `<div class="sec"><h2>Coachs par équipe</h2></div><div class="card"><div class="list">${rows || '<p class="empty">Aucune équipe.</p>'}</div></div><button class="btn" data-act="choursb">${icon('check', 20)}Heures des coachs</button>`;
+    return [blk('demandes', 'Demandes de coachs', req.length ? `<div class="sec"><h2>Demandes de coachs</h2><span class="pill wait">${req.length}</span></div><div class="card lift">${pendRows(req)}</div>` : ''),
+      blk('coachs', 'Coachs par équipe', `<div class="sec"><h2>Coachs par équipe</h2></div><div class="card"><div class="list">${rows || '<p class="empty">Aucune équipe.</p>'}</div></div><button class="btn" data-act="choursb">${icon('check', 20)}Heures des coachs</button>`)];
   },
-  exos: () => { const cc = S.coachCounts || {}; return `${cc.exos ? `<div class="card warn"><b>${plural(cc.exos, 'exercice proposé à tous les clubs', 'exercices proposés à tous les clubs')}</b><span class="note" style="color:var(--pc-encre)">À valider avant qu’ils soient visibles des autres clubs.</span></div>` : ''}<div class="grid2"><button class="btn small" data-act="cexos" data-tab="club">${icon('doc', 18)}Exercices du club</button><button class="btn small" data-act="cstats">${icon('team', 18)}Statistiques</button></div>`; },
-  ententes: () => (partnerRequests() || '<p class="empty">Aucune demande d’entente.</p>') + clubResults(),
+  // n° 141 : la banque d'exercices du club, directement dans l'onglet (les plus récents, recherche dans la banque complète)
+  exos: () => {
+    const cc = S.coachCounts || {}, ex = exosForCounts(), clubEx = ex ? ex.filter((e) => e.club_id === S.clubId && e.sharing !== 'me' && !e.deleted_at) : null;
+    const recent = clubEx ? clubEx.slice(0, 6) : [];
+    return [
+      blk('avalider', 'Exercices à valider', cc.exos ? `<button class="card warn" data-act="cexos" data-tab="club" style="border:0;text-align:left;font:inherit;color:inherit"><b>${plural(cc.exos, 'exercice proposé à tous les clubs', 'exercices proposés à tous les clubs')}</b><span class="note" style="color:var(--pc-encre)">À valider avant qu’ils soient visibles des autres clubs. Touche pour les voir.</span></button>` : ''),
+      blk('banque', 'Banque d’exercices du club', `<div class="sec"><h2>Banque d’exercices du club</h2><span class="det">${clubEx ? plural(clubEx.length, 'exercice') : '…'}</span></div><button class="btn main" data-act="cexos" data-tab="club">${icon('doc', 20)}Ouvrir la banque du club</button>`
+        + (recent.length ? `<div class="card"><div class="list">${recent.map((e) => `<button class="row" data-act="cexo" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc([e.category, e.duration_min ? e.duration_min + ' min' : '', S.exAuthors?.[e.id]?.author || (e.created_by === S.me.id ? 'toi' : '')].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`).join('')}</div></div><p class="note">Les ${recent.length} derniers exercices du club. La banque complète a la recherche et les filtres.</p>` : clubEx ? '<p class="empty">Aucun exercice partagé avec le club pour l’instant.</p>' : '')),
+      blk('outils', 'Ajouter et statistiques', `<div class="grid2"><button class="btn small" data-act="cexnew">${icon('plus', 18)}Ajouter un exercice</button><button class="btn small" data-act="cstats">${icon('team', 18)}Statistiques</button></div>`),
+    ];
+  },
+  ententes: () => [blk('demandes', 'Demandes d’entente', partnerRequests() || '<p class="empty">Aucune demande d’entente.</p>'), blk('resultats', 'Résultats du club', clubResults())],
   // Communication
   annonces: () => { const mine = S.annonces.filter((x) => x.created_by === S.me.id); return `<button class="btn main" data-act="annnew">${icon('plus', 20)}Nouvelle annonce</button><div class="sec"><h2>Mes annonces</h2><span class="det">${mine.length || ''}</span></div>` + (mine.length ? annList(mine.slice(0, 12), false) : '<p class="empty">Tu n’as pas encore écrit d’annonce. Les annonces du club sont dans l’onglet Messages.</p>'); },
   lecteurs: () => readsBlock(),
   // Personne désignée pour les événements
   events: () => {
     const l = upcoming(S.events.filter((e) => !e.cancelled && ['Événement', 'AG'].includes(e.type) && new Date(e.starts_at) < Date.now() + 120 * DAY));
-    return `<button class="btn main" data-act="evnew" data-type="Événement">${icon('plus', 20)}Nouvel événement</button><div class="sec"><h2>Événements à venir</h2><span class="det">${l.length || ''}</span></div>`
-      + (l.length ? `<div class="card"><div class="list">${l.map((e) => `<button class="row" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(fmtShort(e.starts_at))}${e.place ? ' · ' + esc(e.place) : ''}</small></span>${missing(e.id) ? `<span class="pill wait" style="flex:none">Il manque ${missing(e.id)}</span>` : '<span class="chev"></span>'}</button>`).join('')}</div></div>` : '<p class="empty">Aucun événement dans les quatre prochains mois.</p>')
-      + benevBlock(l.filter((e) => new Date(e.starts_at) < Date.now() + 30 * DAY));
+    return [blk('liste', 'Événements à venir', `<button class="btn main" data-act="evnew" data-type="Événement">${icon('plus', 20)}Nouvel événement</button><div class="sec"><h2>Événements à venir</h2><span class="det">${l.length || ''}</span></div>`
+      + (l.length ? `<div class="card"><div class="list">${l.map((e) => `<button class="row" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(fmtShort(e.starts_at))}${e.place ? ' · ' + esc(e.place) : ''}</small></span>${missing(e.id) ? `<span class="pill wait" style="flex:none">Il manque ${missing(e.id)}</span>` : '<span class="chev"></span>'}</button>`).join('')}</div></div>` : '<p class="empty">Aucun événement dans les quatre prochains mois.</p>')),
+      blk('benevoles', 'Bénévoles', benevBlock(l.filter((e) => new Date(e.starts_at) < Date.now() + 30 * DAY)))];
   },
   commun: () => rubBody('commun'),
   rubs: () => rubList(['commun'].concat(S.v44x || [])) + '<p class="note">Rubriques que le président t’a ouvertes en plus de ta fonction.</p>',

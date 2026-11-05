@@ -63,7 +63,7 @@ const D = {
     { id: 'x3', club_id: C, created_by: 'u-c11', sport: 'Basket-ball', title: 'Défense 1 contre 1', category: 'Tactique', duration_min: 20, level: '', description: 'Défense en glissés.', diagram: [], sharing: 'public', public_state: 'pending', origin: 'adapte', source: 'Formation fédérale', certified: true, up_count: 0, down_count: 0, deleted_at: null, updated_at: at(-1) },
   ],
   announcements: [{ id: 'a1', club_id: C, audience: 'club', team_ids: [], people: [], kind: 'annonce', event_id: null, title: 'Gymnase fermé samedi', body: 'Travaux : entraînements déplacés.', created_by: 'u-pres', created_at: at(-1, 12), deleted_at: null }],
-  announcement_reads: [], event_missions: [], mission_signups: [], board_areas: [],
+  announcement_reads: [], event_missions: [], mission_signups: [], mission_youth_signups: [], board_areas: [],
   exercise_votes: [], exercise_reports: [], training_plans: [], coach_hours: [{ id: 'h0', club_id: C, user_id: 'u-c11', team_id: T11, day: at(-4).slice(0, 10), minutes: 90, kind: 'Entraînement', note: '' }],
   club_requests: [],
   coach_statements: [{ id: 'st1', club_id: C, user_id: 'u-c11', month: (() => { const d = new Date(); return d.toLocaleDateString('sv-SE').slice(0, 8) + '01'; })(), status: 'submitted', total_minutes: 90 }],
@@ -72,6 +72,7 @@ const D = {
 { const p = D.events.filter((e) => e.type === 'Entraînement' && new Date(e.starts_at) < Date.now()).map((e) => new Date(e.starts_at)).sort((a, b) => b - a)[0]; if (p) { D.coach_statements[0].month = p.toLocaleDateString('sv-SE').slice(0, 8) + '01'; D.coach_hours[0].day = p.toLocaleDateString('sv-SE'); } } // les heures de Karim sont dans le même mois que son relevé, quel que soit le jour du test
 window.__FAKE = D; window.__CALLS = [];
 const clone = (x) => JSON.parse(JSON.stringify(x));
+window.__FD = D; // 4.5.0 : les tests ajoutent des données au besoin
 class Q {
   constructor(t) { this.t = t; this.f = []; this.op = 'select'; this.one = false; }
   select(c, o) { if (this.op === 'insert' || this.op === 'update') this.ret = true; if (o?.head) this.head = true; return this; }
@@ -161,6 +162,12 @@ const RPC = {
   add_default_missions: ({ p_event }) => { const c = D.clubs.find((x) => x.id === C); c.default_missions.forEach((m, i) => D.event_missions.push({ id: uid(), event_id: p_event, label: m.label, slots: m.slots, position: i + 1, created_at: new Date().toISOString() })); return c.default_missions.length; },
   volunteer: ({ p_mission, p_on }) => { if (p_on) D.mission_signups.push({ mission_id: p_mission, user_id: ME, added_by: ME }); else D.mission_signups = D.mission_signups.filter((x) => !(x.mission_id === p_mission && x.user_id === ME)); return null; },
   assign_volunteer: ({ p_mission, p_user, p_on }) => { if (p_on) D.mission_signups.push({ mission_id: p_mission, user_id: p_user, added_by: ME }); else D.mission_signups = D.mission_signups.filter((x) => !(x.mission_id === p_mission && x.user_id === p_user)); return null; },
+  // 4.5.0 : n° 136 (adultes du club pour nommer un coach), n° 142 (relance de l'encart, jeunes dès U13)
+  coach_candidates: ({ p_team }) => { window.__CCANDS = p_team; return [{ uid: 'u-pres', label: 'Céline Présidente' }, { uid: 'u-p1', label: 'Nina Parent' }, { uid: 'u-s1', label: 'Léa Supportrice' }]; },
+  volunteer_ask_state: () => window.__VASK || { bureau: 1, supporters: 2, asked_at: null },
+  ask_volunteers: (a) => { window.__VASKED = a; window.__VASK = { bureau: 1, supporters: 2, asked_at: new Date().toISOString() }; return 3; },
+  volunteer_youth: ({ p_mission, p_player, p_on }) => { window.__YVOL = { p_mission, p_player, p_on }; if (p_on) D.mission_youth_signups.push({ mission_id: p_mission, player_id: p_player, added_by: ME }); else D.mission_youth_signups = D.mission_youth_signups.filter((x) => !(x.mission_id === p_mission && x.player_id === p_player)); return null; },
+  unassign_youth: ({ p_mission, p_player }) => { D.mission_youth_signups = D.mission_youth_signups.filter((x) => !(x.mission_id === p_mission && x.player_id === p_player)); return null; },
   remind_missions: (a) => { window.__MREM = a; return '2 aide, 2 buvette'; }, volunteer_optouts: () => ['u-c11'], volunteer_stats: () => ({ members: { yes: [ME, 'u-pres'], no: ['u-c11'], cats: { bureau: [2, 0], coachs: [0, 1] } }, supporters: D.clubs[0].supporters_volunteer ? { yes: [], no: [], none: ['u-sup'] } : null }), set_supporters_volunteer: ({ p_on }) => { D.clubs[0].supporters_volunteer = p_on; return null; }, set_supporter_volunteer: ({ p_on }) => { window.__SUPVOL = p_on; return null; }, set_volunteer: ({ p_on }) => { window.__VOL = p_on; return null; }, remind_event: () => 3, remind_fee: () => 1,
   delete_announcement: ({ p_id }) => { D.announcements.find((a) => a.id === p_id).deleted_at = new Date().toISOString(); return null; },
   set_bureau_fonction: ({ p_user, p_fonction, p_membership }) => { if (p_membership) D.memberships.find((m) => m.id === p_membership).fonction = p_fonction; else D.memberships.push({ id: uid(), club_id: C, user_id: p_user, role: 'bureau', fonction: p_fonction, status: 'active' }); return null; },

@@ -4,6 +4,7 @@
 import {
   S, sb, esc, hooks, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, club, active, isBoard, isPresident, coachTeams, coachOf,
   SEASON, hasArea, AREAS, FONCTIONS, casquettes, isCoachCasq, team, teamName, name, nick, plural, fmtShort, hm, evTeams, store, playersOfTeam, toValidate, myKids, loadNames,
+  teamsOfPlayer, isMajor, pl,
 } from './core.js';
 import { icon, crest, delBtn, field, header, dayBadge, casqIcon, clubSeason } from './ui.js';
 import { upcoming, teamTabs } from './agenda.js';
@@ -102,7 +103,7 @@ export function presidentOverview() {
   return arrange('president', [
     // n° 116 : plus de carte « N demandes à valider » (la tuile du bandeau le dit déjà et ouvre l'onglet Demandes)
     { id: 'chiffres', label: 'Chiffres du club', html: tiles },
-    { id: 'joueurs', label: 'Ajouter des joueurs', html: addPlayersBlock(clubTeamIds()) },
+    { id: 'joueurs', label: 'Ajouter une équipe ou des joueurs', html: `<button class="btn" data-act="tcreateopen">${icon('plus', 20)}Ajouter une équipe</button>` + addPlayersBlock(clubTeamIds()) }, // n° 132 : « Ajouter une équipe » juste au-dessus de « Ajouter des joueurs »
     { id: 'heures', label: 'Heures des coachs', html: hoursCheckBlock() },
     { id: 'resultats', label: 'Derniers résultats', html: clubResults() },
     { id: 'ententes', label: 'Ententes', html: partnerRequests() },
@@ -175,7 +176,7 @@ export function benevBlock(evs) {
   h += evs.length ? evs.map((e) => {
     const m = missionsOf(e.id), miss = missing(e.id), open = S.mremOpen === e.id;
     const recent = e.missions_reminded_at && Date.now() - new Date(e.missions_reminded_at) < 12 * 3600e3;
-    const det = m.length ? (miss ? 'il manque ' + m.map((x) => [x.slots - signupsOf(x.id).length, x.label.toLowerCase()]).filter(([n]) => n > 0).map(([n, l]) => n + ' ' + l).join(', ') : 'complet') : 'aucune mission';
+    const det = m.length ? (miss ? 'il manque ' + m.map((x) => [x.slots - takenOf(x.id), x.label.toLowerCase()]).filter(([n]) => n > 0).map(([n, l]) => n + ' ' + l).join(', ') : 'complet') : 'aucune mission';
     let r = `<div class="card flat"><button class="row" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(fmtShort(e.starts_at))} · ${esc(det)}${recent ? ' · relancé à ' + hm(new Date(e.missions_reminded_at)) + ', prochaine relance possible à ' + hm(new Date(new Date(e.missions_reminded_at).getTime() + 12 * 3600e3)) : ''}</small></span>${m.length ? (miss ? `<span class="pill wait">Il manque ${miss}</span>` : '<span class="pill ok">Complet</span>') : ''}</button>`;
     if (!m.length) r += `<button class="btn small ghost" data-act="mdef" data-id="${e.id}">Ajouter les missions par défaut</button>`;
     else if (miss && !recent) r += open ? remindBox(e, memAll.filter((u) => S.members.some((x) => x.user_id === u && x.status === 'active' && x.role !== 'supporteur') || club()?.supporters_volunteer), nm) : `<button class="btn small main" data-act="mremopen" data-id="${e.id}">Relancer</button>`;
@@ -189,8 +190,16 @@ export function benevBlock(evs) {
       + (S.vlist ? `<p class="note">${S.vlist === 'members' ? `<b>Bénévoles :</b> ${(v.members.yes || []).map((u) => esc(name(u))).join(', ') || '—'}<br><b>Non :</b> ${(v.members.no || []).map((u) => esc(name(u))).join(', ') || '—'}` : `<b>Bénévoles :</b> ${(v.supporters?.yes || []).map((u) => esc(name(u))).join(', ') || '—'}<br><b>Non :</b> ${(v.supporters?.no || []).map((u) => esc(name(u))).join(', ') || '—'}<br><b>Sans réponse :</b> ${(v.supporters?.none || []).map((u) => esc(name(u))).join(', ') || '—'}`}</p>` : '')
       + `</div>`;
   }
+  h += askBlock();
   h += `<div class="card"><label class="switch"><input type="checkbox" data-supvolclub="1" ${club()?.supporters_volunteer ? 'checked' : ''}><span><b>Les supporteurs peuvent être bénévoles</b><br><span class="det">Supporteurs majeurs : événements du club et matchs des équipes qu’ils suivent. Ils répondent à un encart sur l’Accueil.</span></span></label></div>`;
   return h;
+}
+// n° 142 (a) : relancer l'encart « Souhaites-tu être bénévole ? » (membres du bureau sans réponse, supporteurs sans réponse)
+function askBlock() {
+  const k = S.vask; if (!k) return '';
+  const n = (+k.bureau || 0) + (+k.supporters || 0), at = k.asked_at && new Date(k.asked_at), recent = at && Date.now() - at < 12 * 3600e3;
+  const who = [k.bureau ? plural(+k.bureau, 'membre du bureau', 'membres du bureau') : '', k.supporters ? plural(+k.supporters, 'supporteur', 'supporteurs') : ''].filter(Boolean).join(' et ');
+  return `<div class="sec"><h2>Encart bénévole</h2></div><div class="card"><p class="note" style="margin:0;color:var(--pc-encre)">${n ? `${esc(who)} n’${n > 1 ? 'ont' : 'a'} pas encore répondu à « Souhaites-tu être bénévole ? ».` : 'Tout le monde a répondu à « Souhaites-tu être bénévole ? ».'}${club()?.supporters_volunteer ? '' : ' Les supporteurs ne sont pas comptés : le bénévolat ne leur est pas ouvert (réglage ci-dessous).'}</p>${n ? `<button class="btn ${recent ? 'ghost' : 'main'} small" data-act="vask" ${recent ? 'disabled' : ''}>${recent ? 'Relance faite à ' + hm(at) + ' · prochaine possible à ' + hm(new Date(at.getTime() + 12 * 3600e3)) : `Relancer l’encart (${n})`}</button><p class="note">L’encart revient sur leur Accueil, avec une notification. Jamais les mineurs. Une relance toutes les 12 heures.</p>` : ''}</div>`;
 }
 function eventsRub() {
   const soon = Date.now() + 30 * 864e5;
@@ -206,15 +215,23 @@ function eventsRub() {
 // Missions par défaut du club (rubrique Événements ; 4.4.0 : onglet Bénévoles du correspondant rencontres)
 export function defaultMissionsBlock() {
   const dm = S.dm || (S.dm = (club()?.default_missions || []).map((x) => ({ ...x })));
-  return `<div class="sec"><h2>Missions par défaut du club</h2></div><div class="card"><div class="list">${dm.map((x, i) => `<div class="row static"><input aria-label="Mission ${i + 1}" data-dml="${i}" value="${esc(x.label)}" maxlength="40" style="flex:1;min-width:0;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 10px"><input type="number" aria-label="Places" data-dms="${i}" value="${esc(x.slots)}" min="1" max="20" style="width:70px;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 8px"><button class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="dmrm" data-i="${i}" aria-label="Retirer">${icon('trash', 18)}</button></div>`).join('')}</div>
-  <div class="btns"><button class="btn ghost small" data-act="dmadd">${icon('plus', 18)}Ajouter</button><button class="btn main small" data-act="dmsave">Enregistrer</button></div><p class="note">Proposées en un geste sur chaque match, plateau, tournoi ou événement.</p></div>`;
+  return `<div class="sec"><h2>Missions par défaut du club</h2></div><div class="card"><div class="list">${dm.map((x, i) => `<div class="row static"><input aria-label="Mission ${i + 1}" data-dml="${i}" value="${esc(x.label)}" maxlength="40" style="flex:1;min-width:0;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 10px"><input type="number" aria-label="Places" data-dms="${i}" value="${esc(x.slots)}" min="1" max="20" style="width:70px;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 8px"><button class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="dmrm" data-i="${i}" aria-label="Retirer">${icon('trash', 18)}</button></div>${isBuvette(x.label) ? '' : `<label class="check" style="padding:0 0 6px"><input type="checkbox" data-dmy="${i}" ${x.youth ? 'checked' : ''}><span>Ouverte aux jeunes dès U13</span></label>`}`).join('')}</div>
+  <div class="btns"><button class="btn ghost small" data-act="dmadd">${icon('plus', 18)}Ajouter</button><button class="btn main small" data-act="dmsave">Enregistrer</button></div><p class="note">Proposées en un geste sur chaque match, plateau, tournoi ou événement. « Jeunes dès U13 » : le parent inscrit son enfant (table de marque, chrono, arbitre en formation…) ; jamais la buvette ; un adulte du club est toujours présent.</p></div>`;
 }
 
 // ---------- bénévoles (n° 53) ----------
 const MISSION_TYPES = ['Match', 'Plateau', 'Tournoi', 'Événement', 'AG'];
 const missionsOf = (eid) => S.missions.filter((m) => m.event_id === eid).sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at));
 const signupsOf = (mid) => S.signups.filter((x) => x.mission_id === mid);
-export const missing = (eid) => missionsOf(eid).reduce((a, m) => a + Math.max(0, m.slots - signupsOf(m.id).length), 0);
+// n° 142 : jeunes dès U13 inscrits par leur parent ; une place prise par un jeune compte comme une autre
+const ysignupsOf = (mid) => (S.ysignups || []).filter((x) => x.mission_id === mid);
+const takenOf = (mid) => signupsOf(mid).length + ysignupsOf(mid).length;
+const isBuvette = (l) => /buvette/i.test(l || '');
+export const youthCat = (t) => { const c = String(t?.category || t?.name || ''), m = c.match(/^\s*u\s*(\d+)/i); return m ? +m[1] >= 13 : /(minime|cadet|junior|senior|loisir|adulte|espoir)/i.test(c); };
+// Mes enfants (mineurs, équipe U13 et plus) concernés par ce rendez-vous ; la base vérifie aussi
+const youthKids = (e) => myKids().filter((p) => !isMajor(p) && teamsOfPlayer(p).some((t) => youthCat(team(t))) && (e.audience !== 'team' || teamsOfPlayer(p).some((t) => evTeams(e).includes(t))));
+const youthName = (pid) => { const p = pl(pid); return p ? p.first_name + (p.last_name ? ' ' + p.last_name[0] + '.' : '') : 'Un jeune du club'; };
+export const missing = (eid) => missionsOf(eid).reduce((a, m) => a + Math.max(0, m.slots - takenOf(m.id)), 0);
 export const canManageMissions = (e) => (e.audience === 'team' && evTeams(e).some(coachOf)) || e.created_by === S.me.id || hasArea('evenements');
 const supporterOnly = () => active().every((m) => m.role === 'supporteur');
 export function myMissionLabel(e) {
@@ -228,15 +245,22 @@ export function missionsBlock(e) {
   const mineAny = ms.some((m) => signupsOf(m.id).some((x) => x.user_id === S.me.id));
   let h = `<div class="card"><div class="sec"><h2>Bénévoles</h2>${ms.length ? `<span class="det">${missing(e.id) ? 'Il manque ' + plural(missing(e.id), 'personne') : 'Complet'}</span>` : ''}</div>`;
   if (!ms.length) h += '<p class="note">Aucune mission pour ce rendez-vous.</p>';
+  const kids = youthKids(e), kidOn = (pid) => ms.some((m) => ysignupsOf(m.id).some((x) => x.player_id === pid)); // n° 142
   h += ms.map((m) => {
-    const su = signupsOf(m.id), mine = su.some((x) => x.user_id === S.me.id), full = su.length >= m.slots;
+    const su = signupsOf(m.id), ys = ysignupsOf(m.id), mine = su.some((x) => x.user_id === S.me.id), full = takenOf(m.id) >= m.slots;
     let act = '';
     if (!past) act = mine ? `<button class="btn small ghost" style="flex:none" data-act="volun" data-id="${m.id}" data-v="0">Me désinscrire</button>`
       : full ? '<span class="pill ok">Complet</span>'
       : !mineAny && !supporterOnly() ? `<button class="btn small main" style="flex:none" data-act="volun" data-id="${m.id}" data-v="1">Je m'inscris</button>` : '';
-    const who = su.map((x) => `${esc(nick(x.user_id))}${man && !past ? ` <button class="pill" style="min-height:32px;border:0" data-act="vunassign" data-id="${m.id}" data-u="${x.user_id}" aria-label="Retirer ${esc(nick(x.user_id))}">✕</button>` : ''}`).join(', ');
-    return `<div class="mission"><span class="g">${esc(m.label)} <span class="pill ${full ? 'ok' : 'wait'}">${su.length} / ${m.slots}</span><small>${who || 'Personne pour l’instant'}</small></span>${act}${man && !past ? `<button class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="mdelm" data-id="${m.id}" aria-label="Retirer la mission ${esc(m.label)}">${isArmed('mi' + m.id) ? '✓' : icon('trash', 18)}</button>` : ''}</div>`;
+    const who = su.map((x) => `${esc(nick(x.user_id))}${man && !past ? ` <button class="pill" style="min-height:32px;border:0" data-act="vunassign" data-id="${m.id}" data-u="${x.user_id}" aria-label="Retirer ${esc(nick(x.user_id))}">✕</button>` : ''}`)
+      .concat(ys.map((x) => `${esc(youthName(x.player_id))} (jeune)${!past && (man || myKids().some((k) => k.id === x.player_id)) ? ` <button class="pill" style="min-height:32px;border:0" data-act="${man ? 'yunassign' : 'yvolun'}" data-id="${m.id}" data-p="${x.player_id}" data-v="0" aria-label="Retirer ${esc(youthName(x.player_id))}">✕</button>` : ''}`)).join(', ');
+    // n° 142 : le parent inscrit son enfant de U13 et plus sur une mission ouverte aux jeunes
+    const ykid = m.youth && !past && !full ? kids.filter((k) => !kidOn(k.id)) : [];
+    const yAct = ykid.length ? `<div class="ybtns">${ykid.map((k) => `<button class="btn small main" style="flex:none" data-act="yvolun" data-id="${m.id}" data-p="${k.id}" data-v="1">Inscrire ${esc(k.first_name)}</button>`).join('')}</div>` : '';
+    const yTog = hasArea('evenements') && !past && !isBuvette(m.label) ? `<button class="chip" data-act="myouth" data-id="${m.id}" aria-pressed="${!!m.youth}" style="min-height:36px">Jeunes dès U13</button>` : '';
+    return `<div class="mission"><span class="g">${esc(m.label)} <span class="pill ${full ? 'ok' : 'wait'}">${takenOf(m.id)} / ${m.slots}</span>${m.youth && !yTog ? ' <span class="pill blue">Jeunes dès U13</span>' : ''}<small>${who || 'Personne pour l’instant'}</small></span>${yTog}${act}${yAct}${man && !past ? `<button class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="mdelm" data-id="${m.id}" aria-label="Retirer la mission ${esc(m.label)}">${isArmed('mi' + m.id) ? '✓' : icon('trash', 18)}</button>` : ''}</div>`;
   }).join('');
+  if (!past && kids.length && ms.some((m) => m.youth)) h += `<p class="note">Missions « jeunes dès U13 » : tu inscris ton enfant en son nom. Un adulte du club (parent ou membre du bureau) est toujours présent sur la mission.</p>`;
   if (man && !past) {
     const mem = [...new Map(S.members.filter((x) => x.status === 'active' && x.role !== 'supporteur').map((x) => [x.user_id, x])).keys()].sort((a, b) => name(a).localeCompare(name(b), 'fr'));
     if (!ms.length) h += `<button class="btn main small" data-act="mdef" data-id="${e.id}">Ajouter les missions du club (${(club()?.default_missions || []).map((x) => esc(x.label)).join(', ')})</button>`; // n° 125 (audit S3) : nom de mission échappé
@@ -263,10 +287,17 @@ function remindBox(e, mem, nm) {
 // Accueil : missions à pourvoir (sans envahir « À répondre »)
 export function missionsHome() {
   if (supporterOnly()) return '';
+  // n° 142 : mon enfant (U13 et plus) peut aider sur une mission ouverte aux jeunes
+  const ysoon = Date.now() + 21 * 864e5;
+  const yev = upcoming(S.events.filter((e) => !e.cancelled && new Date(e.starts_at) < ysoon && youthKids(e).some((k) => !missionsOf(e.id).some((m) => ysignupsOf(m.id).some((x) => x.player_id === k.id))) && missionsOf(e.id).some((m) => m.youth && takenOf(m.id) < m.slots))).slice(0, 3);
+  const yh = yev.length ? `<div class="sec"><h2>Ton enfant peut aider le club</h2></div><div class="card"><div class="list">${yev.map((e) => `<button class="row" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(fmtShort(e.starts_at))} · ${esc(missionsOf(e.id).filter((m) => m.youth && takenOf(m.id) < m.slots).map((m) => m.label).join(', '))}</small></span><span class="pill blue">Jeunes dès U13</span></button>`).join('')}</div></div><p class="note">Tu inscris ton enfant en son nom depuis le rendez-vous. Un adulte du club est toujours présent.</p>` : '';
+  return yh + missionsHomeAdults();
+}
+function missionsHomeAdults() {
   const soon = Date.now() + 21 * 864e5;
   const evs = upcoming(S.events.filter((e) => !e.cancelled && new Date(e.starts_at) < soon && missing(e.id) > 0 && !myMissionLabel(e))).slice(0, 3);
   if (!evs.length) return '';
-  return `<div class="sec"><h2>Missions à pourvoir</h2></div><div class="card"><div class="list">${evs.map((e) => `<button class="row" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(fmtShort(e.starts_at))} · il manque ${esc(missionsOf(e.id).map((m) => [m.slots - signupsOf(m.id).length, m.label.toLowerCase()]).filter(([n]) => n > 0).map(([n, l]) => n + ' ' + l).join(', '))}</small></span><span class="pill wait">Bénévoles</span></button>`).join('')}</div></div>`;
+  return `<div class="sec"><h2>Missions à pourvoir</h2></div><div class="card"><div class="list">${evs.map((e) => `<button class="row" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(fmtShort(e.starts_at))} · il manque ${esc(missionsOf(e.id).map((m) => [m.slots - takenOf(m.id), m.label.toLowerCase()]).filter(([n]) => n > 0).map(([n, l]) => n + ' ' + l).join(', '))}</small></span><span class="pill wait">Bénévoles</span></button>`).join('')}</div></div>`;
 }
 
 // ---------- annonces ----------
@@ -362,6 +393,7 @@ async function reloadMissions() {
   const ids = S.events.map((e) => e.id);
   S.missions = ids.length ? ((await sb.from('event_missions').select('*').in('event_id', ids).order('position')).data || []) : [];
   S.signups = S.missions.length ? ((await sb.from('mission_signups').select('*').in('mission_id', S.missions.map((m) => m.id))).data || []) : [];
+  S.ysignups = S.missions.some((m) => m.youth) ? ((await sb.from('mission_youth_signups').select('*').in('mission_id', S.missions.filter((m) => m.youth).map((m) => m.id))).data || []) : [];
   await loadNames(S.signups.map((x) => x.user_id));
 }
 async function markRead(id) {
@@ -400,6 +432,11 @@ Object.assign(ACTIONS, {
   // bénévoles
   volun: async (el, d) => { if (await run(sb.rpc('volunteer', { p_mission: d.id, p_on: d.v === '1' }), d.v === '1' ? 'Merci ! Tu es inscrit.' : 'Désinscription faite.')) { await reloadMissions(); render(true); } },
   vunassign: async (el, d) => { if (await run(sb.rpc('assign_volunteer', { p_mission: d.id, p_user: d.u, p_on: false }), 'Bénévole retiré.')) { await reloadMissions(); render(true); } },
+  // n° 142 : le parent inscrit ou retire son enfant ; l'organisateur retire un jeune ; la rubrique Événements ouvre une mission aux jeunes
+  yvolun: async (el, d) => { const k = pl(d.p); if (await run(sb.rpc('volunteer_youth', { p_mission: d.id, p_player: d.p, p_on: d.v === '1' }), d.v === '1' ? `Merci ! ${k ? k.first_name : 'Ton enfant'} est inscrit.` : 'Inscription retirée.')) { await reloadMissions(); render(true); } },
+  yunassign: async (el, d) => { if (await run(sb.rpc('unassign_youth', { p_mission: d.id, p_player: d.p }), 'Bénévole retiré.')) { await reloadMissions(); render(true); } },
+  myouth: async (el, d) => { const m = S.missions.find((x) => x.id === d.id); if (!m) return; if (await run(sb.from('event_missions').update({ youth: !m.youth }).eq('id', m.id), m.youth ? 'Mission fermée aux jeunes.' : 'Mission ouverte aux jeunes dès U13 : les parents peuvent inscrire leur enfant.')) { await reloadMissions(); render(true); } },
+  vask: async () => { const n = await run(sb.rpc('ask_volunteers', { p_club: S.clubId })); if (n) { toast(plural(n, 'personne relancée', 'personnes relancées') + ' : l’encart revient sur leur Accueil.'); await refresh(); } },
   vassign: async () => { const u = document.getElementById('mia')?.value, m = document.getElementById('mim')?.value; if (!u) return toast('Choisis une personne.'); if (await run(sb.rpc('assign_volunteer', { p_mission: m, p_user: u, p_on: true }), 'Bénévole inscrit.')) { await reloadMissions(); render(true); } },
   mdef: async (el, d) => { const n = await run(sb.rpc('add_default_missions', { p_event: d.id })); if (n !== null) { toast(plural(n, 'mission ajoutée', 'missions ajoutées') + '.'); await reloadMissions(); render(true); } },
   mdelm: async (el, d) => { if (!armed('mi' + d.id)) return; if (await run(sb.from('event_missions').delete().eq('id', d.id), 'Mission retirée.')) { await reloadMissions(); render(true); } },
@@ -416,7 +453,7 @@ Object.assign(ACTIONS, {
   },
   dmadd: () => { S.dm.push({ label: '', slots: 1 }); render(true); },
   dmrm: (el, d) => { S.dm.splice(+d.i, 1); render(true); },
-  dmsave: async () => { const l = S.dm.map((x) => ({ label: String(x.label || '').trim(), slots: Math.max(1, Math.min(20, +x.slots || 1)) })).filter((x) => x.label.length >= 2); if (await run(sb.from('clubs').update({ default_missions: l }).eq('id', S.clubId), 'Missions par défaut enregistrées.')) { S.dm = null; await refresh(); } },
+  dmsave: async () => { const l = S.dm.map((x) => ({ label: String(x.label || '').trim(), slots: Math.max(1, Math.min(20, +x.slots || 1)), ...(x.youth && !isBuvette(x.label) ? { youth: true } : {}) })).filter((x) => x.label.length >= 2); /* n° 142 : « jeunes dès U13 », jamais la buvette */ if (await run(sb.from('clubs').update({ default_missions: l }).eq('id', S.clubId), 'Missions par défaut enregistrées.')) { S.dm = null; await refresh(); } },
   // président
   fonctions: async () => { S.view = { type: 'fonctions' }; render(); S.bareas = (await sb.from('board_areas').select('*').eq('club_id', S.clubId)).data || []; render(true); },
   journal: async () => { S.journal = null; S.view = { type: 'journal' }; render(); S.journal = (await run(sb.rpc('club_log', { p_club: S.clubId, p_limit: 100 }))) || []; render(true); },
@@ -444,6 +481,7 @@ FORMS.nomf = async (v) => {
 INPUTS.push((t) => {
   if (t.dataset.dml) { S.dm[+t.dataset.dml].label = t.value; return true; }
   if (t.dataset.dms) { S.dm[+t.dataset.dms].slots = t.value; return true; }
+  if (t.dataset.dmy) { S.dm[+t.dataset.dmy].youth = t.checked; return true; } // n° 142
   if (t.form?.id === 'annf' && t.name) { S.annf[t.name] = t.value; return true; }
   return false;
 });

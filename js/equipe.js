@@ -115,6 +115,11 @@ export function teamForm(t, id) {
   ${field(id + 's', 'Créneaux et gymnase', `<input id="${id}s" name="slots" value="${esc(t.slots || '')}" placeholder="Ex. Mercredi 14 h – 15 h 30, gymnase Jean-Moulin">`)}
   <button class="btn main" type="submit">${t.id ? 'Enregistrer' : "Créer l'équipe"}</button></form>`;
 }
+async function loadCands(tid) {
+  S.ccands = S.ccands || {}; S.ccands[tid] = null;
+  const r = await sb.rpc('coach_candidates', { p_team: tid });
+  S.ccands[tid] = !r.error && Array.isArray(r.data) ? r.data : []; render(true);
+}
 export function teamPage(tid) {
   const t = team(tid); if (!t) return '<p class="empty">Équipe introuvable.</p>';
   const board = isBoard(), coach = coachOf(tid), ct = cteam(tid);
@@ -129,10 +134,10 @@ export function teamPage(tid) {
   if (manage) {
     h += `<button class="btn main" data-act="import" data-id="${tid}">${icon('plus', 20)}Ajouter des joueurs (un par un, liste, Excel, photo)</button>`;
     h += `<details class="card"><summary>${board ? "Réglages de l'équipe" : "Créneaux de l'équipe"}</summary>${board ? teamForm(t, 'teamedit') : `<form id="teamslots" data-id="${tid}" class="stack">${field('tsl', 'Créneaux et gymnase', `<input id="tsl" name="slots" value="${esc(t.slots || '')}">`)}<button class="btn main" type="submit">Enregistrer</button></form>`}${t.partner_hidden && (t.partner_state || 'aucune') === 'aucune' ? `<button class="btn ghost small" data-act="pfshow" data-id="${tid}">Réafficher « Équipe en entente ? »</button>` : ''}</details>`;
-    const cands = S.roster.filter((x) => x.user_id).reduce((a, x) => (a.some((y) => y.user_id === x.user_id) ? a : a.concat(x)), [])
-      .concat(S.members.filter((m) => m.status === 'active' && !S.roster.some((x) => x.user_id === m.user_id)).map((m) => ({ user_id: m.user_id, first_name: S.names[m.user_id] || 'Membre', last_name: '' })))
-      .reduce((a, x) => (a.some((y) => y.user_id === x.user_id) ? a : a.concat(x)), []);
-    h += `<details class="card"><summary>${board ? 'Nommer un coach ou un assistant' : 'Ajouter un coach assistant'}</summary><form id="coachf" data-id="${tid}" class="stack">${field('cfu', 'Membre du club', `<select id="cfu" name="user">${cands.map((x) => `<option value="${x.user_id}">${esc((x.first_name + ' ' + x.last_name).trim())}</option>`).join('')}</select>`)}${board ? '<label class="check"><input type="checkbox" name="assistant"><span>Coach assistant</span></label>' : '<input type="hidden" name="assistant" value="on">'}<button class="btn main" type="submit">Nommer</button><p class="note">La personne doit déjà être membre du club (elle a rejoint avec le code).</p></form></details>`;
+    // n° 136 : tous les adultes du club (la base donne la liste ; coach et coach assistant sont réservés aux adultes)
+    const cands = (S.ccands || {})[tid];
+    if (cands === undefined) loadCands(tid);
+    h += `<details class="card"><summary>${board ? 'Nommer un coach ou un assistant' : 'Ajouter un coach assistant'}</summary><form id="coachf" data-id="${tid}" class="stack">${field('cfu', 'Adulte du club', `<select id="cfu" name="user" ${cands && cands.length ? '' : 'disabled'}>${cands ? cands.map((x) => `<option value="${x.uid}">${esc(x.label)}</option>`).join('') || '<option value="">Aucun autre adulte dans le club</option>' : '<option value="">Chargement…</option>'}</select>`)}${board ? '<label class="check"><input type="checkbox" name="assistant"><span>Coach assistant</span></label>' : '<input type="hidden" name="assistant" value="on">'}<button class="btn main" type="submit" ${cands && cands.length ? '' : 'disabled'}>Nommer</button><p class="note">Tous les adultes membres du club (ils ont rejoint avec le code). Coach et coach assistant sont réservés aux adultes.</p></form></details>`;
   }
   if (board && manage) h += `<div class="btns">${t.state === 'Visible' ? `<button class="btn ghost small" data-act="tstate" data-id="${tid}" data-v="Fantôme">Repasser en mode fantôme</button>` : ''}${t.state !== 'Archivée' ? `<button class="btn ghost small ${isArmed('rn' + tid) ? 'danger armed' : ''}" data-act="trenew" data-id="${tid}">${isArmed('rn' + tid) ? `Confirmer : archiver et recréer pour ${NEXT_SEASON}` : `Archiver et reconduire pour ${NEXT_SEASON}`}</button>` : ''}</div>`;
   // n° 103 : « Supprimer (doublon) », séparé d'« Archiver », pour le président et le bureau Technique (corbeille 30 jours, restaurable)
@@ -238,11 +243,11 @@ Object.assign(FORMS, {
   teamnew: async (v) => {
     const nm = (v.name || '').trim() || autoName(v.category, v.gender);
     if (!nm) return toast('Choisis une catégorie ou donne un nom.');
-    if (await run(sb.from('teams').insert({ club_id: S.clubId, name: nm, category: v.category || nm, gender: v.gender || '', slots: v.slots || '', season: SEASON }), 'Équipe créée en mode fantôme : rends-la visible quand elle est prête.')) await refresh();
+    if (await run(sb.from('teams').insert({ club_id: S.clubId, name: nm, category: v.category || nm, gender: v.gender || '', slots: v.slots || '', season: SEASON }), 'Équipe créée en mode fantôme : rends-la visible quand elle est prête.')) { S.tcreate = false; await refresh(); } // n° 132 : le formulaire se replie après la création
   },
   teamedit: async (v, f) => { if (await run(sb.from('teams').update({ name: (v.name || '').trim() || teamName(f.dataset.id), category: v.category || '', gender: v.gender || '', slots: v.slots || '' }).eq('id', f.dataset.id), 'Équipe enregistrée.')) await refresh(); },
   teamslots: async (v, f) => { if (await run(sb.from('teams').update({ slots: v.slots || '' }).eq('id', f.dataset.id), 'Créneaux enregistrés.')) await refresh(); },
-  coachf: async (v, f) => { if (await run(sb.rpc('set_team_coach', { p_team: f.dataset.id, p_user: v.user, p_assistant: !!v.assistant }), 'Coach nommé.')) await refresh(); },
+  coachf: async (v, f) => { if (!v.user) return toast('Choisis un adulte du club.'); if (await run(sb.rpc('set_team_coach', { p_team: f.dataset.id, p_user: v.user, p_assistant: !!v.assistant }), 'Coach nommé.')) { delete (S.ccands || {})[f.dataset.id]; await refresh(); } },
 });
 // N° 28 : nom proposé d'après la catégorie et le genre (« U13 F », « U13 M », « U13 »), tant qu'il n'est pas modifié à la main
 export const autoName = (cat, gen) => ((cat || '').replace(' (baby)', '') + (gen === 'Féminine' ? ' F' : gen === 'Masculine' ? ' M' : '')).trim();

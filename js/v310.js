@@ -9,9 +9,9 @@ import {
   S, sb, esc, hooks, run, toast, render, refresh, armed, isArmed, ACTIONS, club, active, isBoard, isPresident, coachTeams, coachOf,
   SEASON, team, teamName, name, plural, fmtShort, hm, evTeams, store, toValidate, playersOfTeam, isMajor, myKids, mySelf, FONCTIONS, hasArea,
 } from './core.js';
-import { icon, header, dayBadge, field, clubSeason } from './ui.js';
+import { icon, header, dayBadge, field, clubSeason, casqIcon } from './ui.js';
 import { upcoming, evCard, canCallRoll, appelPage, teamTabs } from './agenda.js';
-import { plansForEvent, fmtMin } from './coach.js';
+import { plansForEvent, fmtMin, exosForCounts } from './coach.js';
 import { casqTabs, currentCasq, roleKicker, fonctionSpace, presidentOverview, sw, FONCTION_AREAS } from './vie.js';
 import { pendRows, brandBlock, contactsBlock, licencesBlock, trashBlock } from './club.js';
 import { teamToolsBlock } from './v38.js';
@@ -106,7 +106,7 @@ export function coachHub(ids) {
     if (todoPlans) todo.push(['tsgo', t, 'preparer', plural(todoPlans, 'séance à préparer', 'séances à préparer') + ' · ' + teamName(t)]);
   });
   const todoH = `${hoursHome()}${todo.length ? `<div class="card"><div class="list">${todo.map(([a, id, tab, l]) => `<button class="row" data-act="${a}" data-id="${id}" data-tab="${tab}"><span class="g">${esc(l)}</span><span class="chev"></span></button>`).join('')}</div></div>` : ''}`;
-  const ex = S.exos;
+  const ex = exosForCounts(); // n° 135 : plus de « 0 » trompeur avant le chargement
   const bank = `<div class="sec"><h2>Mes exercices</h2><button data-act="cexos" data-tab="mine">Ma banque</button></div><div class="tiles"><button class="tile blue" data-act="cexos" data-tab="mine"><b>${ex ? ex.filter((e) => e.created_by === S.me.id && !e.deleted_at).length : '…'}</b><span>Ma banque</span></button><button class="tile" data-act="cexos" data-tab="club"><b>${ex ? ex.filter((e) => e.club_id === S.clubId && e.sharing !== 'me' && !e.deleted_at).length : '…'}</b><span>Du club</span></button><button class="tile" data-act="cexos" data-tab="libre"><b>${ex ? ex.filter((e) => e.sharing === 'public' && e.public_state === 'validated' && !e.deleted_at).length : '…'}</b><span>Libre</span></button></div><button class="bigadd" data-act="cexnew">${icon('plus', 24, '#11162E', 2.6)}Ajouter un exercice</button>`;
   return arrange('coach2', [
     { id: 'equipes', pin: true, html: cards || '<p class="empty">Aucune équipe.</p>' }, // n° 116 : « Mes équipes » est le titre de l'en-tête
@@ -240,7 +240,9 @@ function journalBody() {
 function fviewView(v) {
   const f = v.f;
   const o = hooks.fnSpace ? hooks.fnSpace(f, false) : null; // 4.4.0 (n° 114) : même présentation que la personne qui a la fonction
-  return { head: header({ back: true, kicker: 'Espace Président · Bureau', title: esc(f), tabs: o?.tabs || '' }), body: `<div class="card pale"><p class="note" style="margin:0">Tu vois l’espace « ${esc(f)} » avec ton compte : ce que tu fais ici est inscrit au journal <b>à ton nom</b>.${holder(f).length ? ' Titulaire : ' + esc(holder(f).join(', ')) + '.' : ' Personne n’a cette fonction : c’est toi qui t’en occupes.'}</p></div>` + (o ? o.body : fonctionSpace(f, true)) };
+  // n° 133 : la casquette « Président » reste allumée (en jaune) : on voit tout de suite qu'on est ici grâce à elle
+  if (isPresident()) S.casq = 'president';
+  return { head: header({ back: true, kicker: 'Espace Président · Bureau', title: esc(f), casq: casqTabs() || (isPresident() ? `<div class="casq" role="tablist" aria-label="Mes casquettes"><button role="tab" data-act="casq" data-v="president" aria-selected="true">${casqIcon('president')}<span>Président</span></button></div>` : ''), tabs: o?.tabs || '' }), body: `<div class="card pale"><p class="note" style="margin:0">Tu vois l’espace « ${esc(f)} » avec ton compte : ce que tu fais ici est inscrit au journal <b>à ton nom</b>.${holder(f).length ? ' Titulaire : ' + esc(holder(f).join(', ')) + '.' : ' Personne n’a cette fonction : c’est toi qui t’en occupes.'}</p></div>` + (o ? o.body : fonctionSpace(f, true)) };
 }
 
 // ---------- correspondant licences (sans tout le Secrétariat) ----------
@@ -277,6 +279,8 @@ export const V310_VIEWS = { tspace: tspaceView, fview: fviewView };
 
 // ---------- actions ----------
 Object.assign(ACTIONS, {
+  // n° 132 : ouvre le dépliant « Équipes » de la vue d'ensemble, formulaire « Créer une équipe » déplié
+  tcreateopen: () => { S.ptab = 'ensemble'; S.pfold = 'equipes'; S.tcreate = true; render(true); const d = document.querySelector('details[data-tcreate]'); if (d) { d.scrollIntoView({ block: 'start', behavior: 'smooth' }); d.querySelector('select,input')?.focus({ preventScroll: true }); } },
   // Ouvrir l'espace d'une équipe (depuis la liste des équipes du coach ou le dépliant « Équipes » du président)
   tsopen: (el, d) => { S.sel = null; S.tsp = d.id; S.view = { type: 'tspace', id: d.id, tab: 'pointer' }; render(); },
   // Onglets du bandeau : Pointer · Planifier · Préparer · Stats · Effectif (sans empiler les onglets dans le bouton Retour)

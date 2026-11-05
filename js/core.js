@@ -249,10 +249,13 @@ export async function loadClub() {
   S.hchecks = hc.data || []; S.hconf = hf.data || []; S.partnerTeams = Array.isArray(pt2.data) ? pt2.data : [];
   S.prefs = {}; (up.data || []).forEach((x) => (S.prefs[x.key] = x.value)); S.annRead = new Set((anr.data || []).map((x) => x.announcement_id)); S.missions = mis.data || [];
   S.signups = S.missions.length ? ((await sb.from('mission_signups').select('*').in('mission_id', S.missions.map((m) => m.id))).data || []) : [];
+  S.ysignups = S.missions.some((m) => m.youth) ? ((await sb.from('mission_youth_signups').select('*').in('mission_id', S.missions.filter((m) => m.youth).map((m) => m.id))).data || []) : []; // n° 142 : jeunes dès U13
   // n° 66 : personnes qui ne souhaitent pas être sollicitées pour le bénévolat (rubrique Événements seulement)
   S.optouts = S.areas.includes('evenements') ? (await sb.rpc('volunteer_optouts', { p_club: cid })).data : [];
   if (!Array.isArray(S.optouts)) S.optouts = [];
   S.vstats = S.areas.includes('evenements') ? (await sb.rpc('volunteer_stats', { p_club: cid })).data || null : null;
+  S.vask = S.areas.includes('evenements') ? (await sb.rpc('volunteer_ask_state', { p_club: cid })).data || null : null;
+  if (S.vask && typeof S.vask !== 'object') S.vask = null; // n° 142 : qui n'a pas répondu à l'encart bénévole
   // n° 109 : convocations reçues d'autres clubs dans mypocketclub (rubrique Événements)
   const crv = S.areas.includes('evenements') ? await sb.rpc('convocations_received', { p_club: cid }) : { data: [] }; S.creceived = Array.isArray(crv.data) ? crv.data : [];
   const clubIds = [...new Set(S.mems.filter((m) => m.status === 'active').map((m) => m.club_id))];

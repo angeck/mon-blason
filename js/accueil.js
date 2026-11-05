@@ -31,6 +31,10 @@ export function homeTab() {
   // n° 70 : supporteur, club ouvert au bénévolat des supporteurs, pas encore répondu
   if (club()?.supporters_volunteer && !active().some((m) => m.role !== 'supporteur') && S.me.supporter_volunteer == null)
     h += `<div class="card yellow"><b style="font-family:var(--pc-titre);font-size:22px">Souhaitez-vous devenir bénévole ?</b><p>Le club compte sur ses supporteurs pour l’arbitrage, la table de marque, l’aide, la buvette et les événements du club. Tu choisis tes missions.</p><div class="btns"><button class="btn small main" data-act="supvol" data-v="1">Oui</button><button class="btn small ghost" data-act="supvol" data-v="0">Non merci</button></div></div>`;
+  // n° 142 (a) : membre du bureau relancé par le correspondant rencontres, pas encore répondu
+  const asked = S.me.volunteer_asked_at, answered = S.me.volunteer_answered_at;
+  if (asked && (!answered || new Date(answered) < new Date(asked)) && active().some((m) => ['president', 'bureau'].includes(m.role)))
+    h += `<div class="card yellow"><b style="font-family:var(--pc-titre);font-size:22px">Souhaites-tu être bénévole ?</b><p>Le club compte sur le bureau pour l’arbitrage, la table de marque, l’aide et les événements. Tu choisis tes missions, rendez-vous par rendez-vous.</p><div class="btns"><button class="btn small main" data-act="memvol" data-v="1">Oui</button><button class="btn small ghost" data-act="memvol" data-v="0">Non merci</button></div></div>`;
   h += missionsHome() + otherClubsHome();
   const last = S.lastMsgs.slice(0, 3);
   if (last.length) h += `<div class="sec"><h2>Derniers messages</h2><button data-act="tab" data-i="2">Messages</button></div>` + last.map((m) => `<button class="card dark" data-act="group" data-id="${m.group_id}" style="flex-direction:row;align-items:center;gap:14px;border:0;text-align:left;font:inherit"><span style="width:40px;height:40px;border-radius:20px;background:var(--pc-bleu);display:flex;align-items:center;justify-content:center;flex:none">${icon('msg', 22, '#FFFFFF')}</span><span style="display:flex;flex-direction:column;min-width:0"><b>${esc(grp(m.group_id)?.name || 'Groupe')}</b><span class="det" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nick(m.user_id))} : ${esc(m.body.slice(0, 80))}</span></span></button>`).join('');
@@ -48,5 +52,6 @@ function contactAsk() {
 export { forLabel };
 Object.assign(ACTIONS, {
   contactgo: () => { S.view = { type: 'account' }; render(); setTimeout(() => document.getElementById('contactf')?.scrollIntoView({ block: 'start' }), 60); },
-  supvol: async (el, d) => { const on = d.v === '1'; if (await run(sb.rpc('set_supporter_volunteer', { p_on: on }), on ? 'Merci ! Tu recevras les demandes de bénévoles.' : 'C’est noté. Tu peux changer d’avis dans Mon compte.')) { S.me.supporter_volunteer = on; render(true); } },
+  supvol: async (el, d) => { const on = d.v === '1'; if (await run(sb.rpc('set_supporter_volunteer', { p_on: on }), on ? 'Merci ! Tu recevras les demandes de bénévoles.' : 'C’est noté. Tu peux changer d’avis dans Mon compte.')) { S.me.supporter_volunteer = on; S.me.volunteer_answered_at = new Date().toISOString(); render(true); } },
+  memvol: async (el, d) => { const on = d.v === '1'; if (await run(sb.rpc('set_volunteer', { p_on: on }), on ? 'Merci ! Tu recevras les demandes de bénévoles.' : 'C’est noté. Tu peux changer d’avis dans Mon compte.')) { S.me.volunteer = on; S.me.volunteer_answered_at = new Date().toISOString(); render(true); } }, // n° 142
 });

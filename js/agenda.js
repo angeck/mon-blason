@@ -229,10 +229,10 @@ export function evCard(e, o = {}) {
 export function clubToggle(list) {
   if (!isBoard()) return '';
   const n = list.filter(hiddenByToggle).length;
-  return `<label class="switch"><input type="checkbox" data-clubtog="1" ${S.me.show_all_club ? 'checked' : ''}><span><b>Tout le club</b><br><span class="det">${S.me.show_all_club ? 'Les rendez-vous de toutes les équipes sont affichés.' : n ? plural(n, "rendez-vous d'autres équipes non affiché", "rendez-vous d'autres équipes non affichés") + '.' : 'Afficher aussi les équipes où tu n’as pas de rôle.'}</span></span></label>`;
+  return `<label class="switch"><input type="checkbox" data-clubtog="1" ${S.me.show_all_club ? 'checked' : ''}><span><b>Tout le club</b><br><span class="det">${S.me.show_all_club ? 'Les rendez-vous de toutes les équipes sont affichés, passés compris.' : n ? plural(n, "rendez-vous d'autres équipes non affiché", "rendez-vous d'autres équipes non affichés") + ' (à venir et passés).' : 'Afficher aussi les équipes où tu n’as pas de rôle.'}</span></span></label>`;
 }
 export function agendaTab() {
-  const f = S.agf || 'Tous', base = upcoming(S.events);
+  const f = S.agf || 'Tous', base = S.events; // n° 134 : le compteur de « Tout le club » compte aussi les passés (30 derniers jours)
   let list = visibleEvents();
   list = f === 'Masqués' ? list.filter(hiddenByMe) : list.filter((e) => !hiddenByMe(e)).filter((e) => f === 'Tous' || SUB_TYPES[f].includes(e.type));
   const fut = upcoming(list), old = past(list), selMode = !!S.sel, canSel = S.events.some(canManageEvent);
@@ -240,7 +240,9 @@ export function agendaTab() {
   if (isBoard() || coachTeams().length) h += `<div class="btns"><button class="btn main" data-act="evnew">${icon('plus', 20)}Ajouter un rendez-vous</button>${canSel ? `<button class="btn ghost small" data-act="selmode" aria-pressed="${selMode}">${selMode ? 'Terminer' : 'Sélectionner'}</button>` : ''}</div>`;
   h += clubToggle(base) + `<div class="chips">${['Tous', 'Entraînements', 'Matchs', 'Événements', 'Masqués'].map((x) => `<button class="chip" data-act="agf" data-v="${x}" aria-pressed="${f === x}">${x}</button>`).join('')}</div>`;
   h += fut.length ? byDay(fut, (e) => evCard(e, { answer: true, select: selMode })) : '<p class="empty">Aucun rendez-vous à venir.</p>';
-  if (old.length) h += `<details class="card"><summary>Passés (${old.length}, 30 derniers jours)</summary><div class="stack">${byDay(old, (e) => evCard(e, { select: selMode }))}</div></details>`;
+  const hidOld = isBoard() && !S.me.show_all_club ? past(S.events.filter(hiddenByToggle)).length : 0; // n° 134
+  if (selMode && isBoard() && !S.me.show_all_club && S.events.some(hiddenByToggle)) h += `<p class="note">Les rendez-vous des équipes où tu n’as pas de rôle ne sont pas affichés : allume « Tout le club » pour les sélectionner aussi.</p>`;
+  if (old.length || hidOld) h += `<details class="card" data-past="1"${selMode && (S.pastOpen || old.some((e) => S.sel.has(e.id))) ? ' open' : ''}><summary>Passés (${old.length}, 30 derniers jours)${hidOld ? ` · ${plural(hidOld, 'autre masqué', 'autres masqués')} par « Tout le club »` : ''}</summary><div class="stack">${old.length ? byDay(old, (e) => evCard(e, { select: selMode })) : ''}${hidOld ? `<p class="note">${plural(hidOld, 'rendez-vous passé', 'rendez-vous passés')} d’équipes où tu n’as pas de rôle : allume « Tout le club » pour ${hidOld > 1 ? 'les' : 'le'} voir et ${hidOld > 1 ? 'les' : 'le'} supprimer.</p>` : ''}</div></details>`;
   if (selMode) { const n = S.sel.size; h += `<div class="selbar"><div><span>${plural(n, 'rendez-vous sélectionné', 'rendez-vous sélectionnés')}</span><button class="btn small ${isArmed('sel') ? 'danger armed' : 'ghost'}" data-act="seldel" ${n ? '' : 'disabled'} style="${isArmed('sel') ? '' : 'background:#FFFFFF'}">${isArmed('sel') ? 'Confirmer la suppression' : 'Supprimer'}</button></div></div>`; }
   return h;
 }
@@ -502,7 +504,7 @@ Object.assign(ACTIONS, {
     const n = await run(sb.rpc('delete_events', { p_event: d.id, p_mode: mode, p_dry: false }));
     if (n !== null) { toast(mode === 'one' ? 'Rendez-vous supprimé.' : plural(n, 'séance supprimée', 'séances supprimées') + '.'); S.view = null; S.tab = 1; await refresh(); }
   },
-  selmode: () => { S.sel = S.sel ? null : new Set(); S.del = null; render(true); },
+  selmode: () => { S.sel = S.sel ? null : new Set(); S.del = null; S.pastOpen = false; render(true); }, // n° 130 : la barre des passés se referme seulement en sortant de la sélection
   seldel: async () => {
     if (!S.sel?.size || !armed('sel')) return;
     const n = await run(sb.rpc('delete_event_list', { p_ids: [...S.sel] }));
@@ -596,7 +598,7 @@ CHANGES.push(async (t) => {
   if (t.dataset.evrep) { keepForm(); S.form.repeat = t.checked; if (!t.checked) S.form.until = ''; render(true); return true; }
   if (t.dataset.evconv) { keepForm(); S.form.conv[t.checked ? 'add' : 'delete'](t.dataset.evconv); render(true); return true; }
   if (t.dataset.evpeople) { keepForm(); S.form.people[t.checked ? 'add' : 'delete'](t.dataset.evpeople); render(true); return true; }
-  if (t.dataset.evsel) { S.sel[t.checked ? 'add' : 'delete'](t.dataset.evsel); S.del = null; render(true); return true; }
+  if (t.dataset.evsel) { S.sel[t.checked ? 'add' : 'delete'](t.dataset.evsel); S.del = null; if (t.closest('details[data-past]')) S.pastOpen = true; render(true); return true; } // n° 130 : la barre des passés reste ouverte pendant la sélection
   return false;
 });
 INPUTS.push((t) => {

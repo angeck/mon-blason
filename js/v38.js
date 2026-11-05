@@ -43,7 +43,7 @@ function dupBlock() {
 export function teamToolsBlock(inFold = false) {
   if (!(isPresident() || hasArea('technique'))) return '';
   // n° 116 : dans le dépliant « Équipes » du président, sans titre à part
-  return `${inFold ? '' : '<div class="sec"><h2>Créer des équipes</h2></div>'}${dupBlock()}<details class="card"><summary>${icon('plus', 18)} Créer une équipe</summary>${teamForm({}, 'teamnew')}<p class="note">Une nouvelle équipe reste en mode fantôme (invisible des familles) jusqu'à ce que son coach, le bureau ou le président la rende visible.</p></details><button class="btn" data-act="timport">${icon('down', 20)}Importer des équipes (Excel, liste ou photo)</button>`;
+  return `${inFold ? '' : '<div class="sec"><h2>Créer des équipes</h2></div>'}${dupBlock()}<details class="card" data-tcreate="1" ${S.tcreate ? 'open' : ''}><summary>${icon('plus', 18)} Créer une équipe</summary>${teamForm({}, 'teamnew')}<p class="note">Une nouvelle équipe reste en mode fantôme (invisible des familles) jusqu'à ce que son coach, le bureau ou le président la rende visible.</p></details><button class="btn" data-act="timport">${icon('down', 20)}Importer des équipes (Excel, liste ou photo)</button>`;
 }
 
 // ---------- n° 102 · page « Importer des équipes » ----------

@@ -127,9 +127,10 @@ function contactChoice(c) {
   const k = S.cstate, roles = k.roles.join(', ');
   const box = (n, l, on) => `<label class="check"><input type="checkbox" name="${n}" ${on ? 'checked' : ''}><span>${l}</span></label>`;
   return `<form id="contactf" class="card ${k.confirmed ? '' : 'yellow'}" data-anchor="moncontact"><div class="kick">${k.confirmed ? 'Mes coordonnées de contact' : 'À confirmer'} · ${esc(c.name)}</div><b>${esc(roles)}</b>
-  <p class="note" style="margin:0">Ce que tu montres aux personnes qui veulent joindre le club : les membres du club (pas les supporteurs) voient le bureau ; les supporteurs et les visiteurs connectés voient le correspondant licences ; les clubs du même sport voient aussi le correspondant rencontres.</p>
+  <p class="note" style="margin:0;color:var(--pc-encre)"><b>Choisis ce que les gens voient de toi :</b></p>
   ${box('phone', 'Mon téléphone' + (S.me.phone ? ' · ' + esc(S.me.phone) : ' (à ajouter dans « Mon profil »)'), k.show_phone)}${box('email', 'Mon adresse e-mail · ' + esc(S.session.user.email), k.show_email)}
-  <button class="btn main" type="submit">${k.confirmed ? 'Enregistrer mon choix' : 'Confirmer mon choix'}</button><p class="note">Rien de coché : aucune coordonnée, on t’écrit par l’application. Tu peux changer à tout moment.</p></form>`;
+  <button class="btn main" type="submit">${k.confirmed ? 'Enregistrer mon choix' : 'Confirmer mon choix'}</button><p class="note">Rien de coché : aucune coordonnée, on t’écrit par l’application. Tu peux changer à tout moment.</p>
+  <p class="note" style="margin:0"><b>Qui le voit :</b> les membres du club (pas les supporteurs) voient le bureau ; les supporteurs et les visiteurs connectés voient le correspondant licences ; les clubs du même sport voient aussi le correspondant rencontres.</p></form>`; // n° 137 : d'abord le choix, ensuite qui le voit
 }
 Object.assign(FORMS, {
   contactf: async (v) => {
