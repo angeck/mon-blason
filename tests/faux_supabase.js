@@ -194,6 +194,7 @@ const RPC = {
   renew_club_season: (a) => { window.__SEASON = a; return { teams: D.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').length, kept: 0, volunteers: 1 }; },
   export_my_data: () => ({ profil: D.profiles[0] }), validate_membership: ({ mid }) => { D.memberships.find((m) => m.id === mid).status = 'active'; return null; },
 };
+window.__RPC = RPC; // 4.6.0 : les tests d'écrans ajoutent des réponses (admin_list…)
 export function createClient() {
   let cb = null; let session = { user: { id: ME, email: window.__EMAIL || 'gael@exemple.fr' }, access_token: 'tok:' + (window.__EMAIL || 'gael@exemple.fr'), refresh_token: 'ref:' + (window.__EMAIL || 'gael@exemple.fr') };
   return {

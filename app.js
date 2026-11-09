@@ -91,8 +91,19 @@ async function refresh(msg) {
   await loadClub();
   await Promise.all([loadCoachCounts(), loadEvPlans(), loadAdminCounts(), loadV310(), loadV43(), loadV44()]).catch(() => {});
   if (S.view?.type === 'group') await loadGroup(S.view.id);
-  render(true); subscribe(); if (msg) toast('À jour.');
-  syncPush().then(() => render(true), () => {});
+  const bg = S.bgRefresh; S.bgRefresh = false;
+  renderKeep(bg); subscribe(); if (msg) toast('À jour.');
+  syncPush().then(() => renderKeep(bg), () => {});
+}
+// n° 145 : au retour sur l'application (sélecteur de photo, autre appli), refresh() redessine l'écran ;
+// les formulaires ouverts gardent ce qui est en cours de saisie (création du club, blason, etc.)
+function renderKeep(keepForms) {
+  if (!keepForms) return render(true);
+  const l = [...document.querySelectorAll('form[id] input[id], form[id] select[id], form[id] textarea[id]')].filter((x) => x.type !== 'file' && x.type !== 'password')
+    .map((x) => [x.id, x.type === 'checkbox' || x.type === 'radio' ? x.checked : x.value, x.type]);
+  render(true);
+  l.forEach(([id, v, t]) => { const x = document.getElementById(id); if (!x) return; if (t === 'checkbox' || t === 'radio') x.checked = v; else x.value = v; });
+  document.querySelector('#clubf [name=c1], #brandf [name=c1]')?.dispatchEvent(new Event('input', { bubbles: true })); // aperçu du blason à jour
 }
 hooks.render = render; hooks.refresh = refresh;
 // n° 139 · ordinateur : l'en-tête réduite apparaît quand le bloc bleu sort de l'écran
@@ -168,7 +179,7 @@ document.addEventListener('submit', async (e) => {
 // ---------- connexion et réseau ----------
 window.addEventListener('online', () => { S.online = true; refresh(); });
 window.addEventListener('offline', () => { S.online = false; render(true); });
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.session && navigator.onLine) refresh(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.session && navigator.onLine) { S.bgRefresh = true; refresh(); } });
 sb.auth.onAuthStateChange(async (ev, session) => {
   if (session) { saveSwitch(session); if (S.uid && S.uid !== session.user.id) resetUser(); S.uid = session.user.id; } else S.uid = null;
   if (ev === 'TOKEN_REFRESHED') { S.session = session; return; }

@@ -88,7 +88,7 @@ export function groupPage(id) {
   let h = `<details class="card"><summary>${plural(S.gmembers.length, 'membre')}</summary><div class="det">${S.gmembers.map((x) => esc(name(x.user_id))).join(', ')}</div></details>`;
   h += S.polls.map(pollCard).join('');
   h += '<div class="msgs">' + (S.msgs.length ? S.msgs.map(bubble).join('') : '<p class="empty">Écris le premier message.</p>') + '</div>';
-  h += (S.att || []).length ? `<div class="chips attlist">${S.att.map((f, i) => `<span class="pill">📎 ${esc(f.name)} <button type="button" class="linkbtn" data-act="attrm" data-i="${i}" aria-label="Retirer ${esc(f.name)}">✕</button></span>`).join('')}</div>` : '';
+  h += (S.msgatt || []).length ? `<div class="chips attlist">${S.msgatt.map((f, i) => `<span class="pill">📎 ${esc(f.name)} <button type="button" class="linkbtn" data-act="attrm" data-i="${i}" aria-label="Retirer ${esc(f.name)}">✕</button></span>`).join('')}</div>` : '';
   h += `<form id="msgf" class="compose"><label class="roundbtn attbtn" aria-label="Joindre un fichier">📎<input type="file" multiple accept="${ATT_ACCEPT}" data-att="1" hidden></label><input name="body" placeholder="Ton message" autocomplete="off" maxlength="2000" aria-label="Message"><button class="btn main small" type="submit">Envoyer</button></form>`;
   h += `<div class="chips"><button class="chip" data-act="pollnew">${icon('plus', 16)} Sondage</button><button class="chip" data-act="gmute" aria-pressed="${!!mine?.muted}">${mine?.muted ? 'Notifications coupées' : 'Couper les notifications'}</button>${g.created_by === S.me.id ? '' : '<button class="chip" data-act="gleave">Quitter le groupe</button>'}</div>`;
   if (g.created_by === S.me.id || isBoard()) h += delBtn('gdel', id, 'Supprimer le groupe', 'Confirmer : supprimer le groupe et ses messages', isArmed('g' + id));
@@ -116,7 +116,7 @@ Object.assign(ACTIONS, {
     if (await run(sb.from('group_members').insert([S.me.id, ...S.form.sel].map((u) => ({ group_id: g.id, user_id: u }))), 'Groupe créé.')) { S.groups.unshift(g); S.form = null; await openGroup(g.id); }
   },
   group: (el, d) => openGroup(d.id),
-  attrm: (el, d) => { S.att.splice(+d.i, 1); render(true); },
+  attrm: (el, d) => { S.msgatt.splice(+d.i, 1); render(true); },
   msgfile: async (el, d) => {
     const w = window.open('', '_blank');
     const { data, error } = await sb.storage.from('message-files').createSignedUrl(d.path, 300, { download: false });
@@ -150,12 +150,12 @@ Object.assign(ACTIONS, {
   gdel: async (el, d) => { if (!armed('g' + d.id)) return; if (await run(sb.from('groups').delete().eq('id', d.id), 'Groupe supprimé.')) { S.view = null; await refresh(); } },
 });
 FORMS.msgf = async (v) => {
-  const att = S.att || [], txt = (v.body || '').trim(); if (!txt && !att.length) return;
+  const att = S.msgatt || [], txt = (v.body || '').trim(); if (!txt && !att.length) return;
   let files = [];
   if (att.length) { toast('Envoi des pièces jointes…'); files = await uploadFiles(S.view.id, att); if (!files) return; }
   const body = txt || '📎 ' + files.map((f) => f.name).join(', ').slice(0, 1990);
   const m = await run(sb.from('messages').insert({ group_id: S.view.id, user_id: S.me.id, body, files }).select().single());
-  if (m) S.att = [];
+  if (m) S.msgatt = [];
   if (m) { if (!S.msgs.some((x) => x.id === m.id)) S.msgs.push(m); S.lastMsgs.unshift(m); bump(m); render(true); scrollEnd(); document.querySelector('#msgf input[name=body]')?.focus(); }
 };
 INPUTS.push((t) => {
@@ -167,8 +167,8 @@ CHANGES.push((t) => {   // n° 83 : fichiers choisis (5 au plus, 10 Mo chacun)
   if (!t.dataset.att) return false;
   const add = [...(t.files || [])], big = add.find((f) => f.size > ATT_MAX);
   if (big) toast(`« ${big.name} » est trop lourd : 10 Mo maximum.`);
-  S.att = (S.att || []).concat(add.filter((f) => f.size <= ATT_MAX)).slice(0, ATT_N);
-  if ((S.att.length) === ATT_N) toast('5 pièces jointes au plus par message.');
+  S.msgatt = (S.msgatt || []).concat(add.filter((f) => f.size <= ATT_MAX)).slice(0, ATT_N);
+  if ((S.msgatt.length) === ATT_N) toast('5 pièces jointes au plus par message.');
   t.value = ''; render(true); return true;
 });
 CHANGES.push((t) => { if (t.dataset.gsel) { S.form.sel[t.checked ? 'add' : 'delete'](t.dataset.gsel); render(true); return true; } return false; });

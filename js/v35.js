@@ -20,15 +20,23 @@ const ymd = (d) => d.toLocaleDateString('sv-SE');
 export function arrange(key, blocks) {
   blocks = blocks.filter((b) => b.html);
   const saved = S.prefs?.['order:' + key] || [], pins = blocks.filter((b) => b.pin), rest = blocks.filter((b) => !b.pin);
+  // n° 76 (9 novembre 2026) : un bloc peu utile se masque (œil barré) en mode « Réorganiser » ; il revient de la même façon
+  const hid = new Set(S.prefs?.['hide:' + key] || []);
   rest.sort((a, b) => { const ia = saved.indexOf(a.id), ib = saved.indexOf(b.id); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib); });
-  const on = S.reorg === key;
+  const on = S.reorg === key, nh = rest.filter((b) => hid.has(b.id)).length;
   let h = pins.map((b) => b.html).join('');
-  if (rest.length > 1) h += `<div class="btns" style="justify-content:flex-end">${on ? `<button class="btn ghost small" data-act="reorgreset" data-id="${esc(key)}">Remettre l’ordre par défaut</button><button class="btn main small" data-act="reorg" data-id="">Terminé</button>` : `<button class="btn ghost small" data-act="reorg" data-id="${esc(key)}">Réorganiser</button>`}</div>`;
+  if (rest.length > 1) h += `<div class="btns" style="justify-content:flex-end">${on ? `<button class="btn ghost small" data-act="reorgreset" data-id="${esc(key)}">Remettre l’ordre par défaut</button><button class="btn main small" data-act="reorg" data-id="">Terminé</button>` : `${nh ? `<span class="det" style="align-self:center">${plural(nh, 'bloc masqué', 'blocs masqués')}</span>` : ''}<button class="btn ghost small" data-act="reorg" data-id="${esc(key)}">Réorganiser</button>`}</div>`;
   h += rest.map((b, i) => (on
-    ? `<div class="blk"><div class="blkbar"><b>${esc(b.label)}</b><button data-act="blkmv" data-id="${esc(b.id)}" data-v="-1" aria-label="Monter ${esc(b.label)}" ${i ? '' : 'disabled'}>▲</button><button data-act="blkmv" data-id="${esc(b.id)}" data-v="1" aria-label="Descendre ${esc(b.label)}" ${i < rest.length - 1 ? '' : 'disabled'}>▼</button></div>${b.html}</div>`
-    : `<div class="blk" data-blk="${esc(b.id)}">${b.html}</div>`)).join('');
+    ? `<div class="blk${hid.has(b.id) ? ' off' : ''}"><div class="blkbar"><b>${esc(b.label)}${hid.has(b.id) ? ' · masqué' : ''}</b><button data-act="blkhide" data-id="${esc(b.id)}" aria-pressed="${hid.has(b.id)}" aria-label="${hid.has(b.id) ? 'Réafficher' : 'Masquer'} ${esc(b.label)}">${eye(hid.has(b.id))}</button><button data-act="blkmv" data-id="${esc(b.id)}" data-v="-1" aria-label="Monter ${esc(b.label)}" ${i ? '' : 'disabled'}>▲</button><button data-act="blkmv" data-id="${esc(b.id)}" data-v="1" aria-label="Descendre ${esc(b.label)}" ${i < rest.length - 1 ? '' : 'disabled'}>▼</button></div>${hid.has(b.id) ? '' : b.html}</div>`
+    : hid.has(b.id) ? '' : `<div class="blk" data-blk="${esc(b.id)}">${b.html}</div>`)).join('');
   S.reorgIds = on ? rest.map((b) => b.id) : S.reorgIds;
   return h;
+}
+// œil ouvert (bloc visible : toucher pour masquer) ou barré (bloc masqué : toucher pour réafficher)
+const eye = (off) => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>${off ? '<path d="M3 3l18 18"/>' : ''}</svg>`;
+async function saveHidden(key, ids) {
+  S.prefs = S.prefs || {}; S.prefs['hide:' + key] = ids;
+  await run(sb.from('user_prefs').upsert({ user_id: S.me.id, key: 'hide:' + key, value: ids, updated_at: new Date().toISOString() }));
 }
 async function saveOrder(key, ids) {
   S.prefs = S.prefs || {}; S.prefs['order:' + key] = ids;
@@ -130,7 +138,8 @@ FORMS.pff = async (v) => {
 
 Object.assign(ACTIONS, {
   reorg: (el, d) => { S.reorg = d.id || null; render(true); },
-  reorgreset: async (el, d) => { await saveOrder(d.id, []); toast('Ordre par défaut remis.'); render(true); },
+  reorgreset: async (el, d) => { await saveOrder(d.id, []); await saveHidden(d.id, []); toast('Ordre par défaut remis, tous les blocs réaffichés.'); render(true); },
+  blkhide: async (el, d) => { const l = new Set(S.prefs?.['hide:' + S.reorg] || []); l.has(d.id) ? l.delete(d.id) : l.add(d.id); await saveHidden(S.reorg, [...l]); render(true); },
   blkmv: async (el, d) => { const ids = [...(S.reorgIds || [])], i = ids.indexOf(d.id), j = i + +d.v; if (i < 0 || j < 0 || j >= ids.length) return; [ids[i], ids[j]] = [ids[j], ids[i]]; await saveOrder(S.reorg, ids); render(true); },
   hcok: async (el, d) => { const n = await run(sb.rpc('confirm_hours', { p_check: d.id }), 'Merci, c’est noté.'); if (n !== null) { const c = S.hconf.find((x) => x.check_id === d.id && x.user_id === S.me.id); if (c) c.confirmed_at = new Date().toISOString(); render(true); } },
   hcdetail: (el, d) => ACTIONS.chours(null, { month: d.id }),

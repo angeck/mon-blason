@@ -356,3 +356,16 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 @media (min-width:960px){.rollfoot{bottom:16px}}
 
 .tagrow{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+/* n° 156 · jour J : rendez-vous du jour en tête de l'Accueil */
+.today{display:flex;flex-direction:column;gap:10px;padding:10px;border:3px solid var(--pc-jaune);border-radius:24px;background:var(--pc-jaune-pale, #FFF6DC)}
+/* pastille « 0 / 2 » : à côté du nom de la mission, plus sur toute la largeur */
+.mission .ml{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.blk.off .blkbar{opacity:.7}
+/* n° 79 : + accompagnants */
+.guests{display:flex;align-items:center;gap:8px;padding:6px 0}.guests .g{flex:1;display:flex;flex-direction:column;font-weight:700}.guests .g small{font-weight:400;color:var(--pc-texte-doux);font-size:14px}.guests b{min-width:28px;text-align:center;font-size:18px}.guests .btn{flex:none;width:48px;padding:0}
+/* n° 160 : temps restant d'une séance */
+.gauge{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:16px;background:var(--pc-bleu-pale)}
+.gauge .gtxt{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 8px;font-size:18px}.gauge .gtxt .det{white-space:nowrap}
+.gauge .gbar{height:10px;border-radius:5px;background:var(--pc-papier);overflow:hidden}.gauge .gbar span{display:block;height:100%;background:var(--pc-bleu)}
+.gauge.full{background:var(--pc-oui-fond)}.gauge.full .gbar span{background:var(--pc-oui-texte)}
+.gauge.over{background:var(--pc-non-fond)}.gauge.over .gbar span{background:var(--pc-non-texte)}

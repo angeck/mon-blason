@@ -258,7 +258,7 @@ export function missionsBlock(e) {
     const ykid = m.youth && !past && !full ? kids.filter((k) => !kidOn(k.id)) : [];
     const yAct = ykid.length ? `<div class="ybtns">${ykid.map((k) => `<button class="btn small main" style="flex:none" data-act="yvolun" data-id="${m.id}" data-p="${k.id}" data-v="1">Inscrire ${esc(k.first_name)}</button>`).join('')}</div>` : '';
     const yTog = hasArea('evenements') && !past && !isBuvette(m.label) ? `<button class="chip" data-act="myouth" data-id="${m.id}" aria-pressed="${!!m.youth}" style="min-height:36px">Jeunes dès U13</button>` : '';
-    return `<div class="mission"><span class="g">${esc(m.label)} <span class="pill ${full ? 'ok' : 'wait'}">${takenOf(m.id)} / ${m.slots}</span>${m.youth && !yTog ? ' <span class="pill blue">Jeunes dès U13</span>' : ''}<small>${who || 'Personne pour l’instant'}</small></span>${yTog}${act}${yAct}${man && !past ? `<button class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="mdelm" data-id="${m.id}" aria-label="Retirer la mission ${esc(m.label)}">${isArmed('mi' + m.id) ? '✓' : icon('trash', 18)}</button>` : ''}</div>`;
+    return `<div class="mission"><span class="g"><span class="ml">${esc(m.label)} <span class="pill ${full ? 'ok' : 'wait'}">${takenOf(m.id)} / ${m.slots}</span>${m.youth && !yTog ? ' <span class="pill blue">Jeunes dès U13</span>' : ''}</span><small>${who || 'Personne pour l’instant'}</small></span>${yTog}${act}${yAct}${man && !past ? `<button class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="mdelm" data-id="${m.id}" aria-label="Retirer la mission ${esc(m.label)}">${isArmed('mi' + m.id) ? '✓' : icon('trash', 18)}</button>` : ''}</div>`;
   }).join('');
   if (!past && kids.length && ms.some((m) => m.youth)) h += `<p class="note">Missions « jeunes dès U13 » : tu inscris ton enfant en son nom. Un adulte du club (parent ou membre du bureau) est toujours présent sur la mission.</p>`;
   if (man && !past) {
@@ -355,7 +355,7 @@ function fonctionsView() {
   let b = '<p class="note">Une fonction ouvre ses rubriques. Tu peux ouvrir une rubrique en plus à un membre ; la rubrique Commun est à tout le bureau.</p>';
   b += users.length ? users.map((u) => {
     const ms = bm.filter((m) => m.user_id === u), own = ms.flatMap((m) => FONCTION_AREAS[m.fonction || 'Membre du bureau'] || []);
-    return `<div class="card"><b style="font-size:18px">${esc(name(u))}</b>${ms.map((m) => `<div class="grid2" style="align-items:end">${field('fo' + m.id, 'Fonction', `<select id="fo${m.id}" data-fonc="${m.id}" data-u="${u}">${FONCTIONS.map((f) => `<option ${(m.fonction || 'Membre du bureau') === f ? 'selected' : ''}>${f}</option>`).join('')}</select>`)}${delBtn('mdel', m.id, 'Retirer', 'Confirmer', isArmed('m' + m.id))}</div>`).join('')}
+    return `<div class="card"><b style="font-size:18px">${esc(name(u))}</b>${ms.map((m) => `<div class="grid2" style="align-items:end">${field('fo' + m.id, 'Fonction', `<select id="fo${m.id}" data-fonc="${m.id}" data-u="${u}">${FONCTIONS.map((f) => `<option ${(m.fonction || 'Membre du bureau') === f ? 'selected' : ''}>${f}</option>`).join('')}</select>`)}${delBtn('mdel', m.id, 'Retirer', 'Confirmer', isArmed('m' + m.id))}</div>${(m.fonction || 'Membre du bureau') === 'Membre du bureau' ? field('ft' + m.id, 'Intitulé affiché (facultatif, « Autre »)', `<input id="ft${m.id}" data-ftitle="${m.id}" maxlength="40" value="${esc(m.title || '')}" placeholder="Ex. Responsable maillots">`) : ''}`).join('')}
     <div class="kick">Rubriques</div><div class="chips">${Object.entries(AREAS).map(([a, l]) => own.includes(a) ? `<span class="pill ok">${l}</span>` : `<button class="chip" data-act="barea" data-u="${u}" data-v="${a}" aria-pressed="${ba.some((x) => x.user_id === u && x.area === a)}">${l}</button>`).join('')}</div></div>`;
   }).join('') : '<p class="empty">Aucun membre du bureau pour l’instant.</p>';
   const cand = [...new Set(S.members.filter((m) => m.status === 'active' && m.user_id !== S.me.id).map((m) => m.user_id))].sort((a, c) => name(a).localeCompare(name(c), 'fr'));
@@ -376,9 +376,11 @@ function searchView() {
   return { head: header({ back: true, kicker: 'Recherche', title: 'Chercher un club' }), body: b };
 }
 export function otherClubsHome() {
+  // n° 150 (Gaël, 9 novembre 2026) : seulement si le compte est actif dans au moins deux clubs (supporteur compris) ;
+  // logo et nom du club, rien d'autre (plus d'entraînements ni d'annonces)
   const l = (S.overview || []).filter((x) => x.club_id !== S.clubId);
   if (!l.length) return '';
-  return `<div class="sec"><h2>Mes autres clubs</h2></div>` + l.map((c) => `<div class="card"><div style="display:flex;align-items:center;gap:12px">${crest({ ...c, id: c.club_id }, 36, '#FFFFFF')}<span style="display:flex;flex-direction:column;flex:1;min-width:0"><b>${esc(c.name)}</b><span class="det">${(c.next_events || []).length ? '' : 'Rien dans les 7 prochains jours'}</span></span>${c.unread ? `<span class="pill wait">${plural(c.unread, 'annonce', 'annonces')}</span>` : ''}</div>${(c.next_events || []).map((e) => `<div class="det">${esc(fmtShort(e.starts_at))} · ${esc(e.title)}</div>`).join('')}<button class="btn small" data-act="club" data-id="${c.club_id}">Ouvrir ${esc(c.name)}</button></div>`).join('');
+  return `<div class="sec"><h2>Changer de club</h2></div><div class="card"><div class="list">${l.map((c) => `<button class="row" data-act="club" data-id="${c.club_id}">${crest({ ...c, id: c.club_id }, 36, '#FFFFFF')}<span class="g">${esc(c.name)}</span><span class="pill blue">Ouvrir</span></button>`).join('')}</div></div>`;
 }
 
 // ---------- écrans (lus par app.js) ----------
@@ -493,6 +495,7 @@ CHANGES.push(async (t) => {
     if (await run(sb.from('clubs').update({ [k]: v }).eq('id', S.clubId), 'Réglage enregistré.')) { club()[k] = v; } else t.checked = !v;
     render(true); return true;
   }
+  if (t.dataset.ftitle) { const v = t.value.trim(); if (await run(sb.rpc('set_bureau_title', { p_membership: t.dataset.ftitle, p_title: v }), v ? 'Intitulé enregistré.' : 'Intitulé retiré.')) await refresh(); return true; } // n° 166
   if (t.dataset.fonc) { if (await run(sb.rpc('set_bureau_fonction', { p_club: S.clubId, p_user: t.dataset.u, p_fonction: t.value, p_membership: t.dataset.fonc }), 'Fonction changée.')) await refresh(); else render(true); return true; }
   if (t.dataset.massign) return true;
   return false;

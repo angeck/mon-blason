@@ -4,7 +4,7 @@
 import { BRAND } from '../config.js';
 import {
   S, sb, esc, run, toast, render, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, club, isBoard, isCoach, coachTeams, coachOf,
-  team, teamName, name, plural, download, norm, fmtShort, onColor, evTeams, store, loadNames, isPresident, hasArea,
+  team, teamName, name, plural, download, norm, fmtShort, onColor, evTeams, store, loadNames, isPresident, hasArea, durOf,
 } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 import { loadXlsx } from './equipe.js';
@@ -22,6 +22,15 @@ export const TAGS = {
   'Effectif': ['Seul', 'Par 2', 'Petits groupes', 'Toute l’équipe'],
   'Matériel': ['Sans matériel', 'Plots', 'Cerceaux', 'Chasubles', 'Un ballon chacun', 'Panier', 'Filet'],
 };
+// N° 144 : les tags propres à un sport ne s'affichent que dans un club de ce sport (le club lié au rôle)
+const SPORT_ONLY = { 'Basket-ball': ['Dribble', 'Rebond', 'Panier'], 'Volley-ball': ['Réception', 'Service', 'Manchette', 'Smash', 'Filet'] };
+export function tagsFor(sport) {
+  const other = new Set(Object.entries(SPORT_ONLY).filter(([k]) => k !== sport).flatMap(([, l]) => l));
+  return Object.fromEntries(Object.entries(TAGS).map(([th, l]) => [th, l.filter((t) => !other.has(t))]));
+}
+// n° 144 : un exercice compte pour le club s'il est du sport du club ou « Tous les sports »
+const forClubSport = (e) => { const sp = club()?.sport; return !sp || !e.sport || e.sport === sp || e.sport === 'Tous les sports'; };
+const AGES = TAGS['Âge'];
 const LEVELS = ['Débutant', 'Intermédiaire', 'Confirmé', 'Tous niveaux'];
 const KINDS_H = ['Entraînement', 'Match', 'Plateau', 'Tournoi', 'Réunion', 'Formation', 'Autre'];
 export const fmtMin = (m) => { m = Math.round(+m || 0); const h = Math.floor(m / 60), r = m % 60; return h ? `${h} h${r ? ' ' + String(r).padStart(2, '0') : ''}` : `${r} min`; };
@@ -229,13 +238,22 @@ function exCard(e, pick) {
   <button class="btn small ${inPlan ? 'ghost' : 'main'}" data-act="cadd" data-id="${e.id}" aria-pressed="${inPlan}">${inPlan ? (pick ? 'Ajouté ✓' : 'Dans ma séance ✓') : icon('plus', 18) + (pick ? 'Ajouter' : addLabel())}</button></div>`;
 }
 function filters(list) {
-  const f = S.cf || (S.cf = { sport: '', cat: '', q: '' });
-  const sp = club()?.sport;
-  const out = list.filter((e) => (!f.sport || e.sport === f.sport || e.sport === 'Tous les sports') && (!f.cat || e.category === f.cat) && (!f.q || norm(e.title + ' ' + e.description).includes(norm(f.q))));
+  const f = S.cf || (S.cf = { cat: '', age: '', q: '' });
+  // n° 144 : seulement les exercices du sport du club (et « Tous les sports ») ; plus de choix d'un autre sport
+  // filtre par âge (9 novembre 2026) : d'après les tags « Âge » de l'exercice
+  const out = list.filter((e) => forClubSport(e) && (!f.cat || e.category === f.cat) && (!f.age || (e.tags || []).includes(f.age)) && (!f.q || norm(e.title + ' ' + e.description).includes(norm(f.q))));
   const h = `<div class="field"><label for="cfq">Rechercher</label><input id="cfq" type="search" data-cfq="1" value="${esc(f.q)}" placeholder="Nom ou mot de la description"></div>
-  <div class="chips">${[['', 'Tous les sports'], [sp, sp === 'Volley-ball' ? 'Volley' : 'Basket'], [sp === 'Volley-ball' ? 'Basket-ball' : 'Volley-ball', sp === 'Volley-ball' ? 'Basket' : 'Volley']].map(([v, l]) => `<button class="chip" data-act="cfsport" data-v="${v}" aria-pressed="${f.sport === v}">${l}</button>`).join('')}</div>
-  <div class="chips">${['', ...CATS].map((c) => `<button class="chip" data-act="cfcat" data-v="${c}" aria-pressed="${f.cat === c}">${c || 'Toutes'}</button>`).join('')}</div>`;
+  <div class="chips">${['', ...CATS].map((c) => `<button class="chip" data-act="cfcat" data-v="${c}" aria-pressed="${f.cat === c}">${c || 'Toutes'}</button>`).join('')}</div>
+  <div class="chips" aria-label="Âge">${['', ...AGES].map((a) => `<button class="chip" data-act="cfage" data-v="${a}" aria-pressed="${(f.age || '') === a}">${a || 'Tous les âges'}</button>`).join('')}</div>`;
   return [h, out];
+}
+// n° 159 : « Tout » = Ma banque + Club + Libre (sans doublon)
+function byTab(list, tab) {
+  const mine = (e) => e.created_by === S.me.id, cl = (e) => e.club_id === S.clubId && e.sharing !== 'me', pub = (e) => e.sharing === 'public' && e.public_state === 'validated';
+  if (tab === 'mine') return list.filter(mine);
+  if (tab === 'club') return list.filter(cl);
+  if (tab === 'tout') return list.filter((e) => mine(e) || cl(e) || pub(e));
+  return list.filter(pub);
 }
 function boardTodo() {
   if (!isBoard() || !S.exos) return '';
@@ -251,16 +269,16 @@ function boardTodo() {
 }
 export function exosPage() {
   const tab = S.ctab || 'mine';
-  let h = `<div class="chips">${[['mine', 'Ma banque'], ['club', 'Club'], ['libre', 'Libre'], ['seance', `Séance en préparation${S.plan?.items?.length ? ' (' + S.plan.items.length + ')' : ''}`]].map(([k, l]) => `<button class="chip" data-act="ctab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
+  let h = `<div class="chips">${[['mine', 'Ma banque'], ['club', 'Club'], ['libre', 'Libre'], ['tout', 'Tout'], ['seance', `Séance en préparation${S.plan?.items?.length ? ' (' + S.plan.items.length + ')' : ''}`]].map(([k, l]) => `<button class="chip" data-act="ctab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
   if (tab === 'seance') return h + planEditor();
   if (!S.exos) return h + loading();
   h += `<button class="btn main" data-act="cexnew">${icon('plus', 20)}Nouvel exercice</button>`;
   let list = S.exos.filter((e) => !e.deleted_at);
   if (tab === 'mine') { list = list.filter((e) => e.created_by === S.me.id); if (list.length) h += `<label class="btn ghost">Ajouter des vidéos en lot<input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" multiple data-exbulk="1" hidden></label><p class="note">Nomme chaque fichier comme l'exercice (ex. « Relais en dribble.mp4 ») : il ira sur le bon exercice.</p>`; }
-  else if (tab === 'club') { h += boardTodo(); list = list.filter((e) => e.club_id === S.clubId && e.sharing !== 'me'); }
-  else list = list.filter((e) => e.sharing === 'public' && e.public_state === 'validated');
+  else if (tab === 'club') { h += boardTodo(); list = byTab(list, 'club'); }
+  else list = byTab(list, tab);
   const [fh, out] = filters(list);
-  h += fh + (out.length ? out.map((e) => exCard(e)).join('') : `<p class="empty">${tab === 'mine' ? 'Ta banque est vide : ajoute ton premier exercice.' : tab === 'club' ? 'Aucun exercice partagé au club pour l’instant.' : 'Aucun exercice public validé pour l’instant.'}</p>`);
+  h += fh + (out.length ? out.map((e) => exCard(e)).join('') : `<p class="empty">${tab === 'mine' ? 'Ta banque est vide : ajoute ton premier exercice.' : tab === 'club' ? 'Aucun exercice partagé au club pour l’instant.' : tab === 'tout' ? 'Aucun exercice pour l’instant.' : 'Aucun exercice public validé pour l’instant.'}</p>`);
   if (tab === 'libre') h += '<p class="note">Banque libre : exercices proposés par des coachs de tous les clubs, chacun validé par le bureau de son club. Un exercice signalé est retiré jusqu’à une nouvelle validation.</p>';
   if (tab === 'mine') {
     const del = S.exos.filter((e) => e.deleted_at && e.created_by === S.me.id);
@@ -271,16 +289,14 @@ export function exosPage() {
 // N° 58 : sélecteur d'exercices par-dessus la séance (Ma banque · Club · Libre, recherche et filtres, « Ajouter » / « Ajouté ✓ », « Terminer »)
 export function pickPage() {
   const p = ensurePlan(), tab = S.pk?.tab || 'mine', tot = planTotal(p);
-  const sum = `${plural(p.items.length, 'exercice')} · ${fmtMin(tot)}`;
-  let h = `<div class="card lift" style="flex-direction:row;align-items:center;justify-content:space-between;gap:10px"><span style="display:flex;flex-direction:column;min-width:0"><b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.title)}</b><span class="det">${sum}</span></span><button class="btn main small" style="flex:none" data-act="back">Terminer</button></div>`;
-  h += `<div class="chips">${[['mine', 'Ma banque'], ['club', 'Club'], ['libre', 'Libre']].map(([k, l]) => `<button class="chip" data-act="pktab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
+  const sum = `${plural(p.items.length, 'exercice')} · ${fmtMin(tot)}`; // n° 160 : le temps restant reste sous les yeux pendant le choix
+  let h = `<div class="card lift" style="flex-direction:row;align-items:center;justify-content:space-between;gap:10px"><span style="display:flex;flex-direction:column;min-width:0"><b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.title)}</b><span class="det">${sum}</span></span><button class="btn main small" style="flex:none" data-act="back">Terminer</button></div>${gauge(p)}`;
+  h += `<div class="chips">${[['mine', 'Ma banque'], ['club', 'Club'], ['libre', 'Libre'], ['tout', 'Tout']].map(([k, l]) => `<button class="chip" data-act="pktab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
   if (!S.exos) return h + loading();
   let list = S.exos.filter((e) => !e.deleted_at);
-  if (tab === 'mine') list = list.filter((e) => e.created_by === S.me.id);
-  else if (tab === 'club') list = list.filter((e) => e.club_id === S.clubId && e.sharing !== 'me');
-  else list = list.filter((e) => e.sharing === 'public' && e.public_state === 'validated');
+  list = byTab(list, tab).filter(forClubSport);
   if (!list.length) {
-    const why = { mine: 'Ta banque est vide.', club: 'Aucun exercice n’est partagé au club.', libre: 'Aucun exercice public validé.' }[tab];
+    const why = { mine: 'Ta banque est vide.', club: 'Aucun exercice n’est partagé au club.', libre: 'Aucun exercice public validé.', tout: 'Aucun exercice disponible.' }[tab];
     return h + `<div class="card pale"><b>Aucun exercice pour l’instant</b><p class="note">${why} Crée ton premier exercice : il sera ajouté tout de suite à ta séance.</p><button class="btn main" data-act="pkcreate">${icon('plus', 20)}Créer un exercice</button></div>`;
   }
   const [fh, out] = filters(list);
@@ -338,12 +354,12 @@ export function exoForm() {
   return `<form id="exf" class="card lift">
   ${field('exn', 'Nom', `<input id="exn" name="title" required minlength="2" maxlength="80" value="${esc(f.title || '')}" placeholder="Ex. Passe et va en deux colonnes">`)}
   ${dup ? `<div class="card warn"><b>Un exercice « ${esc(dup.title)} » existe déjà.</b><span class="note" style="color:var(--pc-encre)">Vérifie que ce n'est pas un doublon avant d'enregistrer.</span></div>` : ''}
-  <div class="grid2">${field('exs', 'Sport', `<select id="exs" name="sport" data-exre="1">${[sp, sp === 'Volley-ball' ? 'Basket-ball' : 'Volley-ball', 'Tous les sports'].map((x) => `<option ${f.sport === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
+  <div class="grid2">${field('exs', 'Sport', `<select id="exs" name="sport" data-exre="1">${[...new Set([sp, 'Tous les sports', f.sport].filter(Boolean))].map((x) => `<option ${f.sport === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
   ${field('exc', 'Catégorie', `<select id="exc" name="category">${CATS.map((x) => `<option ${f.category === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
   ${field('exl', 'Niveau', `<select id="exl" name="level"><option value="">Non précisé</option>${LEVELS.concat(f.level && !LEVELS.includes(f.level) ? [f.level] : []).map((x) => `<option ${f.level === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`)}
   ${field('exd', 'Durée (minutes)', `<input id="exd" name="duration_min" type="number" min="1" max="120" required value="${esc(f.duration_min || 10)}">`)}</div>
   ${field('exde', 'Description', `<textarea id="exde" name="description" maxlength="4000" rows="7" placeholder="Mise en place, déroulement, consignes, variantes">${esc(f.description || '')}</textarea>`)}
-  <div class="field"><span class="lab">Tags (${tags.size} choisis)</span>${Object.entries(TAGS).map(([th, l]) => `<div class="tagrow"><span class="det">${esc(th)}</span><div class="chips">${l.map((t) => `<button type="button" class="chip" data-act="extag" data-v="${esc(t)}" aria-pressed="${tags.has(t)}">${esc(t)}</button>`).join('')}</div></div>`).join('')}</div>
+  <div class="field"><span class="lab">Tags (${tags.size} choisis)</span>${Object.entries(tagsFor(sp)).map(([th, l]) => [th, l.concat(TAGS[th].filter((t) => tags.has(t) && !l.includes(t)))]).map(([th, l]) => `<div class="tagrow"><span class="det">${esc(th)}</span><div class="chips">${l.map((t) => `<button type="button" class="chip" data-act="extag" data-v="${esc(t)}" aria-pressed="${tags.has(t)}">${esc(t)}</button>`).join('')}</div></div>`).join('')}</div>
   <div class="field"><span class="lab">Origine</span><div class="chips">${Object.entries(ORIGINS).map(([k, l]) => `<label class="chip" style="display:flex;align-items:center;gap:6px"><input type="radio" name="origin" value="${k}" data-exre="1" ${f.origin === k ? 'checked' : ''}>${l}</label>`).join('')}</div></div>
   ${f.origin === 'adapte' ? field('exso', 'Source (livre, site, formation, auteur)', `<input id="exso" name="source" required maxlength="300" value="${esc(f.source || '')}">`) : ''}
   ${f.origin === 'ia' ? field('exso', 'Source (facultatif : IA utilisée, document de départ)', `<input id="exso" name="source" maxlength="300" value="${esc(f.source || '')}">`) : ''}
@@ -364,14 +380,22 @@ export function ensurePlan() {
   return (S.plan = { club: S.clubId, id: null, title: 'Séance du ' + new Date().toLocaleDateString('fr-FR'), team_id: coachTeams()[0] || t, event_id: '', notes: '', items: [] });
 }
 const planTotal = (p) => p.items.reduce((a, x) => a + (+x.minutes || 0), 0);
+// n° 160 : durée visée = celle de l'entraînement relié, sinon celle choisie par le coach (1 h 30 par défaut)
+const planTarget = (p) => { const e = p.event_id && S.events.find((x) => x.id === p.event_id); return (e && durOf(e)) || +p.target || 90; };
+function gauge(p) {
+  const tot = planTotal(p), tg = planTarget(p), left = tg - tot, pct = Math.min(100, Math.round((100 * tot) / tg));
+  const txt = left > 0 ? `Il reste <b>${fmtMin(left)}</b> à remplir` : left === 0 ? '<b>Séance complète</b>' : `<b>${fmtMin(-left)} de trop</b>`;
+  return `<div class="gauge ${left < 0 ? 'over' : left === 0 ? 'full' : ''}" role="status"><div class="gtxt"><span>${txt}</span><span class="det">${fmtMin(tot)} sur ${fmtMin(tg)}</span></div><div class="gbar"><span style="width:${pct}%"></span></div></div>`;
+}
 function trainingsOf(tid) { return S.events.filter((e) => evTeams(e).includes(tid) && !e.cancelled && e.type === 'Entraînement' && new Date(e.starts_at) > Date.now() - 864e5).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)).slice(0, 12); }
 export function planEditor() {
   const p = ensurePlan(), tot = planTotal(p), teams = staffTeams();
   let h = `<form id="planf" class="card lift">
   ${field('pt', 'Nom de la séance', `<input id="pt" name="title" required maxlength="80" value="${esc(p.title)}">`)}
   <div class="grid2">${field('pte', 'Équipe', `<select id="pte" name="team_id" data-planre="1"><option value="">—</option>${teams.map((t) => `<option value="${t}" ${p.team_id === t ? 'selected' : ''}>${esc(teamName(t))}</option>`).join('')}</select>`)}
-  ${field('pev', 'Pour l’entraînement du', `<select id="pev" name="event_id"><option value="">Aucun pour l’instant</option>${trainingsOf(p.team_id).map((e) => `<option value="${e.id}" ${p.event_id === e.id ? 'selected' : ''}>${esc(fmtShort(e.starts_at))}</option>`).join('')}</select>`)}</div>
-  <div class="sec"><h2>Exercices</h2><span class="det">${plural(p.items.length, 'exercice')} · ${fmtMin(tot)}</span></div>
+  ${field('pev', 'Pour l’entraînement du', `<select id="pev" name="event_id" data-plantg="1"><option value="">Aucun pour l’instant</option>${trainingsOf(p.team_id).map((e) => `<option value="${e.id}" ${p.event_id === e.id ? 'selected' : ''}>${esc(fmtShort(e.starts_at))}</option>`).join('')}</select>`)}</div>
+  ${p.event_id ? '' : field('ptg', 'Durée visée', `<select id="ptg" name="target" data-plantg="1">${[45, 60, 75, 90, 105, 120, 150].map((m) => `<option value="${m}" ${planTarget(p) === m ? 'selected' : ''}>${fmtMin(m)}</option>`).join('')}</select>`)}
+  <div class="sec"><h2>Exercices</h2><span class="det">${plural(p.items.length, 'exercice')} · ${fmtMin(tot)}</span></div>${gauge(p)}
   <button type="button" class="btn main" data-act="padd" style="min-height:48px">${icon('plus', 20)}Ajouter un exercice</button>`;
   h += p.items.length ? `<div class="list">${p.items.map((x, i) => `<div class="row static" style="flex-wrap:wrap"><span class="g" style="flex:1 1 60%">${i + 1}. ${esc(x.title)}<small>${esc(x.category || '')}</small></span>
     <input type="number" min="1" max="120" value="${esc(x.minutes)}" data-pmin="${i}" aria-label="Durée de ${esc(x.title)} en minutes" style="width:76px;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 8px"> min
@@ -379,14 +403,19 @@ export function planEditor() {
     : '<p class="empty">Aucun exercice dans cette séance pour l’instant.</p>';
   h += `${field('pn', 'Notes (matériel, consignes)', `<textarea id="pn" name="notes" maxlength="2000" rows="3">${esc(p.notes)}</textarea>`)}
   <div class="btns"><button class="btn main" type="submit">${p.id ? 'Enregistrer la séance' : 'Enregistrer la séance'}</button>${p.items.length ? '<button type="button" class="btn ghost" data-act="pprint">Imprimer / PDF</button>' : ''}</div>
-  <div class="btns"><button type="button" class="btn ghost small" data-act="pnew">Nouvelle séance vide</button><button type="button" class="btn ghost small" data-act="cplans">Mes séances enregistrées</button></div></form>`;
+  ${p.items.length ? '<button type="button" class="btn ghost" data-act="ptplsave">Enregistrer comme séance type</button>' : ''}
+  <div class="btns"><button type="button" class="btn ghost small" data-act="pnew">Nouvelle séance vide</button><button type="button" class="btn ghost small" data-act="cplans">Mes séances et séances types</button></div></form>`;
   return h;
 }
-function keepPlan() { const fm = document.getElementById('planf'); if (!fm) return; const v = Object.fromEntries(new FormData(fm)); Object.assign(S.plan, { title: v.title, team_id: v.team_id, event_id: v.event_id || '', notes: v.notes }); savePlanLocal(); }
+function keepPlan() { const fm = document.getElementById('planf'); if (!fm) return; const v = Object.fromEntries(new FormData(fm)); Object.assign(S.plan, { title: v.title, team_id: v.team_id, event_id: v.event_id || '', notes: v.notes }, v.target ? { target: +v.target } : {}); savePlanLocal(); }
 export function plansPage() {
   if (!S.plans) return loading();
+  // n° 160 : les séances types (nommées, sans date) en premier ; « Utiliser » en fait une nouvelle séance
+  const tpl = S.plans.filter((p) => p.is_template && p.created_by === S.me.id), pl = S.plans.filter((p) => !p.is_template);
   if (!S.plans.length) return '<p class="empty">Aucune séance enregistrée.</p><button class="btn main" data-act="cplan">Composer une séance</button>';
-  return `<div class="card"><div class="list">${S.plans.map((p) => { const e = S.events.find((x) => x.id === p.event_id); return `<div class="row static" style="flex-wrap:wrap"><button class="g" style="background:none;border:0;text-align:left;padding:0;flex:1" data-act="popen" data-id="${p.id}">${esc(p.title)}<small>${[teamName(p.team_id), e ? fmtShort(e.starts_at) : '', plural(p.items.length, 'exercice'), fmtMin(planTotal(p))].filter(Boolean).map(esc).join(' · ')}</small></button>${delBtn('pldel', p.id, 'Supprimer', 'Confirmer', isArmed('pl' + p.id), 'style="flex:none;min-height:44px"')}</div>`; }).join('')}</div></div>`;
+  const row = (p) => { const e = S.events.find((x) => x.id === p.event_id); return `<div class="row static" style="flex-wrap:wrap"><button class="g" style="background:none;border:0;text-align:left;padding:0;flex:1" data-act="${p.is_template ? 'ptpluse' : 'popen'}" data-id="${p.id}">${esc(p.title)}<small>${[p.is_template ? '' : teamName(p.team_id), e ? fmtShort(e.starts_at) : '', plural(p.items.length, 'exercice'), fmtMin(planTotal(p))].filter(Boolean).map(esc).join(' · ')}</small></button>${p.is_template ? `<button class="btn small main" style="flex:none" data-act="ptpluse" data-id="${p.id}">Utiliser</button>` : ''}${delBtn('pldel', p.id, 'Supprimer', 'Confirmer', isArmed('pl' + p.id), 'style="flex:none;min-height:44px"')}</div>`; };
+  return (tpl.length ? `<div class="sec"><h2>Séances types</h2></div><div class="card"><div class="list">${tpl.map(row).join('')}</div></div>` : '')
+    + (pl.length ? `<div class="sec"><h2>Séances</h2></div><div class="card"><div class="list">${pl.map(row).join('')}</div></div>` : '');
 }
 // Appel en tuiles : « Ajouter un exercice » ouvre la séance reliée à l'entraînement (ou en crée une)
 export function openPlanForEvent(e) {
@@ -581,6 +610,7 @@ Object.assign(ACTIONS, {
   ctab: async (el, d) => { if (d.v === 'seance') keepPlan(); S.ctab = d.v; render(true); if (!exosFresh() && d.v !== 'seance') { await loadExos(); render(true); } },
   cfsport: (el, d) => { S.cf.sport = d.v; render(true); },
   cfcat: (el, d) => { S.cf.cat = d.v; render(true); },
+  cfage: (el, d) => { S.cf.age = d.v; render(true); }, // filtre par âge
   cexo: (el, d) => { S.exRep = null; S.view = { type: 'exo', id: d.id }; render(); },
   cadd: (el, d) => { const e = exById(d.id); if (e) addToPlan(e); },
   padd: () => { keepPlan(); S.pk = { tab: 'mine' }; return open({ type: 'expick' }, async () => { if (!exosFresh()) await loadExos(); }); },
@@ -606,6 +636,16 @@ Object.assign(ACTIONS, {
   cplan: () => { ensurePlan(); S.ctab = 'seance'; return open({ type: 'exos' }, async () => { if (!exosFresh()) await loadExos(); }); },
   pmove: (el, d) => { keepPlan(); const p = S.plan, i = +d.i, j = i + +d.v; [p.items[i], p.items[j]] = [p.items[j], p.items[i]]; savePlanLocal(); render(true); },
   prm: (el, d) => { keepPlan(); S.plan.items.splice(+d.i, 1); savePlanLocal(); render(true); },
+  ptplsave: async () => { // n° 160 : séance type nommée
+    keepPlan(); const p = S.plan; if (!p.items.length) return toast('Ajoute au moins un exercice.');
+    const nm = prompt('Nom de la séance type (ex. Échauffement + tirs U11)', p.title); if (!nm || !nm.trim()) return;
+    const row = { club_id: S.clubId, title: nm.trim().slice(0, 80), team_id: null, event_id: null, notes: p.notes || '', is_template: true, target_min: planTarget(p), items: p.items.map((x) => ({ ...x, minutes: Math.min(120, Math.max(1, +x.minutes || 1)) })) };
+    if (await run(sb.from('training_plans').insert(row).select().single(), 'Séance type enregistrée.')) S.plans = null;
+  },
+  ptpluse: (el, d) => { const t = (S.plans || []).find((x) => x.id === d.id); if (!t) return;
+    S.plan = { club: S.clubId, id: null, title: t.title, team_id: coachTeams()[0] || '', event_id: '', notes: t.notes || '', target: t.target_min || 90, items: (t.items || []).map((x) => ({ ...x })) };
+    savePlanLocal(); S.ctab = 'seance'; S.stack = []; S.view = { type: 'exos' }; toast('Séance type reprise : choisis l’équipe et l’entraînement, puis enregistre.'); render();
+  },
   pnew: () => { S.plan = null; try { localStorage.removeItem('pc_plan_' + S.clubId); } catch { /* */ } ensurePlan(); render(true); },
   pprint: () => { keepPlan(); printPlan(S.plan); },
   cplans: () => { keepPlan(); return open({ type: 'plans' }, loadPlans); },
@@ -685,6 +725,7 @@ CHANGES.push(async (t) => {
   if (t.dataset.exre) { keepEx(); render(true); return true; }
   if (t.dataset.exvid) { const fl = t.files?.[0]; if (fl) { if (fl.size > VMAX) return toast('Vidéo trop lourde : 50 Mo maximum.'), true; keepEx(); S.exVid = fl; S.exVidRm = false; render(true); } return true; }
   if (t.dataset.exbulk) { if (t.files?.length) await bulkVideos(t.files); return true; }
+  if (t.dataset.plantg) { keepPlan(); render(true); return true; } // n° 160 : durée visée ou entraînement relié → jauge à jour
   if (t.dataset.planre) { keepPlan(); S.plan.event_id = ''; savePlanLocal(); render(true); return true; }
   if (t.dataset.pmin) { render(true); return true; }
   return false;

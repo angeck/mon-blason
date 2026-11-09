@@ -84,6 +84,14 @@ function pair(e, pid) {
   const yes = p ? `${esc(p.first_name)} ${ev ? 'participe' : 'vient'}` : ev ? 'Je participe' : 'Je viens', no = p ? `${esc(p.first_name)} ${ev ? 'ne participe pas' : 'ne vient pas'}` : ev ? 'Je ne participe pas' : 'Je ne viens pas';
   return `<div class="pair"><button class="btn yes" data-act="rsvp" data-id="${e.id}" data-p="${pid || ''}" data-v="oui" aria-pressed="${m === 'oui'}">${m === 'oui' ? icon('check', 20, 'currentColor', 3) : ''}${yes}</button><button class="btn no" data-act="rsvp" data-id="${e.id}" data-p="${pid || ''}" data-v="non" aria-pressed="${m === 'non'}">${no}</button></div>`;
 }
+// n° 79 : après « Je participe », le nombre d'accompagnants sans compte (famille, amis), compté par l'organisateur
+const myRow = (e) => S.resp.find((x) => x.event_id === e.id && x.user_id === S.me.id && !x.player_id);
+export const guestsOf = (e) => S.resp.filter((x) => x.event_id === e.id && x.answer === 'oui').reduce((a, x) => a + (+x.guests || 0), 0);
+function guestsLine(e) {
+  const r = myRow(e); if (!r || r.answer !== 'oui') return '';
+  const n = +r.guests || 0;
+  return `<div class="guests"><span class="g">+ accompagnants<small>Personnes sans compte qui viennent avec toi</small></span><button class="btn small ghost" data-act="guests" data-id="${e.id}" data-v="${n - 1}" ${n ? '' : 'disabled'} aria-label="Un accompagnant de moins">−</button><b aria-live="polite">${n}</b><button class="btn small ghost" data-act="guests" data-id="${e.id}" data-v="${n + 1}" ${n >= 20 ? 'disabled' : ''} aria-label="Un accompagnant de plus">+</button></div>`;
+}
 export function invitedCount(e) {
   const act = S.members.filter((m) => m.status === 'active'), ids = new Set(), board = act.filter((m) => ['president', 'bureau'].includes(m.role)).map((m) => m.user_id);
   if (e.audience === 'club') { const real = new Set(act.filter((m) => m.role !== 'supporteur').map((m) => m.user_id)); act.forEach((m) => { if (e.with_supporters !== false || real.has(m.user_id)) ids.add(m.user_id); }); } // n° 89
@@ -101,9 +109,9 @@ export function answerBlock(e) {
   if (noAnswerRole(e)) return `<p class="note">${myMem().some((m) => m.status === 'pending') ? 'Ta demande attend la validation du club : pas de réponse à donner pour l’instant.' : 'En supporteur, pas de réponse à donner : tu suis la vie du club.'}</p>`;
   if (outsider(e)) return '<p class="note">Tu ne fais pas partie de cette équipe : seuls ses joueurs (ou leurs parents) répondent.</p>';
   if (!isTeamType(e)) {
-    const ks = famKids(e); if (!ks.length) return pair(e, null);
+    const ks = famKids(e); if (!ks.length) return pair(e, null) + guestsLine(e);
     const R = respOf(e.id);
-    return `<p class="note" style="margin:0">Une réponse pour chaque personne de ta famille. La réponse d'un enfant vaut pour ses deux parents.</p><div class="kick">Moi</div>${pair(e, null)}` + ks.map((p) => p.user_id
+    return `<p class="note" style="margin:0">Une réponse pour chaque personne de ta famille. La réponse d'un enfant vaut pour ses deux parents.</p><div class="kick">Moi</div>${pair(e, null)}${guestsLine(e)}` + ks.map((p) => p.user_id
       ? `<p class="note"><b>${esc(p.first_name)}</b> a son propre compte et répond pour lui-même : ${R.kid(p.id) === 'oui' ? 'participe' : R.kid(p.id) === 'non' ? 'ne participe pas' : 'pas encore de réponse'}.</p>`
       : `<div class="kick">${esc(p.first_name)}</div>${pair(e, p.id)}`).join('');
   }
@@ -155,7 +163,13 @@ const soon = () => Date.now() - 2 * 3600e3;
 export const upcoming = (l) => sortEvents(l.filter((e) => new Date(e.starts_at).getTime() >= soon()));
 const past = (l) => sortEvents(l.filter((e) => new Date(e.starts_at).getTime() < soon())).reverse();
 export const visibleEvents = () => S.events.filter((e) => !hiddenByToggle(e));
-export const homeEvents = () => upcoming(visibleEvents().filter((e) => !hiddenByMe(e)));
+// n° 157 (Gaël, 9 novembre 2026) : un rendez-vous quitte l'Accueil quand il est fini ; s'il attend l'appel de son coach
+// (ou du président), il reste ce jour-là jusqu'à ce que l'appel soit validé
+const rollPending = (e) => ROLL_TYPES.includes(e.type) && !e.cancelled && canCallRoll(e) && !S.att.some((x) => x.event_id === e.id) && localDay(new Date(e.starts_at)) === localDay(new Date());
+export const onHome = (e) => Date.now() <= endOf(e).getTime() || rollPending(e);
+export const homeEvents = () => sortEvents(visibleEvents().filter((e) => !hiddenByMe(e) && onHome(e)));
+export const isToday = (e) => localDay(new Date(e.starts_at)) === localDay(new Date());
+export { rollPending };
 function dayTitle(d) {
   const k = localDay(d);
   if (k === localDay(new Date())) return 'Aujourd’hui';
@@ -343,7 +357,7 @@ export function eventPage(id) {
   ${e.cancelled ? '' : `<b style="font-family:var(--pc-titre);font-size:22px">${coachOnly(e) && !myKidsIn(evTeams(e)).length ? 'Ton équipe' : outsider(e) || noAnswerRole(e) ? 'Ce rendez-vous' : 'Tu viens ?'}</b>${answerBlock(e)}${!isOpen(e) && !coachOnly(e) && !followOnly(e) && !outsider(e) && !noAnswerRole(e) ? `<p class="note">Tu peux répondre dès maintenant. Sinon, cette séance arrivera dans « À répondre » le ${esc(fmtDay(opensOn(e)))}.</p>` : ''}`}</div>`;
   const tot = R.oui.length + R.non.length, base = Math.max(tot, isTeamType(e) ? playersOf(e).length : invitedCount(e));
   h += `<div class="card"><div class="sec"><h2>Qui vient ?</h2><span class="det">${plural(R.all.length, 'réponse')}</span></div>${base ? `<div class="bar"><span style="width:${(100 * R.oui.length) / base}%"></span><span style="width:${(100 * R.non.length) / base}%"></span></div>` : ''}
-  <div class="chips"><span class="pill ok">${R.oui.length} oui</span><span class="pill ko">${R.non.length} non</span>${base > tot && isOpen(e) ? `<span class="pill">${base - tot} sans réponse</span>` : ''}</div>${!isTeamType(e) && R.oui.some((x) => x.player_id) ? `<div class="det">${plural(R.oui.length, 'participant')} · ${plural(R.oui.filter((x) => !x.player_id).length, 'adulte')}, ${plural(R.oui.filter((x) => x.player_id).length, 'enfant')}</div>` : ''}<div><b>Viennent :</b> ${list(R.oui)}</div><div><b>Ne viennent pas :</b> ${list(R.non)}</div></div>`;
+  <div class="chips"><span class="pill ok">${R.oui.length} oui</span><span class="pill ko">${R.non.length} non</span>${base > tot && isOpen(e) ? `<span class="pill">${base - tot} sans réponse</span>` : ''}</div>${!isTeamType(e) && (R.oui.some((x) => x.player_id) || guestsOf(e)) ? `<div class="det">${plural(R.oui.length + guestsOf(e), 'participant')} · ${plural(R.oui.filter((x) => !x.player_id).length, 'adulte')}, ${plural(R.oui.filter((x) => x.player_id).length, 'enfant')}${guestsOf(e) ? ', ' + plural(guestsOf(e), 'accompagnant') + ' sans compte' : ''}</div>` : ''}<div><b>Viennent :</b> ${list(R.oui)}</div><div><b>Ne viennent pas :</b> ${list(R.non)}</div></div>`;
   h += `<div class="btns"><button class="btn" data-act="ics" data-id="${id}">${icon('calplus', 20)}Ajouter à mon agenda</button>${e.place ? `<a class="btn small" style="flex:none;width:52px;padding:0" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.place)}" target="_blank" rel="noopener" aria-label="Itinéraire">${icon('pin', 22)}</a>` : ''}</div>`;
   if (!coachOnly(e) && e.type !== 'Entraînement' && R.mine === 'non') h += `<button class="btn ghost" data-act="${hiddenByMe(e) ? 'unhide' : 'hide'}" data-id="${id}">${hiddenByMe(e) ? 'Réafficher dans mon agenda' : 'Ne plus afficher dans mon agenda'}</button>`;
   if (man && !e.cancelled && new Date(e.starts_at) > Date.now()) {
@@ -494,6 +508,11 @@ Object.assign(ACTIONS, {
     if (await run(sb.rpc('respond_event', { p_event: d.id, p_player: pid, p_answer: cur === d.v ? null : d.v }))) {
       const rr = await sb.from('event_responses').select('*').eq('event_id', d.id); S.resp = S.resp.filter((x) => x.event_id !== d.id).concat(rr.data || []);
     }
+    render(true);
+  },
+  guests: async (el, d) => { // n° 79
+    const n = Math.max(0, Math.min(20, +d.v || 0));
+    if (await run(sb.rpc('set_event_guests', { p_event: d.id, p_n: n }))) { const r = myRow({ id: d.id }); if (r) r.guests = n; }
     render(true);
   },
   evcancel: async (el, d) => { const e = S.events.find((x) => x.id === d.id); if (await run(sb.from('events').update({ cancelled: !e.cancelled }).eq('id', e.id), e.cancelled ? 'Rendez-vous rétabli.' : 'Rendez-vous annulé.')) await refresh(); },

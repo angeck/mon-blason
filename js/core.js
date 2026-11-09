@@ -22,7 +22,9 @@ export const store = {
 
 export const ROLES = { president: 'Président', bureau: 'Membre du bureau', coach: 'Coach', joueur: 'Joueur', parent: 'Parent de joueur', supporteur: 'Supporteur' };
 // Libellé d'un profil : « Bureau · Trésorier » pour un membre du bureau (n° 54)
-export const roleLabel = (m) => (m.role === 'bureau' ? 'Bureau · ' + (m.fonction || 'Membre du bureau') : ROLES[m.role]);
+// n° 166 : un « Membre du bureau » peut porter un intitulé libre choisi par le président (« Responsable maillots »)
+export const fonctionLabel = (m) => ((m.fonction || 'Membre du bureau') === 'Membre du bureau' && m.title ? m.title : m.fonction || 'Membre du bureau');
+export const roleLabel = (m) => (m.role === 'bureau' ? 'Bureau · ' + fonctionLabel(m) : ROLES[m.role]);
 export const JOIN_ROLES = ['supporteur', 'parent', 'joueur', 'coach', 'bureau'];
 export const SPORTS = ['Basket-ball', 'Volley-ball'];
 export const TEAM_TYPES = ['Entraînement', 'Match', 'Plateau', 'Tournoi'];
@@ -146,7 +148,7 @@ export function casquettes() {
   // avec une seule équipe, l'espace de l'équipe directement (niveau 3)
   if (ct.length) l.push({ k: 'coach', label: ct.length === 1 ? 'Coach ' + tn(ct[0]) : 'Coach', pill: 'Coach', teams: ct });
   if (isPresident()) l.push({ k: 'president', label: 'Président', pill: 'Président' });
-  active().filter((m) => m.role === 'bureau').forEach((m) => { const f = m.fonction || 'Membre du bureau'; if (!l.some((x) => x.k === 'f:' + f)) l.push({ k: 'f:' + f, label: f, pill: f === 'Membre du bureau' ? 'Bureau' : f.replace(/ adjoint$/, '').replace('Responsable ', '').replace('Chargé de ', '') }); });
+  active().filter((m) => m.role === 'bureau').forEach((m) => { const f = m.fonction || 'Membre du bureau'; if (!l.some((x) => x.k === 'f:' + f)) l.push({ k: 'f:' + f, label: fonctionLabel(m), pill: f === 'Membre du bureau' ? (m.title || 'Bureau') : f.replace(/ adjoint$/, '').replace('Responsable ', '').replace('Chargé de ', '') }); });
   return l;
 }
 export const isCoachCasq = (k) => k === 'coach' || String(k || '').startsWith('coach:');
