@@ -1,7 +1,7 @@
 // mypocketclub · onglet Club : blason et en-tête, code, validations, licences et cotisations, tarifs, équipes, membres, corbeille.
 import { BRAND } from '../config.js';
 import {
-  S, sb, esc, roleLabel, hasArea, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, BCATS, SEASON, XLSX_URL, club, isBoard, isPresident,
+  S, sb, esc, fl, roleLabel, hasArea, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, BCATS, SEASON, XLSX_URL, club, isBoard, isPresident,
   coachTeams, coachOf, teamName, name, pname, adminOf, toValidate, canValidate, norm, loadJs, download, toDataUrl, num, plural, onColor, contrast, rankOf, myRank, niceFirst, niceLast,
 } from './core.js';
 import { icon, field } from './ui.js';
@@ -70,7 +70,7 @@ export function membersBlock() {
 
 // ---------- licences, cotisations, dates de naissance ----------
 export function licencesBlock() {
-  if (!hasArea('tresorerie') && !hasArea('secretariat') && !hasArea('licences')) return ''; // 4.4.0 : aussi le correspondant licences
+  if (!hasArea('tresorerie') && !hasArea('secretariat') && !hasArea('licences')) return ''; // 4.4.0 : aussi le contact licences
   // 4.4.0 (n° 114) : sans la Trésorerie, pas de montants ; « cotisation à jour » (oui / non) seulement si le président l'a activé
   const nf = !hasArea('tresorerie'), seeOk = nf && S.padmin.some((a) => a.nofee && a.fee_ok != null);
   const all = S.players.filter((p) => !p.from_partner), f = S.lf || 'Tous', noBirth = all.filter((p) => !p.birth_date).length;
@@ -174,14 +174,14 @@ export function teamsBlock() {
 // ---------- contacts du club (n° 42, refait au n° 122) ----------
 // Le contact suit la fonction attribuée par le président (licences : la personne désignée, sinon le secrétaire, sinon le président ;
 // rencontres : la personne désignée, sinon le président). Coordonnées montrées seulement si la personne les a confirmées ;
-// sinon « Écrire au correspondant » (message dans l'application). Qui voit quoi : la base décide (contact_card).
-const RESP_LAB = { licences: 'correspondant licences', rencontres: 'correspondant rencontres' };
+// sinon « Écrire au contact » (message dans l'application). Qui voit quoi : la base décide (contact_card).
+const RESP_LAB = { licences: 'contact licences', rencontres: 'contact rencontres' };
 export function contactPerson(c, resp, canWrite) {
   const coords = c.phone || c.email;
   const btns = [c.phone ? `<a class="btn small ghost" href="tel:${esc(c.phone.replace(/\s/g, ''))}">${icon('phone', 18)}Appeler</a>` : '', c.email ? `<a class="btn small ghost" href="mailto:${esc(c.email)}">${icon('mail', 18)}Écrire un e-mail</a>` : '',
     resp && canWrite && c.user_id !== S.me.id ? `<button class="btn small ${coords ? 'ghost' : 'main'}" data-act="msgcontact" data-v="${resp}" aria-label="Écrire au ${RESP_LAB[resp]}">${icon('msg', 18)}${coords ? 'Message' : 'Écrire au ' + RESP_LAB[resp]}</button>` : ''].filter(Boolean);
   const none = !coords ? `<span class="det">${resp && canWrite ? 'Pas de coordonnées publiées : écris-lui par l’application.' : resp ? 'Pas de coordonnées publiées. Rejoins le club (même comme supporteur) pour lui écrire.' : 'Pas de coordonnées publiées : écris-lui depuis Messages.'}</span>` : '';
-  return `<div class="row static" style="flex-direction:column;align-items:stretch;gap:8px"><span class="g">${esc(c.name)}<small>${esc(c.fonction || '')}${c.phone ? ' · ' + esc(c.phone) : ''}${c.email ? ' · ' + esc(c.email) : ''}</small></span>${btns.length ? `<div class="btns">${btns.join('')}</div>` : ''}${none}</div>`;
+  return `<div class="row static" style="flex-direction:column;align-items:stretch;gap:8px"><span class="g">${esc(c.name)}<small>${esc(fl(c.fonction || ''))}${c.phone ? ' · ' + esc(c.phone) : ''}${c.email ? ' · ' + esc(c.email) : ''}</small></span>${btns.length ? `<div class="btns">${btns.join('')}</div>` : ''}${none}</div>`;
 }
 export function contactCardHtml(k) {
   if (!k) return '<p class="note">Aucun contact disponible pour l’instant.</p>';

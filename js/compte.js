@@ -1,6 +1,6 @@
 // mypocketclub · Mon compte : profil, autres rôles, clubs, mes données (export, suppression), déconnexion.
 import { BRAND, VERSION } from '../config.js';
-import { S, sb, esc, roleLabel, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, JOIN_ROLES, club, myMem, active, isBoard, isPresident, teamName, niceFirst, niceLast, download, fmtDay, store, coachTeams } from './core.js';
+import { S, sb, esc, fl, roleLabel, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, JOIN_ROLES, club, myMem, active, isBoard, isPresident, teamName, niceFirst, niceLast, download, fmtDay, store, coachTeams } from './core.js';
 import { header, crest, icon, delBtn, field } from './ui.js';
 import { adminButtons } from './v43.js'; // n° 124 : « Clubs à valider »
 import { adminsButton } from './v46.js'; // n° 148 : administrateurs
@@ -38,7 +38,7 @@ export function accountScreen() {
   h += pushCard();
   // n° 42 : le président et les membres du bureau peuvent se déclarer contacts du club
   if (c && S.cstate) h += contactChoice(c); // n° 122 : la fonction décide du contact, je choisis seulement ce que je montre
-  h += `<div class="sec"><h2>Mes clubs et profils</h2></div><div class="card"><div class="list">${clubs.map((x) => `<button class="row" data-act="club" data-id="${x.id}">${crest(x, 30)}<span class="g">${esc(x.name)}<small>${S.mems.filter((m) => m.club_id === x.id).map((m) => (m.role === 'bureau' && m.fonction ? m.fonction : ROLES[m.role]) + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</small></span>${x.id === S.clubId ? '<span class="pill ok">Affiché</span>' : '<span class="chev"></span>'}</button>`).join('') || '<p class="empty">Aucun club pour l’instant.</p>'}</div></div>
+  h += `<div class="sec"><h2>Mes clubs et profils</h2></div><div class="card"><div class="list">${clubs.map((x) => `<button class="row" data-act="club" data-id="${x.id}">${crest(x, 30)}<span class="g">${esc(x.name)}<small>${S.mems.filter((m) => m.club_id === x.id).map((m) => (m.role === 'bureau' && m.fonction ? fl(m.fonction) : ROLES[m.role]) + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</small></span>${x.id === S.clubId ? '<span class="pill ok">Affiché</span>' : '<span class="chev"></span>'}</button>`).join('') || '<p class="empty">Aucun club pour l’instant.</p>'}</div></div>
   <button class="btn ghost" data-act="onbopen">Rejoindre ou créer un autre club</button>`;
   if (c) h += `<button class="btn ghost ${isArmed('leave') ? 'danger armed' : ''}" data-act="leave">${isArmed('leave') ? `Confirmer : quitter ${esc(c.name)}` : `Quitter ${esc(c.name)}`}</button>`;
   h += logoutAllBtn(); // n° 44
@@ -99,7 +99,7 @@ FORMS.proff = async (v) => {
   if (await run(sb.from('profiles').update({ first_name: niceFirst(v.first_name), last_name: niceLast(v.last_name), nickname: (v.nickname || '').trim() || null, phone: (v.phone || '').trim() || null, optin_emails: !!v.optin }).eq('id', S.me.id), 'Profil enregistré.')) await refresh();
 };
 INPUTS.push((t) => { if (t.dataset.r && t.type !== 'checkbox') { S.rq[t.dataset.r] = t.value; return true; } return false; });
-// n° 66 : décocher le bénévolat demande confirmation ; le correspondant rencontres et le président sont prévenus (par la base)
+// n° 66 : décocher le bénévolat demande confirmation ; le contact rencontres et le président sont prévenus (par la base)
 CHANGES.push(async (t) => {
   if (!t.dataset.supvol) return false;
   if (await run(sb.rpc('set_supporter_volunteer', { p_on: t.checked }), t.checked ? 'Merci ! Tu participes au bénévolat du club.' : 'C’est noté.')) S.me.supporter_volunteer = t.checked; else t.checked = !t.checked;
@@ -109,7 +109,7 @@ CHANGES.push(async (t) => {
   if (!t.dataset.volunteer) return false;
   const on = t.checked;
   if (!on && !confirm('Le club compte sur chacun pour aider au moins une fois dans la saison. Ne plus être sollicité ?')) { t.checked = true; return true; }
-  if (await run(sb.rpc('set_volunteer', { p_on: on }), on ? 'Merci ! Tu participes au bénévolat du club.' : 'C’est noté : tu ne seras plus sollicité. Le correspondant rencontres et le président sont prévenus.')) S.me.volunteer = on; else t.checked = !on;
+  if (await run(sb.rpc('set_volunteer', { p_on: on }), on ? 'Merci ! Tu participes au bénévolat du club.' : 'C’est noté : tu ne seras plus sollicité. Le contact rencontres et le président sont prévenus.')) S.me.volunteer = on; else t.checked = !on;
   return true;
 });
 CHANGES.push(async (t) => {
@@ -133,7 +133,7 @@ function contactChoice(c) {
   <p class="note" style="margin:0;color:var(--pc-encre)"><b>Choisis ce que les gens voient de toi :</b></p>
   ${box('phone', 'Mon téléphone' + (S.me.phone ? ' · ' + esc(S.me.phone) : ' (à ajouter dans « Mon profil »)'), k.show_phone)}${box('email', 'Mon adresse e-mail · ' + esc(S.session.user.email), k.show_email)}
   <button class="btn main" type="submit">${k.confirmed ? 'Enregistrer mon choix' : 'Confirmer mon choix'}</button><p class="note">Rien de coché : aucune coordonnée, on t’écrit par l’application. Tu peux changer à tout moment.</p>
-  <p class="note" style="margin:0"><b>Qui le voit :</b> les membres du club (pas les supporteurs) voient le bureau ; les supporteurs et les visiteurs connectés voient le correspondant licences ; les clubs du même sport voient aussi le correspondant rencontres.</p></form>`; // n° 137 : d'abord le choix, ensuite qui le voit
+  <p class="note" style="margin:0"><b>Qui le voit :</b> les membres du club (pas les supporteurs) voient le bureau ; les supporteurs et les visiteurs connectés voient le contact licences ; les clubs du même sport voient aussi le contact rencontres.</p></form>`; // n° 137 : d'abord le choix, ensuite qui le voit
 }
 Object.assign(FORMS, {
   contactf: async (v) => {

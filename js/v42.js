@@ -1,5 +1,5 @@
 // mypocketclub · alpha 4.2.0 · envoi des convocations aux clubs reçus (document de référence : claude/09-convocations-inter-clubs.md)
-// N° 109 : on cherche d'abord le club reçu dans mypocketclub ; trouvé → envoi dans l'application (le correspondant rencontres du club
+// N° 109 : on cherche d'abord le club reçu dans mypocketclub ; trouvé → envoi dans l'application (le contact rencontres du club
 //          reçu est prévenu, l'ouverture vaut accusé de lecture) ; pas trouvé → formulaire de coordonnées, envoi par e-mail (n° 112).
 // N° 112 : fenêtre d'envoi : Madame ou Monsieur, prénom, nom, e-mail ; PDF fabriqué dans l'application (js/pdfmin.js) et joint ;
 //          part de notifications@ au nom du club + catégories ; réponses vers la personne qui envoie, qui reçoit une copie ;
@@ -47,7 +47,7 @@ export function convocPdf(d, step, version = 1, now = new Date(), art = {}) {
     pdf.rect(0, 0, 210, 32, c1);
     if (cr && !pdf.image(L, 5.5, crW, crH, cr.bytes)) { /* image illisible : le nom seul */ }
     pdf.text(nx, 15, c.name, { size: 18, bold: true, color: head });
-    if (k) pdf.text(nx, 22.5, 'Correspondant : ' + [k.name, k.phone, k.email].filter(Boolean).join(' · '), { size: 9, color: head });
+    if (k) pdf.text(nx, 22.5, 'Contact : ' + [k.name, k.phone, k.email].filter(Boolean).join(' · '), { size: 9, color: head });
     pdf.text(R, 15, (pre ? 'Pré-convocation · Étape 1 sur 2' : 'Convocation · Étape 2 sur 2'), { size: 9, bold: true, color: head, align: 'right' });
     if (upd) pdf.text(R, 21, 'Mise à jour', { size: 9, bold: true, color: head, align: 'right' });
     pdf.rect(0, 32, 210, 3, c2);
@@ -97,12 +97,12 @@ export function convocPdf(d, step, version = 1, now = new Date(), art = {}) {
     }
   }
   room(30);
-  const box = pre ? 'Empêchement ou report ? Merci de prévenir au plus vite le coach de l’équipe, le correspondant du club et le comité.'
-    : 'Merci de vous présenter 30 minutes avant la rencontre. En cas d’empêchement, prévenez au plus vite le coach de l’équipe, le correspondant du club et le comité.';
+  const box = pre ? 'Empêchement ou report ? Merci de prévenir au plus vite le coach de l’équipe, le contact du club et le comité.'
+    : 'Merci de vous présenter 30 minutes avant la rencontre. En cas d’empêchement, prévenez au plus vite le coach de l’équipe, le contact du club et le comité.';
   const bl = wrap(box, 9.5, Wd - 8).length; pdf.rect(L, y, Wd, 4 + bl * 4.6, soft); pdf.rect(L, y, 1.4, 4 + bl * 4.6, c1); pdf.para(L + 5, y + 5, box, Wd - 8, { size: 9.5 }); y += 9 + bl * 4.6;
   if (pre) { y = pdf.para(L, y, 'À noter : la convocation définitive, avec le gymnase et l’horaire de chaque rencontre, suivra.', Wd, { size: 10 }) + 3; }
   room(14);
-  pdf.text(L, y + 3, 'Sportivement,', { size: 10.5 }); pdf.text(L, y + 8.5, `${k ? k.name : '…………'}, correspondant de ${c.name}`, { size: 10.5, bold: true });
+  pdf.text(L, y + 3, 'Sportivement,', { size: 10.5 }); pdf.text(L, y + 8.5, `${k ? k.name : '…………'}, contact de ${c.name}`, { size: 10.5, bold: true });
   foot();
   return pdf.bytes();
 }
@@ -128,7 +128,7 @@ function destCard(x, i, n, d) {
   let h = `<div class="card flat" data-dest="${x.k}"${x.err ? ' style="border-color:var(--pc-non-texte)"' : ''}><div class="kick" style="display:flex;justify-content:space-between;align-items:center">Destinataire${n > 1 ? ' ' + (i + 1) : ''}${n > 1 ? `<button type="button" class="btn link small" data-act="cvdel" data-i="${i}">Retirer</button>` : ''}</div>
     <div class="chips">${chip('app', 'Dans mypocketclub')}${chip('email', 'Par e-mail')}${chip('pdf', 'PDF, je l’envoie')}</div>`;
   if (x.mode === 'app') {
-    if (x.pick) h += `<div class="row static"><span class="g"><b>${esc(x.pick.name)}</b><small>${esc(x.pick.city || '')} · son correspondant rencontres est prévenu ; tu vois quand le document est ouvert.</small></span><button type="button" class="btn small ghost" data-act="cvunpick" data-i="${i}">Changer</button></div>`;
+    if (x.pick) h += `<div class="row static"><span class="g"><b>${esc(x.pick.name)}</b><small>${esc(x.pick.city || '')} · son contact rencontres est prévenu ; tu vois quand le document est ouvert.</small></span><button type="button" class="btn small ghost" data-act="cvunpick" data-i="${i}">Changer</button></div>`;
     else {
       h += field('cvq' + i, 'Chercher le club reçu', `<input id="cvq${i}" type="search" value="${esc(x.q)}" placeholder="Nom ou ville" data-cvq="${i}">`);
       if (x.res) h += x.res.length ? `<div class="list">${x.res.map((c) => `<button type="button" class="row" data-act="cvpick" data-i="${i}" data-id="${c.id}"><span class="g">${esc(c.name)}<small>${esc([c.city, c.sport].filter(Boolean).join(' · '))}</small></span><span class="pill blue">Choisir</span></button>`).join('')}</div>` : `<p class="note">Aucun club trouvé dans ${esc(BRAND.name)} : choisis « Par e-mail ».</p>`;

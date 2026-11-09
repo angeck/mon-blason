@@ -2,7 +2,7 @@
 import { contactCardHtml } from './club.js'; // n° 122
 import { BRAND, VERSION, CGU_VERSION, TURNSTILE_SITEKEY } from '../config.js';
 import { notListedLine } from './v37.js';
-import { S, sb, esc, run, toast, render, refresh, store, remember, ROLES, JOIN_ROLES, SPORTS, FONCTIONS, niceFirst, niceLast, lum, onColor, isActive, club, ACTIONS, FORMS, INPUTS, CHANGES } from './core.js';
+import { S, sb, esc, run, toast, render, refresh, store, remember, fl, ROLES, JOIN_ROLES, SPORTS, FONCTIONS, niceFirst, niceLast, lum, onColor, isActive, club, ACTIONS, FORMS, INPUTS, CHANGES } from './core.js';
 import { header, wordmark, crest, field, icon } from './ui.js';
 import { unlinkPush } from './notif.js';
 
@@ -135,7 +135,7 @@ export async function loadPublicClub(id) {
   S.pclubs = S.pclubs || {};
   const { data, error } = await sb.rpc('public_club', { p_club: id });
   if (error) { toast(error.message || 'Club introuvable.'); S.pclubs[id] = null; } else S.pclubs[id] = data || null;
-  // n° 122 : visiteur connecté (autre club ou autre sport) : contact licences ; clubs du même sport : aussi le correspondant rencontres
+  // n° 122 : visiteur connecté (autre club ou autre sport) : contact licences ; clubs du même sport : aussi le contact rencontres
   if (S.session && S.pclubs[id]) { const k = await sb.rpc('contact_card', { p_club: id }); S.pcards = S.pcards || {}; S.pcards[id] = k.data && typeof k.data === 'object' ? k.data : null; }
 }
 // Après connexion : ouvrir la demande d'adhésion au club choisi dans la recherche
@@ -229,7 +229,7 @@ export function roleExtra(st, p, teams) {
   let h = '';
   if (st.role === 'parent') h += `<div class="grid2">${field(p + 'k', "Prénom de l'enfant", `<input id="${p}k" data-${p}="childf" value="${esc(st.childf || '')}">`)}${field(p + 'k2', "Nom de l'enfant", `<input id="${p}k2" data-${p}="childl" value="${esc(st.childl || '')}">`)}</div>`;
   if (st.role === 'joueur') h += `<label class="check"><input type="checkbox" data-${p}="age" ${st.age ? 'checked' : ''}><span>J'ai 15 ans ou plus</span></label>`;
-  if (st.role === 'bureau') h += field(p + 'f', 'Fonction demandée (une par demande ; pour plusieurs fonctions, refais une demande)', `<select id="${p}f" data-${p}="fonction">${FONCTIONS.map((f) => `<option ${(st.fonction || 'Membre du bureau') === f ? 'selected' : ''}>${f}</option>`).join('')}</select>`) + '<p class="note">Le président valide chaque fonction séparément.</p>';
+  if (st.role === 'bureau') h += field(p + 'f', 'Fonction demandée (une par demande ; pour plusieurs fonctions, refais une demande)', `<select id="${p}f" data-${p}="fonction">${FONCTIONS.map((f) => `<option ${(st.fonction || 'Membre du bureau') === f ? 'selected' : ''} value="${esc(f)}">${fl(f)}</option>`).join('')}</select>`) + '<p class="note">Le président valide chaque fonction séparément.</p>';
   if (['parent', 'joueur', 'coach'].includes(st.role) && teams.length) h += field(p + 't', 'Équipe', `<select id="${p}t" data-${p}="team"><option value="">Je ne sais pas</option>${teams.map((t) => `<option value="${t.id}" ${st.team === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>`);
   return h;
 }

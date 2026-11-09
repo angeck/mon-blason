@@ -3,7 +3,7 @@
 // relance des cotisations en un geste ; export des membres journalisé ; passage de saison pour tout le club.
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_4_4_0.sql) ; l'écran n'est qu'un confort.
 import {
-  S, sb, esc, hooks, run, toast, render, refresh, armed, isArmed, ACTIONS, club, isBoard, isPresident, hasArea, myFonctions,
+  S, sb, esc, hooks, run, toast, render, refresh, armed, isArmed, ACTIONS, club, isBoard, isPresident, hasArea, myFonctions, fl,
   team, teamName, name, plural, fmtShort, evTeams, toValidate, NEXT_SEASON, SEASON,
 } from './core.js';
 import { icon } from './ui.js';
@@ -68,7 +68,7 @@ function fnSpace(f, mine) {
   const key = (mine ? 'f:' : 'v:') + f;
   S.ftabs = S.ftabs || {};
   const cur = tabs.find((t) => t.id === S.ftabs[key]) || tabs[0];
-  const nav = `<nav class="ttabs" aria-label="Espace ${esc(f)}">${tabs.map((t) => `<button data-act="ftab" data-k="${esc(key)}" data-v="${t.id}" ${t.id === cur.id ? 'aria-current="page"' : ''}>${esc(t.l)}</button>`).join('')}</nav>`;
+  const nav = `<nav class="ttabs" aria-label="Espace ${esc(fl(f))}">${tabs.map((t) => `<button data-act="ftab" data-k="${esc(key)}" data-v="${t.id}" ${t.id === cur.id ? 'aria-current="page"' : ''}>${esc(t.l)}</button>`).join('')}</nav>`;
   const first = cur.set && cur.id === 'ap_' + cur.set; // le bandeau est dans l'Aperçu seulement
   const band = first && BANDS[cur.set] ? BANDS[cur.set](key) : '', b = BODY[cur.id] ? BODY[cur.id]() : '';
   // n° 131 : « Réorganiser » dans chaque onglet qui a plusieurs blocs (ordre propre à la personne, à la fonction et à l'onglet) ;
@@ -167,7 +167,7 @@ function todo(items) {
 }
 // n° 155 (9 novembre 2026) : les droits de la fonction affichés dans sa page ; seul le président les change (vérifié par la base)
 const RIGHTS = {
-  secretary_sees_fees: ['Le secrétariat voit « cotisation à jour »', 'Oui ou non pour chaque joueur, jamais les montants. Vaut aussi pour le correspondant licences.', false],
+  secretary_sees_fees: ['Le secrétariat voit « cotisation à jour »', 'Oui ou non pour chaque joueur, jamais les montants. Vaut aussi pour le contact licences.', false],
   tech_sees_contacts: ['Le Directeur technique voit les coordonnées des familles', 'Toutes les équipes. Sinon, seulement celles de ses propres équipes s’il est coach.', true],
   coach_sees_fees: ['Les coachs voient licences et cotisations', 'De leurs joueurs seulement, sans les réductions.', true],
 };

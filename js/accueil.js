@@ -1,5 +1,5 @@
 // mypocketclub · accueil : ce qui attend une réponse, les prochains rendez-vous, les derniers messages.
-import { S, sb, esc, store, toValidate, plural, fmtDate, nick, active, club, run, render, ACTIONS, isBoard, hooks } from './core.js';
+import { S, sb, esc, fl, store, toValidate, plural, fmtDate, nick, active, club, run, render, ACTIONS, isBoard, hooks } from './core.js';
 import { icon } from './ui.js';
 import { homeEvents, needsAnswer, answerBlock, evCard, byDay, forLabel, isToday, canCallRoll } from './agenda.js';
 import { grp } from './messages.js';
@@ -32,7 +32,7 @@ export function homeTab() {
   // n° 70 : supporteur, club ouvert au bénévolat des supporteurs, pas encore répondu
   if (club()?.supporters_volunteer && !active().some((m) => m.role !== 'supporteur') && S.me.supporter_volunteer == null)
     h += `<div class="card yellow"><b style="font-family:var(--pc-titre);font-size:22px">Souhaitez-vous devenir bénévole ?</b><p>Le club compte sur ses supporteurs pour l’arbitrage, la table de marque, l’aide, la buvette et les événements du club. Tu choisis tes missions.</p><div class="btns"><button class="btn small main" data-act="supvol" data-v="1">Oui</button><button class="btn small ghost" data-act="supvol" data-v="0">Non merci</button></div></div>`;
-  // n° 142 (a) : membre du bureau relancé par le correspondant rencontres, pas encore répondu
+  // n° 142 (a) : membre du bureau relancé par le contact rencontres, pas encore répondu
   const asked = S.me.volunteer_asked_at, answered = S.me.volunteer_answered_at;
   if (asked && (!answered || new Date(answered) < new Date(asked)) && active().some((m) => ['president', 'bureau'].includes(m.role)))
     h += `<div class="card yellow"><b style="font-family:var(--pc-titre);font-size:22px">Souhaites-tu être bénévole ?</b><p>Le club compte sur le bureau pour l’arbitrage, la table de marque, l’aide et les événements. Tu choisis tes missions, rendez-vous par rendez-vous.</p><div class="btns"><button class="btn small main" data-act="memvol" data-v="1">Oui</button><button class="btn small ghost" data-act="memvol" data-v="0">Non merci</button></div></div>`;
@@ -54,7 +54,7 @@ function todayHome(l) {
 // tant que je n'ai pas confirmé ce que je montre ; « Confirmer » ouvre Mon compte à cet endroit
 function contactAsk() {
   const k = S.cstate; if (!k || k.confirmed) return '';
-  const extra = k.roles.filter((r) => /^Correspondant/.test(r)), main = k.roles.filter((r) => !extra.includes(r));
+  const extra = k.roles.filter((r) => /^Correspondant/.test(r)).map(fl), main = k.roles.filter((r) => !/^Correspondant/.test(r));
   const said = main.length ? `Tu es ${main.join(', ')}${extra.length ? ` et aussi ${extra.join(', ').toLowerCase()}` : ''}.` : `Tu es ${extra.join(', ').toLowerCase()}.`;
   return `<div class="card yellow"><span class="kick" style="color:var(--pc-encre)">Ta fonction au club</span><b style="font-family:var(--pc-titre);font-size:22px;line-height:1.1">${esc(said)}</b><p style="margin:0">Choisis ce que les membres voient de toi : ton téléphone, ton e-mail, les deux, ou rien (on t’écrira par l’application).</p><div class="btns"><button class="btn small main" data-act="contactgo">Confirmer</button></div></div>`;
 }

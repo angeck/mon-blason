@@ -100,7 +100,7 @@ export function playerPage(pid) {
   h += '<div class="sec" id="pl-lic"><h2>Licence et cotisation</h2></div>'; // n° 140 : arrivée des pastilles
   // n° 33 : montant dû calculé (grille − réduction), versements, pastille « Payé »
   const A = a || {}, due = A.fee_amount, paid = +A.fee_paid || 0, rest = due == null ? null : Math.max(0, due - paid), pays = S.payments.filter((x) => x.player_id === pid);
-  // 4.4.0 (n° 114) : le Secrétariat et le correspondant licences voient la licence, pas les montants
+  // 4.4.0 (n° 114) : le Secrétariat et le contact licences voient la licence, pas les montants
   if (A.nofee) {
     h += `<div class="card"><div class="chips">${statusPills(p)}</div>${A.licence_number ? `<div class="det">Licence n° ${esc(A.licence_number)}</div>` : ''}<p class="note" style="margin:0">Les montants de la cotisation sont réservés à la trésorerie et au président.</p></div>`;
     if (canAdminPlayer(p)) h += licForm(pid, A, false);

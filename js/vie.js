@@ -3,7 +3,7 @@
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_2.sql) ; l'écran n'est qu'un confort.
 import {
   S, sb, esc, hooks, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, club, active, isBoard, isPresident, coachTeams, coachOf,
-  SEASON, hasArea, AREAS, FONCTIONS, casquettes, isCoachCasq, team, teamName, name, nick, plural, fmtShort, hm, evTeams, store, playersOfTeam, toValidate, myKids, loadNames,
+  SEASON, hasArea, AREAS, FONCTIONS, fl, casquettes, isCoachCasq, team, teamName, name, nick, plural, fmtShort, hm, evTeams, store, playersOfTeam, toValidate, myKids, loadNames,
   teamsOfPlayer, isMajor, pl,
 } from './core.js';
 import { icon, crest, delBtn, field, header, dayBadge, casqIcon, clubSeason } from './ui.js';
@@ -115,7 +115,7 @@ export function presidentOverview() {
 }
 export const sw = (k, t, d, on) => `<label class="switch"><input type="checkbox" data-clubset="${k}" ${on ? 'checked' : ''}><span><b>${esc(t)}</b><br><span class="det">${esc(d)}</span></span></label>`;
 export function rubList(keys) {
-  keys = [...new Set(keys)].filter((a) => RUB_SUB[a]); // n° 119 : « licences » (correspondant licences) n'a pas de ligne à part
+  keys = [...new Set(keys)].filter((a) => RUB_SUB[a]); // n° 119 : « licences » (contact licences) n'a pas de ligne à part
   return `<div class="sec"><h2>Rubriques</h2></div><div class="card"><div class="list">${keys.map((a) => `<button class="row" data-act="rub" data-id="${a}"><span style="width:40px;height:40px;border-radius:14px;background:var(--pc-bleu-pale);display:flex;align-items:center;justify-content:center;flex:none">${icon(AREA_ICON[a], 20, 'var(--pc-bleu)')}</span><span class="g">${esc(AREAS[a] || 'Commun')}<small>${esc(RUB_SUB[a])}</small></span><span class="chev"></span></button>`).join('')}</div></div>`;
 }
 const RUB_SUB = {
@@ -126,8 +126,8 @@ const RUB_SUB = {
 export function fonctionSpace(f, asPresident = false) {
   const own = (FONCTION_AREAS[f] || []).filter(hasArea), extra = (S.areas || []).filter((a) => !own.includes(a));
   let h = '';
-  const lic = licencesOnlyBlock(); // n° 114 : correspondant licences sans tout le Secrétariat
-  if (!own.length && !lic) h += `<div class="card pale"><b>${esc(f)}</b><p class="note">Ta fonction donne accès à la rubrique Commun. Le président peut t'ouvrir d'autres rubriques.</p></div>` + rubBody('commun');
+  const lic = licencesOnlyBlock(); // n° 114 : contact licences sans tout le Secrétariat
+  if (!own.length && !lic) h += `<div class="card pale"><b>${esc(fl(f))}</b><p class="note">Ta fonction donne accès à la rubrique Commun. Le président peut t'ouvrir d'autres rubriques.</p></div>` + rubBody('commun');
   h += lic;
   const bl = [{ id: 'alerte', pin: true, html: h }];
   if (own.includes('tresorerie') || extra.includes('tresorerie')) bl.push({ id: 'heures', label: 'Heures des coachs', html: hoursCheckBlock() });
@@ -212,7 +212,7 @@ function eventsRub() {
   return (hooks.receivedBlock ? hooks.receivedBlock() : '') + h; // n° 109 : convocations reçues des autres clubs, en tête (js/v42.js)
 }
 
-// Missions par défaut du club (rubrique Événements ; 4.4.0 : onglet Bénévoles du correspondant rencontres)
+// Missions par défaut du club (rubrique Événements ; 4.4.0 : onglet Bénévoles du contact rencontres)
 export function defaultMissionsBlock() {
   const dm = S.dm || (S.dm = (club()?.default_missions || []).map((x) => ({ ...x })));
   return `<div class="sec"><h2>Missions par défaut du club</h2></div><div class="card"><div class="list">${dm.map((x, i) => `<div class="row static"><input aria-label="Mission ${i + 1}" data-dml="${i}" value="${esc(x.label)}" maxlength="40" style="flex:1;min-width:0;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 10px"><input type="number" aria-label="Places" data-dms="${i}" value="${esc(x.slots)}" min="1" max="20" style="width:70px;min-height:44px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 8px"><button class="btn ghost small" style="flex:none;width:48px;padding:0" data-act="dmrm" data-i="${i}" aria-label="Retirer">${icon('trash', 18)}</button></div>${isBuvette(x.label) ? '' : `<label class="check" style="padding:0 0 6px"><input type="checkbox" data-dmy="${i}" ${x.youth ? 'checked' : ''}><span>Ouverte aux jeunes dès U13</span></label>`}`).join('')}</div>
@@ -355,22 +355,22 @@ function fonctionsView() {
   let b = respAsk() + '<p class="note">Une fonction ouvre ses rubriques. Tu peux ouvrir une rubrique en plus à un membre ; la rubrique Commun est à tout le bureau.</p>';
   b += users.length ? users.map((u) => {
     const ms = bm.filter((m) => m.user_id === u), own = ms.flatMap((m) => FONCTION_AREAS[m.fonction || 'Membre du bureau'] || []);
-    return `<div class="card"><b style="font-size:18px">${esc(name(u))}</b>${ms.map((m) => `<div class="grid2" style="align-items:end">${field('fo' + m.id, 'Fonction', `<select id="fo${m.id}" data-fonc="${m.id}" data-u="${u}">${FONCTIONS.map((f) => `<option ${(m.fonction || 'Membre du bureau') === f ? 'selected' : ''}>${f}</option>`).join('')}</select>`)}${delBtn('mdel', m.id, 'Retirer', 'Confirmer', isArmed('m' + m.id))}</div>${(m.fonction || 'Membre du bureau') === 'Membre du bureau' ? field('ft' + m.id, 'Intitulé affiché (facultatif, « Autre »)', `<input id="ft${m.id}" data-ftitle="${m.id}" maxlength="40" value="${esc(m.title || '')}" placeholder="Ex. Responsable maillots">`) : ''}`).join('')}
+    return `<div class="card"><b style="font-size:18px">${esc(name(u))}</b>${ms.map((m) => `<div class="grid2" style="align-items:end">${field('fo' + m.id, 'Fonction', `<select id="fo${m.id}" data-fonc="${m.id}" data-u="${u}">${FONCTIONS.map((f) => `<option ${(m.fonction || 'Membre du bureau') === f ? 'selected' : ''} value="${esc(f)}">${fl(f)}</option>`).join('')}</select>`)}${delBtn('mdel', m.id, 'Retirer', 'Confirmer', isArmed('m' + m.id))}</div>${(m.fonction || 'Membre du bureau') === 'Membre du bureau' ? field('ft' + m.id, 'Intitulé affiché (facultatif, « Autre »)', `<input id="ft${m.id}" data-ftitle="${m.id}" maxlength="40" value="${esc(m.title || '')}" placeholder="Ex. Responsable maillots">`) : ''}`).join('')}
     <div class="kick">Rubriques</div><div class="chips">${Object.entries(AREAS).map(([a, l]) => own.includes(a) ? `<span class="pill ok">${l}</span>` : `<button class="chip" data-act="barea" data-u="${u}" data-v="${a}" aria-pressed="${ba.some((x) => x.user_id === u && x.area === a)}">${l}</button>`).join('')}</div></div>`;
   }).join('') : '<p class="empty">Aucun membre du bureau pour l’instant.</p>';
   const cand = [...new Set(S.members.filter((m) => m.status === 'active' && m.user_id !== S.me.id).map((m) => m.user_id))].sort((a, c) => name(a).localeCompare(name(c), 'fr'));
-  b += `<form id="nomf" class="card"><div class="kick">Nommer quelqu'un</div><div class="grid2">${field('nu', 'Membre du club', `<select id="nu" name="user" required><option value="">Choisir…</option>${cand.map((u) => `<option value="${u}">${esc(name(u))}</option>`).join('')}</select>`)}${field('nf', 'Fonction', `<select id="nf" name="fonction">${FONCTIONS.map((f) => `<option>${f}</option>`).join('')}</select>`)}</div><button class="btn main small" type="submit">Nommer</button><p class="note">Une seule personne pour la vice-présidence, le secrétariat et la trésorerie ; plusieurs pour les adjoints et les membres. Chaque nomination est inscrite au journal.</p></form>`;
+  b += `<form id="nomf" class="card"><div class="kick">Nommer quelqu'un</div><div class="grid2">${field('nu', 'Membre du club', `<select id="nu" name="user" required><option value="">Choisir…</option>${cand.map((u) => `<option value="${u}">${esc(name(u))}</option>`).join('')}</select>`)}${field('nf', 'Fonction', `<select id="nf" name="fonction">${FONCTIONS.map((f) => `<option value="${esc(f)}">${fl(f)}</option>`).join('')}</select>`)}</div><button class="btn main small" type="submit">Nommer</button><p class="note">Une seule personne pour la vice-présidence, le secrétariat et la trésorerie ; plusieurs pour les adjoints et les membres. Chaque nomination est inscrite au journal.</p></form>`;
   b += rightsNote(); // n° 114 : les droits de chaque fonction avant de confirmer
   return { head: header({ back: true, kicker: roleKicker('Espace Président'), title: 'Fonctions du bureau', casq: casqTabs() }), body: b }; // n° 101 ; n° 116 : casquettes dans l'en-tête
 }
-// n° 151 (Gaël, 9 novembre 2026) : en nommant un correspondant (rencontres, licences) ou un chargé de communication, le président
+// n° 151 (Gaël, 9 novembre 2026) : en nommant un contact (rencontres, licences) ou un chargé de communication, le président
 // choisit à qui vont les missions : à cette personne, à lui-même, ou à la personne qui les a aujourd'hui (rien ne change)
 const RESP_OF = { 'Correspondant rencontres': ['rencontres', 'Rencontres : matchs, convocations, bénévoles'], 'Correspondant licences': ['licences', 'Licences et contact licences'], 'Chargé de communication': ['communication', 'Communication : annonces et relances'] };
 function respAsk() {
   const a = S.resp151; if (!a) return '';
   const cur = (S.desig || []).find((x) => x.resp === a.resp);
   const now = cur ? name(cur.user_id) : 'la personne par défaut';
-  return `<div class="card yellow"><span class="kick" style="color:var(--pc-encre)">${esc(a.fonction)} · ${esc(name(a.user))}</span><b style="font-size:20px">À qui confier les missions ?</b><p style="margin:0">${esc(RESP_OF[a.fonction][1])}.</p>
+  return `<div class="card yellow"><span class="kick" style="color:var(--pc-encre)">${esc(fl(a.fonction))} · ${esc(name(a.user))}</span><b style="font-size:20px">À qui confier les missions ?</b><p style="margin:0">${esc(RESP_OF[a.fonction][1])}.</p>
     <div class="stack">${cur?.user_id === a.user ? '' : `<button class="btn main" data-act="resp151" data-v="give">Les confier à ${esc(name(a.user))}</button>`}${cur?.user_id === S.me.id ? '' : '<button class="btn" data-act="resp151" data-v="me">Je les garde</button>'}<button class="btn ghost" data-act="resp151" data-v="keep">Les laisser à ${esc(now)}</button></div></div>`;
 }
 function journalView() {

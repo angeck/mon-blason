@@ -7,10 +7,10 @@
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_10_0.sql) ; l'écran n'est qu'un confort.
 import {
   S, sb, esc, hooks, run, toast, render, refresh, armed, isArmed, ACTIONS, club, active, isBoard, isPresident, coachTeams, coachOf,
-  SEASON, team, teamName, name, plural, fmtShort, hm, evTeams, store, toValidate, playersOfTeam, isMajor, myKids, mySelf, FONCTIONS, hasArea,
+  SEASON, team, teamName, name, plural, fmtShort, hm, evTeams, store, toValidate, playersOfTeam, isMajor, myKids, mySelf, FONCTIONS, hasArea, fl,
 } from './core.js';
 import { icon, header, dayBadge, field, clubSeason, casqIcon } from './ui.js';
-import { upcoming, evCard, canCallRoll, appelPage, teamTabs } from './agenda.js';
+import { upcoming, evCard, canCallRoll, appelPage, teamTabs, cancelBtn } from './agenda.js';
 import { plansForEvent, fmtMin, exosForCounts } from './coach.js';
 import { casqTabs, currentCasq, roleKicker, fonctionSpace, presidentOverview, sw, FONCTION_AREAS } from './vie.js';
 import { pendRows, brandBlock, contactsBlock, licencesBlock, trashBlock } from './club.js';
@@ -69,7 +69,7 @@ function preparerBody(tid) {
   let h = `<div class="chips"><button class="chip" aria-pressed="true">Séances de l’équipe</button><button class="chip" data-act="cplans">Mes séances</button><button class="chip" data-act="cexos" data-tab="mine">Exercices</button></div>`;
   h += evs.length ? evs.map((e) => {
     const p = plansForEvent(e.id)[0];
-    return `<button class="card" data-act="${p ? 'pview' : 'cplanfor'}" data-id="${p ? p.id : e.id}" style="flex-direction:row;align-items:center;gap:12px;border:0;text-align:left;font:inherit;color:inherit">${dayBadge(e.starts_at)}<span style="display:flex;flex-direction:column;flex:1;min-width:0"><b>${esc(e.type)} · ${esc(hm(new Date(e.starts_at)))}</b><span class="det">${p ? plural(p.items.length, 'exercice') + ' · ' + fmtMin(p.items.reduce((a, x) => a + (+x.minutes || 0), 0)) : esc(e.title || '')}</span></span>${p ? '<span class="pill ok">Prête</span>' : '<span class="pill ko">À préparer</span>'}</button>`;
+    return `<div class="stack"><button class="card" data-act="${p ? 'pview' : 'cplanfor'}" data-id="${p ? p.id : e.id}" style="flex-direction:row;align-items:center;gap:12px;border:0;text-align:left;font:inherit;color:inherit">${dayBadge(e.starts_at)}<span style="display:flex;flex-direction:column;flex:1;min-width:0"><b>${esc(e.type)} · ${esc(hm(new Date(e.starts_at)))}</b><span class="det">${p ? plural(p.items.length, 'exercice') + ' · ' + fmtMin(p.items.reduce((a, x) => a + (+x.minutes || 0), 0)) : esc(e.title || '')}</span></span>${p ? '<span class="pill ok">Prête</span>' : '<span class="pill ko">À préparer</span>'}</button>${cancelBtn(e)}</div>`;
   }).join('') : '<p class="empty">Aucune séance dans les 14 prochains jours.</p>';
   h += `<div class="grid2"><button class="btn small" data-act="cplan">${icon('doc', 18)}Composer une séance</button><button class="btn small" data-act="cexnew">${icon('plus', 18)}Ajouter un exercice</button></div>`;
   return h;
@@ -135,8 +135,8 @@ export function defaultAsk() {
 
 // ---------- n° 114 · espace du président ----------
 const RESP = [
-  ['licences', 'Correspondant licences', 'Licences et contact licences affiché sur le site'],
-  ['rencontres', 'Correspondant rencontres', 'Matchs, plateaux, tournois, convocations, bénévoles'],
+  ['licences', 'Contact licences', 'Licences et contact licences affiché sur le site'],
+  ['rencontres', 'Contact rencontres', 'Matchs, plateaux, tournois, convocations, bénévoles'],
   ['evenements', 'Événements', 'Événements du club, participants, bénévoles'],
   ['communication', 'Communication', 'Annonces, « lu par », relances'],
 ];
@@ -162,7 +162,7 @@ export const FONCTION_RIGHTS = {
   'Responsable sponsoring': 'Pas d’espace pour l’instant (rubrique Commun)', 'Membre du bureau': 'Rubrique Commun, et les rubriques que tu ouvres en plus',
 };
 export function rightsNote() {
-  return `<details class="card"><summary>Ce que donne chaque fonction</summary><div class="list">${FONCTIONS.map((f) => `<div class="row static"><span class="g">${esc(f)}<small>${esc(FONCTION_RIGHTS[f] || '')}</small></span></div>`).join('')}</div><p class="note">Les droits s’additionnent quand une personne a plusieurs fonctions. Seuls les adultes reçoivent une fonction.</p></details>`;
+  return `<details class="card"><summary>Ce que donne chaque fonction</summary><div class="list">${FONCTIONS.map((f) => `<div class="row static"><span class="g">${esc(fl(f))}<small>${esc(FONCTION_RIGHTS[f] || '')}</small></span></div>`).join('')}</div><p class="note">Les droits s’additionnent quand une personne a plusieurs fonctions. Seuls les adultes reçoivent une fonction.</p></details>`;
 }
 
 function presBand() {
@@ -174,7 +174,7 @@ function presBand() {
   return `<div class="tiles" style="grid-template-columns:repeat(2,1fr)">${tile(vp, 'Demandes à valider', 'ptab', 'data-v="demandes"')}${tile(noCoach, 'Équipes sans coach', 'ptab', 'data-v="ensemble"')}${tile(fees, 'Cotisations à relancer', 'rub', 'data-id="tresorerie"')}${tile(empty, 'Fonctions sans titulaire', 'ptab', 'data-v="qui"')}</div>`;
 }
 function bureauFold() {
-  const rows = FONCTIONS.filter((f) => f !== 'Membre du bureau').map((f) => { const h = holder(f); return `<button class="row" data-act="fview" data-v="${esc(f)}"><span class="g">${esc(f)}<small>${h.length ? esc(h.join(', ')) : 'Personne : c’est toi'}</small></span><span class="chev"></span></button>`; }).join('');
+  const rows = FONCTIONS.filter((f) => f !== 'Membre du bureau').map((f) => { const h = holder(f); return `<button class="row" data-act="fview" data-v="${esc(f)}"><span class="g">${esc(fl(f))}<small>${h.length ? esc(h.join(', ')) : 'Personne : c’est toi'}</small></span><span class="chev"></span></button>`; }).join('');
   return `<details class="card" ${S.pfold === 'bureau' ? 'open' : ''} data-pfold="bureau"><summary>${icon('user', 18)} Bureau</summary><div class="list">${rows}</div></details>`;
 }
 export function teamsFold() {
@@ -217,7 +217,7 @@ function reglagesView() {
   const c = club(), ad = adultMembers().filter((u) => u !== S.me.id), off = S.poffer;
   let h = `<div class="sec"><h2>Club</h2></div><div class="card">${sw('public_listed', 'Apparaître dans la recherche des clubs', 'Nom, ville, équipes visibles et créneaux seulement.', c.public_listed !== false)}</div>` + brandBlock() + contactsBlock();
   // 4.4.0 (n° 114) : « cotisation à jour » pour le Secrétariat (non par défaut) ; coordonnées des familles pour le Directeur technique (oui par défaut)
-  h += `<div class="sec"><h2>Droits</h2></div><div class="card">${sw('coach_sees_fees', 'Les coachs voient licences et cotisations', 'De leurs joueurs seulement, sans les réductions.', c.coach_sees_fees !== false)}${sw('secretary_sees_fees', 'Le secrétariat voit « cotisation à jour »', 'Oui ou non pour chaque joueur, jamais les montants. Vaut aussi pour le correspondant licences.', c.secretary_sees_fees === true)}${sw('tech_sees_contacts', 'Le Directeur technique voit les coordonnées des familles', 'Parents et joueurs : téléphone, e-mail, contact d’urgence. Celles de ses propres équipes restent visibles s’il est aussi coach.', c.tech_sees_contacts !== false)}${sw('custom_header', 'Aux couleurs du club', 'L’en-tête prend la couleur principale du club.', c.custom_header)}</div>`;
+  h += `<div class="sec"><h2>Droits</h2></div><div class="card">${sw('coach_sees_fees', 'Les coachs voient licences et cotisations', 'De leurs joueurs seulement, sans les réductions.', c.coach_sees_fees !== false)}${sw('secretary_sees_fees', 'Le secrétariat voit « cotisation à jour »', 'Oui ou non pour chaque joueur, jamais les montants. Vaut aussi pour le contact licences.', c.secretary_sees_fees === true)}${sw('tech_sees_contacts', 'Le Directeur technique voit les coordonnées des familles', 'Parents et joueurs : téléphone, e-mail, contact d’urgence. Celles de ses propres équipes restent visibles s’il est aussi coach.', c.tech_sees_contacts !== false)}${sw('custom_header', 'Aux couleurs du club', 'L’en-tête prend la couleur principale du club.', c.custom_header)}</div>`;
   h += `<div class="sec"><h2>Saison</h2></div>` + (hooks.seasonBlock ? hooks.seasonBlock() : '');
   // Zone sensible
   h += `<div class="sec"><h2>Zone sensible</h2></div><div class="card" style="border:2px solid var(--pc-erreur, #D93A3A)"><b>Transférer la présidence</b>`;
@@ -242,10 +242,10 @@ function fviewView(v) {
   const o = hooks.fnSpace ? hooks.fnSpace(f, false) : null; // 4.4.0 (n° 114) : même présentation que la personne qui a la fonction
   // n° 133 : la casquette « Président » reste allumée (en jaune) : on voit tout de suite qu'on est ici grâce à elle
   if (isPresident()) S.casq = 'president';
-  return { head: header({ back: true, kicker: 'Espace Président · Bureau', title: esc(f), casq: casqTabs() || (isPresident() ? `<div class="casq" role="tablist" aria-label="Mes casquettes"><button role="tab" data-act="casq" data-v="president" aria-selected="true">${casqIcon('president')}<span>Président</span></button></div>` : ''), tabs: o?.tabs || '' }), body: `<div class="card pale"><p class="note" style="margin:0">Tu vois l’espace « ${esc(f)} » avec ton compte : ce que tu fais ici est inscrit au journal <b>à ton nom</b>.${holder(f).length ? ' Titulaire : ' + esc(holder(f).join(', ')) + '.' : ' Personne n’a cette fonction : c’est toi qui t’en occupes.'}</p></div>` + (o ? o.body : fonctionSpace(f, true)) };
+  return { head: header({ back: true, kicker: 'Espace Président · Bureau', title: esc(fl(f)), casq: casqTabs() || (isPresident() ? `<div class="casq" role="tablist" aria-label="Mes casquettes"><button role="tab" data-act="casq" data-v="president" aria-selected="true">${casqIcon('president')}<span>Président</span></button></div>` : ''), tabs: o?.tabs || '' }), body: `<div class="card pale"><p class="note" style="margin:0">Tu vois l’espace « ${esc(fl(f))} » avec ton compte : ce que tu fais ici est inscrit au journal <b>à ton nom</b>.${holder(f).length ? ' Titulaire : ' + esc(holder(f).join(', ')) + '.' : ' Personne n’a cette fonction : c’est toi qui t’en occupes.'}</p></div>` + (o ? o.body : fonctionSpace(f, true)) };
 }
 
-// ---------- correspondant licences (sans tout le Secrétariat) ----------
+// ---------- contact licences (sans tout le Secrétariat) ----------
 export function licencesOnlyBlock() {
   if (!hasArea('licences') || hasArea('secretariat')) return '';
   return `<div class="sec"><h2>Licences</h2></div>${licencesBlock()}<div class="sec"><h2>Contact licences</h2></div><div class="card"><p class="note" style="margin:0">Choisis les coordonnées affichées pour les questions de licence (téléphone, e-mail) dans Mon compte › Contact du club.</p><button class="btn small" data-act="account">${icon('user', 18)}Régler mon contact licences</button></div>`;

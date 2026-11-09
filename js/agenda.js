@@ -230,6 +230,12 @@ function statusPill(e) {
   const a = k.length ? R.kid(k[0].id) : R.mine;
   return a === 'oui' ? '<span class="pill ok">Oui</span>' : a === 'non' ? '<span class="pill ko">Non</span>' : '';
 }
+// Bouton « Annuler cette séance » (agenda et onglet Préparer) : deux touches, comme une suppression ; la séance reste dans l'agenda, barrée, et peut être rétablie depuis sa page
+export function cancelBtn(e) {
+  if (e.cancelled || !canManageEvent(e) || new Date(e.ends_at || e.starts_at) < Date.now()) return '';
+  const k = 'evc' + e.id, lab = isTeamType(e) && e.type === 'Entraînement' ? 'Annuler cette séance' : 'Annuler ce rendez-vous';
+  return `<button type="button" class="btn small ${isArmed(k) ? 'danger armed' : 'ghost'}" data-act="evcancelq" data-id="${e.id}">${esc(isArmed(k) ? 'Confirmer : ' + lab.toLowerCase() : lab)}</button>`;
+}
 // Carte d'un rendez-vous ; opts : { answer: boutons si une réponse manque, select: mode sélection }
 export function evCard(e, o = {}) {
   const sub = [timeRange(e), e.place, e.audience !== 'club' && e.audience !== 'team' ? '' : teamsLabel(evTeams(e)), myMissionLabel(e)].filter(Boolean).join(' · ');
@@ -237,7 +243,7 @@ export function evCard(e, o = {}) {
   const badgeCls = new Date(e.starts_at) < Date.now() ? 'past' : needsAnswer(e) ? 'wait' : '';
   return `<div class="ev ${e.cancelled ? 'cancel' : ''}">${sel
     ? `<label class="head" style="cursor:pointer"><input type="checkbox" class="sel" data-evsel="${e.id}" ${checked ? 'checked' : ''} aria-label="Sélectionner ${esc(e.title)}">${dayBadge(e.starts_at, badgeCls)}<span class="info"><span class="t">${esc(e.title)}</span><span class="s">${esc(sub)}</span></span></label>`
-    : `<button class="head" data-act="event" data-id="${e.id}">${dayBadge(e.starts_at, badgeCls)}<span class="info"><span class="t">${esc(e.title)}</span><span class="s">${esc(e.type)} · ${esc(sub)}</span></span>${statusPill(e)}</button>`}${o.answer && !o.select && needsAnswer(e) ? answerBlock(e) : ''}</div>`;
+    : `<button class="head" data-act="event" data-id="${e.id}">${dayBadge(e.starts_at, badgeCls)}<span class="info"><span class="t">${esc(e.title)}</span><span class="s">${esc(e.type)} · ${esc(sub)}</span></span>${statusPill(e)}</button>`}${o.answer && !o.select && needsAnswer(e) ? answerBlock(e) : ''}${!o.select ? cancelBtn(e) : ''}</div>`;
 }
 
 export function clubToggle(list) {
@@ -340,7 +346,7 @@ export function eventForm() {
   ${field('el', 'Lieu', `<input id="el" name="place" data-evauto="1" value="${esc(f.place || '')}" placeholder="Ex. Gymnase de Boissy">`)}
   ${convField(f)}
   ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && hasArea('evenements') ? `<label class="check"><input type="checkbox" name="mkconv" ${f.mkconv ? 'checked' : ''}><span>Préparer la convocation des clubs reçus après l'enregistrement</span></label>` : ''}
-  ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && !hasArea('evenements') ? '<p class="note">Le correspondant rencontres du club sera prévenu pour préparer la convocation des clubs reçus.</p>' : ''}
+  ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && !hasArea('evenements') ? '<p class="note">Le contact rencontres du club sera prévenu pour préparer la convocation des clubs reçus.</p>' : ''}
   <button class="btn main" type="submit">${f.id ? 'Enregistrer les changements' : 'Enregistrer'}</button></form>`;
 }
 function keepForm() {
@@ -516,6 +522,10 @@ Object.assign(ACTIONS, {
     const n = Math.max(0, Math.min(20, +d.v || 0));
     if (await run(sb.rpc('set_event_guests', { p_event: d.id, p_n: n }))) { const r = myRow({ id: d.id }); if (r) r.guests = n; }
     render(true);
+  },
+  evcancelq: async (el, d) => { // agenda et onglet Préparer : première touche = demande de confirmation
+    const e = S.events.find((x) => x.id === d.id); if (!e || !armed('evc' + d.id)) return;
+    if (await run(sb.from('events').update({ cancelled: true }).eq('id', e.id), 'Rendez-vous annulé.')) await refresh();
   },
   evcancel: async (el, d) => { const e = S.events.find((x) => x.id === d.id); if (await run(sb.from('events').update({ cancelled: !e.cancelled }).eq('id', e.id), e.cancelled ? 'Rendez-vous rétabli.' : 'Rendez-vous annulé.')) await refresh(); },
   evdel: async (el, d) => {

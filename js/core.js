@@ -23,7 +23,9 @@ export const store = {
 export const ROLES = { president: 'Président', bureau: 'Membre du bureau', coach: 'Coach', joueur: 'Joueur', parent: 'Parent de joueur', supporteur: 'Supporteur' };
 // Libellé d'un profil : « Bureau · Trésorier » pour un membre du bureau (n° 54)
 // n° 166 : un « Membre du bureau » peut porter un intitulé libre choisi par le président (« Responsable maillots »)
-export const fonctionLabel = (m) => ((m.fonction || 'Membre du bureau') === 'Membre du bureau' && m.title ? m.title : m.fonction || 'Membre du bureau');
+// 4.7.2 : « Correspondant licences / rencontres » s'affiche « Contact licences / rencontres » (la valeur gardée en base ne change pas)
+export const fl = (f) => String(f ?? '').replace(/^Correspondant /, 'Contact ');
+export const fonctionLabel = (m) => fl((m.fonction || 'Membre du bureau') === 'Membre du bureau' && m.title ? m.title : m.fonction || 'Membre du bureau');
 export const roleLabel = (m) => (m.role === 'bureau' ? 'Bureau · ' + fonctionLabel(m) : ROLES[m.role]);
 export const JOIN_ROLES = ['supporteur', 'parent', 'joueur', 'coach', 'bureau'];
 export const SPORTS = ['Basket-ball', 'Volley-ball'];
@@ -235,7 +237,7 @@ export async function loadClub() {
   ]);
   S.areas = ar.data || []; S.annonces = an.data || [];
   // 4.4.0 (n° 114) : coordonnées des fiches (sauf pour le Directeur technique si le président les masque) ;
-  // licences du Secrétariat et du correspondant licences, sans les montants (« cotisation à jour » si le président l'active)
+  // licences du Secrétariat et du contact licences, sans les montants (« cotisation à jour » si le président l'active)
   const lic0 = (S.areas.includes('secretariat') || S.areas.includes('licences')) && !S.areas.includes('tresorerie');
   const [pc, lc] = await Promise.all([sb.rpc('player_contacts', { p_club: cid }), lic0 ? sb.rpc('club_licences', { p_club: cid }) : Promise.resolve({ data: [] })]);
   const pcm = new Map((Array.isArray(pc.data) ? pc.data : []).map((x) => [x.id, x]));

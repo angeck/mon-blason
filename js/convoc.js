@@ -62,8 +62,8 @@ const competition = (x) => (x.type === 'Match' ? 'Match' : x.type);
 export function missing(d, step) {
   const m = [], live = d.events.filter((x) => !x.cancelled);
   if (!d.club.logo) m.push('le logo du club (onglet Club → Blason)');
-  if (!d.correspondent) m.push('le correspondant rencontres : le président le choisit dans Espace › Président › Fonctions');
-  else if (!d.correspondent.phone && !d.correspondent.email) m.push('les coordonnées du correspondant : il les confirme dans Mon compte (téléphone, e-mail)');
+  if (!d.correspondent) m.push('le contact rencontres : le président le choisit dans Espace › Président › Fonctions');
+  else if (!d.correspondent.phone && !d.correspondent.email) m.push('les coordonnées du contact : il les confirme dans Mon compte (téléphone, e-mail)');
   live.filter((x) => !x.coach).forEach((x) => m.push(`le coach de ${catOf(x)}`));
   live.filter((x) => !x.opponents).forEach((x) => m.push(`le club reçu pour ${catOf(x)} (champ Adversaire du rendez-vous)`));
   if (step === 'C') live.filter((x) => !x.place).forEach((x) => m.push(`le gymnase de ${catOf(x)} (champ Lieu du rendez-vous)`));
@@ -89,7 +89,7 @@ export function convocHtml(d, step, now = new Date(), o = {}) {
     <p>Nous avons le plaisir de vous confirmer les rencontres suivantes à domicile. Le gymnase et les horaires vous seront communiqués dans la convocation définitive.</p>
     <table><thead><tr><th>Catégorie</th><th>Club(s) reçu(s) · compétition</th><th>Coach de l'équipe</th><th>Horaire</th></tr></thead><tbody>
     ${d.events.map((x) => `<tr><td><b>${strike(x, esc(catOf(x)))}</b></td><td>${strike(x, esc(x.opponents || '—'))}<br><small>${esc(competition(x))}</small> ${status(x)}</td><td>${x.coach ? esc(x.coach.name) + (x.coach.phone ? '<br><small>' + esc(x.coach.phone) + '</small>' : '') : '—'}</td><td>À venir</td></tr>`).join('')}</tbody></table>
-    <div class="box"><b>Empêchement ou report ?</b> Merci de prévenir au plus vite le coach de l'équipe, le correspondant du club et le comité.</div>
+    <div class="box"><b>Empêchement ou report ?</b> Merci de prévenir au plus vite le coach de l'équipe, le contact du club et le comité.</div>
     <p class="note"><b>À noter :</b> la convocation définitive, avec le gymnase et l'horaire de chaque rencontre, suivra.</p>`;
   } else {
     body = `<h2>Convocation officielle</h2><h1>Matchs du ${esc(when)}</h1><p>${esc(c.name)} aura le plaisir de vous accueillir aux dates et lieux suivants.</p>
@@ -97,7 +97,7 @@ export function convocHtml(d, step, now = new Date(), o = {}) {
       <div class="sm">${esc(competition(x))}${x.place ? ' · ' + esc(x.place) : ''}</div>
       <div class="sm">Coach : ${x.coach ? [esc(x.coach.name), x.coach.phone ? esc(x.coach.phone) : '', x.coach.email ? esc(x.coach.email) : ''].filter(Boolean).join(' · ') : '—'}</div></div>
       <div class="cvr"><div class="sm">${esc(dayLong(paris(x.starts_at)))}</div><div class="hr">${hhmm(x.starts_at)}</div></div></div>`).join('')}</div>
-    <div class="box"><b>Merci de vous présenter 30 minutes avant la rencontre.</b> En cas d'empêchement, prévenez au plus vite le coach de l'équipe, le correspondant du club et le comité.</div>`;
+    <div class="box"><b>Merci de vous présenter 30 minutes avant la rencontre.</b> En cas d'empêchement, prévenez au plus vite le coach de l'équipe, le contact du club et le comité.</div>`;
   }
   const head = contrast(c1, '#FFFFFF') >= 4.5 ? '#FFFFFF' : '#11162E';
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${pre ? 'Pré-convocation' : 'Convocation'} ${esc(c.name)} ${esc(when)}</title>
@@ -113,8 +113,8 @@ table{border-collapse:collapse;width:100%;margin:12px 0}th{color:${c1};text-alig
 .cat{align-self:flex-start;background:${c2};color:${onColor(c2)};border-radius:10px;padding:2px 10px;font-weight:700;font-size:11px}.hr{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:30px;color:${c1}}
 .sig{margin-top:18px}.ft{background:#F7F8FC;border-top:1px solid #D8DCEA;padding:5mm 14mm;display:flex;align-items:center;gap:12px;font-size:10.5px;color:#4A5068}.wm{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:16px;letter-spacing:-.04em;color:#11162E;white-space:nowrap}.wm .my{display:inline-block;background:#FFC93C;color:#11162E;border-radius:.2em;padding:0 .09em .12em;letter-spacing:-.03em;transform:rotate(-5deg);margin-right:.07em}.wm .cl{color:#2F5BFF}.ft .r{margin-left:auto;text-align:right}
 @media screen{body{background:#E9ECF5}.page{margin:12px auto;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.12)}}</style></head><body><div class="page">
-<div class="hd">${logo}<div><div class="nm">${esc(c.name)}</div>${corr ? `<div class="co">Correspondant : ${corr}</div>` : ''}</div><span class="tag">${pre ? 'Pré-convocation · Étape 1 sur 2' : 'Convocation · Étape 2 sur 2'}${upd ? ' · Mise à jour' : ''}</span></div><div class="lis"></div>
-<div class="ct">${body}<p class="sig">Sportivement,<br><b>${k ? esc(k.name) : '…………'}</b>, correspondant de ${esc(c.name)}</p></div>
+<div class="hd">${logo}<div><div class="nm">${esc(c.name)}</div>${corr ? `<div class="co">Contact : ${corr}</div>` : ''}</div><span class="tag">${pre ? 'Pré-convocation · Étape 1 sur 2' : 'Convocation · Étape 2 sur 2'}${upd ? ' · Mise à jour' : ''}</span></div><div class="lis"></div>
+<div class="ct">${body}<p class="sig">Sportivement,<br><b>${k ? esc(k.name) : '…………'}</b>, contact de ${esc(c.name)}</p></div>
 <div class="ft"><span class="wm" role="img" aria-label="${esc(BRAND.aria)}"><span class="my">my</span>p${ballSvg(13, c.sport)}cket<span class="cl">club</span></span><span>Convocation créée et générée avec ${esc(BRAND.name)}</span><span class="r">Émise le ${now.toLocaleDateString('fr-FR')}<br>Réf. ${esc(ref)}</span></div>
 </div>${o.print === false ? '' : '<script>document.fonts&&document.fonts.ready.then(function(){setTimeout(function(){print()},300)})</script>'}</body></html>`;
 }
