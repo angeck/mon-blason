@@ -107,5 +107,23 @@ check('n° 127 : jeudi d’une autre semaine : « le jeudi 12 novembre 2026 »',
 const wk = F.convocationMail({ ...CD, from: '2026-11-05', to: '2026-11-05' }, 'C', 1, { civ: 'Monsieur', last: 'Raveneau' }, new Date('2026-11-05T11:16:00Z')).text;
 check('n° 127 : e-mail d’une rencontre en semaine : plus de « week-end du jeudi »', /aura le plaisir de vous accueillir cette semaine, le jeudi 5 novembre 2026, aux dates/.test(wk) && !/week-end/.test(wk));
 check('n° 112 : HTML de la convocation : texte échappé', !/<script>/.test(F.convocationMail({ ...CD, club: { name: '<script>' } }, 'P', 1, { last: '<b>' }).html));
+// ---------- n° 147 (4.7.0) : e-mail « Nouvel appareil » ----------
+function fakeD({ take = { token: 'a'.repeat(48), label: 'Android · Chrome', at: '2026-11-09T19:10:00Z' }, admin = false } = {}) {
+  const k = fake({ admin }), base = k.f;
+  k.f = async (url, o = {}) => { if (url.endsWith('/rpc/device_alert_take')) { k.calls.push([url, o]); return { ok: true, status: 200, json: async () => take }; } return base(url, o); };
+  return k;
+}
+k = fakeD(); r = await F.handle(req({ new_device: { alert: 'al-1' } }), { ...env, appUrl: 'https://app.exemple/#x' }, k.f); b = await r.json();
+const nd = bodyOf(k, 'api.resend.com/emails');
+check('n° 147 : e-mail « Nouvel appareil » envoyé à l’adresse du compte, jamais à une autre', r.status === 200 && JSON.stringify(nd.to) === JSON.stringify(['admin@exemple.fr']));
+check('n° 147 : alerte lue une seule fois dans la base, au nom du compte (jeton de la personne)', bodyOf(k, '/rpc/device_alert_take')?.p_alert === 'al-1' && k.calls.find((c) => c[0].endsWith('/rpc/device_alert_take'))[1].headers.Authorization === 'Bearer jeton');
+check('n° 147 : lien « Ce n’était pas moi » avec le jeton, sur l’adresse de l’application', nd.html.includes('https://app.exemple/#pasmoi=' + 'a'.repeat(48)) && nd.text.includes('#pasmoi='));
+check('n° 147 : l’appareil est nommé dans l’e-mail', nd.text.includes('Android · Chrome'));
+check('n° 147 : pas besoin d’être administrateur', r.status === 200);
+k = fakeD({ take: null }); r = await F.handle(req({ new_device: { alert: 'al-1' } }), env, k.f);
+check('n° 147 : alerte déjà envoyée ou d’un autre compte : rien ne part (409)', r.status === 409 && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeD({ take: { token: 'pas-un-jeton"><script>' } }); r = await F.handle(req({ new_device: { alert: 'al-1' } }), env, k.f);
+check('n° 147 : jeton mal formé : rien ne part', r.status === 409 && !k.calls.some((c) => c[0].includes('resend')));
+check('n° 147 : HTML de l’e-mail : nom de l’appareil échappé', !/<script>/.test(F.newDeviceMail('', '<script>', new Date(), 'https://x/#pasmoi=ab').html));
 console.log(`\n   ${ok} réussis sur ${ok + ko} tests d'e-mail`);
 if (ko) process.exitCode = 1;

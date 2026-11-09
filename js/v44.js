@@ -13,7 +13,7 @@ import { hoursCheckBlock, clubResults, partnerRequests, arrange } from './v35.js
 import { exosForCounts } from './coach.js';
 import { teamToolsBlock, dupGroups } from './v38.js';
 import { payTreasurerSoon } from './v310.js';
-import { addPlayersBlock, tresoSummary, benevBlock, defaultMissionsBlock, rubBody, rubList, annList, missing } from './vie.js';
+import { addPlayersBlock, tresoSummary, benevBlock, defaultMissionsBlock, rubBody, rubList, annList, missing, sw } from './vie.js';
 
 const eur = (n) => (Math.round((+n || 0) * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €';
 const live = () => S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée');
@@ -30,14 +30,16 @@ const DESIG_SET = { licences: 'licences', rencontres: 'rencontres', evenements: 
 const SET_AREAS = { tresorerie: ['tresorerie'], secretariat: ['secretariat', 'licences'], licences: ['licences'], rencontres: ['evenements'], technique: ['technique'], communication: ['communication'], evenements: ['evenements'] };
 // une présentation en couvre d'autres (le Secrétariat comprend les licences ; les rencontres comprennent les bénévoles)
 const COVERS = { secretariat: ['licences'], rencontres: ['evenements'] };
+// n° 152 et 153 (9 novembre 2026) : le premier onglet de chaque fonction est un « Aperçu » (bandeau, à faire, droits) ;
+// Directeur technique : Aperçu · Équipes (avec les coachs) · Exercices · Ententes (l'onglet Coachs faisait doublon)
 const SETS = {
-  tresorerie: [['cotis', 'Cotisations'], ['tarifs', 'Tarifs'], ['heures', 'Heures des coachs']],
-  secretariat: [['licences', 'Licences'], ['fiches', 'Fiches'], ['impexp', 'Import / export']],
-  licences: [['lic', 'Licences'], ['liccontact', 'Contact']],
-  rencontres: [['renc', 'Rencontres'], ['convoc', 'Convocations'], ['benev', 'Bénévoles'], ['rcontact', 'Contact']],
-  technique: [['equipes', 'Équipes'], ['coachs', 'Coachs'], ['exos', 'Exercices'], ['ententes', 'Ententes']],
-  communication: [['annonces', 'Annonces'], ['lecteurs', 'Lecteurs']],
-  evenements: [['events', 'Événements']],
+  tresorerie: [['ap_tresorerie', 'Aperçu'], ['cotis', 'Cotisations'], ['tarifs', 'Tarifs'], ['heures', 'Heures des coachs']],
+  secretariat: [['ap_secretariat', 'Aperçu'], ['licences', 'Licences'], ['fiches', 'Fiches'], ['impexp', 'Import / export']],
+  licences: [['ap_licences', 'Aperçu'], ['lic', 'Licences'], ['liccontact', 'Contact']],
+  rencontres: [['ap_rencontres', 'Aperçu'], ['renc', 'Rencontres'], ['convoc', 'Convocations'], ['benev', 'Bénévoles'], ['rcontact', 'Contact']],
+  technique: [['ap_technique', 'Aperçu'], ['equipes', 'Équipes'], ['exos', 'Exercices'], ['ententes', 'Ententes']],
+  communication: [['ap_communication', 'Aperçu'], ['annonces', 'Annonces'], ['lecteurs', 'Lecteurs']],
+  evenements: [['ap_evenements', 'Aperçu'], ['events', 'Événements']],
 };
 
 // Présentations d'une fonction ; « mine » = ma propre casquette (on ajoute ce que le président m'a confié en plus)
@@ -67,7 +69,7 @@ function fnSpace(f, mine) {
   S.ftabs = S.ftabs || {};
   const cur = tabs.find((t) => t.id === S.ftabs[key]) || tabs[0];
   const nav = `<nav class="ttabs" aria-label="Espace ${esc(f)}">${tabs.map((t) => `<button data-act="ftab" data-k="${esc(key)}" data-v="${t.id}" ${t.id === cur.id ? 'aria-current="page"' : ''}>${esc(t.l)}</button>`).join('')}</nav>`;
-  const first = cur.set && SETS[cur.set][0][0] === cur.id;
+  const first = cur.set && cur.id === 'ap_' + cur.set; // le bandeau est dans l'Aperçu seulement
   const band = first && BANDS[cur.set] ? BANDS[cur.set](key) : '', b = BODY[cur.id] ? BODY[cur.id]() : '';
   // n° 131 : « Réorganiser » dans chaque onglet qui a plusieurs blocs (ordre propre à la personne, à la fonction et à l'onglet) ;
   // le bandeau reste en tête ; « Gestion du club » (demandes, membres, corbeille) reste en bas de chaque onglet (n° 88)
@@ -118,7 +120,8 @@ const BANDS = {
   rencontres: (key) => {
     const home = homeSoon(), miss = clubEvs().reduce((s, e) => s + missing(e.id), 0), noPlace = homeSoon(60).filter((e) => !(e.place || '').trim()).length;
     return tiles([
-      tile(home.length, 'Matchs à domicile à convoquer (30 jours)', 'ftab', go(key, 'convoc')),
+      tile(toConvoke().length, 'Convocations à envoyer (7 jours)', 'ftab', go(key, 'ap_rencontres')),
+      tile(home.length, 'Matchs à domicile (30 jours)', 'ftab', go(key, 'convoc'), 'ok'),
       tile(miss, 'Places de bénévoles à pourvoir', 'ftab', go(key, 'benev')),
       tile(noPlace, 'Matchs sans gymnase', 'ftab', go(key, 'renc')),
     ]);
@@ -126,8 +129,8 @@ const BANDS = {
   technique: (key) => {
     const cc = S.coachCounts || {};
     return tiles([
-      tile(toValidate().filter((m) => m.role === 'coach').length, 'Demandes de coachs', 'ftab', go(key, 'coachs')),
-      tile(noCoachTeams().length, 'Équipes sans coach', 'ftab', go(key, 'coachs')),
+      tile(toValidate().filter((m) => m.role === 'coach').length, 'Demandes de coachs', 'ftab', go(key, 'equipes')),
+      tile(noCoachTeams().length, 'Équipes sans coach', 'ftab', go(key, 'equipes')),
       tile(cc.exos || 0, 'Exercices à valider', 'cexos', 'data-tab="club"'),
       tile(dupGroups().length, 'Doublons d’équipes', 'ftab', go(key, 'equipes')),
     ]);
@@ -155,6 +158,36 @@ async function loadReads(ids) {
   render(true);
 }
 const blk = (id, label, html) => ({ id, label, html }); // n° 131 : un bloc déplaçable
+// n° 153 : liste « À faire » de l'Aperçu (chaque ligne ouvre l'onglet concerné) ; rien à faire : une ligne verte
+function todo(items) {
+  const key = S.casq && S.view?.type === 'espace' ? S.casq : 'v:' + (S.view?.f || '');
+  const l = items.filter(([n]) => n > 0);
+  if (!l.length) return '<div class="sec"><h2>À faire</h2></div><div class="card"><p class="note" style="margin:0">Rien d’urgent pour l’instant.</p></div>';
+  return `<div class="sec"><h2>À faire</h2></div><div class="card"><div class="list">${l.map(([n, one, many, tab]) => `<button class="row" data-act="ftab" data-k="${esc(key)}" data-v="${tab}"><span class="g">${plural(n, one, many)}</span><span class="pill wait" style="flex:none">Voir</span></button>`).join('')}</div></div>`;
+}
+// n° 155 (9 novembre 2026) : les droits de la fonction affichés dans sa page ; seul le président les change (vérifié par la base)
+const RIGHTS = {
+  secretary_sees_fees: ['Le secrétariat voit « cotisation à jour »', 'Oui ou non pour chaque joueur, jamais les montants. Vaut aussi pour le correspondant licences.', false],
+  tech_sees_contacts: ['Le Directeur technique voit les coordonnées des familles', 'Toutes les équipes. Sinon, seulement celles de ses propres équipes s’il est coach.', true],
+  coach_sees_fees: ['Les coachs voient licences et cotisations', 'De leurs joueurs seulement, sans les réductions.', true],
+};
+function rights(keys) {
+  const c = club() || {};
+  const on = (k) => (RIGHTS[k][2] ? c[k] !== false : c[k] === true);
+  if (isPresident()) return `<div class="sec"><h2>Droits</h2></div><div class="card">${keys.map((k) => sw(k, RIGHTS[k][0], RIGHTS[k][1], on(k))).join('')}<p class="note" style="margin:0">Aussi dans Président › Réglages.</p></div>`;
+  return `<div class="sec"><h2>Droits</h2></div><div class="card"><div class="list">${keys.map((k) => `<div class="row static"><span class="g">${esc(RIGHTS[k][0])}<small>${esc(RIGHTS[k][1])}</small></span><span class="pill ${on(k) ? 'ok' : ''}" style="flex:none">${on(k) ? 'Oui' : 'Non'}</span></div>`).join('')}</div><p class="note" style="margin:0">Réglé par le président.</p></div>`;
+}
+// n° 154 (9 novembre 2026) : un match à domicile reste à convoquer à partir de 7 jours avant, tant que la convocation n'est pas partie
+// (S.cstate : état des envois donné par la base, convocation_todo)
+export function toConvoke() {
+  const st = Object.fromEntries((S.cstate7 || []).map((x) => [x.event_id, x]));
+  return homeSoon(7).filter((e) => !(st[e.id]?.c_sent));
+}
+function convokeBlock() {
+  const l = toConvoke(), st = Object.fromEntries((S.cstate7 || []).map((x) => [x.event_id, x]));
+  if (!l.length) return '<div class="sec"><h2>Convocations à envoyer</h2></div><div class="card"><p class="note" style="margin:0">Toutes les rencontres à domicile des 7 prochains jours sont convoquées.</p></div>';
+  return `<div class="sec"><h2>Convocations à envoyer</h2><span class="pill wait">${l.length}</span></div><div class="card"><div class="list">${l.map((e) => `<button class="row" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(fmtShort(e.starts_at))}${evTeams(e).length ? ' · ' + esc(evTeams(e).map(teamName).filter(Boolean).join(', ')) : ''}</small><small><b>${st[e.id]?.p_sent ? 'Convocation à envoyer' : 'Pré-convocation à envoyer'}</b>${(e.place || '').trim() ? '' : ' · sans gymnase'}</small></span><span class="pill wait" style="flex:none">Envoyer</span></button>`).join('')}</div></div><p class="note">Chaque rencontre reste ici, à partir de 7 jours avant, jusqu’à l’envoi de sa convocation (e-mail, ${esc('mypocketclub')} ou PDF envoyé à la main).</p>`;
+}
 const canExportMembers = () => isPresident() || myFonctions().some((f) => ['Secrétaire', 'Secrétaire adjoint'].includes(f));
 
 const BODY = {
@@ -192,12 +225,13 @@ const BODY = {
   benev: () => [blk('places', 'Places à pourvoir', benevBlock(clubEvs())), blk('missions', 'Missions par défaut', defaultMissionsBlock())],
   rcontact: () => contactCard('sur les matchs'),
   // Directeur technique
-  equipes: () => [blk('outils', 'Créer, importer, doublons', teamToolsBlock()), blk('equipes', 'Équipes', teamsBlock()), blk('ajout', 'Ajouter des joueurs', addPlayersBlock(liveIds()))],
-  coachs: () => {
+  // n° 152 : les coachs sont dans l'onglet Équipes (demandes de coachs, coach de chaque équipe, « Nommer » sur la fiche)
+  equipes: () => {
     const req = toValidate().filter((m) => m.role === 'coach');
-    const rows = live().map((t) => { const cs = [...new Set(S.members.filter((m) => m.role === 'coach' && m.status === 'active' && m.team_id === t.id).map((m) => m.user_id))]; return `<button class="row" data-act="tsopen" data-id="${t.id}"><span class="g">${esc(t.name)}<small>${cs.length ? esc(cs.map(name).join(', ')) : 'Sans coach'}</small></span>${cs.length ? '<span class="chev"></span>' : '<span class="pill wait" style="flex:none">Sans coach</span>'}</button>`; }).join('');
+    const rows = live().map((t) => { const cs = [...new Set(S.members.filter((m) => m.role === 'coach' && m.status === 'active' && m.team_id === t.id).map((m) => m.user_id))]; return `<button class="row" data-act="tsopen" data-id="${t.id}"><span class="g">${esc(t.name)}<small>${cs.length ? esc(cs.map(name).join(', ')) : 'Sans coach'}</small></span><span class="pill ${cs.length ? 'blue' : 'wait'}" style="flex:none">${cs.length ? 'Coachs' : 'Nommer'}</span></button>`; }).join('');
     return [blk('demandes', 'Demandes de coachs', req.length ? `<div class="sec"><h2>Demandes de coachs</h2><span class="pill wait">${req.length}</span></div><div class="card lift">${pendRows(req)}</div>` : ''),
-      blk('coachs', 'Coachs par équipe', `<div class="sec"><h2>Coachs par équipe</h2></div><div class="card"><div class="list">${rows || '<p class="empty">Aucune équipe.</p>'}</div></div><button class="btn" data-act="choursb">${icon('check', 20)}Heures des coachs</button>`)];
+      blk('coachs', 'Coachs par équipe', `<div class="sec"><h2>Coachs par équipe</h2></div><div class="card"><div class="list">${rows || '<p class="empty">Aucune équipe.</p>'}</div></div><p class="note">Touche une équipe pour nommer son coach ou un coach assistant.</p><button class="btn" data-act="choursb">${icon('check', 20)}Heures des coachs</button>`),
+      blk('outils', 'Créer, importer, doublons', teamToolsBlock()), blk('equipes', 'Équipes', teamsBlock()), blk('ajout', 'Ajouter des joueurs', addPlayersBlock(liveIds()))];
   },
   // n° 141 : la banque d'exercices du club, directement dans l'onglet (les plus récents, recherche dans la banque complète)
   exos: () => {
@@ -221,6 +255,14 @@ const BODY = {
       + (l.length ? `<div class="card"><div class="list">${l.map((e) => `<button class="row" data-act="event" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(fmtShort(e.starts_at))}${e.place ? ' · ' + esc(e.place) : ''}</small></span>${missing(e.id) ? `<span class="pill wait" style="flex:none">Il manque ${missing(e.id)}</span>` : '<span class="chev"></span>'}</button>`).join('')}</div></div>` : '<p class="empty">Aucun événement dans les quatre prochains mois.</p>')),
       blk('benevoles', 'Bénévoles', benevBlock(l.filter((e) => new Date(e.starts_at) < Date.now() + 30 * DAY)))];
   },
+  // ---------- n° 153 · Aperçu de chaque fonction : ce qui est à faire, puis les droits réglés par le président (n° 155) ----------
+  ap_tresorerie: () => [blk('afaire', 'À faire', todo([[lateFees().length, 'cotisation non réglée', 'cotisations non réglées', 'cotis'], [(S.coachCounts || {}).hours || 0, 'relevé d’heures à valider', 'relevés d’heures à valider', 'heures']], 'f:Trésorier'))],
+  ap_secretariat: () => { const vp = toValidate(); return [blk('demandes', 'Demandes à valider', vp.length ? `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>` : ''), blk('afaire', 'À faire', todo([[incomplete().length, 'fiche incomplète', 'fiches incomplètes', 'fiches']])), blk('droits', 'Droits', rights(['secretary_sees_fees']))]; },
+  ap_licences: () => [blk('droits', 'Droits', rights(['secretary_sees_fees']))],
+  ap_rencontres: () => [blk('convoquer', 'Convocations à envoyer', convokeBlock()), blk('afaire', 'À faire', todo([[homeSoon(60).filter((e) => !(e.place || '').trim()).length, 'match sans gymnase', 'matchs sans gymnase', 'renc'], [clubEvs().reduce((n, e) => n + missing(e.id), 0), 'place de bénévole à pourvoir', 'places de bénévoles à pourvoir', 'benev']]))],
+  ap_technique: () => { const req = toValidate().filter((m) => m.role === 'coach'); return [blk('demandes', 'Demandes de coachs', req.length ? `<div class="sec"><h2>Demandes de coachs</h2><span class="pill wait">${req.length}</span></div><div class="card lift">${pendRows(req)}</div>` : ''), blk('afaire', 'À faire', todo([[noCoachTeams().length, 'équipe sans coach', 'équipes sans coach', 'equipes'], [dupGroups().length, 'doublon d’équipe', 'doublons d’équipes', 'equipes']])), blk('droits', 'Droits', rights(['tech_sees_contacts', 'coach_sees_fees']))]; },
+  ap_communication: () => { const mine = S.annonces.filter((x) => x.created_by === S.me.id); return [blk('dernieres', 'Dernières annonces', `<button class="btn main" data-act="annnew">${icon('plus', 20)}Nouvelle annonce</button>` + (mine.length ? `<div class="sec"><h2>Mes dernières annonces</h2></div>` + annList(mine.slice(0, 3), false) : ''))]; },
+  ap_evenements: () => { const l = upcoming(S.events.filter((e) => !e.cancelled && ['Événement', 'AG'].includes(e.type) && new Date(e.starts_at) < Date.now() + 30 * DAY)); return [blk('prochains', 'Dans les 30 jours', l.length ? `<div class="sec"><h2>Dans les 30 jours</h2></div><div class="card"><div class="list">${l.map((e) => evRow(e)).join('')}</div></div>` : '<p class="empty">Aucun événement dans les 30 prochains jours.</p>')]; },
   commun: () => rubBody('commun'),
   rubs: () => rubList(['commun'].concat(S.v44x || [])) + '<p class="note">Rubriques que le président t’a ouvertes en plus de ta fonction.</p>',
 };
@@ -235,6 +277,9 @@ hooks.seasonBlock = () => {
 // ---------- chargement (trésorerie : heures validées du mois dernier et leur montant) ----------
 export async function loadV44() {
   S.v44 = { reads: null, hours: null };
+  // n° 154 : état des pré-convocations et convocations des rencontres à domicile des 7 prochains jours
+  S.cstate7 = [];
+  if (S.clubId && hasArea('evenements')) { try { const r = await sb.rpc('convocation_todo', { p_club: S.clubId }); S.cstate7 = Array.isArray(r.data) ? r.data : []; } catch { S.cstate7 = []; } }
   if (!S.clubId || !hasArea('tresorerie') || !isBoard()) return;
   const m = new Date(); m.setDate(1); m.setMonth(m.getMonth() - 1);
   const ym = m.toLocaleDateString('sv-SE').slice(0, 8) + '01';

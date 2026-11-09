@@ -69,7 +69,7 @@ async function authRun(p, ok) {
 // ---------- Anti-robots : Cloudflare Turnstile (n° 46), actif seulement si la clé est dans config.js ----------
 let tsWidget = null;
 const captchaBox = () => (TURNSTILE_SITEKEY ? '<div id="ts" class="ts"></div>' : '');
-const captcha = () => (TURNSTILE_SITEKEY ? S.captcha || undefined : undefined);
+export const captcha = () => (TURNSTILE_SITEKEY ? S.captcha || undefined : undefined); // 4.7.0 : aussi pour « Ce n’'était pas moi » (n° 147)
 function resetCaptcha() { S.captcha = null; try { if (window.turnstile && tsWidget !== null) window.turnstile.reset(tsWidget); } catch { /* */ } }
 export async function mountCaptcha() {
   const box = document.getElementById('ts'); if (!TURNSTILE_SITEKEY || !box || box.dataset.on) return;

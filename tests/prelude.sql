@@ -18,3 +18,6 @@ create schema if not exists net;
 create table if not exists net.calls(id bigserial primary key, url text, body jsonb, headers jsonb, at timestamptz default now());
 create or replace function net.http_post(url text, body jsonb default '{}', params jsonb default '{}', headers jsonb default '{}', timeout_milliseconds int default 5000) returns bigint
 language sql as $$ insert into net.calls(url, body, headers) values (url, body, headers) returning id $$;
+-- 4.7.0 (n° 147) : connexions de Supabase, pour vérifier « Ce n'était pas moi »
+create table if not exists auth.sessions(id uuid primary key default gen_random_uuid(), user_id uuid);
+create table if not exists auth.refresh_tokens(id bigserial primary key, user_id varchar(255), session_id uuid);

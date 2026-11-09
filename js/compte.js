@@ -4,6 +4,7 @@ import { S, sb, esc, roleLabel, run, toast, render, refresh, armed, isArmed, ACT
 import { header, crest, icon, delBtn, field } from './ui.js';
 import { adminButtons } from './v43.js'; // n° 124 : « Clubs à valider »
 import { adminsButton } from './v46.js'; // n° 148 : administrateurs
+import { logoutAllBtn } from './v47.js'; // n° 44 et 147
 import { mailTestBlock, contactLine } from './v38.js';
 import { prepOff } from './v36.js';
 import { roleExtra, checkRole, newPwdFields } from './auth.js';
@@ -40,6 +41,7 @@ export function accountScreen() {
   h += `<div class="sec"><h2>Mes clubs et profils</h2></div><div class="card"><div class="list">${clubs.map((x) => `<button class="row" data-act="club" data-id="${x.id}">${crest(x, 30)}<span class="g">${esc(x.name)}<small>${S.mems.filter((m) => m.club_id === x.id).map((m) => (m.role === 'bureau' && m.fonction ? m.fonction : ROLES[m.role]) + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</small></span>${x.id === S.clubId ? '<span class="pill ok">Affiché</span>' : '<span class="chev"></span>'}</button>`).join('') || '<p class="empty">Aucun club pour l’instant.</p>'}</div></div>
   <button class="btn ghost" data-act="onbopen">Rejoindre ou créer un autre club</button>`;
   if (c) h += `<button class="btn ghost ${isArmed('leave') ? 'danger armed' : ''}" data-act="leave">${isArmed('leave') ? `Confirmer : quitter ${esc(c.name)}` : `Quitter ${esc(c.name)}`}</button>`;
+  h += logoutAllBtn(); // n° 44
   h += `<details class="card"><summary>Changer mon mot de passe</summary><form id="npwf" class="stack">${newPwdFields('cp')}<button class="btn main" type="submit">Changer le mot de passe</button></form></details>
   <button class="btn" data-act="logout">${icon('back', 20)}Me déconnecter</button>`;
   if (coachTeams().length) h += `<div class="sec"><h2>Coach</h2></div><div class="card"><label class="check"><input type="checkbox" data-act="prepoff" ${prepOff() ? '' : 'checked'}><span>Me proposer « Prépare ta séance » sur l’Accueil, 3 jours avant chaque entraînement</span></label></div>`; // n° 88

@@ -359,7 +359,9 @@ export function eventPage(id) {
   h += `<div class="card"><div class="sec"><h2>Qui vient ?</h2><span class="det">${plural(R.all.length, 'réponse')}</span></div>${base ? `<div class="bar"><span style="width:${(100 * R.oui.length) / base}%"></span><span style="width:${(100 * R.non.length) / base}%"></span></div>` : ''}
   <div class="chips"><span class="pill ok">${R.oui.length} oui</span><span class="pill ko">${R.non.length} non</span>${base > tot && isOpen(e) ? `<span class="pill">${base - tot} sans réponse</span>` : ''}</div>${!isTeamType(e) && (R.oui.some((x) => x.player_id) || guestsOf(e)) ? `<div class="det">${plural(R.oui.length + guestsOf(e), 'participant')} · ${plural(R.oui.filter((x) => !x.player_id).length, 'adulte')}, ${plural(R.oui.filter((x) => x.player_id).length, 'enfant')}${guestsOf(e) ? ', ' + plural(guestsOf(e), 'accompagnant') + ' sans compte' : ''}</div>` : ''}<div><b>Viennent :</b> ${list(R.oui)}</div><div><b>Ne viennent pas :</b> ${list(R.non)}</div></div>`;
   h += `<div class="btns"><button class="btn" data-act="ics" data-id="${id}">${icon('calplus', 20)}Ajouter à mon agenda</button>${e.place ? `<a class="btn small" style="flex:none;width:52px;padding:0" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.place)}" target="_blank" rel="noopener" aria-label="Itinéraire">${icon('pin', 22)}</a>` : ''}</div>`;
-  if (!coachOnly(e) && e.type !== 'Entraînement' && R.mine === 'non') h += `<button class="btn ghost" data-act="${hiddenByMe(e) ? 'unhide' : 'hide'}" data-id="${id}">${hiddenByMe(e) ? 'Réafficher dans mon agenda' : 'Ne plus afficher dans mon agenda'}</button>`;
+  // n° 165 (Gaël, 9 novembre 2026) : répondre « non » ne masque rien ; une case à part masque le rendez-vous, quelle que soit la réponse.
+  // Masqué avec « oui » : la personne est quand même prévenue d'une annulation ou d'un changement de date ou d'heure (vérifié par la base).
+  if (!coachOnly(e)) h += `<div class="card flat"><label class="check"><input type="checkbox" data-hideev="${id}" ${hiddenByMe(e) ? 'checked' : ''}><span><b>Masquer ce rendez-vous de mon agenda</b><br><span class="det">${R.mine === 'oui' || myKidsIn(evTeams(e)).some((p) => R.kid(p.id) === 'oui') ? 'Tu as répondu « oui » : tu seras quand même prévenu s’il est annulé ou si sa date ou son heure change.' : 'Tu ne recevras plus de notification pour ce rendez-vous. Filtre « Masqués » de l’Agenda pour le retrouver.'}</span></span></label></div>`;
   if (man && !e.cancelled && new Date(e.starts_at) > Date.now()) {
     const recent = e.reminded_at && Date.now() - new Date(e.reminded_at) < 12 * 3600e3;
     h += `<div class="card flat"><div class="kick">Relance</div>${(e.convoked || []).length ? `<span class="pill blue">${plural(e.convoked.length, 'joueur convoqué', 'joueurs convoqués')}</span>` : ''}<button class="btn small ${recent ? 'ghost' : 'main'}" data-act="evremind" data-id="${id}" ${recent ? 'disabled' : ''}>${recent ? 'Relance faite à ' + hm(new Date(e.reminded_at)) : 'Relancer les sans-réponse'}</button><p class="note">Un rappel s'affiche en haut de l'Accueil des personnes qui n'ont pas répondu (une relance toutes les 12 heures).</p></div>`;
@@ -610,6 +612,10 @@ FORMS.evf = async (v) => {
     if (v.mkconv && base.at_home && ACTIONS.convoc) { const e = S.events.filter((x) => x.created_by === S.me.id && x.title === base.title && Math.abs(new Date(x.starts_at) - start) < 6e4).pop(); if (e) await ACTIONS.convoc(null, { id: e.id, v: 'P' }); }
   }
 };
+CHANGES.push(async (t) => { // n° 165 : case « Masquer ce rendez-vous »
+  if (!t.dataset.hideev) return false;
+  await ACTIONS[t.checked ? 'hide' : 'unhide'](t, { id: t.dataset.hideev }); return true;
+});
 CHANGES.push(async (t) => {
   if (t.dataset.clubtog) { const v = t.checked; if (await run(sb.from('profiles').update({ show_all_club: v }).eq('id', S.me.id))) S.me.show_all_club = v; render(true); return true; }
   if (t.dataset.evhome) { keepForm(); render(true); return true; }

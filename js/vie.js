@@ -352,7 +352,7 @@ function fonctionsView() {
   if (!isPresident()) return { head: header({ back: true, title: 'Fonctions du bureau' }), body: '<p class="empty">Réservé au président.</p>' };
   const bm = S.members.filter((m) => m.role === 'bureau' && m.status === 'active').sort((a, b) => name(a.user_id).localeCompare(name(b.user_id), 'fr'));
   const users = [...new Set(bm.map((m) => m.user_id))], ba = S.bareas || [];
-  let b = '<p class="note">Une fonction ouvre ses rubriques. Tu peux ouvrir une rubrique en plus à un membre ; la rubrique Commun est à tout le bureau.</p>';
+  let b = respAsk() + '<p class="note">Une fonction ouvre ses rubriques. Tu peux ouvrir une rubrique en plus à un membre ; la rubrique Commun est à tout le bureau.</p>';
   b += users.length ? users.map((u) => {
     const ms = bm.filter((m) => m.user_id === u), own = ms.flatMap((m) => FONCTION_AREAS[m.fonction || 'Membre du bureau'] || []);
     return `<div class="card"><b style="font-size:18px">${esc(name(u))}</b>${ms.map((m) => `<div class="grid2" style="align-items:end">${field('fo' + m.id, 'Fonction', `<select id="fo${m.id}" data-fonc="${m.id}" data-u="${u}">${FONCTIONS.map((f) => `<option ${(m.fonction || 'Membre du bureau') === f ? 'selected' : ''}>${f}</option>`).join('')}</select>`)}${delBtn('mdel', m.id, 'Retirer', 'Confirmer', isArmed('m' + m.id))}</div>${(m.fonction || 'Membre du bureau') === 'Membre du bureau' ? field('ft' + m.id, 'Intitulé affiché (facultatif, « Autre »)', `<input id="ft${m.id}" data-ftitle="${m.id}" maxlength="40" value="${esc(m.title || '')}" placeholder="Ex. Responsable maillots">`) : ''}`).join('')}
@@ -362,6 +362,16 @@ function fonctionsView() {
   b += `<form id="nomf" class="card"><div class="kick">Nommer quelqu'un</div><div class="grid2">${field('nu', 'Membre du club', `<select id="nu" name="user" required><option value="">Choisir…</option>${cand.map((u) => `<option value="${u}">${esc(name(u))}</option>`).join('')}</select>`)}${field('nf', 'Fonction', `<select id="nf" name="fonction">${FONCTIONS.map((f) => `<option>${f}</option>`).join('')}</select>`)}</div><button class="btn main small" type="submit">Nommer</button><p class="note">Une seule personne pour la vice-présidence, le secrétariat et la trésorerie ; plusieurs pour les adjoints et les membres. Chaque nomination est inscrite au journal.</p></form>`;
   b += rightsNote(); // n° 114 : les droits de chaque fonction avant de confirmer
   return { head: header({ back: true, kicker: roleKicker('Espace Président'), title: 'Fonctions du bureau', casq: casqTabs() }), body: b }; // n° 101 ; n° 116 : casquettes dans l'en-tête
+}
+// n° 151 (Gaël, 9 novembre 2026) : en nommant un correspondant (rencontres, licences) ou un chargé de communication, le président
+// choisit à qui vont les missions : à cette personne, à lui-même, ou à la personne qui les a aujourd'hui (rien ne change)
+const RESP_OF = { 'Correspondant rencontres': ['rencontres', 'Rencontres : matchs, convocations, bénévoles'], 'Correspondant licences': ['licences', 'Licences et contact licences'], 'Chargé de communication': ['communication', 'Communication : annonces et relances'] };
+function respAsk() {
+  const a = S.resp151; if (!a) return '';
+  const cur = (S.desig || []).find((x) => x.resp === a.resp);
+  const now = cur ? name(cur.user_id) : 'la personne par défaut';
+  return `<div class="card yellow"><span class="kick" style="color:var(--pc-encre)">${esc(a.fonction)} · ${esc(name(a.user))}</span><b style="font-size:20px">À qui confier les missions ?</b><p style="margin:0">${esc(RESP_OF[a.fonction][1])}.</p>
+    <div class="stack">${cur?.user_id === a.user ? '' : `<button class="btn main" data-act="resp151" data-v="give">Les confier à ${esc(name(a.user))}</button>`}${cur?.user_id === S.me.id ? '' : '<button class="btn" data-act="resp151" data-v="me">Je les garde</button>'}<button class="btn ghost" data-act="resp151" data-v="keep">Les laisser à ${esc(now)}</button></div></div>`;
 }
 function journalView() {
   const l = S.journal;
@@ -459,6 +469,12 @@ Object.assign(ACTIONS, {
   // président
   fonctions: async () => { S.view = { type: 'fonctions' }; render(); S.bareas = (await sb.from('board_areas').select('*').eq('club_id', S.clubId)).data || []; render(true); },
   journal: async () => { S.journal = null; S.view = { type: 'journal' }; render(); S.journal = (await run(sb.rpc('club_log', { p_club: S.clubId, p_limit: 100 }))) || []; render(true); },
+  resp151: async (el, d) => { // n° 151
+    const a = S.resp151; if (!a) return;
+    if (d.v === 'keep') { S.resp151 = null; toast('Rien ne change pour les missions.'); return render(true); }
+    const u = d.v === 'give' ? a.user : S.me.id;
+    if (await run(sb.rpc('set_designation', { p_club: S.clubId, p_resp: a.resp, p_user: u }), d.v === 'give' ? 'Missions confiées : la personne est prévenue.' : 'Tu gardes ces missions.')) { S.resp151 = null; await refresh(); }
+  },
   barea: async (el, d) => {
     const on = !(S.bareas || []).some((x) => x.user_id === d.u && x.area === d.v);
     if (await run(sb.rpc('set_board_area', { p_club: S.clubId, p_user: d.u, p_area: d.v, p_on: on }), on ? 'Rubrique ouverte.' : 'Rubrique fermée.')) { S.bareas = (await sb.from('board_areas').select('*').eq('club_id', S.clubId)).data || []; render(true); }
@@ -478,7 +494,7 @@ FORMS.mif = async (v, f) => {
 };
 FORMS.nomf = async (v) => {
   if (!v.user) return toast('Choisis un membre.');
-  if (await run(sb.rpc('set_bureau_fonction', { p_club: S.clubId, p_user: v.user, p_fonction: v.fonction }), 'Fonction attribuée.')) await refresh();
+  if (await run(sb.rpc('set_bureau_fonction', { p_club: S.clubId, p_user: v.user, p_fonction: v.fonction }), 'Fonction attribuée.')) { S.resp151 = RESP_OF[v.fonction] ? { user: v.user, fonction: v.fonction, resp: RESP_OF[v.fonction][0] } : null; await refresh(); }
 };
 INPUTS.push((t) => {
   if (t.dataset.dml) { S.dm[+t.dataset.dml].label = t.value; return true; }
@@ -496,7 +512,7 @@ CHANGES.push(async (t) => {
     render(true); return true;
   }
   if (t.dataset.ftitle) { const v = t.value.trim(); if (await run(sb.rpc('set_bureau_title', { p_membership: t.dataset.ftitle, p_title: v }), v ? 'Intitulé enregistré.' : 'Intitulé retiré.')) await refresh(); return true; } // n° 166
-  if (t.dataset.fonc) { if (await run(sb.rpc('set_bureau_fonction', { p_club: S.clubId, p_user: t.dataset.u, p_fonction: t.value, p_membership: t.dataset.fonc }), 'Fonction changée.')) await refresh(); else render(true); return true; }
+  if (t.dataset.fonc) { if (await run(sb.rpc('set_bureau_fonction', { p_club: S.clubId, p_user: t.dataset.u, p_fonction: t.value, p_membership: t.dataset.fonc }), 'Fonction changée.')) { S.resp151 = RESP_OF[t.value] ? { user: t.dataset.u, fonction: t.value, resp: RESP_OF[t.value][0] } : null; await refresh(); window.scrollTo(0, 0); } else render(true); return true; }
   if (t.dataset.massign) return true;
   return false;
 });

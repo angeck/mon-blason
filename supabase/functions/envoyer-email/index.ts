@@ -8,10 +8,12 @@
 //
 // Secret à créer dans Supabase → Edge Functions → Secrets (par Gaël, jamais dans le code, le projet ou une conversation) :
 //   RESEND_API_KEY   clé d'accès de Resend (« Sending access », domaine mypocketclub.fr)
-// Facultatifs : MAIL_FROM (par défaut « mypocketclub <notifications@mypocketclub.fr> »), MAIL_REPLY_TO (par défaut contact@mypocketclub.fr).
+// Facultatifs : MAIL_FROM (par défaut « mypocketclub <notifications@mypocketclub.fr> »), MAIL_REPLY_TO (par défaut contact@mypocketclub.fr),
+// APP_URL (adresse de l'application pour le lien « Ce n'était pas moi », n° 147 ; par défaut https://angeck.github.io/mon-blason/ ;
+// à passer à https://mypocketclub.fr/ au branchement du domaine, todolist n° 8).
 // SUPABASE_URL et SUPABASE_ANON_KEY sont fournis d'office par Supabase. « Verify JWT » reste activé : seule une personne connectée peut appeler.
 
-export type Env = { url: string; anon: string; resendKey: string; from: string; replyTo: string };
+export type Env = { url: string; anon: string; resendKey: string; from: string; replyTo: string; appUrl?: string };
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', ...CORS } });
 export const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const escHtml = (s: string) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
@@ -148,6 +150,38 @@ async function sendConvocation(env: Env, auth: string, doFetch: typeof fetch, wh
   return json({ envoye: true, send_id: sid });
 }
 
+// ---------- n° 147 (4.7.0) · « Nouvel appareil » ----------
+// La base a préparé l'alerte (register_device) ; elle ne se lit qu'une fois, au nom du compte concerné (device_alert_take).
+// L'e-mail part à l'adresse du compte, jamais à une autre ; le lien « Ce n'était pas moi » porte le jeton de l'alerte.
+export function newDeviceMail(name: string, label: string, at: Date, link: string) {
+  const d = at.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long', timeStyle: 'short' });
+  const hello = name ? `Bonjour ${name},` : 'Bonjour,';
+  const what = label ? `depuis un nouvel appareil (${label})` : 'depuis un nouvel appareil';
+  const text = `${hello}\n\nTon compte mypocketclub vient d'être ouvert ${what}, le ${d}.\n\nC'était toi ? Tu n'as rien à faire.\n\nCe n'était pas toi ? Ouvre ce lien : il déconnecte ton compte de tous les appareils, puis tu choisis un nouveau mot de passe :\n${link}\n\nmypocketclub · https://mypocketclub.fr`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
+<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
+<p>${escHtml(hello)}</p><p>Ton compte mypocketclub vient d'être ouvert <b>${escHtml(what)}</b>, le ${escHtml(d)}.</p>
+<p>C'était toi ? Tu n'as rien à faire.</p>
+<p><a href="${escHtml(link)}" style="display:inline-block;background:#D93A3A;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Ce n'était pas moi</a></p>
+<p style="color:#5A6178;font-size:14px">Ce bouton déconnecte ton compte de tous les appareils ; tu choisis ensuite un nouveau mot de passe. Il reste valable 7 jours.</p>
+<p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
+  return { subject: 'mypocketclub · nouvelle connexion à ton compte', text, html };
+}
+async function sendNewDevice(env: Env, auth: string, doFetch: typeof fetch, who: { email: string; name: string }, nd: any, now: Date) {
+  if (typeof nd?.alert !== 'string') return json({ erreur: 'alerte inconnue' }, 400);
+  const a = await rpc(env, auth, doFetch, 'device_alert_take', { p_alert: nd.alert });
+  const tok = String(a.data?.token || '');
+  if (!a.ok || !/^[a-f0-9]{32,80}$/.test(tok)) return json({ erreur: 'alerte déjà envoyée ou inconnue' }, 409);
+  const link = (env.appUrl || 'https://angeck.github.io/mon-blason/').replace(/#.*$/, '') + '#pasmoi=' + tok;
+  const m = newDeviceMail(who.name, String(a.data?.label || '').slice(0, 80), a.data?.at ? new Date(a.data.at) : now, link);
+  const r = await doFetch('https://api.resend.com/emails', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + env.resendKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: env.from, to: [who.email], reply_to: env.replyTo, subject: m.subject, text: m.text, html: m.html }),
+  });
+  if (!r.ok) return json({ erreur: 'Resend a refusé l’envoi' }, 502);
+  return json({ envoye: true });
+}
+
 // Qui appelle ? (le jeton de la personne connectée, vérifié par Supabase)
 async function caller(env: Env, auth: string, doFetch: typeof fetch) {
   const h = { apikey: env.anon, Authorization: auth };
@@ -171,6 +205,7 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   if (!who || !who.email) return json({ erreur: 'connexion demandée' }, 401);
   let body: any = {}; try { body = await req.json(); } catch { /* corps vide */ }
   if (body?.convocation) return sendConvocation(env, auth, doFetch, who, body.convocation, now); // n° 112, 124
+  if (body?.new_device) return sendNewDevice(env, auth, doFetch, who, body.new_device, now); // n° 147
   if (!body?.test) return json({ erreur: 'seul l’e-mail de test ou une convocation peuvent partir' }, 400);
   if (!who.admin) return json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403);
   const m = testMail(who.name, now);
@@ -188,6 +223,6 @@ declare const Deno: any;
 if (typeof Deno !== 'undefined' && Deno.serve) {
   Deno.serve((req: Request) => handle(req, {
     url: Deno.env.get('SUPABASE_URL') || '', anon: Deno.env.get('SUPABASE_ANON_KEY') || '', resendKey: Deno.env.get('RESEND_API_KEY') || '',
-    from: Deno.env.get('MAIL_FROM') || 'mypocketclub <notifications@mypocketclub.fr>', replyTo: Deno.env.get('MAIL_REPLY_TO') || 'contact@mypocketclub.fr',
+    from: Deno.env.get('MAIL_FROM') || 'mypocketclub <notifications@mypocketclub.fr>', replyTo: Deno.env.get('MAIL_REPLY_TO') || 'contact@mypocketclub.fr', appUrl: Deno.env.get('APP_URL') || 'https://angeck.github.io/mon-blason/',
   }).catch((e) => json({ erreur: String((e as Error)?.message || e) }, 500)));
 }
