@@ -1,4 +1,4 @@
-# mypocketclub · alpha 4.7.0
+# mypocketclub · alpha 4.7.1
 
 Application web installable (PWA) pour les clubs sportifs : agenda avec réponses « Je viens / Je ne viens pas », appel, fiches joueurs, licences et cotisations, groupes d'échange (messages en direct, sondages), équipes, membres, corbeille de 30 jours.
 
@@ -32,6 +32,10 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 
 Toutes les personnes des tests sont fictives.
 
+## Alpha 4.7.1
+
+Rien à lancer dans Supabase. N° 163 : le ballon de volley de l'application est celui validé par Gaël le 9 novembre 2026 à 19 h 24 dans la conversation « Charte graphique » (piste « Classique » : trois groupes de trois bandes jaunes qui se croisent en Y, coutures encre de 2,8 ; copie de `claude/logos/mypocketclub/ballon-volley.svg`) ; la 4.7.0 avait mis par erreur un autre dessin.
+
 ## Alpha 4.7.0
 
 Seconde mise à jour du 9 novembre 2026. Mise à jour d'une base 4.6.0 : `supabase/MAJ_ALPHA_4_7_0.sql` (source `supabase/alpha_4_7_0.sql`, ajoutée au RESET), sans perte de données, relançable. Code d'abord, script ensuite, **puis redéployer la fonction `envoyer-email`** (e-mail « Nouvel appareil »).
@@ -40,7 +44,7 @@ Seconde mise à jour du 9 novembre 2026. Mise à jour d'une base 4.6.0 : `supaba
 - N° 165 : case « Masquer ce rendez-vous » quelle que soit la réponse ; masqué avec « oui » : prévenu quand même d'une annulation, d'une suppression ou d'un nouvel horaire (`push_event_targets(eid, actor, important)`).
 - N° 151 : en nommant un correspondant rencontres, un correspondant licences ou un chargé de communication, le président choisit à qui vont les missions (`set_designation`).
 - N° 147 : appareils connus (`user_devices`, `register_device`) ; nouvel appareil d'un compte qui en a déjà un : alerte (`device_alerts`) et e-mail par `envoyer-email` (`device_alert_take`, une fois) ; lien `#pasmoi=…` : « Ce n'était pas moi » (`not_me_device`, ouverte au visiteur avec le jeton : coupe les connexions du compte, puis nouveau mot de passe). N° 44 : « Me déconnecter de tous les appareils » (Mon compte).
-- N° 163 : nouveau ballon de volley (`img/ballon-volley.svg`) : bandes géométriques inclinées, à la place des spirales.
+- N° 163 : nouveau ballon de volley (`img/ballon-volley.svg`).
 
 ## Alpha 4.6.0
 
