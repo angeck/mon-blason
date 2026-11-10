@@ -1281,6 +1281,14 @@ with sync_playwright() as p:
     go("S.view = null; S.tab = 0")
     check('n° 182 · club validé : plus d’encart', pg.locator('.card.alert').count() == 0)
     pg.evaluate("window.__SENDSTATE = undefined")
+    # n° 84 : créer le rendez-vous depuis une convocation reçue
+    pg.evaluate("(async()=>{const c=await import('/js/core.js'); c.S.creceived=[{id:'s-84', from_club:'Étampes BC', step:'C', version:1, ref:'R84', sent_at:new Date().toISOString(), read_at:null}]; c.S.cvev={id:'s-84', list:[{source_event_id:'src-84', title:'Match U9', starts_at:'2026-12-05T14:00:00Z', place:'Gymnase Jean Moulin', team:'U9', linked_event:null},{source_event_id:'src-85', title:'Match U11', starts_at:'2026-12-05T16:00:00Z', place:'', team:'U11', linked_event:'e-84'}]}; })()"); pg.wait_for_timeout(100)
+    b84 = pg.evaluate("(async()=>{const c=await import('/js/core.js'); return c.hooks.receivedBlock();})()")
+    check('n° 84 · convocation reçue : « Créer le rendez-vous » pour un match, « Rendez-vous créé » pour l’autre', 'Créer le rendez-vous' in b84 and 'Rendez-vous créé' in b84 and 'Gymnase Jean Moulin' in b84)
+    pg.evaluate("(async()=>{const c=await import('/js/core.js'); c.ACTIONS.cvmake(null, {send:'s-84', src:'src-84'});})()"); pg.wait_for_timeout(300)
+    f84 = pg.evaluate("(async()=>{const c=await import('/js/core.js'); const f=c.S.form||{}; return {type:f.type, opp:f.opponents, place:f.place, home:f.at_home, from:f.fromConvoc&&f.fromConvoc.src, view:c.S.view&&c.S.view.type};})()")
+    check('n° 84 · le formulaire s’ouvre : match à l’extérieur, adversaire et lieu repris', f84 == {'type': 'Match', 'opp': 'Étampes BC', 'place': 'Gymnase Jean Moulin', 'home': False, 'from': 'src-84', 'view': 'evform'})
+    go("S.form = null; S.view = null; S.tab = 0; S.creceived = []; S.cvev = null")
     # n° 183 : droit à l'image, désaccord entre parents
     pg.evaluate("(async()=>{const {S}=await import('/js/core.js'); const p = S.players.find(x => x.id === 'p-tom'); p.consents = { ...(p.consents || {}), image: { ok: false, at: '2026-11-10T10:00:00Z', conflict: true, votes: {} } }; })()")
     go("S.view = { type: 'player', id: 'p-tom' }")

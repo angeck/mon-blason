@@ -7438,6 +7438,55 @@ revoke execute on function purge_trash() from public, anon;
 grant execute on function purge_trash() to authenticated;
 
 -- ---------------------------------------------------------------------
+-- 6 bis. n° 84 : créer le rendez-vous depuis une convocation reçue
+-- ---------------------------------------------------------------------
+create table if not exists convocation_links (
+  id uuid primary key default gen_random_uuid(),
+  send_id uuid not null references convocation_sends(id) on delete cascade,
+  source_event_id uuid not null,                       -- le match dans le document du club qui reçoit chez lui
+  club_id uuid not null references clubs(id) on delete cascade,   -- le club reçu (celui qui crée le rendez-vous)
+  event_id uuid references events(id) on delete set null,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (send_id, source_event_id, club_id)
+);
+alter table convocation_links enable row level security;   -- lecture et écriture seulement par les fonctions ci-dessous
+
+-- Les matchs d'une convocation reçue, avec le rendez-vous déjà créé (s'il existe)
+create or replace function convocation_received_events(p_send uuid) returns table(source_event_id uuid, title text, starts_at timestamptz, place text, team text, linked_event uuid)
+language plpgsql stable security definer set search_path = public as $$
+declare s convocation_sends;
+begin
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.channel <> 'app' or s.target_club_id is null or not receives_convocations(s.target_club_id) then return; end if;
+  return query
+    select (x->>'id')::uuid, coalesce(x->>'title', ''), (x->>'starts_at')::timestamptz, coalesce(x->>'place', ''),
+           coalesce(x->'team'->>'name', ''),
+           (select l.event_id from convocation_links l join events e on e.id = l.event_id
+             where l.send_id = s.id and l.source_event_id = (x->>'id')::uuid and l.club_id = s.target_club_id)
+    from jsonb_array_elements(coalesce(s.payload->'data'->'events', s.payload->'events', '[]'::jsonb)) x
+    where coalesce((x->>'cancelled')::boolean, false) = false and x->>'id' is not null
+    order by 3, 2;
+end $$;
+revoke execute on function convocation_received_events(uuid) from public, anon;
+grant execute on function convocation_received_events(uuid) to authenticated;
+
+-- Relie le rendez-vous créé (ou un rendez-vous existant du même club) au match de la convocation
+create or replace function link_convocation(p_send uuid, p_source uuid, p_event uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare s convocation_sends; e events;
+begin
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.channel <> 'app' or s.target_club_id is null or not receives_convocations(s.target_club_id) then raise exception 'Convocation introuvable'; end if;
+  select * into e from events where id = p_event;
+  if e.id is null or e.club_id <> s.target_club_id or not has_area(e.club_id, 'evenements') then raise exception 'Rendez-vous introuvable dans ton club'; end if;
+  insert into convocation_links(send_id, source_event_id, club_id, event_id, created_by) values (p_send, p_source, s.target_club_id, p_event, auth.uid())
+    on conflict (send_id, source_event_id, club_id) do update set event_id = excluded.event_id, created_by = excluded.created_by, created_at = now();
+end $$;
+revoke execute on function link_convocation(uuid, uuid, uuid) from public, anon;
+grant execute on function link_convocation(uuid, uuid, uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
 -- 7. Fermeture au visiteur : unsubscribe_info reste ouverte (lien de l'e-mail)
 -- ---------------------------------------------------------------------
 create or replace function close_visitor_functions() returns int

@@ -499,6 +499,16 @@ Object.assign(ACTIONS, {
     S.form = { type: d.type || 'Entraînement', starts_at: today(), aud: team || !isBoard() ? 'team' : 'club', sup: supDefault(d.type || 'Entraînement'), teams: new Set(team ? [team] : []), people: new Set(), pq: '', conv: new Set(), convMode: 'all' };
     S.view = { type: 'evform' }; render();
   },
+  // n° 84 : créer notre rendez-vous (match à l'extérieur) depuis une convocation reçue
+  cvmake: async (el, d) => {
+    const m = (S.cvev?.list || []).find((x) => x.source_event_id === d.src); if (!m) return;
+    const from = (S.creceived || []).find((x) => x.id === d.send);
+    const cat = (m.team || '').trim().toLowerCase();
+    const mine = S.teams.filter((t) => cat && (String(t.category || '').toLowerCase() === cat || String(t.name || '').toLowerCase() === cat));
+    const team = mine.length === 1 ? mine[0].id : '';
+    S.form = { type: 'Match', title: '', titleAuto: true, opponents: from?.from_club || '', place: m.place || '', at_home: false, starts_at: toLocalInput(new Date(m.starts_at)), aud: 'team', sup: supDefault('Match'), teams: new Set(team ? [team] : []), people: new Set(), pq: '', conv: new Set(), convMode: 'all', fromConvoc: { send: d.send, src: d.src } };
+    S.view = { type: 'evform' }; render();
+  },
   evedit: (el, d) => {
     const e = S.events.find((x) => x.id === d.id);
     S.form = { id: e.id, type: e.type, title: e.title, opponents: e.opponents, place: e.place, starts_at: toLocalInput(new Date(e.starts_at)), aud: e.audience, sup: e.with_supporters !== false, supSet: true, teams: new Set(evTeams(e)), people: new Set(e.people || []), pq: '', conv: new Set(e.convoked || []), convMode: (e.convoked || []).length ? 'some' : 'all', at_home: e.at_home !== false, dur: e.all_day ? 'jour' : String(durOf(e)), titleAuto: false };
@@ -615,9 +625,12 @@ FORMS.evf = async (v) => {
     if (!confirm(`${plural(starts.length, 'séance sera créée', 'séances seront créées')}, du ${fmtDay(starts[0])} au ${fmtDay(starts[starts.length - 1])}${skip ? ' (vacances scolaires exclues)' : ''}. Confirmer ?`)) return;
     series = { weekday: start.getDay(), start_time: v.starts_at.slice(11, 16), until: v.until, skip_holidays: skip };
   }
+  const fc = f.fromConvoc;
   const n = await run(sb.rpc('create_events', { p: { ...base, starts, series } }));
   if (n !== null) {
     toast(n > 1 ? plural(n, 'séance créée', 'séances créées') + ', une par semaine.' : 'Rendez-vous ajouté.'); S.view = null; S.form = null; S.tab = 1; await refresh();
+    // n° 84 : on relie le rendez-vous créé au match du document reçu
+    if (fc) { const e = S.events.filter((x) => x.created_by === S.me.id && x.title === base.title && Math.abs(new Date(x.starts_at) - start) < 6e4).pop(); if (e && await run(sb.rpc('link_convocation', { p_send: fc.send, p_source: fc.src, p_event: e.id }))) S.cvev = null; }
     // Convocation demandée à la création : on retrouve le rendez-vous qu'on vient de créer
     if (v.mkconv && base.at_home && ACTIONS.convoc) { const e = S.events.filter((x) => x.created_by === S.me.id && x.title === base.title && Math.abs(new Date(x.starts_at) - start) < 6e4).pop(); if (e) await ACTIONS.convoc(null, { id: e.id, v: 'P' }); }
   }

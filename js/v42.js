@@ -268,6 +268,11 @@ Object.assign(ACTIONS, {
     requestAnimationFrame(() => document.getElementById('cvmail0')?.focus());
   },
   // côté club reçu : ouvrir la convocation reçue (accusé de lecture)
+  cvmatches: async (el, d) => {
+    if (S.cvev && S.cvev.id === d.id) { S.cvev = null; render(true); return; }
+    const r = await run(sb.rpc('convocation_received_events', { p_send: d.id })); if (!r) return;
+    S.cvev = { id: d.id, list: Array.isArray(r) ? r : [] }; render(true);
+  },
   cvopen: async (el, d) => {
     const r = await run(sb.rpc('convocation_open', { p_send: d.id })); if (!r?.data) return;
     const w = window.open('', '_blank'); if (!w) return toast('Autorise les fenêtres pour lire le document.');
@@ -299,8 +304,16 @@ INPUTS.push((t) => {
 export async function loadReceived() {
   const r = await sb.rpc('convocations_received', { p_club: S.clubId }); S.creceived = Array.isArray(r.data) ? r.data : [];
 }
+// n° 84 : les matchs du document, pour créer nos rendez-vous en un geste
+function cvMatches(x) {
+  const o = S.cvev && S.cvev.id === x.id ? S.cvev : null;
+  const head = `<button class="row" data-act="cvmatches" data-id="${x.id}"><span class="g">${o ? 'Masquer' : 'Créer nos rendez-vous'}<small>Un rendez-vous par match de ce document</small></span></button>`;
+  if (!o) return head;
+  if (!o.list.length) return head + '<p class="note">Aucun match dans ce document.</p>';
+  return head + o.list.map((m) => `<div class="row"><span class="g">${esc(m.title || 'Match')}<small>${esc(new Date(m.starts_at).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}${m.team ? ' · ' + esc(m.team) : ''}${m.place ? ' · ' + esc(m.place) : ''}</small></span>${m.linked_event ? `<button class="btn small" data-act="event" data-id="${m.linked_event}">Rendez-vous créé</button>` : `<button class="btn small" data-act="cvmake" data-send="${x.id}" data-src="${m.source_event_id}">Créer le rendez-vous</button>`}</div>`).join('');
+}
 export function receivedBlock() {
   const l = S.creceived || []; if (!l.length) return '';
-  return `<div class="sec"><h2>Convocations reçues</h2><span class="det">${l.filter((x) => !x.read_at).length || ''}</span></div><div class="card"><div class="list">${l.map((x) => `<button class="row" data-act="cvopen" data-id="${x.id}"><span class="g">${x.step === 'P' ? 'Pré-convocation' : 'Convocation'}${x.version > 1 ? ' -v' + x.version : ''} · ${esc(x.from_club || '')}<small>Réf. ${esc(x.ref + (x.version > 1 ? '-v' + x.version : ''))} · ${esc(new Date(x.sent_at).toLocaleDateString('fr-FR'))}</small></span>${x.read_at ? '<span class="pill ok">Lu</span>' : '<span class="pill wait">Nouveau</span>'}</button>`).join('')}</div></div>`;
+  return `<div class="sec"><h2>Convocations reçues</h2><span class="det">${l.filter((x) => !x.read_at).length || ''}</span></div><div class="card"><div class="list">${l.map((x) => `<button class="row" data-act="cvopen" data-id="${x.id}"><span class="g">${x.step === 'P' ? 'Pré-convocation' : 'Convocation'}${x.version > 1 ? ' -v' + x.version : ''} · ${esc(x.from_club || '')}<small>Réf. ${esc(x.ref + (x.version > 1 ? '-v' + x.version : ''))} · ${esc(new Date(x.sent_at).toLocaleDateString('fr-FR'))}</small></span>${x.read_at ? '<span class="pill ok">Lu</span>' : '<span class="pill wait">Nouveau</span>'}</button>${cvMatches(x)}`).join('')}</div></div>`;
 }
 hooks.receivedBlock = receivedBlock;
