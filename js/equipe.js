@@ -188,7 +188,7 @@ export function importPage(tid) {
   let h = '';
   if (I.map && !I.rows) return mappingScreen(I);
   if (!I.rows) {
-    return `<div class="card lift">${field('imt', 'Coller une liste', `<textarea id="imt" data-imptext="1" style="min-height:160px" placeholder="Une ligne par joueur&#10;Lily RAVENEAU;12/03/2018">${esc(I.text)}</textarea>`)}
+    return `<div class="card lift">${field('imt', 'Coller une liste', `<textarea id="imt" data-imptext="1" style="min-height:160px" placeholder="Une ligne par joueur&#10;Lily MARTIN;12/03/2018">${esc(I.text)}</textarea>`)}
     <p class="note">Une ligne par joueur. Colonnes acceptées dans n'importe quel ordre : nom, prénom, date de naissance, n° de licence, e-mail ou téléphone du parent. Pour un seul joueur, écris simplement une ligne.</p>
     ${field('imf', 'Ou choisir un fichier Excel ou CSV (le plus fiable)', '<input id="imf" type="file" accept=".xlsx,.xls,.ods,.csv,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet" data-impfile="1">')}
     ${field('imo', "Ou une photo ou une capture d'écran de la liste", '<input id="imo" type="file" accept="image/*" data-ocr="1">')}

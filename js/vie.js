@@ -359,13 +359,14 @@ function fonctionsView() {
     <div class="kick">Rubriques</div><div class="chips">${Object.entries(AREAS).map(([a, l]) => own.includes(a) ? `<span class="pill ok">${l}</span>` : `<button class="chip" data-act="barea" data-u="${u}" data-v="${a}" aria-pressed="${ba.some((x) => x.user_id === u && x.area === a)}">${l}</button>`).join('')}</div></div>`;
   }).join('') : '<p class="empty">Aucun membre du bureau pour l’instant.</p>';
   const cand = [...new Set(S.members.filter((m) => m.status === 'active' && m.user_id !== S.me.id).map((m) => m.user_id))].sort((a, c) => name(a).localeCompare(name(c), 'fr'));
-  b += `<form id="nomf" class="card"><div class="kick">Nommer quelqu'un</div><div class="grid2">${field('nu', 'Membre du club', `<select id="nu" name="user" required><option value="">Choisir…</option>${cand.map((u) => `<option value="${u}">${esc(name(u))}</option>`).join('')}</select>`)}${field('nf', 'Fonction', `<select id="nf" name="fonction">${FONCTIONS.map((f) => `<option value="${esc(f)}">${fl(f)}</option>`).join('')}</select>`)}</div><button class="btn main small" type="submit">Nommer</button><p class="note">Une seule personne pour la vice-présidence, le secrétariat et la trésorerie ; plusieurs pour les adjoints et les membres. Chaque nomination est inscrite au journal.</p></form>`;
+  b += `<form id="nomf" class="card"><div class="kick">Nommer quelqu'un</div><div class="grid2">${field('nu', 'Membre du club', `<select id="nu" name="user" required><option value="">Choisir…</option>${cand.map((u) => `<option value="${u}">${esc(name(u))}</option>`).join('')}</select>`)}${field('nf', 'Fonction', `<select id="nf" name="fonction">${FONCTIONS.map((f) => `<option value="${esc(f)}">${fl(f)}</option>`).join('')}</select>`)}</div><button class="btn main small" type="submit">Nommer</button><p class="note">Une seule personne pour la vice-présidence, le secrétariat, la trésorerie, le contact licences et le contact rencontres ; plusieurs pour les adjoints et les membres. Chaque nomination est inscrite au journal.</p></form>`;
   b += rightsNote(); // n° 114 : les droits de chaque fonction avant de confirmer
   return { head: header({ back: true, kicker: roleKicker('Espace Président'), title: 'Fonctions du bureau', casq: casqTabs() }), body: b }; // n° 101 ; n° 116 : casquettes dans l'en-tête
 }
 // n° 151 (Gaël, 9 novembre 2026) : en nommant un contact (rencontres, licences) ou un chargé de communication, le président
 // choisit à qui vont les missions : à cette personne, à lui-même, ou à la personne qui les a aujourd'hui (rien ne change)
-const RESP_OF = { 'Correspondant rencontres': ['rencontres', 'Rencontres : matchs, convocations, bénévoles'], 'Correspondant licences': ['licences', 'Licences et contact licences'], 'Chargé de communication': ['communication', 'Communication : annonces et relances'] };
+// n° 170 (4.8.0) : les deux contacts sont des rôles, le rôle donne les missions ; la question ne reste que pour la communication
+const RESP_OF = { 'Chargé de communication': ['communication', 'Communication : annonces et relances'] };
 function respAsk() {
   const a = S.resp151; if (!a) return '';
   const cur = (S.desig || []).find((x) => x.resp === a.resp);

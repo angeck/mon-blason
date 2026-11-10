@@ -165,7 +165,9 @@ end $$;
 -- Administrateurs de l'application (Gaël) : reçoivent les demandes de schéma
 create table if not exists app_admins (user_id uuid primary key references auth.users(id) on delete cascade);
 alter table app_admins enable row level security;
-insert into app_admins(user_id) select id from auth.users where lower(email) in ('raveneau.gael@yahoo.fr', 'gael.pocketclub@gmail.com') on conflict do nothing;
+-- 4.8.0 : plus d'adresse personnelle dans ce dépôt public. Sur une base neuve (RESET), le premier administrateur s'ajoute à la main,
+-- une fois son compte créé : remplace l'adresse ci-dessous par la sienne et lance cette seule ligne (sans effet tant que l'adresse n'existe pas).
+insert into app_admins(user_id) select id from auth.users where lower(email) in ('ton-adresse@exemple.invalid') on conflict do nothing;
 create or replace function is_app_admin() returns boolean language sql stable security definer set search_path = public as $$
   select exists(select 1 from app_admins where user_id = auth.uid());
 $$;

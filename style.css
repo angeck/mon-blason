@@ -369,3 +369,7 @@ button.pill.armed{background:var(--pc-non-texte);color:#FFFFFF}
 .gauge .gbar{height:10px;border-radius:5px;background:var(--pc-papier);overflow:hidden}.gauge .gbar span{display:block;height:100%;background:var(--pc-bleu)}
 .gauge.full{background:var(--pc-oui-fond)}.gauge.full .gbar span{background:var(--pc-oui-texte)}
 .gauge.over{background:var(--pc-non-fond)}.gauge.over .gbar span{background:var(--pc-non-texte)}
+/* 4.8.0 · guide « Installer et notifications » : étapes numérotées */
+.steps{margin:0;padding:0;list-style:none;counter-reset:st;display:flex;flex-direction:column;gap:12px}
+.steps>li{counter-increment:st;display:flex;gap:12px;align-items:flex-start;font-size:16px;line-height:1.4}
+.steps>li::before{content:counter(st);flex:none;width:28px;height:28px;border-radius:50%;background:var(--pc-bleu);color:#fff;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center}

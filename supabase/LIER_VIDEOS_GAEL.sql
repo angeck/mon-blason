@@ -1,4 +1,4 @@
--- Relie les vidéos déposées à la main dans Storage > exercise-videos > dossier « gael » aux exercices de Ma banque de raveneau.gael@yahoo.fr.
+-- Relie les vidéos déposées à la main dans Storage > exercise-videos > dossier « gael » aux exercices de « Ma banque » du compte indiqué plus bas (remplace l'adresse par celle de ton compte avant de lancer).
 -- Chaque fichier va sur l'exercice du même nom (accents, majuscules et ponctuation ignorés). Relançable sans risque.
 drop policy if exists "video d'exercice lisible" on storage.objects;
 create policy "video d'exercice lisible" on storage.objects for select to authenticated
@@ -9,7 +9,7 @@ create or replace function pc_cle(t text) returns text language sql immutable as
   select regexp_replace(translate(lower(t), 'àâäáãéèêëíìîïóòôöõúùûüçñœ', 'aaaaaeeeeiiiiooooouuuucno'), '[^a-z0-9]', '', 'g');
 $$;
 
-with u as (select id from auth.users where lower(email) = 'raveneau.gael@yahoo.fr'),
+with u as (select id from auth.users where lower(email) = 'ton-adresse@exemple.invalid'),
      f as (select name, pc_cle(regexp_replace(split_part(name, '/', 2), '\.[^.]+$', '')) as cle
            from storage.objects where bucket_id = 'exercise-videos' and name like 'gael/%')
 update exercises e set video_path = f.name, poster_path = ''

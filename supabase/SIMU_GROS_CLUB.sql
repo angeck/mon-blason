@@ -578,6 +578,6 @@ end $$;
 revoke all on all functions in schema simu from public;
 
 -- =====================================================================
--- Lancement — remplace l'adresse si ton compte Pocket Club utilise une autre adresse
+-- Lancement — remplace l'adresse par celle de ton compte mypocketclub avant de lancer
 -- =====================================================================
-select simu.installer('raveneau.gael@yahoo.fr', 'Boissy');
+select simu.installer('ton-adresse@exemple.invalid', 'Boissy');

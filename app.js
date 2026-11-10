@@ -24,6 +24,7 @@ import { switchBar, saveSwitch, resetUser } from './js/profils.js';
 import { V310_VIEWS, syncTeamCtx, teamWrap, loadV310, clubGoneScreen } from './js/v310.js';
 import { loadV43 } from './js/v43.js'; // 4.3.0 : n° 124 (validation des envois), n° 126 (profils de test)
 import { loadV44 } from './js/v44.js';
+import './js/v48.js'; // 4.8.0 : guide « Installer et notifications »
 import { registerDevice, notMeToken, notMeScreen } from './js/v47.js'; // 4.7.0 : n° 147 et 44 // 4.4.0 : n° 114 (bandeau et onglets de chaque fonction, droits, exports, saison)
 
 const TAB_TITLES = ['', 'Agenda', 'Messages', 'Équipe', 'Le club'];

@@ -8,7 +8,7 @@
 // Secrets à créer dans Supabase → Edge Functions → Secrets :
 //   VAPID_PUBLIC_KEY   clé publique (la même que dans config.js de l'application)
 //   VAPID_PRIVATE_KEY  clé privée (jamais publiée)
-//   VAPID_SUBJECT      adresse de contact, ex. mailto:gael.monblason@gmail.com
+//   VAPID_SUBJECT      adresse de contact, ex. mailto:contact@mypocketclub.fr
 //   PUSH_SECRET        mot de passe que le programme automatique (étape 4) joint à chaque appel
 // SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY sont fournis d'office par Supabase.
 
@@ -110,7 +110,7 @@ if (typeof Deno !== 'undefined' && Deno.serve) {
     if (!secret || req.headers.get('x-pocket-secret') !== secret) return new Response(JSON.stringify({ erreur: 'accès refusé' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     const env: Env = {
       url: Deno.env.get('SUPABASE_URL'), key: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SECRET_KEY') || '',
-      pub: Deno.env.get('VAPID_PUBLIC_KEY') || '', priv: Deno.env.get('VAPID_PRIVATE_KEY') || '', subject: Deno.env.get('VAPID_SUBJECT') || 'mailto:gael.monblason@gmail.com',
+      pub: Deno.env.get('VAPID_PUBLIC_KEY') || '', priv: Deno.env.get('VAPID_PRIVATE_KEY') || '', subject: Deno.env.get('VAPID_SUBJECT') || 'mailto:contact@mypocketclub.fr',
     };
     if (!env.key) return new Response(JSON.stringify({ erreur: 'clé de service introuvable' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     if (!env.pub || !env.priv) return new Response(JSON.stringify({ erreur: 'clés VAPID manquantes dans les Secrets' }), { status: 500, headers: { 'Content-Type': 'application/json' } });

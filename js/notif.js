@@ -6,8 +6,8 @@ import { VAPID_PUBLIC_KEY, BRAND, SWITCH_PROFILES } from '../config.js';
 import { S, sb, store, toast, render, ACTIONS, CHANGES } from './core.js';
 import { icon } from './ui.js';
 
-const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const standalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+export const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+export const standalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 const supported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 const keyBytes = (b64) => { const s = (b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'); return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); };
 // Le service worker peut ne jamais être prêt (navigation privée, test) : on n'attend pas plus de 4 secondes
@@ -71,16 +71,19 @@ export function pushCard() {
   else if (st === 'ios-install') body = `<p class="note">Sur iPhone, installe d'abord ${BRAND.name} sur l'écran d'accueil : bouton Partager, puis « Sur l'écran d'accueil ». Ouvre ensuite l'application depuis son icône et reviens ici.</p>`;
   else if (st === 'denied') body = `<p class="note">Les notifications sont bloquées pour ${BRAND.name} sur cet appareil. Pour les rouvrir : réglages du téléphone ou du navigateur, puis Notifications, puis ${BRAND.name}.</p>`;
   else body = '<p class="note">Ce navigateur ne reçoit pas les notifications. Essaie avec Chrome, Edge, Firefox ou Safari à jour.</p>';
-  return `<div class="sec"><h2>Notifications</h2></div><div class="card">${body}</div>`;
+  // 4.8.0 : le guide « Installer et notifications » (js/v48.js), toujours à portée dans Mon compte
+  return `<div class="sec"><h2>Notifications</h2></div><div class="card">${body}<button class="btn small ghost" data-act="guide">${icon('doc', 18)}Guide : installer l’application et activer les notifications</button></div>`;
 }
 
 // Encart en tête de l'Accueil, à chaque ouverture, tant que la personne n'a fait aucun choix sur cet appareil :
 // activer (l'encart disparaît) ou « Masquer le message » (pc_hidepush, l'encart disparaît aussi).
 // Ensuite, les notifications restent réglables dans Mon compte.
 export function pushHome() {
+  // 4.8.0 : ouverte dans le navigateur et pas depuis son icône, l'application propose d'abord de s'installer (guide par appareil)
+  if (!standalone() && N.state !== 'loading' && !store.get('pc_hideinstall')) return `<div class="card pale" data-install-card><b>Installe ${BRAND.name} sur cet appareil : il s’ouvre comme une application et te prévient des rendez-vous.</b><div class="btns"><button class="btn small main" data-act="guide">Comment faire</button><button class="btn small ghost" data-act="installhide">Masquer le message</button></div></div>`;
   if (!['off', 'ios-install'].includes(N.state) || store.get('pc_hidepush')) return '';
   const msg = N.state === 'off' ? 'Active les notifications pour ne rater aucun rendez-vous.' : `Installe ${BRAND.name} sur l'écran d'accueil pour recevoir les notifications.`;
-  return `<div class="card pale"><b>${msg}</b><div class="btns">${N.state === 'off' ? '<button class="btn small main" data-act="pushon">Activer</button>' : '<button class="btn small main" data-act="account">Comment faire</button>'}<button class="btn small ghost" data-act="pushhide">Masquer le message</button></div></div>`;
+  return `<div class="card pale"><b>${msg}</b><div class="btns">${N.state === 'off' ? '<button class="btn small main" data-act="pushon">Activer</button>' : '<button class="btn small main" data-act="guide">Comment faire</button>'}<button class="btn small ghost" data-act="pushhide">Masquer le message</button></div></div>`;
 }
 
 CHANGES.push(async (t) => {

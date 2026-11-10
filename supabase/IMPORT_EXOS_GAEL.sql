@@ -5,8 +5,8 @@ do $$
 declare
   u uuid; c uuid; x record; n_ex int := 0; n_pl int := 0; it jsonb; j jsonb; xid uuid; t text;
 begin
-  select id into u from auth.users where lower(email) = 'raveneau.gael@yahoo.fr';
-  if u is null then raise exception 'Compte raveneau.gael@yahoo.fr introuvable : crée d''abord ton compte dans l''application.'; end if;
+  select id into u from auth.users where lower(email) = 'ton-adresse@exemple.invalid'; -- remplace par l'adresse de ton compte avant de lancer
+  if u is null then raise exception 'Compte introuvable : remplace l''adresse en tête du script par celle de ton compte.'; end if;
   select m.club_id into c from memberships m where m.user_id = u and m.status = 'active'
     and m.role in ('coach','president','bureau') order by (m.role = 'coach') desc, m.created_at limit 1;
   if c is null then raise exception 'Tu n''es coach ni membre du bureau d''aucun club : rejoins ton club avant l''import.'; end if;

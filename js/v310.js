@@ -203,10 +203,17 @@ export function presidentSpace310() {
   else h += journalBody();
   return h;
 }
+// n° 170 (4.8.0) : « Contact licences » et « Contact rencontres » sont des rôles. Ils s'attribuent seulement dans
+// « Fonctions du bureau » ; ici, un aperçu en lecture seule avec un lien. Événements et Communication gardent le choix.
+const ROLE_OF = { licences: 'Correspondant licences', rencontres: 'Correspondant rencontres' };
 function quiView() {
   const ad = adultMembers();
-  let h = '<p class="note">Une personne par responsabilité. Sans choix, c’est la personne indiquée par défaut. La personne désignée entre au bureau si elle n’y est pas, voit l’onglet de sa responsabilité et reçoit une notification. Tout est inscrit au journal.</p>';
+  let h = '<p class="note">Une personne par responsabilité. Sans choix, c’est la personne indiquée par défaut. Les deux contacts sont des rôles : ils s’attribuent dans « Fonctions du bureau ». Tout est inscrit au journal.</p>';
   h += RESP.map(([k, l, d]) => {
+    if (ROLE_OF[k]) {
+      const who = holder(ROLE_OF[k])[0];
+      return `<div class="card" data-role-view="${k}"><b style="font-size:18px">${esc(l)}</b><span class="det">${esc(d)}</span><div class="row static"><span class="g">${esc(who || defaultHolder(k) || 'Personne')}<small>${who ? 'A le rôle « ' + esc(l) + ' »' : 'Par défaut : personne n’a ce rôle'}</small></span></div><button class="btn small" data-act="fonctions">${icon('user', 18)}Modifier dans « Fonctions du bureau »</button></div>`;
+    }
     const cur = (S.desig || []).find((x) => x.resp === k);
     return `<div class="card"><b style="font-size:18px">${esc(l)}</b><span class="det">${esc(d)}</span>${field('ds' + k, cur ? 'Désigné' : 'Par défaut : ' + defaultHolder(k), `<select id="ds${k}" data-desig="${k}"><option value="">${esc('Par défaut · ' + defaultHolder(k))}</option>${ad.map((u) => `<option value="${u}" ${cur?.user_id === u ? 'selected' : ''}>${esc(name(u))}</option>`).join('')}</select>`)}</div>`;
   }).join('');
