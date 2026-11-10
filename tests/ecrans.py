@@ -1289,6 +1289,15 @@ with sync_playwright() as p:
     f84 = pg.evaluate("(async()=>{const c=await import('/js/core.js'); const f=c.S.form||{}; return {type:f.type, opp:f.opponents, place:f.place, home:f.at_home, from:f.fromConvoc&&f.fromConvoc.src, view:c.S.view&&c.S.view.type};})()")
     check('n° 84 · le formulaire s’ouvre : match à l’extérieur, adversaire et lieu repris', f84 == {'type': 'Match', 'opp': 'Étampes BC', 'place': 'Gymnase Jean Moulin', 'home': False, 'from': 'src-84', 'view': 'evform'})
     go("S.form = null; S.view = null; S.tab = 0; S.creceived = []; S.cvev = null")
+    # n° 167 : doublons d'exercices
+    d167 = pg.evaluate("""(async()=>{const c=await import('/js/core.js'); const v=await import('/js/v410.js');
+      window.__exos167=c.S.exos; c.S.exos=[{id:'xa',title:'Passe à deux',category:'Technique',level:'U11'},{id:'xb',title:'Passe à deux mains',category:'Technique',level:''}];
+      c.S.dups=[{id:'d1',exercise_id:'xa',other_id:'xb',title:'Passe à deux',other_title:'Passe à deux mains',status:'signale',reported_by_name:'Coach Test',reported_at:new Date().toISOString(),mine:false,can_decide:true},{id:'d2',exercise_id:'xb',other_id:'xa',title:'Passe à deux mains',other_title:'Passe à deux',status:'fusionne',reported_by_name:'Moi',reported_at:new Date().toISOString(),mine:true,can_decide:false}];
+      c.S.dupFor=null; const a=v.dupBlock({id:'xa',title:'Passe à deux'}); c.S.dupFor='xa'; const b=v.dupBlock({id:'xa',title:'Passe à deux'}); const l=v.dupListBlock();
+      return {a,b,l};})()""")
+    check('n° 167 · fiche : bouton « Signaler un doublon », puis choix de l’autre exercice', 'Signaler un doublon' in d167['a'] and 'Quel exercice est le même' in d167['b'] and 'data-other="xb"' in d167['b'] and 'data-other="xa"' not in d167['b'])
+    check('n° 167 · liste : « Signalé » à trancher (Fusionner, Pas un doublon) et « Fusionné » sans boutons', 'Doublons signalés' in d167['l'] and 'Fusionner' in d167['l'] and 'Pas un doublon' in d167['l'] and 'Fusionné' in d167['l'] and d167['l'].count('data-act="dupmerge"') == 1)
+    pg.evaluate("(async()=>{const c=await import('/js/core.js'); c.S.exos=window.__exos167; c.S.dups=[]; c.S.dupFor=null;})()")
     # n° 183 : droit à l'image, désaccord entre parents
     pg.evaluate("(async()=>{const {S}=await import('/js/core.js'); const p = S.players.find(x => x.id === 'p-tom'); p.consents = { ...(p.consents || {}), image: { ok: false, at: '2026-11-10T10:00:00Z', conflict: true, votes: {} } }; })()")
     go("S.view = { type: 'player', id: 'p-tom' }")

@@ -7487,6 +7487,102 @@ revoke execute on function link_convocation(uuid, uuid, uuid) from public, anon;
 grant execute on function link_convocation(uuid, uuid, uuid) to authenticated;
 
 -- ---------------------------------------------------------------------
+-- 6 ter. n° 167 : doublons d'exercices (signalement, puis décision)
+-- ---------------------------------------------------------------------
+create table if not exists exercise_duplicates (
+  id uuid primary key default gen_random_uuid(),
+  exercise_id uuid not null references exercises(id) on delete cascade,   -- l'exercice qui ferait doublon (il partirait à la corbeille)
+  other_id uuid not null references exercises(id) on delete cascade,      -- celui qui resterait
+  reported_by uuid references auth.users(id) on delete set null,
+  reported_at timestamptz not null default now(),
+  status text not null default 'signale' check (status in ('signale', 'fusionne', 'refuse')),   -- Signalé, Fusionné, Pas un doublon
+  decided_by uuid references auth.users(id) on delete set null,
+  decided_at timestamptz,
+  check (exercise_id <> other_id)
+);
+create unique index if not exists exercise_duplicates_open on exercise_duplicates(least(exercise_id, other_id), greatest(exercise_id, other_id)) where status = 'signale';
+alter table exercise_duplicates enable row level security;   -- lecture et écriture seulement par les fonctions ci-dessous
+
+-- Qui décide : l'administrateur de mypocketclub pour un exercice public ; sinon le Directeur technique ou le président du club de l'exercice
+create or replace function can_decide_duplicate(p_ex uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists(select 1 from exercises e where e.id = p_ex and (
+    case when e.sharing = 'public' and e.public_state = 'validated' then is_app_admin() else (is_president(e.club_id) or has_area(e.club_id, 'technique')) end));
+$$;
+revoke execute on function can_decide_duplicate(uuid) from public, anon;
+grant execute on function can_decide_duplicate(uuid) to authenticated;
+
+create or replace function report_duplicate(p_exercise uuid, p_other uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare a exercises; b exercises; r exercise_duplicates;
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi'; end if;
+  if p_exercise = p_other then raise exception 'Choisis un autre exercice'; end if;
+  select * into a from exercises where id = p_exercise and deleted_at is null;
+  select * into b from exercises where id = p_other and deleted_at is null;
+  if a.id is null or b.id is null or not can_see_exercise(a.id) or not can_see_exercise(b.id) then raise exception 'Exercice introuvable'; end if;
+  if not exists(select 1 from memberships m where m.user_id = auth.uid() and m.status = 'active' and m.role in ('coach', 'president', 'bureau')) then
+    raise exception 'Seuls les coachs et le bureau signalent un doublon';
+  end if;
+  if exists(select 1 from exercise_duplicates d where d.status = 'signale' and least(d.exercise_id, d.other_id) = least(p_exercise, p_other) and greatest(d.exercise_id, d.other_id) = greatest(p_exercise, p_other)) then
+    raise exception 'Ce doublon est déjà signalé';
+  end if;
+  insert into exercise_duplicates(exercise_id, other_id, reported_by) values (p_exercise, p_other, auth.uid());
+  perform log_action(a.club_id, null, null, 'doublon d''exercice signalé', jsonb_build_object('exercice', a.title, 'autre', b.title));
+end $$;
+revoke execute on function report_duplicate(uuid, uuid) from public, anon;
+grant execute on function report_duplicate(uuid, uuid) to authenticated;
+
+-- La liste : ce que j'ai signalé, et ce que je peux trancher
+create or replace function duplicates_list() returns table(id uuid, exercise_id uuid, other_id uuid, title text, other_title text, status text, reported_by_name text, reported_at timestamptz, decided_at timestamptz, mine boolean, can_decide boolean)
+language sql stable security definer set search_path = public as $$
+  select d.id, d.exercise_id, d.other_id, a.title, b.title, d.status,
+         (select p.full_name from profiles p where p.id = d.reported_by), d.reported_at, d.decided_at,
+         d.reported_by = auth.uid(), d.status = 'signale' and can_decide_duplicate(d.exercise_id)
+  from exercise_duplicates d join exercises a on a.id = d.exercise_id join exercises b on b.id = d.other_id
+  where auth.uid() is not null and (d.reported_by = auth.uid() or can_decide_duplicate(d.exercise_id))
+    and d.reported_at > now() - interval '180 days'
+  order by (d.status = 'signale') desc, d.reported_at desc limit 50;
+$$;
+revoke execute on function duplicates_list() from public, anon;
+grant execute on function duplicates_list() to authenticated;
+
+create or replace function decide_duplicate(p_id uuid, p_merge boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare d exercise_duplicates; a exercises; b exercises; t text;
+begin
+  select * into d from exercise_duplicates where id = p_id;
+  if d.id is null or d.status <> 'signale' then raise exception 'Signalement introuvable ou déjà traité'; end if;
+  if not can_decide_duplicate(d.exercise_id) then raise exception 'Seul le Directeur technique ou le président décide (un administrateur de mypocketclub pour un exercice public)'; end if;
+  select * into a from exercises where id = d.exercise_id;
+  select * into b from exercises where id = d.other_id;
+  if p_merge then
+    if a.deleted_at is not null or b.deleted_at is not null then raise exception 'Un des deux exercices a déjà été supprimé'; end if;
+    -- l'exercice qui reste doit être visible partout où l'autre l'était
+    if a.sharing = 'public' and not (b.sharing = 'public' and b.public_state = 'validated') then raise exception 'L''exercice public ne peut être fusionné que dans un exercice public validé'; end if;
+    if a.sharing <> 'public' and not (b.club_id = a.club_id or (b.sharing = 'public' and b.public_state = 'validated')) then raise exception 'L''exercice qui reste doit être de ce club ou public'; end if;
+    perform set_config('pc.exsys', 'on', true);
+    update training_plans set items = (select coalesce(jsonb_agg(case when x->>'exercise_id' = a.id::text then jsonb_set(x, '{exercise_id}', to_jsonb(b.id::text)) else x end), '[]'::jsonb) from jsonb_array_elements(items) x)
+      where items::text like '%' || a.id::text || '%';
+    update exercise_reports set exercise_id = b.id where exercise_id = a.id;
+    update exercises set deleted_at = now(), deleted_by = auth.uid() where id = a.id;
+    perform set_config('pc.exsys', 'off', true);
+    update exercise_duplicates set status = 'fusionne', decided_by = auth.uid(), decided_at = now() where id = d.id;
+    -- les autres signalements ouverts qui touchent l'exercice parti n'ont plus d'objet
+    update exercise_duplicates set status = 'refuse', decided_by = auth.uid(), decided_at = now() where status = 'signale' and id <> d.id and (exercise_id = a.id or other_id = a.id);
+  else
+    update exercise_duplicates set status = 'refuse', decided_by = auth.uid(), decided_at = now() where id = d.id;
+  end if;
+  if d.reported_by is not null and d.reported_by <> auth.uid() then
+    perform push_enqueue(d.reported_by, case when p_merge then 'Doublon fusionné' else 'Pas un doublon' end,
+      '« ' || a.title || ' » : ' || case when p_merge then 'fusionné avec « ' || b.title || ' ».' else 'les deux exercices restent.' end, 'exercice', 'dupdec:' || d.id);
+  end if;
+  perform log_action(a.club_id, null, null, case when p_merge then 'doublon d''exercice fusionné' else 'doublon d''exercice écarté' end, jsonb_build_object('exercice', a.title, 'autre', b.title));
+end $$;
+revoke execute on function decide_duplicate(uuid, boolean) from public, anon;
+grant execute on function decide_duplicate(uuid, boolean) to authenticated;
+
+-- ---------------------------------------------------------------------
 -- 7. Fermeture au visiteur : unsubscribe_info reste ouverte (lien de l'e-mail)
 -- ---------------------------------------------------------------------
 create or replace function close_visitor_functions() returns int

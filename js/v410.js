@@ -1,8 +1,9 @@
 // mypocketclub · alpha 4.10.0 : suite de la revue « Légal » du 10 novembre 2026.
 //   n° 184 : « Appareils connus » dans Mon compte, avec « Retirer » (la base efface seule un appareil sans connexion depuis 12 mois) ;
+//   n° 167 : doublons d’exercices (« Signaler un doublon », liste, « Fusionner » / « Pas un doublon ») ;
 //   n° 185 : lien de désinscription des e-mails d'information (#desinscription=…), ouvert connecté ou non.
 // (n° 181 : textes dans v310.js ; n° 182 : encart dans v43.js ; n° 183 : bouton d'accord dans joueur.js.)
-import { S, sb, esc, run, toast, render, armed, isArmed, ACTIONS } from './core.js';
+import { S, sb, esc, run, toast, render, armed, isArmed, ACTIONS, INPUTS, norm } from './core.js';
 import { BRAND } from '../config.js';
 import { header, icon } from './ui.js';
 import { deviceId } from './v47.js';
@@ -57,4 +58,52 @@ Object.assign(ACTIONS, {
     render();
   },
   unsubno: () => leave(),
+});
+
+// ---------- n° 167 · doublons d'exercices : signalement, puis décision ----------
+const DUPST = { signale: '<span class="pill wait">Signalé</span>', fusionne: '<span class="pill ok">Fusionné</span>', refuse: '<span class="pill">Pas un doublon</span>' };
+export async function loadDuplicates() {
+  const r = await sb.rpc('duplicates_list'); S.dups = Array.isArray(r.data) ? r.data : [];
+}
+// Sur la fiche d'un exercice : le bouton, puis le choix de l'autre exercice
+export function dupBlock(e) {
+  if (!S.exos || e.deleted_at) return '';
+  if (S.dupFor !== e.id) return `<button class="btn ghost" data-act="dupstart" data-id="${e.id}">Signaler un doublon</button>`;
+  const q = norm(S.dupQ || ''), words = norm(e.title).split(/\s+/).filter((w) => w.length > 3);
+  const score = (x) => words.filter((w) => norm(x.title).includes(w)).length;
+  const list = S.exos.filter((x) => x.id !== e.id && !x.deleted_at && (!q || norm(x.title).includes(q))).sort((a, b) => score(b) - score(a) || a.title.localeCompare(b.title)).slice(0, 8);
+  return `<div class="card"><div class="kick">Quel exercice est le même ?</div>
+    <div class="field"><label for="dupq">Chercher par nom</label><input id="dupq" type="search" data-dupq="1" value="${esc(S.dupQ || '')}" placeholder="Nom de l’autre exercice"></div>
+    <div class="list">${list.map((x) => `<button class="row" data-act="dupsend" data-id="${e.id}" data-other="${x.id}"><span class="g">${esc(x.title)}<small>${esc(x.category)}${x.level ? ' · ' + esc(x.level) : ''}</small></span></button>`).join('') || '<p class="note">Aucun exercice trouvé.</p>'}</div>
+    <p class="note">Le bureau (Directeur technique ou président) décide : fusionner ou « pas un doublon ». Tu verras sa décision ici.</p>
+    <button class="btn ghost small" data-act="dupcancel">Annuler</button></div>`;
+}
+// Sur la page Exercices : les signalements à trancher et ceux que j'ai faits
+export function dupListBlock() {
+  const l = S.dups || []; if (!l.length) return '';
+  const todo = l.filter((d) => d.can_decide).length;
+  return `<div class="card${todo ? ' warn' : ''}"><b>Doublons signalés</b>${todo ? `<p class="note" style="color:var(--pc-encre)">${todo} à trancher.</p>` : ''}<div class="list">${l.map((d) => {
+    const on = isArmed('dup' + d.id);
+    return `<div class="row static"><span class="g">« ${esc(d.title)} » = « ${esc(d.other_title)} »<small>${esc(d.reported_by_name || '')} · ${esc(dt(d.reported_at))}</small></span>${DUPST[d.status] || ''}${d.can_decide ? `<button class="btn small ${on ? 'danger armed' : 'main'}" data-act="dupmerge" data-id="${d.id}">${on ? 'Confirmer la fusion' : 'Fusionner'}</button><button class="btn small ghost" data-act="dupno" data-id="${d.id}">Pas un doublon</button>` : ''}</div>`;
+  }).join('')}</div><p class="note" style="color:var(--pc-encre)">« Fusionner » garde le second exercice : les séances qui utilisaient le premier pointent vers lui, et le premier part à la corbeille.</p></div>`;
+}
+Object.assign(ACTIONS, {
+  dupstart: (el, d) => { S.dupFor = d.id; S.dupQ = ''; render(true); },
+  dupcancel: () => { S.dupFor = null; render(true); },
+  dupsend: async (el, d) => {
+    if (await run(sb.rpc('report_duplicate', { p_exercise: d.id, p_other: d.other }), 'Doublon signalé. Le bureau décidera.')) { S.dupFor = null; await loadDuplicates(); render(true); }
+  },
+  dupmerge: async (el, d) => {
+    if (!armed('dup' + d.id)) return;
+    if (await run(sb.rpc('decide_duplicate', { p_id: d.id, p_merge: true }), 'Exercices fusionnés.')) { await loadDuplicates(); S.exosKey = null; await (await import('./coach.js')).ensureExos(); render(true); }
+  },
+  dupno: async (el, d) => {
+    if (await run(sb.rpc('decide_duplicate', { p_id: d.id, p_merge: false }), 'Noté : ce n’est pas un doublon.')) { await loadDuplicates(); render(true); }
+  },
+});
+INPUTS.push((t) => {
+  if (!t.dataset.dupq) return false;
+  S.dupQ = t.value; const pos = t.selectionStart; render(true);
+  const n = document.getElementById('dupq'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch { /* */ } }
+  return true;
 });

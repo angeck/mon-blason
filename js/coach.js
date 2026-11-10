@@ -8,6 +8,7 @@ import {
 } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 import { loadXlsx } from './equipe.js';
+import { loadDuplicates, dupBlock, dupListBlock } from './v410.js';
 
 export const CATS = ['Échauffement', 'Technique', 'Tactique', 'Physique', 'Jeu', 'Retour au calme'];
 const SHARE = { me: 'Moi seul', club: 'Mon club', public: 'Tous les clubs' };
@@ -49,6 +50,7 @@ async function loadExos() {
     sb.from('exercise_votes').select('exercise_id,up').eq('user_id', S.me.id),
     isBoard() ? sb.from('exercise_reports').select('*').eq('handled', false) : Promise.resolve({ data: [] }),
   ]);
+  loadDuplicates().then(() => { if (S.view?.type === 'exos') render(true); }); // n° 167
   S.exos = (ex.data || []).filter((e) => !(e.sharing === 'me' && e.created_by !== S.me.id)); S.myVotes = {}; S.exosKey = exosKey(); // n° 135 : liste rattachée au compte et au club  // les exercices vus seulement comme administrateur restent dans l'espace admin
   const sr = await sb.from('schema_requests').select('id,exercise_id,status').eq('requested_by', S.me.id).eq('status', 'pending'); S.schemaReq = Object.fromEntries((sr.data || []).map((x) => [x.exercise_id, x.id])); // n° 86
   (vo.data || []).forEach((v) => (S.myVotes[v.exercise_id] = v.up)); S.exReports = rp.data || [];
@@ -272,7 +274,7 @@ export function exosPage() {
   let h = `<div class="chips">${[['mine', 'Ma banque'], ['club', 'Club'], ['libre', 'Libre'], ['tout', 'Tout'], ['seance', `Séance en préparation${S.plan?.items?.length ? ' (' + S.plan.items.length + ')' : ''}`]].map(([k, l]) => `<button class="chip" data-act="ctab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
   if (tab === 'seance') return h + planEditor();
   if (!S.exos) return h + loading();
-  h += `<button class="btn main" data-act="cexnew">${icon('plus', 20)}Nouvel exercice</button>`;
+  h += `<button class="btn main" data-act="cexnew">${icon('plus', 20)}Nouvel exercice</button>` + dupListBlock();
   let list = S.exos.filter((e) => !e.deleted_at);
   if (tab === 'mine') { list = list.filter((e) => e.created_by === S.me.id); if (list.length) h += `<label class="btn ghost">Ajouter des vidéos en lot<input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" multiple data-exbulk="1" hidden></label><p class="note">Nomme chaque fichier comme l'exercice (ex. « Relais en dribble.mp4 ») : il ira sur le bon exercice.</p>`; }
   else if (tab === 'club') { h += boardTodo(); list = byTab(list, 'club'); }
@@ -326,6 +328,7 @@ export function exoPage(id) {
   else h += S.exRep === e.id
     ? `<form id="exrepf" class="card"><div class="field"><label for="exr">Pourquoi signales-tu cet exercice ?</label><input id="exr" name="reason" required minlength="3" maxlength="500" placeholder="Ex. copié d'un livre, contenu inadapté"></div><button class="btn main small" type="submit">Envoyer le signalement</button></form>`
     : `<button class="btn ghost" data-act="cexrep" data-id="${e.id}">Signaler</button>`;
+  h += dupBlock(e); // n° 167
   if (mine || (isBoard() && e.club_id === S.clubId && e.sharing !== 'me')) h += delBtn('cexdel', e.id, 'Supprimer cet exercice', 'Confirmer la suppression', isArmed('ex' + e.id));
   return h;
 }
