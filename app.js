@@ -25,6 +25,7 @@ import { V310_VIEWS, syncTeamCtx, teamWrap, loadV310, clubGoneScreen } from './j
 import { loadV43 } from './js/v43.js'; // 4.3.0 : n° 124 (validation des envois), n° 126 (profils de test)
 import { loadV44 } from './js/v44.js';
 import './js/v48.js'; // 4.8.0 : guide « Installer et notifications »
+import { unsubToken, unsubScreen, loadDevices } from './js/v410.js'; // 4.10.0 : n° 184 (appareils connus), n° 185 (désinscription)
 import { registerDevice, notMeToken, notMeScreen } from './js/v47.js'; // 4.7.0 : n° 147 et 44 // 4.4.0 : n° 114 (bandeau et onglets de chaque fonction, droits, exports, saison)
 
 const TAB_TITLES = ['', 'Agenda', 'Messages', 'Équipe', 'Le club'];
@@ -57,6 +58,7 @@ function render(keep) {
   let html;
   const vt = S.view?.type;
   if (notMeToken()) html = notMeScreen(); // n° 147 : lien « Ce n'était pas moi » de l'e-mail, connecté ou non
+  else if (unsubToken()) html = unsubScreen(); // n° 185 : lien de désinscription des e-mails d'information, connecté ou non
   else if (!S.session) html = vt === 'legal' ? legalScreen() : vt === 'auth' ? authScreen() : vt === 'pclub' ? publicClubScreen(S.view.id) : vt === 'creq' ? V37_TOP.creq(S.view) : publicHome(); // n° 96 : demande d'ajout d'un club, aussi sans compte
   else if (S.recovery) html = recoveryScreen();
   else if (!S.me) html = `<div class="splash bigsplash">${wordmark(Math.min(92, Math.round(innerWidth * 0.145)))}</div>`; // n° 90
@@ -90,7 +92,7 @@ async function refresh(msg) {
   if (await checkVersion()) return;
   if (!navigator.onLine) { toast('Pas de réseau : tu vois les dernières données chargées.'); render(true); return; }
   await loadMe();
-  if (S.me && S.devFor !== S.me.id) { S.devFor = S.me.id; registerDevice(); } // n° 147 : appareil connu ou nouveau (alerte par e-mail)
+  if (S.me && S.devFor !== S.me.id) { S.devFor = S.me.id; registerDevice().then(loadDevices); } // n° 147 ; 4.10.0 : la liste des appareils suit : appareil connu ou nouveau (alerte par e-mail)
   if (!S.joinChecked) { S.joinChecked = true; await openPendingJoin(); }
   if (!S.purged) { S.purged = true; sb.rpc('purge_trash').then(() => {}, () => {}); }
   await loadClub();

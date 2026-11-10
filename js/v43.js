@@ -70,7 +70,13 @@ export async function loadV43() {
 }
 // Encart rouge : fin de l'année payée ou de la gratuité atteinte (jamais à la création ; pas de blocage pour le moment)
 export function sendBanner() {
-  const s = S.sendState; if (!s || !s.period_over || !PERIOD[s.reason]) return '';
+  const s = S.sendState; if (!s) return '';
+  // 4.10.0 · n° 182 : club dont le président n'est pas encore validé : date limite (30 jours), puis corbeille de 90 jours
+  if (s.valid_by && !s.validated) {
+    const d = new Date(s.valid_by), left = Math.ceil((d.getTime() - Date.now()) / 864e5);
+    return `<div class="card alert" role="alert"><b>${esc(club()?.name || 'Ton club')} n’est pas encore validé.</b><span class="note" style="color:var(--pc-encre)">Date limite : le ${esc(d.toLocaleDateString('fr-FR'))}${left > 0 ? ` (dans ${left} jour${left > 1 ? 's' : ''})` : ''}. Sans validation, le club part à la corbeille pour 90 jours, puis il est effacé. Pour le faire valider, écris à <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>.</span></div>`;
+  }
+  if (!s.period_over || !PERIOD[s.reason]) return '';
   return `<div class="card alert" role="alert"><b>${esc(PERIOD[s.reason])} de ${esc(club()?.name || 'ton club')} est terminée depuis le ${esc(fmtDay(s.ends_at + 'T12:00:00'))}.</b><span class="note" style="color:var(--pc-encre)">Sans renouvellement, le compte du club risque d’être supprimé. Pour continuer, écris à <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>.</span></div>`;
 }
 

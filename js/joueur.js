@@ -93,7 +93,7 @@ export function playerPage(pid) {
   // autorisations
   h += `<div class="sec"><h2>Autorisations</h2></div><div class="card"><div class="list">${CONSENTS.filter(([k]) => !(isMajor(p) && k === 'alone')).map(([k, l]) => {
     if (k === 'transport' && isMajor(p)) l = 'Covoiturage';
-    const v = c[k] || {}, sub = v.at ? (v.ok ? 'Accordé' : 'Retiré') + ' le ' + new Date(v.at).toLocaleDateString('fr-FR') : 'Pas encore renseigné', pill = `<span class="pill ${v.ok ? 'ok' : 'ko'}">${v.ok ? 'Oui' : 'Non'}</span>`;
+    const v = c[k] || {}, sub = k === 'image' && v.conflict ? 'Les parents ne sont pas d’accord : le refus s’applique' + (v.at ? ' · ' + new Date(v.at).toLocaleDateString('fr-FR') : '') : v.at ? (v.ok ? 'Accordé' : 'Retiré') + ' le ' + new Date(v.at).toLocaleDateString('fr-FR') : 'Pas encore renseigné', pill = `<span class="pill ${v.ok ? 'ok' : 'ko'}">${v.ok ? 'Oui' : 'Non'}</span>`;
     return cons ? `<button class="row" data-act="consent" data-id="${pid}" data-k="${k}" aria-pressed="${!!v.ok}"><span class="g">${l}<small>${sub}</small></span>${pill}</button>` : `<div class="row static"><span class="g">${l}<small>${sub}</small></span>${pill}</div>`;
   }).join('')}</div></div>${cons ? '<p class="note">Touche une ligne pour accorder ou retirer. La date est enregistrée.</p>' : ''}<p class="note">${isMajor(p) ? 'Joueur majeur : il donne lui-même ses autorisations.' : 'Joueur mineur : les autorisations sont données par un parent' + (p.birth_date ? '.' : ' (date de naissance à compléter).')}</p>`;
   // licence et cotisation
@@ -135,7 +135,13 @@ Object.assign(ACTIONS, {
   player: (el, d) => { S.view = { type: 'player', id: d.id }; render(); },
   tsplayer: (el, d) => { const p = pl(d.id); if (!p) return; S.tsp = p.team_id; S.noStack = true; render(true); }, // n° 113
   consent: async (el, d) => {
-    const p = pl(d.id), c = { ...(p.consents || {}) }, cur = !!(c[d.k] || {}).ok;
+    const p = pl(d.id);
+    if (d.k === 'image') { // 4.10.0 · n° 183 : chaque parent a son choix ; dès qu'un parent refuse, le refus s'applique (calculé par la base)
+      const mine = ((p.consents?.image || {}).votes || {})[S.me.id], on = mine ? !!mine.ok : !!(p.consents?.image || {}).ok;
+      if (await run(sb.rpc('set_player_image', { p_player: p.id, p_ok: !on }), !on ? 'Accord enregistré.' : 'Refus enregistré.')) await refresh();
+      return;
+    }
+    const c = { ...(p.consents || {}) }, cur = !!(c[d.k] || {}).ok;
     c[d.k] = { ok: !cur, at: new Date().toISOString(), by: S.me.id };
     if (await run(sb.from('players').update({ consents: c }).eq('id', p.id))) { p.consents = c; render(true); }
   },

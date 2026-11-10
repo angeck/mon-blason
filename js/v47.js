@@ -9,7 +9,7 @@ import { unlinkPush } from './notif.js';
 import { captcha } from './auth.js';
 const unlink = () => Promise.race([unlinkPush().catch(() => {}), new Promise((r) => setTimeout(r, 1500))]); // comme profils.js : jamais bloquant
 
-function deviceId() {
+export function deviceId() {
   try {
     let d = localStorage.getItem('pc_device');
     if (!d || d.length < 8) { d = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()).replace(/-/g, ''); localStorage.setItem('pc_device', d); }

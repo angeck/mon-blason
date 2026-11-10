@@ -230,8 +230,8 @@ function reglagesView() {
   h += `<div class="sec"><h2>Zone sensible</h2></div><div class="card" style="border:2px solid var(--pc-erreur, #D93A3A)"><b>Transférer la présidence</b>`;
   if (off) h += `<p class="note">Proposée à <b>${esc(name(off.to_user))}</b> le ${esc(new Date(off.created_at).toLocaleDateString('fr-FR'))}. Tu restes président tant que la personne n’a pas accepté (14 jours au plus).</p><button class="btn ghost small" data-act="poffercancel">Annuler la proposition</button>`;
   else h += `<p class="note">La personne choisie doit accepter. Ensuite, tu restes au bureau comme membre.</p><div class="grid2" style="align-items:end">${field('pto', 'Nouveau président', `<select id="pto"><option value="">Choisir…</option>${ad.map((u) => `<option value="${u}">${esc(name(u))}</option>`).join('')}</select>`)}<button class="btn small ${isArmed('poffer') ? 'danger armed' : ''}" data-act="poffer">${isArmed('poffer') ? 'Confirmer la proposition' : 'Proposer'}</button></div>`;
-  h += `<hr style="border:0;border-top:1px solid var(--pc-ligne, #E3E6F0);margin:12px 0"><b>Supprimer le club</b><p class="note">Le club part à la corbeille pendant 30 jours : les membres ne le voient plus, toi seul peux le restaurer. Ensuite, tout est effacé. Tape le nom du club pour confirmer.</p>${field('cdel', 'Nom du club', `<input id="cdel" autocomplete="off" placeholder="${esc(c.name)}">`)}<button class="btn ghost small danger" data-act="clubdel">Supprimer le club</button></div>`;
-  // n° 116 : la corbeille du club (30 jours), venue de l'ancienne rubrique « Commun »
+  h += `<hr style="border:0;border-top:1px solid var(--pc-ligne, #E3E6F0);margin:12px 0"><b>Supprimer le club</b><p class="note">Le club part à la corbeille pendant 90 jours : les membres sont prévenus et ne le voient plus, toi seul peux le restaurer. Ensuite, tout est effacé. Tape le nom du club pour confirmer.</p>${field('cdel', 'Nom du club', `<input id="cdel" autocomplete="off" placeholder="${esc(c.name)}">`)}<button class="btn ghost small danger" data-act="clubdel">Supprimer le club</button></div>`;
+  // n° 116 : la corbeille du club (30 jours pour les éléments ; 90 jours pour le club lui-même, n° 181), venue de l'ancienne rubrique « Commun »
   h += trashBlock();
   return h;
 }
@@ -266,12 +266,12 @@ export function presidencyCard() {
 // ---------- n° 114 · club dans la corbeille ----------
 export function clubTrashBanner() {
   const c = club(); if (!c?.deleted_at) return '';
-  const end = new Date(new Date(c.deleted_at).getTime() + 30 * 864e5).toLocaleDateString('fr-FR');
+  const end = new Date(new Date(c.deleted_at).getTime() + 90 * 864e5).toLocaleDateString('fr-FR');
   return `<div class="card" style="border:3px solid var(--pc-erreur, #D93A3A)"><b>Club dans la corbeille</b><p class="note" style="margin:0">Les membres ne le voient plus. Il sera effacé le ${esc(end)}.</p><button class="btn main small" data-act="clubrestore">Restaurer le club</button></div>`;
 }
 export function clubGoneScreen() {
   const c = club();
-  return `<main class="bd"><div class="card"><b style="font-size:20px">${esc(c?.name || 'Ce club')} a été supprimé</b><p class="note">Le président a envoyé le club à la corbeille. Il sera effacé dans 30 jours, sauf si le président le restaure.</p><button class="btn" data-act="account">${icon('user', 20)}Mon compte</button></div></main>`;
+  return `<main class="bd"><div class="card"><b style="font-size:20px">${esc(c?.name || 'Ce club')} a été supprimé</b><p class="note">Le président a envoyé le club à la corbeille. Il sera effacé dans 90 jours, sauf si le président le restaure.</p><button class="btn" data-act="account">${icon('user', 20)}Mon compte</button></div></main>`;
 }
 
 // ---------- n° 115 · paiement en ligne : bientôt ----------
@@ -315,7 +315,7 @@ Object.assign(ACTIONS, {
     const v = document.getElementById('cdel')?.value || '';
     if (v.trim().toLowerCase() !== (club()?.name || '').trim().toLowerCase()) return toast('Tape exactement le nom du club pour confirmer.');
     const r = await run(sb.rpc('delete_club', { p_club: S.clubId, p_name: v }));
-    if (r) { toast('Club envoyé à la corbeille pour 30 jours.'); await refresh(); }
+    if (r) { toast('Club envoyé à la corbeille pour 90 jours.'); await refresh(); }
   },
   clubrestore: async () => { if (await run(sb.rpc('restore_club', { p_club: S.clubId }), 'Club restauré.')) await refresh(); },
 });
