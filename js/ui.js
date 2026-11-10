@@ -1,5 +1,5 @@
 // mypocketclub · éléments d'interface communs : logos, icônes, blason du club, en-tête, onglets, thème.
-import { BRAND } from '../config.js';
+import { BRAND, CGU_VERSION } from '../config.js';
 import { S, esc, club, onColor, contrast, lum, initials, isActive, toValidate, myTeamIds, casquettes, store } from './core.js';
 
 // ---------- Ballons (n° 97 · charte mypocketclub validée le 3 novembre 2026 · fichiers dans img/, copies de claude/logos/mypocketclub/) ----------
@@ -87,7 +87,7 @@ export const searchBtn = () => `<button class="roundbtn" data-act="csearch" aria
 // dans un espace : (retour) · Mon compte (n° 85 : plus de logo ; n° 99 : plus de pastille du rôle)
 export function header(o = {}) {
   const c = club(), br = o.brand || brandMode(), sport = br ? null : (c?.sport || null); // hors club : ballon de la marque, étoile creuse (n° 106)
-  const acc = S.session && S.me && S.view?.type !== 'account' && S.me.cgu_version && !S.me.deleted_at;
+  const acc = S.session && S.me && S.view?.type !== 'account' && S.me.cgu_version === CGU_VERSION && !S.me.deleted_at; // n° 180
   const inClub = acc && S.clubId && isActive() && S.onb === null;
   let h = `<div class="band">${o.back ? backBtn() : ''}<span class="logo">${wordmark(22, sport)}</span>${acc && S.view?.type !== 'csearch' ? searchBtn() : ''}${inClub && !o.back && casquettes().length ? espaceBtn() : ''}${acc ? accountBtn() : '<span style="width:44px"></span>'}</div>`;
   const tags = o.tags?.length ? `<div class="tags">${o.tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : '';

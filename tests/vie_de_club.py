@@ -1938,6 +1938,78 @@ ok("match sans liste · une seule notification par famille", QN('pU9', "body lik
 ok("entraînement · rien ne change (« Nouveau : entraînement »)", QN('pU9', "body like 'Séance 48%' and title = 'Nouveau : entraînement'") + " = 1")
 ok("4.8.0 · visiteur : fonctions fermées", "not has_function_privilege('anon', 'set_designation(uuid, text, uuid)', 'execute') and not has_function_privilege('anon', 'push_event_targets(uuid, uuid, boolean, boolean)', 'execute') and not has_function_privilege('anon', 'contact_holder(uuid, text)', 'execute')")
 
+# ---------- 4.9.0 · « Légal » d'avant la bêta (10 novembre 2026) ----------
+section("4.9.0 · n° 173 message du rôle déjà tenu ; n° 180 accords datés ; n° 177 trace des missions jeunes ; n° 179 vérifications")
+w("reset role;")
+w("\\i ../supabase/alpha_4_9_0.sql")
+w("\\i ../supabase/alpha_4_9_0.sql")  # relancée deux fois
+# --- n° 173 : le message vient de la base
+w(f"""do $$ begin
+  begin
+    insert into memberships(club_id, user_id, role, fonction, status) values ({C1}, {U('ad45')}, 'bureau', 'Trésorier', 'active');
+    insert into tests.kv values ('msg173', 'aucune erreur') on conflict (k) do update set v = excluded.v;
+  exception when others then insert into tests.kv values ('msg173', sqlerrm) on conflict (k) do update set v = excluded.v;
+  end;
+end $$;""")
+ok("n° 173 · deuxième trésorier refusé avec « Rôle déjà attribué : retire-le avant le changement. »", "(select v from tests.kv where k = 'msg173') = 'Rôle déjà attribué : retire-le avant le changement.'")
+ok("n° 173 · personne n'est devenu trésorier en plus", f"(select count(*) from memberships where club_id = {C1} and fonction = 'Trésorier' and status = 'active') = 1")
+# --- n° 180 : accords datés
+w(f"insert into players(club_id, team_id, first_name, last_name, birth_date, user_id) values ({C1}, {TL('U15')}, 'Adèle', 'Adulte45', current_date - interval '30 years', {U('ad45')});")
+w(f"insert into auth.users(id, raw_user_meta_data) values ('00000000-0000-4000-8000-000000949001', '{{\"first_name\":\"Inès\",\"last_name\":\"Inscrite49\",\"cgu_version\":\"1.0-2026-11-10\",\"optin_emails\":true,\"image_ok\":false}}') on conflict do nothing;")
+ok("n° 180 · inscription : version des conditions et date gardées", "(select cgu_version = '1.0-2026-11-10' and cgu_at is not null from profiles where id = '00000000-0000-4000-8000-000000949001')")
+ok("n° 180 · inscription : e-mails d'information acceptés et datés, droit à l'image non donné", "(select optin_emails and optin_at is not null and not image_ok and image_at is null from profiles where id = '00000000-0000-4000-8000-000000949001')")
+ok("n° 180 · par défaut, aucun accord (rien de coché d'avance)", f"(select not image_ok and image_at is null from profiles where id = {U('ad45')})")
+w("set role authenticated;")
+AS("ad45"); works("n° 180 · la personne donne son droit à l'image dans Mon compte", "select set_my_consents(true, null)")
+w("reset role;")
+ok("n° 180 · droit à l'image enregistré et daté", f"(select image_ok and image_at is not null from profiles where id = {U('ad45')})")
+ok("n° 180 · sa propre fiche joueur suit son choix", f"(select (consents->'image'->>'ok')::boolean from players where user_id = {U('ad45')} and deleted_at is null limit 1)")
+w(f"update profiles set image_at = now() - interval '3 days' where id = {U('ad45')};")
+w("set role authenticated;")
+AS("ad45"); works("n° 180 · même choix renvoyé", "select set_my_consents(true, false)")
+w("reset role;")
+ok("n° 180 · la date ne change que si le choix change", f"(select image_at < now() - interval '2 days' from profiles where id = {U('ad45')})")
+w("set role authenticated;")
+AS("ad45"); works("n° 180 · elle retire son accord", "select set_my_consents(false, null)")
+w("reset role;")
+ok("n° 180 · retrait daté, fiche joueur mise à jour", f"(select not image_ok and image_at > now() - interval '1 minute' from profiles where id = {U('ad45')}) and (select not (consents->'image'->>'ok')::boolean from players where user_id = {U('ad45')} and deleted_at is null limit 1)")
+w(f"insert into tests.kv(k, v) values ('img_k15', coalesce((select consents->'image'->>'ok' from players where id = {K('k15')}), 'vide')) on conflict (k) do update set v = excluded.v;")
+w("set role authenticated;")
+ASK("par_k15"); works("n° 180 · un parent donne son propre droit à l'image", "select set_my_consents(true, null)")
+w("reset role;")
+ok("n° 180 · la fiche de son enfant ne change pas (elle se règle sur la fiche de l'enfant)", f"coalesce((select consents->'image'->>'ok' from players where id = {K('k15')}), 'vide') = (select v from tests.kv where k = 'img_k15')")
+w(f"update profiles set cgu_version = 'alpha-3.0-2026-10' where id = {U('ad45')};")
+w("set role authenticated;")
+AS("ad45"); works("n° 180 · nouvelle version des conditions acceptée avec les deux accords", "select accept_cgu('1.0-2026-11-10', true, false)")
+w("reset role;")
+ok("n° 180 · version et date des conditions mises à jour", f"(select cgu_version = '1.0-2026-11-10' and cgu_at > now() - interval '1 minute' and optin_emails and optin_at is not null and not image_ok from profiles where id = {U('ad45')})")
+w("set role anon;")
+w("select set_config('request.uid', '', false);")
+fails("n° 180 · visiteur : pas d'accord sans compte", "select set_my_consents(true, true)")
+fails("n° 180 · visiteur : pas d'acceptation des conditions sans compte", "select accept_cgu('1.0-2026-11-10', true, true)")
+w("reset role;")
+ok("4.9.0 · visiteur : nouvelles fonctions fermées", "not has_function_privilege('anon', 'set_my_consents(boolean, boolean)', 'execute') and not has_function_privilege('anon', 'accept_cgu(text, boolean, boolean)', 'execute')")
+# --- n° 177 : trace datée des missions ouvertes aux jeunes
+w(f"insert into event_missions(event_id, label, slots, position, youth) values ({K('ev45')}, 'Chrono 49', 1, 9, false);")
+w("set role authenticated;")
+AS("b4"); works("n° 177 · la présidente ouvre une mission aux jeunes", f"update event_missions set youth = true where event_id = {K('ev45')} and label = 'Chrono 49'")
+AS("b4"); works("n° 177 · la présidente ajoute une mission par défaut ouverte aux jeunes", f"update clubs set default_missions = default_missions || '[{{\"label\":\"Arbitre 49\",\"slots\":1,\"youth\":true}}]'::jsonb where id = {C1}")
+w("reset role;")
+ok("n° 177 · trace datée, au nom de la personne, avec l'engagement lu", f"exists(select 1 from action_log where club_id = {C1} and action = 'mission ouverte aux jeunes dès U13' and actor = {U('b4')} and detail->>'mission' = 'Chrono 49' and detail->>'engagement' like 'Le club s''engage à ce qu''un adulte%' and at > now() - interval '1 minute')")
+ok("n° 177 · trace aussi pour les missions par défaut", f"exists(select 1 from action_log where club_id = {C1} and action = 'missions par défaut ouvertes aux jeunes dès U13' and actor = {U('b4')} and detail->>'missions' = 'Arbitre 49')")
+# --- n° 179 (a) : la remise et son motif, bureau (trésorerie) seulement
+w(f"insert into player_discount(player_id, amount, reason) values ({K('k9')}, 15, 'motif test 49') on conflict (player_id) do update set amount = 15, reason = 'motif test 49';")
+w("set role authenticated;")
+AS("cU9"); ok("n° 179 · un coach ne lit pas les remises ni leur motif", "not exists(select 1 from player_discount where reason = 'motif test 49')")
+ASK("par_k9"); ok("n° 179 · le parent ne lit pas le motif de la remise", "not exists(select 1 from player_discount where reason = 'motif test 49')")
+AS("b1"); ok("n° 179 · la trésorerie lit la remise", "exists(select 1 from player_discount where reason = 'motif test 49')")
+w("reset role;")
+# --- n° 179 (b) : visiteur non connecté
+w("set role anon;")
+w("select set_config('request.uid', '', false);")
+ok("n° 179 · visiteur : aucune fiche, aucun profil, aucune coordonnée", "not has_table_privilege('anon', 'players', 'select') and not has_table_privilege('anon', 'profiles', 'select') and not has_function_privilege('anon', 'player_contacts(uuid)', 'execute') and not has_function_privilege('anon', 'contact_card(uuid)', 'execute')")
+w("reset role;")
+
 # ---------- rapport ----------
 w("\\echo ''")
 w("\\echo '========== RAPPORT =========='")

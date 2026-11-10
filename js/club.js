@@ -106,7 +106,7 @@ export function feesBlock() {
   <div class="kick">Document et import</div>${field('fdoc', `${d ? 'Remplacer' : 'Joindre'} la fiche des tarifs (PDF ou image, 4 Mo maximum)`, '<input id="fdoc" type="file" accept="application/pdf,image/*" data-doc="tarifs">')}${d ? `<button class="btn small ghost ${isArmed('doc' + d.id) ? 'danger armed' : ''}" data-act="docdel" data-id="${d.id}">${isArmed('doc' + d.id) ? 'Confirmer le retrait' : 'Retirer le document'}</button>` : ''}
   ${field('fimp', 'Importer une grille : colle un tableau (Catégorie ou « Équipe Nom » ; Prix ; Part fédération facultative)', `<textarea id="fimp" data-fimp="1" placeholder="U9;150;45&#10;U11;160;45&#10;Équipe Reines;200">${esc(S.fimpText || '')}</textarea>`)}${field('fimpf', 'ou un fichier Excel / CSV', '<input id="fimpf" type="file" accept=".csv,.xlsx,.xls,.ods,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet" data-fimpfile="1">')}<button class="btn small ghost" data-act="fimpcheck">Vérifier</button>
   ${imp ? `<div class="card flat"><div class="kick">Changements</div><div class="list">${imp.map((r, i) => `<div class="row static"><span class="g">${esc(r.label)}<small>${r.err ? '<b style="color:var(--pc-non-texte)">' + esc(r.err) + '</b>' : esc(gridDiff(r))}</small></span><button class="btn small ghost" data-act="fimprm" data-i="${i}">Retirer</button></div>`).join('') || '<p class="empty">Aucune ligne lisible.</p>'}</div><label class="check"><input type="checkbox" data-fimpdel="1" ${S.fimpDel ? 'checked' : ''}><span>Supprimer les tarifs absents du fichier (repartir de zéro)</span></label>${imp.some((r) => !r.err) ? `<button class="btn main" data-act="fimpok">Valider l'import (${imp.filter((r) => !r.err).length} lignes)</button>` : ''}</div>` : ''}</details>`;
-  return h + `<button class="btn ghost" data-act="xlsxlic">${icon('down', 20)}Exporter la liste pour le trésorier (Excel)</button>`;
+  return h + exportBtn('xlsxlic', 'Exporter la liste pour le trésorier (Excel)');
 }
 const eur0 = (x) => (+x).toFixed(2).replace('.00', '').replace('.', ',') + ' €';
 const sameGrid = (r) => S.fees.find((g) => (r.team_id ? g.team_id === r.team_id : !g.team_id && (g.category || '').toLowerCase() === (r.category || '').toLowerCase()));
@@ -115,6 +115,13 @@ function parseGrid(text) {
   return String(text || '').split(/\r?\n/).map((l) => (l.split(/[;\t]/).length > 1 ? l.split(/[;\t]/) : l.split(','))).map((c) => c.map((x) => x.trim()))
     .filter((c) => c[0] && !(num(c[1]) == null && /cat|équip|equip|prix|tarif/i.test(c.join(' '))))
     .map((c) => { const isTeam = /^équipe\s+/i.test(c[0]), lab = c[0].replace(/^équipe\s+/i, ''), t = isTeam ? S.teams.find((x) => x.name.toLowerCase() === lab.toLowerCase()) : null, amount = num(c[1]), fed = num(c[2]); return { label: c[0], team_id: t?.id || null, category: lab, amount, fed, err: amount == null ? 'prix illisible' : isTeam && !t ? 'équipe inconnue' : '' }; });
+}
+// N° 178 (4.9.0) : avertissement avant chaque export de données personnelles ; second toucher pour télécharger.
+// L'export reste inscrit au journal du club (qui, quand), par la base.
+export const EXPORT_WARN = 'Ce fichier contient des données personnelles. Garde-le en lieu sûr et supprime-le quand tu n’en as plus besoin.';
+export function exportBtn(act, label, cls = 'ghost') {
+  if (!isArmed(act)) return `<button class="btn ${cls}" data-act="${act}">${icon('down', 20)}${esc(label)}</button>`;
+  return `<div class="card warn" role="alert"><p class="note" style="color:var(--pc-encre);margin:0"><b>${EXPORT_WARN}</b></p><button class="btn main" data-act="${act}">${icon('down', 20)}Confirmer : télécharger le fichier</button></div>`;
 }
 async function exportLicences() {
   try { await buildExport(); } catch (e) { console.error(e); toast("L'export a échoué. Réessaie, ou actualise l'application."); }
@@ -275,7 +282,7 @@ Object.assign(ACTIONS, {
   mf: (el, d) => { S.mf = d.v; render(true); },
   lf: (el, d) => { S.lf = S.lf === d.v && d.v !== 'Tous' ? 'Tous' : d.v; render(true); },
   feedel: async (el, d) => { if (await run(sb.from('fee_grid').delete().eq('id', d.id), 'Tarif retiré.')) await refresh(); },
-  xlsxlic: () => exportLicences(),
+  xlsxlic: () => { if (armed('xlsxlic')) exportLicences(); },
   docopen: async (el, d) => {
     const r = await run(sb.from('club_docs').select('data,file_name').eq('id', d.id).single()); if (!r) return;
     const blob = await (await fetch(r.data)).blob(), url = URL.createObjectURL(blob), a = document.createElement('a');

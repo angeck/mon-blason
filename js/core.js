@@ -58,7 +58,7 @@ export function toast(m, ms = 3200) { const t = $("#toast"); t.textContent = m; 
 export async function run(p, ok) {
   if (!navigator.onLine) { toast('Hors connexion : réessaie quand le réseau revient.'); return null; }
   const { data, error } = await p;
-  if (error) { console.error(error); toast(error.message ? error.message.replace(/^.*?: /, '') : 'Action impossible'); return null; }
+  if (error) { console.error(error); toast(error.message ? error.message.replace(/^[A-Za-z0-9_]+: /, '') : 'Action impossible'); return null; }
   if (ok) toast(ok);
   return data ?? true;
 }

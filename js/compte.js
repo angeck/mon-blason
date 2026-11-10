@@ -9,6 +9,7 @@ import { mailTestBlock, contactLine } from './v38.js';
 import { prepOff } from './v36.js';
 import { roleExtra, checkRole, newPwdFields } from './auth.js';
 import { pushCard } from './notif.js';
+import { legalLinks, LEGAL } from './legal.js';
 
 function roleRequest() {
   const r = S.rq, c = club(); if (!c) return '';
@@ -30,9 +31,8 @@ export function accountScreen() {
   ${field('pp', 'Pseudo (affiché dans les groupes)', `<input id="pp" name="nickname" value="${esc(me.nickname || '')}" maxlength="30">`)}
   ${field('pm', 'Adresse e-mail', `<input id="pm" value="${esc(S.session.user.email)}" readonly>`)}
   ${field('pt', "Téléphone (visible de l'encadrement et des familles concernées)", `<input id="pt" name="phone" type="tel" value="${esc(me.phone || '')}">`)}
-  <label class="check"><input type="checkbox" name="optin" ${me.optin_emails ? 'checked' : ''}><span>Recevoir les e-mails d'information de ${esc(BRAND.name)}</span></label>
-
   <button class="btn main" type="submit">Enregistrer mon profil</button></form>`;
+  h += consentsCard(me); // n° 180
   h += roleRequest();
   h += benevolatCard();
   h += pushCard();
@@ -48,10 +48,25 @@ export function accountScreen() {
   if (S.isAdmin) h += `<div class="sec"><h2>Administration mypocketclub</h2></div><div class="card">${adminButtons()}${adminsButton()}<button class="btn" data-act="cschemas">${icon('doc', 20)}Demandes de schéma</button><p class="note">Exercices envoyés par les coachs : dépose la vidéo du schéma, l’exercice est mis à jour et le coach prévenu.</p><button class="btn" data-act="creqs">${icon('search', 20)}Demandes de clubs${S.creqNew ? ' · ' + S.creqNew + ' à traiter' : ''}</button><p class="note">« Mon club n’est pas dans la liste » : clubs demandés par les visiteurs et les membres (simulation, aucun e-mail envoyé).</p><button class="btn" data-act="tapcounts">${icon('doc', 20)}Intérêt pour « Payer ma cotisation »</button><p class="note">Nombre de personnes qui ont touché le bouton « Bientôt disponible » (n° 114).</p></div>` + mailTestBlock(); // n° 86, n° 107
   h += `<div class="sec"><h2>Mes données</h2></div><div class="card"><button class="btn ghost" data-act="export">${icon('down', 20)}Télécharger mes données</button><p class="note">Un fichier avec ton profil, tes rôles, les fiches de tes enfants, tes réponses, tes messages et tes votes.</p>
   ${delBtn('delacc', 'me', 'Supprimer mon compte', 'Confirmer : supprimer mon compte dans 30 jours', isArmed('delacc'))}<p class="note">Tu es retiré tout de suite de tes clubs et groupes. Pendant 30 jours, tu peux annuler en te reconnectant ; ensuite tout est effacé. Les fiches de joueurs restent au club.</p></div>
-  <button class="btn ghost" data-act="legal">Mentions légales, confidentialité et conditions</button>
+  <div class="sec"><h2>Mentions et données</h2></div>${legalLinks()}
   <p class="note" style="text-align:center">${esc(S.session.user.email)} · ${esc(BRAND.name)} ${esc(VERSION)}</p>${contactLine()}</main>`;
   return h;
 }
+// N° 180 (4.9.0) : mes accords, datés ; enregistrés dès qu'on coche ou décoche
+const dt = (iso) => (iso ? new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
+function consentsCard(me) {
+  const line = (k, on, at, lab, sub) => `<label class="check"><input type="checkbox" data-consent="${k}" ${on ? 'checked' : ''}><span><b>${lab}</b><br><span class="det">${sub}${at ? ` · ${on ? 'accordé' : 'retiré'} le ${esc(dt(at))}` : ''}</span></span></label>`;
+  return `<div class="sec"><h2>Mes accords</h2></div><div class="card">${line('image', me.image_ok, me.image_at, "Droit à l'image", "Mon club peut publier des photos ou vidéos où j'apparais. Pour un enfant, l'accord se donne sur sa fiche.")}${line('optin', me.optin_emails, me.optin_at, "E-mails d'information", 'Rappels, nouveautés, relances. Les e-mails nécessaires (convocation, sécurité, changement d’un rendez-vous) partent toujours.')}
+  <p class="note">Conditions d'utilisation acceptées${me.cgu_at ? ' le ' + esc(dt(me.cgu_at)) : ''} (version ${esc(me.cgu_version || '')}). Textes en vigueur : version ${LEGAL.version} du ${LEGAL.date}.</p></div>`;
+}
+CHANGES.push(async (t) => {
+  if (!t.dataset.consent) return false;
+  const k = t.dataset.consent, on = t.checked;
+  if (await run(sb.rpc('set_my_consents', { p_image: k === 'image' ? on : null, p_optin: k === 'optin' ? on : null }), on ? 'Accord enregistré.' : 'Accord retiré.')) await refresh();
+  else t.checked = !on;
+  return true;
+});
+
 // n° 69, 70 : rubrique Bénévolat toujours visible ; ligne grisée qui dit pourquoi quand on ne peut pas être bénévole
 function benevolatCard() {
   const c = club(); if (!c) return '';
@@ -96,7 +111,7 @@ Object.assign(ACTIONS, {
 });
 FORMS.proff = async (v) => {
   if (!v.first_name.trim() || !v.last_name.trim()) return toast('Le prénom et le nom sont obligatoires.');
-  if (await run(sb.from('profiles').update({ first_name: niceFirst(v.first_name), last_name: niceLast(v.last_name), nickname: (v.nickname || '').trim() || null, phone: (v.phone || '').trim() || null, optin_emails: !!v.optin }).eq('id', S.me.id), 'Profil enregistré.')) await refresh();
+  if (await run(sb.from('profiles').update({ first_name: niceFirst(v.first_name), last_name: niceLast(v.last_name), nickname: (v.nickname || '').trim() || null, phone: (v.phone || '').trim() || null}).eq('id', S.me.id), 'Profil enregistré.')) await refresh();
 };
 INPUTS.push((t) => { if (t.dataset.r && t.type !== 'checkbox') { S.rq[t.dataset.r] = t.value; return true; } return false; });
 // n° 66 : décocher le bénévolat demande confirmation ; le contact rencontres et le président sont prévenus (par la base)

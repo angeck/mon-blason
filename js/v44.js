@@ -8,7 +8,7 @@ import {
 } from './core.js';
 import { icon } from './ui.js';
 import { upcoming } from './agenda.js';
-import { pendRows, licencesBlock, namesToCheck, feesBlock, teamsBlock, membersBlock, exportMembers } from './club.js';
+import { pendRows, licencesBlock, namesToCheck, feesBlock, teamsBlock, membersBlock, exportMembers, exportBtn } from './club.js';
 import { hoursCheckBlock, clubResults, partnerRequests, arrange } from './v35.js';
 import { exosForCounts } from './coach.js';
 import { teamToolsBlock, dupGroups } from './v38.js';
@@ -198,7 +198,7 @@ const BODY = {
       blk('relance', 'Relancer les cotisations', (late.length ? `<button class="btn ${isArmed('feeall') ? 'ink' : 'main'}" data-act="feeremall">${icon('mail', 20)}${isArmed('feeall') ? `Confirmer : relancer ${plural(late.length, 'cotisation non réglée', 'cotisations non réglées')}` : `Relancer toutes les cotisations non réglées (${late.length})`}</button><p class="note">Un rappel à chaque famille concernée, dans l’application. Une famille déjà relancée cette semaine, ou sans compte relié, est sautée.</p>` : '')),
       blk('resume', 'Résumé de la trésorerie', tresoSummary()),
       blk('liste', 'Licences et cotisations', licencesBlock()),
-      blk('export', 'Export Excel', `<button class="btn ghost" data-act="xlsxlic">${icon('down', 20)}Exporter la liste des cotisations (Excel)</button><p class="note">Chaque export est inscrit au journal du club.</p>`),
+      blk('export', 'Export Excel', `${exportBtn('xlsxlic', 'Exporter la liste des cotisations (Excel)')}<p class="note">Chaque export est inscrit au journal du club.</p>`),
       blk('paiement', 'Paiement en ligne', payTreasurerSoon()),
     ];
   },
@@ -207,7 +207,7 @@ const BODY = {
   // Secrétaire
   licences: () => licencesBlock(),
   fiches: () => { const vp = toValidate(); return [blk('demandes', 'Demandes à valider', vp.length ? `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>` : ''), blk('noms', 'Noms à vérifier', namesToCheck()), blk('membres', 'Membres', membersBlock())]; },
-  impexp: () => [blk('ajout', 'Ajouter des joueurs', addPlayersBlock(liveIds())), blk('export', 'Exporter', `<div class="sec"><h2>Exporter</h2></div><div class="card">${canExportMembers() ? `<button class="btn" data-act="xlsxmem">${icon('down', 20)}Exporter les membres et leurs coordonnées (Excel)</button><p class="note">Équipe, licence, parents, e-mails, téléphones, contact d’urgence. L’export est inscrit au journal du club, à ton nom.</p>` : '<p class="note" style="margin:0">L’export des coordonnées est réservé au président, au secrétaire et au secrétaire adjoint.</p>'}</div>`)],
+  impexp: () => [blk('ajout', 'Ajouter des joueurs', addPlayersBlock(liveIds())), blk('export', 'Exporter', `<div class="sec"><h2>Exporter</h2></div><div class="card">${canExportMembers() ? `${exportBtn('xlsxmem', 'Exporter les membres et leurs coordonnées (Excel)', '')}<p class="note">Équipe, licence, parents, e-mails, téléphones, contact d’urgence. L’export est inscrit au journal du club, à ton nom.</p>` : '<p class="note" style="margin:0">L’export des coordonnées est réservé au président, au secrétaire et au secrétaire adjoint.</p>'}</div>`)],
   // Correspondant licences
   lic: () => licencesBlock(),
   liccontact: () => contactCard('de licence'),
@@ -309,7 +309,7 @@ Object.assign(ACTIONS, {
     toast(r.sent ? `${plural(r.sent, 'rappel envoyé', 'rappels envoyés')} (${plural(r.people, 'compte prévenu', 'comptes prévenus')})${r.skipped ? ' · ' + plural(r.skipped, 'joueur sauté', 'joueurs sautés') + ' (déjà relancé cette semaine ou sans compte relié)' : ''}.` : 'Aucun rappel envoyé : les familles ont déjà été relancées cette semaine, ou n’ont pas de compte relié.');
     await refresh();
   },
-  xlsxmem: () => exportMembers(),
+  xlsxmem: () => { if (armed('xlsxmem')) exportMembers(); }, // n° 178 : avertissement d'abord
   seasonall: async () => {
     if (!armed('season')) return;
     const r = await run(sb.rpc('renew_club_season', { p_club: S.clubId, p_season: NEXT_SEASON }));

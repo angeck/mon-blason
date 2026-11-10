@@ -5,30 +5,27 @@ import { notListedLine } from './v37.js';
 import { S, sb, esc, run, toast, render, refresh, store, remember, fl, ROLES, JOIN_ROLES, SPORTS, FONCTIONS, niceFirst, niceLast, lum, onColor, isActive, club, ACTIONS, FORMS, INPUTS, CHANGES } from './core.js';
 import { header, wordmark, crest, field, icon } from './ui.js';
 import { unlinkPush } from './notif.js';
+import { legalBody, legalTitle, legalLinks, LEGAL } from './legal.js';
 
-// ---------- Textes légaux (vouvoiement, provisoires : à relire par un juriste) ----------
-export function legalText() {
-  return `<div class="card"><h3>Mentions légales</h3><p class="note" style="color:var(--pc-encre)">Application ${esc(BRAND.name)}, version ${esc(VERSION)} de test, éditée par ${esc(BRAND.editor)}. Contact : <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>. Site : <a href="${esc(BRAND.siteUrl)}" target="_blank" rel="noopener">${esc(BRAND.site)}</a>. Application hébergée par GitHub, Inc. (88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, États-Unis). Données hébergées par Supabase, Inc., dans un centre de données situé à Paris (région eu-west-3).</p></div>
-  <div class="card"><h3>Confidentialité (version courte)</h3><ul class="note" style="color:var(--pc-encre);padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
-  <li><b>Qui ?</b> Votre club décide des données utiles à sa vie sportive ; ${esc(BRAND.name)} les héberge et les traite pour lui.</li>
-  <li><b>Quoi ?</b> Identité, contact, rôles et équipes, présences et réponses, messages, autorisations datées, état de la licence et de la cotisation. Jamais de donnée médicale : seulement « certificat fourni » oui ou non.</li>
-  <li><b>Qui voit ?</b> Les familles voient les autres joueurs en « Prénom N. » ; les coachs voient leur équipe ; le bureau voit le club ; les téléphones restent entre l'encadrement et les familles concernées.</li>
-  <li><b>Enfants :</b> avant 15 ans, c'est le parent qui gère le compte et les autorisations.</li>
-  <li><b>Combien de temps ?</b> Tant que vous êtes membre. Une suppression passe par une corbeille de 30 jours, puis l'effacement est définitif, sauf ce que le club doit garder pour sa comptabilité.</li>
-  <li><b>Vos droits :</b> consulter et télécharger vos données, les corriger, les supprimer, vous opposer : depuis « Mon compte », en écrivant à ${esc(BRAND.contact)} ou au club. Vous pouvez saisir la CNIL (cnil.fr).</li></ul></div>
-  <div class="card"><h3>Conditions d'utilisation (alpha)</h3><ul class="note" style="color:var(--pc-encre);padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
-  <li>Version de test : des erreurs et des changements sont possibles ; ne l'utilisez pas comme seul outil du club.</li>
-  <li>Le compte joueur est réservé aux 15 ans et plus ; en dessous, un parent ouvre son compte et y relie l'enfant.</li>
-  <li>Chacun reste responsable de ce qu'il publie ; tout contenu signalé et contraire à la loi est retiré.</li>
-  <li>Ne saisissez jamais d'information médicale (maladie, allergie, traitement).</li>
-  <li>Le club certifie avoir le droit d'utiliser son logo.</li></ul><p class="note">Version ${esc(CGU_VERSION)}. Textes provisoires, à relire par un juriste avant l'ouverture à d'autres clubs.</p></div>`;
-}
-export const legalScreen = () => header({ back: true, kicker: 'Mentions et données', title: 'Tes données', brand: true }) + `<main class="bd">${legalText()}</main>`;
-
+// ---------- Textes légaux (n° 175, alpha 4.9.0) : js/legal.js ; ici, les écrans et les accords ----------
+export const legalScreen = () => { const id = S.view?.id; return header({ back: true, kicker: id ? 'Mentions et données' : 'Informations', title: esc(legalTitle(id)), brand: true }) + `<main class="bd legal">${legalBody(id)}</main>`; };
+// N° 180 : deux accords facultatifs, jamais cochés d'avance à l'inscription ; modifiables dans Mon compte
+export const consentBoxes = (img = false, opt = false) => `<label class="check"><input type="checkbox" name="image" ${img ? 'checked' : ''}><span><b>Droit à l'image (facultatif)</b><br><span class="det">J'accepte que mon club publie des photos ou vidéos où j'apparais. Pour un enfant, l'accord se donne sur sa fiche.</span></span></label>
+  <label class="check"><input type="checkbox" name="optin" ${opt ? 'checked' : ''}><span><b>E-mails d'information (facultatif)</b><br><span class="det">Rappels, nouveautés, relances. Les e-mails nécessaires (convocation, sécurité, changement d'un rendez-vous) partent toujours.</span></span></label>`;
+const cguBox = () => `<label class="check"><input type="checkbox" name="cgu" required><span>J'ai lu et j'accepte les <button type="button" class="btn link inl" data-act="legal" data-v="cgu">conditions d'utilisation</button> <b>(obligatoire)</b></span></label>`;
 function signupExtras() {
-  return `<div class="card pale"><div class="kick">Tes données</div><p class="note" style="color:var(--pc-encre)">Ton club organise sa vie (équipes, présences, messages) avec ${esc(BRAND.name)}, qui héberge les données pour lui. Seuls les membres concernés les voient : les familles voient les autres joueurs en « Prénom N. », l'encadrement voit les coordonnées. Tu peux consulter, télécharger, corriger ou supprimer tes données à tout moment depuis « Mon compte ».</p><button type="button" class="btn small ghost" data-act="legal">Confidentialité et conditions</button></div>
-  <label class="check"><input type="checkbox" name="cgu" required><span>J'ai lu et j'accepte les conditions d'utilisation <b>(obligatoire)</b></span></label>
-  <label class="check"><input type="checkbox" name="optin"><span>J'accepte de recevoir des e-mails d'information de ${esc(BRAND.name)} (facultatif)</span></label>`;
+  return `<div class="card pale"><div class="kick">Tes données</div><p class="note" style="color:var(--pc-encre)">Ton club organise sa vie (équipes, présences, messages) avec ${esc(BRAND.name)}, qui héberge les données pour lui, dans l'Union européenne. Jamais de publicité ni de revente. Tu peux consulter, corriger ou supprimer tes données depuis « Mon compte ».</p><button type="button" class="btn small ghost" data-act="legal" data-v="donnees">Lire « Vos données »</button></div>
+  ${cguBox()}
+  ${consentBoxes()}`;
+}
+
+// Liens en bas des écrans publics (connexion, inscription, accueil)
+const legalFoot = () => `<p class="legal-foot"><button class="btn link" data-act="legal" data-v="mentions">Mentions légales</button><span aria-hidden="true">·</span><button class="btn link" data-act="legal" data-v="donnees">Vos données</button><span aria-hidden="true">·</span><button class="btn link" data-act="legal" data-v="cgu">Conditions</button></p>`;
+
+export function restoreForm() {
+  const k = S.formKeep, f = k && document.getElementById(k.id); if (!f) return;
+  S.formKeep = null;
+  k.v.forEach(([n, v]) => { const x = f.querySelector(`input[name="${n}"]`); if (!x) return; if (x.type === 'checkbox') x.checked = v; else x.value = v; });
 }
 
 // ---------- Mots de passe (n° 45) ----------
@@ -95,7 +92,7 @@ export function publicHome() {
   return `<div class="splash" style="flex:none;padding:44px 20px 4px">${wordmark(46)}<p>L'agenda, les messages et la vie de ton club, au même endroit.</p></div><main class="bd" style="padding-top:8px">
   <div class="btns"><button class="btn main" data-act="auth" data-v="login">Se connecter</button><button class="btn" data-act="auth" data-v="signup">Créer un compte</button></div>
   ${searchBlock()}
-  <button class="btn link" data-act="legal" style="align-self:center">Mentions légales et données</button><p class="note" style="text-align:center">${esc(BRAND.name)} ${esc(VERSION)} · version de test</p><p class="note" style="text-align:center">Contact : <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a> · Site : <a href="${esc(BRAND.siteUrl)}" target="_blank" rel="noopener">${esc(BRAND.site)}</a></p></main>`;
+  ${legalFoot()}<p class="note" style="text-align:center">${esc(BRAND.name)} ${esc(VERSION)} · version de test</p><p class="note" style="text-align:center">Contact : <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a> · Site : <a href="${esc(BRAND.siteUrl)}" target="_blank" rel="noopener">${esc(BRAND.site)}</a></p></main>`;
 }
 export function publicClubScreen(id) {
   const c = (S.pclubs || {})[id];
@@ -124,7 +121,7 @@ export function authScreen() {
   ${captchaBox()}
   <button class="btn main" type="submit">${L ? 'Me connecter' : 'Créer mon compte'}</button></form>
   ${L ? '<button class="btn link" data-act="forgot" style="align-self:center">Mot de passe oublié ?</button>' : ''}
-  <button class="btn link" data-act="legal" style="align-self:center">Mentions légales et données</button></main>`;
+  ${legalFoot()}</main>`;
 }
 // Nouveau mot de passe après le lien « Mot de passe oublié »
 export function recoveryScreen() {
@@ -147,8 +144,10 @@ export async function openPendingJoin() {
   S.join = { byId: c.id, clubName: c.name, role: 'supporteur', teams: c.teams || [] }; S.onb = 'join'; S.view = null;
 }
 
+// N° 180 : nouvelle version des conditions (ou première acceptation) : présentée à la connexion, accord redemandé
 export function cguScreen() {
-  return header({ title: 'Avant de continuer', brand: true }) + `<main class="bd"><p style="margin:0">L'application a évolué : lis et accepte les conditions de la version ${esc(VERSION)} pour continuer.</p>${legalText()}<form id="cguf" class="card lift"><label class="check"><input type="checkbox" name="cgu" required><span>J'ai lu et j'accepte les conditions d'utilisation</span></label><label class="check"><input type="checkbox" name="optin"><span>J'accepte de recevoir des e-mails d'information (facultatif)</span></label><button class="btn main" type="submit">Continuer</button></form></main>`;
+  const me = S.me || {}, again = !!me.cgu_version;
+  return header({ title: 'Avant de continuer', brand: true }) + `<main class="bd"><p style="margin:0">${again ? `Les conditions d'utilisation et la page « Vos données » ont changé (version ${esc(LEGAL.version)} du ${esc(LEGAL.date)}). Lis-les, puis accepte les conditions pour continuer.` : "Lis et accepte les conditions d'utilisation pour continuer."}</p>${legalLinks()}<form id="cguf" class="card lift">${cguBox()}${consentBoxes(!!me.image_ok, !!me.optin_emails)}<button class="btn main" type="submit">Continuer</button></form></main>`;
 }
 
 // ---------- Logo du club : lecture, réduction, couleurs proposées ----------
@@ -258,7 +257,11 @@ Object.assign(ACTIONS, {
   },
   joincancel: () => { store.set('pc_join', ''); S.join = { code: '', role: 'supporteur', teams: [] }; S.onb = isActive() ? null : ''; render(); },
   logout: async () => { await unlinkPush(); await sb.auth.signOut(); },
-  legal: () => { S.prevView = S.view; S.view = { type: 'legal' }; render(); },
+  legal: (el, d) => { // n° 175 : la saisie de l'inscription (sauf les mots de passe) est gardée le temps de lire les textes
+    const f = el?.closest?.('form[id]') || document.querySelector('#authf, #cguf');
+    if (f && S.view?.type !== 'legal') S.formKeep = { id: f.id, v: [...f.querySelectorAll('input[name]')].filter((x) => x.type !== 'password' && x.type !== 'file').map((x) => [x.name, x.type === 'checkbox' ? x.checked : x.value]) };
+    S.view = { type: 'legal', id: d?.v || null }; render();
+  },
   onb: (el, d) => { S.tmpLogo = undefined; S.onb = d.v || null; if (!d.v && isActive()) S.onb = null; render(); },
   onbopen: () => { S.onb = ''; S.view = null; render(); },
   jrole: (el, d) => { S.join.role = d.v; render(true); },
@@ -289,14 +292,14 @@ Object.assign(FORMS, {
     if (!checkNewPwd(v)) return;
     if (!v.cgu) return toast("Merci d'accepter les conditions d'utilisation.");
     const fn = niceFirst(v.first_name), ln = niceLast(v.last_name);
-    const r = await authRun(sb.auth.signUp({ email: v.email, password: v.password, options: { captchaToken: captcha(), emailRedirectTo: location.href.split('#')[0], data: { first_name: fn, last_name: ln, cgu_version: CGU_VERSION, optin_emails: !!v.optin } } }));
+    const r = await authRun(sb.auth.signUp({ email: v.email, password: v.password, options: { captchaToken: captcha(), emailRedirectTo: location.href.split('#')[0], data: { first_name: fn, last_name: ln, cgu_version: CGU_VERSION, optin_emails: !!v.optin, image_ok: !!v.image } } }));
     if (r && !r.session) { S.authMode = 'login'; render(); toast("Compte créé. Ouvre le lien reçu par e-mail pour confirmer ton adresse, puis connecte-toi."); }
   },
   npwf: async (v, f) => {
     if (!checkNewPwd(v)) return;
     if (await authRun(sb.auth.updateUser({ password: v.password }), 'Mot de passe changé.')) { S.recovery = false; f.reset(); await refresh(); }
   },
-  cguf: async (v) => { if (await run(sb.rpc('accept_cgu', { p_version: CGU_VERSION, p_optin: !!v.optin }), 'Merci, conditions acceptées.')) await refresh(); },
+  cguf: async (v) => { if (await run(sb.rpc('accept_cgu', { p_version: CGU_VERSION, p_optin: !!v.optin, p_image: !!v.image }), 'Merci, conditions acceptées.')) await refresh(); },
   clubf: async (v) => {
     const cid = await run(sb.rpc('create_club', { p_name: v.name.trim(), p_city: v.city.trim(), p_sport: v.sport, p_c1: v.c1.toUpperCase(), p_c2: v.c2.toUpperCase() }), 'Club créé. Tu en es président.');
     if (!cid) return;

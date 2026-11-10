@@ -43,7 +43,7 @@ function toSettle(p, a) {
 function licForm(pid, A, disc, D = {}) {
   return `<form id="padminf" data-id="${pid}" class="card"><div class="kick">${disc ? 'Licence et réduction' : 'Licence'}</div>${field('g1', 'Licence', `<select id="g1" name="licence_state">${LIC.map((x) => `<option ${A.licence_state === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}${field('g2', 'Numéro de licence', `<input id="g2" name="licence_number" value="${esc(A.licence_number || '')}">`)}
     <label class="check"><input type="checkbox" name="health_doc" ${A.health_doc ? 'checked' : ''}><span>Certificat ou questionnaire de santé fourni</span></label>
-    ${disc ? `<div class="grid2">${field('g7', 'Réduction (€)', `<input id="g7" name="disc" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(D.amount ?? '')}">`)}${field('g8', 'Motif (bureau seulement)', `<input id="g8" name="disc_reason" value="${esc(D.reason || '')}" placeholder="Fratrie, aide de la mairie…">`)}</div>` : ''}
+    ${disc ? `<div class="grid2">${field('g7', 'Réduction (€)', `<input id="g7" name="disc" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(D.amount ?? '')}">`)}${field('g8', 'Motif (bureau seulement)', `<input id="g8" name="disc_reason" value="${esc(D.reason || '')}" placeholder="Fratrie, aide de la mairie…">`)}</div><p class="note">Ne pas saisir d’information médicale.</p>` : ''}
     <button class="btn main" type="submit">Enregistrer</button></form><p class="note">${disc ? 'Le montant dû vient de la grille des tarifs du club, moins la réduction. ' : ''}Aucune donnée de santé : seulement « fourni » ou non.</p>`;
 }
 export function presence(pid) {

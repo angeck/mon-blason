@@ -1,0 +1,11 @@
+Copyright (c) 2026 Gaël Raveneau. Tous droits réservés.
+
+mypocketclub : code, textes, écrans, nom et logo.
+
+Ce dépôt est rendu public pendant la phase de test de l'application. Cette
+publication ne donne aucun droit d'utiliser, de copier, de modifier, de
+redistribuer ou d'héberger tout ou partie de ce contenu sans l'accord écrit
+de son auteur (contact@mypocketclub.fr).
+
+Les bibliothèques de tiers incluses dans le dépôt gardent leur propre
+licence (js/vendor/LICENSE-xlsx-js-style.txt : Apache 2.0).

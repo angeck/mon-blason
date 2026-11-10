@@ -1,12 +1,12 @@
 // mypocketclub · point d'entrée : affichage des écrans, aiguillage des actions, connexion, temps réel.
 // Organisation : js/core.js (état, données, droits), js/ui.js (logos, en-tête, onglets), puis un module par onglet.
-import { BRAND, VERSION } from './config.js';
+import { BRAND, VERSION, CGU_VERSION } from './config.js';
 import {
   S, sb, $, run, toast, hooks, ACTIONS, FORMS, INPUTS, CHANGES, club, active, isActive, ROLES, roleLabel, teamName, teamsLabel, evTeams, pl, pname, team,
   loadMe, loadClub, loadGroup, checkVersion, fmtShort, hm, esc, timeRange,
 } from './js/core.js';
 import { header, tabBar, applyTheme, wordmark, icon } from './js/ui.js';
-import { authScreen, cguScreen, onboarding, legalScreen, publicHome, publicClubScreen, recoveryScreen, mountCaptcha, openPendingJoin } from './js/auth.js';
+import { authScreen, cguScreen, onboarding, legalScreen, publicHome, publicClubScreen, recoveryScreen, mountCaptcha, openPendingJoin, restoreForm } from './js/auth.js';
 import { homeTab, homeTitle } from './js/accueil.js';
 import { agendaTab, eventForm, eventPage, appelPage } from './js/agenda.js';
 import { messagesTab, groupForm, groupPage, grp, scrollEnd, bump, forwardPage } from './js/messages.js';
@@ -63,7 +63,7 @@ function render(keep) {
   else if (vt === 'legal') html = legalScreen();
   else if (vt === 'pclub') html = publicClubScreen(S.view.id);
   else if (S.me.deleted_at) html = deletedScreen();
-  else if (!S.me.cgu_version) html = cguScreen();
+  else if (S.me.cgu_version !== CGU_VERSION) html = cguScreen(); // n° 180 : nouvelle version des conditions présentée à la connexion
   else if (S.view?.type === 'account') html = accountScreen();
   else if (V37_TOP[vt]) html = V37_TOP[vt](S.view); // n° 96 : demande d'ajout d'un club, page Admin
   else if (!S.clubId || !isActive() || S.onb !== null) html = onboarding();
@@ -84,6 +84,7 @@ function render(keep) {
   window.scrollTo(0, y);
   onScroll();
   mountCaptcha();
+  restoreForm(); // n° 175 : retour de « Conditions » ou « Vos données » : l'inscription garde sa saisie
 }
 async function refresh(msg) {
   if (await checkVersion()) return;
