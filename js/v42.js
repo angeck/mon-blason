@@ -154,7 +154,7 @@ export function sendCard(d, step) {
   if (off) return h + `<button class="btn small ghost" data-act="convpdf" disabled>${icon('down', 18)}Imprimer ou enregistrer le PDF</button><p class="note">Complète d’abord ce qui manque ci-dessus.</p></div>`;
   h += `<div class="btns"><button class="btn small ghost" data-act="convpdf">${icon('down', 18)}Imprimer ou enregistrer le PDF</button><button class="btn small ghost" data-act="cvpreview">${icon('doc', 18)}Voir le PDF joint</button></div>`;
   // n° 124 : compte non validé → envoi grisé, le PDF reste libre
-  if (!canSend()) h += `<div class="card warn" style="transform:none"><b>Envoi réservé aux comptes validés par ${esc(BRAND.name)}</b><span class="note" style="color:var(--pc-encre)">Tu peux télécharger le PDF et l’envoyer toi-même. Pour ouvrir l’envoi par e-mail et dans ${esc(BRAND.name)}, écris à <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>.</span></div>`;
+  if (!canSend()) h += `<div class="card warn" style="transform:none"><b>Envoi réservé aux comptes validés par ${esc(BRAND.name)}</b><span class="note" style="color:var(--pc-texte-ecran)">Tu peux télécharger le PDF et l’envoyer toi-même. Pour ouvrir l’envoi par e-mail et dans ${esc(BRAND.name)}, écris à <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>.</span></div>`;
   const n = s.dest.length, mails = s.dest.filter((x) => x.mode === 'email').length, left = S.convoc.gate?.left;
   if (s.confirm) {
     h += `<div class="card lift" style="transform:none"><b>${n > 1 ? n + ' envois' : 'Un envoi'} à faire</b><div class="list">${s.dest.map((x) => `<div class="row static"><span class="g">${esc(label(x))}</span></div>`).join('')}</div>

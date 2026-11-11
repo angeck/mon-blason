@@ -14,7 +14,7 @@ export const consentBoxes = (img = false, opt = false) => `<label class="check">
   <label class="check"><input type="checkbox" name="optin" ${opt ? 'checked' : ''}><span><b>E-mails d'information (facultatif)</b><br><span class="det">Rappels, nouveautés, relances. Les e-mails nécessaires (convocation, sécurité, changement d'un rendez-vous) partent toujours.</span></span></label>`;
 const cguBox = () => `<label class="check"><input type="checkbox" name="cgu" required><span>J'ai lu et j'accepte les <button type="button" class="btn link inl" data-act="legal" data-v="cgu">conditions d'utilisation</button> <b>(obligatoire)</b></span></label>`;
 function signupExtras() {
-  return `<div class="card pale"><div class="kick">Tes données</div><p class="note" style="color:var(--pc-encre)">Ton club organise sa vie (équipes, présences, messages) avec ${esc(BRAND.name)}, qui héberge les données pour lui, dans l'Union européenne. Jamais de publicité ni de revente. Tu peux consulter, corriger ou supprimer tes données depuis « Mon compte ».</p><button type="button" class="btn small ghost" data-act="legal" data-v="donnees">Lire « Vos données »</button></div>
+  return `<div class="card pale"><div class="kick">Tes données</div><p class="note" style="color:var(--pc-texte-ecran)">Ton club organise sa vie (équipes, présences, messages) avec ${esc(BRAND.name)}, qui héberge les données pour lui, dans l'Union européenne. Jamais de publicité ni de revente. Tu peux consulter, corriger ou supprimer tes données depuis « Mon compte ».</p><button type="button" class="btn small ghost" data-act="legal" data-v="donnees">Lire « Vos données »</button></div>
   ${cguBox()}
   ${consentBoxes()}`;
 }
@@ -81,18 +81,22 @@ const needCaptcha = () => { if (TURNSTILE_SITEKEY && !S.captcha) { toast('Vérif
 // ---------- Accueil public : recherche de clubs (n° 49) ----------
 const pubHeader = (o = {}) => header({ brand: true, back: o.back, kicker: o.kicker, title: o.title });
 const memberOf = (id) => !!S.session && (S.mems || []).some((m) => m.club_id === id && m.status === 'active');
-export function searchBlock() {
+export function searchBlock(part = '') {
   const P = S.ps || (S.ps = { q: '', sport: '', res: null });
-  return `<form id="psf" class="card lift" role="search">${field('psq', 'Chercher un club', `<input id="psq" type="search" data-psq="1" value="${esc(P.q)}" placeholder="Nom du club, ville ou code postal" autocomplete="off" minlength="2">`)}
+  const form = `<form id="psf" class="card lift" role="search">${field('psq', 'Chercher un club', `<input id="psq" type="search" data-psq="1" value="${esc(P.q)}" placeholder="Nom du club, ville ou code postal" autocomplete="off" minlength="2">`)}
   <div class="chips">${[['', 'Tous les sports'], ['Basket-ball', 'Basket'], ['Volley-ball', 'Volley']].map(([v, l]) => `<button type="button" class="chip" data-act="pssport" data-v="${v}" aria-pressed="${P.sport === v}">${l}</button>`).join('')}</div>
-  <button class="btn main" type="submit">Chercher</button></form>
-  ${P.res === null ? '' : P.res.length ? `<div class="stack">${P.res.map((c) => `<button class="card" data-act="pclub" data-id="${c.id}" style="flex-direction:row;align-items:center;gap:14px;border:0;text-align:left;font:inherit;color:inherit">${crest(c, 40, '#FFFFFF')}<span style="display:flex;flex-direction:column;min-width:0;flex:1"><b>${esc(c.name)}</b><span class="det">${esc([c.city, c.postal_code].filter(Boolean).join(' · '))}${c.city || c.postal_code ? ' · ' : ''}${esc(c.sport)}</span></span>${memberOf(c.id) ? '<span class="pill ok">Déjà membre</span>' : '<span class="chev"></span>'}</button>`).join('')}</div>` : '<p class="empty">Aucun club trouvé. Essaie la ville, ou demande le code du club à ton coach.</p>'}${P.res === null ? '' : notListedLine(P.done, P.res.length > 0)}`;
+  <button class="btn main" type="submit">Chercher</button></form>`;
+  const res = `${P.res === null ? '' : P.res.length ? `<div class="stack">${P.res.map((c) => `<button class="card" data-act="pclub" data-id="${c.id}" style="flex-direction:row;align-items:center;gap:14px;border:0;text-align:left;font:inherit;color:inherit">${crest(c, 40, '#FFFFFF')}<span style="display:flex;flex-direction:column;min-width:0;flex:1"><b>${esc(c.name)}</b><span class="det">${esc([c.city, c.postal_code].filter(Boolean).join(' · '))}${c.city || c.postal_code ? ' · ' : ''}${esc(c.sport)}</span></span>${memberOf(c.id) ? '<span class="pill ok">Déjà membre</span>' : '<span class="chev"></span>'}</button>`).join('')}</div>` : '<p class="empty">Aucun club trouvé. Essaie la ville, ou demande le code du club à ton coach.</p>'}${P.res === null ? '' : notListedLine(P.done, P.res.length > 0)}`;
+  return part === 'form' ? form : part === 'results' ? res : form + res;
 }
+// 5.0.0 · n° 197 : écran d'ouverture de l'identité (fond encre, « club » bleu clair, slogan), avec la recherche d'un club sous le slogan
 export function publicHome() {
-  return `<div class="splash" style="flex:none;padding:44px 20px 4px">${wordmark(46)}<p>L'agenda, les messages et la vie de ton club, au même endroit.</p></div><main class="bd" style="padding-top:8px">
-  <div class="btns"><button class="btn main" data-act="auth" data-v="login">Se connecter</button><button class="btn" data-act="auth" data-v="signup">Créer un compte</button></div>
-  ${searchBlock()}
-  ${legalFoot()}<p class="note" style="text-align:center">${esc(BRAND.name)} ${esc(VERSION)} · version de test</p><p class="note" style="text-align:center">Contact : <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a> · Site : <a href="${esc(BRAND.siteUrl)}" target="_blank" rel="noopener">${esc(BRAND.site)}</a></p></main>`;
+  return `<div class="ouvert" data-ouv="1"><div class="splash" style="flex:none;padding:calc(36px + env(safe-area-inset-top)) 20px 4px">${wordmark(44, null, true)}<p class="slog">Tout ton club dans ta poche.</p></div><main class="bd" style="padding-top:12px">
+  ${searchBlock('form')}
+  <div class="btns"><button class="btn main" data-act="auth" data-v="login">Se connecter</button></div>
+  <button class="btn link jaune" data-act="auth" data-v="signup">Je n'ai pas encore de compte</button>
+  ${searchBlock('results')}
+  ${legalFoot()}<p class="note" style="text-align:center">${esc(BRAND.name)} ${esc(VERSION)} · version de test</p><p class="note" style="text-align:center">Contact : <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a> · Site : <a href="${esc(BRAND.siteUrl)}" target="_blank" rel="noopener">${esc(BRAND.site)}</a></p></main></div>`;
 }
 export function publicClubScreen(id) {
   const c = (S.pclubs || {})[id];

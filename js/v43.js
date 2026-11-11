@@ -74,10 +74,10 @@ export function sendBanner() {
   // 4.10.0 · n° 182 : club dont le président n'est pas encore validé : date limite (30 jours), puis corbeille de 90 jours
   if (s.valid_by && !s.validated) {
     const d = new Date(s.valid_by), left = Math.ceil((d.getTime() - Date.now()) / 864e5);
-    return `<div class="card alert" role="alert"><b>${esc(club()?.name || 'Ton club')} n’est pas encore validé.</b><span class="note" style="color:var(--pc-encre)">Date limite : le ${esc(d.toLocaleDateString('fr-FR'))}${left > 0 ? ` (dans ${left} jour${left > 1 ? 's' : ''})` : ''}. Sans validation, le club part à la corbeille pour 90 jours, puis il est effacé. Pour le faire valider, écris à <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>.</span></div>`;
+    return `<div class="card alert" role="alert"><b>${esc(club()?.name || 'Ton club')} n’est pas encore validé.</b><span class="note" style="color:var(--pc-texte-ecran)">Date limite : le ${esc(d.toLocaleDateString('fr-FR'))}${left > 0 ? ` (dans ${left} jour${left > 1 ? 's' : ''})` : ''}. Sans validation, le club part à la corbeille pour 90 jours, puis il est effacé. Pour le faire valider, écris à <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>.</span></div>`;
   }
   if (!s.period_over || !PERIOD[s.reason]) return '';
-  return `<div class="card alert" role="alert"><b>${esc(PERIOD[s.reason])} de ${esc(club()?.name || 'ton club')} est terminée depuis le ${esc(fmtDay(s.ends_at + 'T12:00:00'))}.</b><span class="note" style="color:var(--pc-encre)">Sans renouvellement, le compte du club risque d’être supprimé. Pour continuer, écris à <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>.</span></div>`;
+  return `<div class="card alert" role="alert"><b>${esc(PERIOD[s.reason])} de ${esc(club()?.name || 'ton club')} est terminée depuis le ${esc(fmtDay(s.ends_at + 'T12:00:00'))}.</b><span class="note" style="color:var(--pc-texte-ecran)">Sans renouvellement, le compte du club risque d’être supprimé. Pour continuer, écris à <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>.</span></div>`;
 }
 
 // ---------- n° 124 · écran « Clubs à valider » (administrateur) ----------
@@ -100,7 +100,7 @@ function avalScreen() {
   const l = S.aclubs; if (!l) return head + '<main class="bd"><p class="empty">Chargement…</p></main>';
   const todo = l.filter((x) => x.president_id && !x.reason), over = l.filter((x) => x.reason && x.ends_at && x.ends_at <= today()), okL = l.filter((x) => x.reason && !(x.ends_at && x.ends_at <= today())), none = l.filter((x) => !x.president_id);
   const sec = (t, arr, empty) => `<div class="sec"><h2>${t}</h2><span class="det">${arr.length}</span></div>` + (arr.length ? arr.map(clubCard).join('') : `<p class="empty">${empty}</p>`);
-  return head + `<main class="bd"><div class="card pale" style="transform:none"><b>Envoi des convocations</b><span class="note" style="color:var(--pc-encre)">Un club envoie ses convocations par e-mail et dans ${esc(BRAND.name)} seulement quand son président est validé ici (après paiement, devis accepté ou gratuité). Les fonctions données par un président validé le sont aussi. Un nouveau président (club créé, présidence transférée) doit être validé à nouveau. Fin de période : un encart rouge prévient le club, l’envoi n’est pas coupé.</span></div>
+  return head + `<main class="bd"><div class="card pale" style="transform:none"><b>Envoi des convocations</b><span class="note" style="color:var(--pc-texte-ecran)">Un club envoie ses convocations par e-mail et dans ${esc(BRAND.name)} seulement quand son président est validé ici (après paiement, devis accepté ou gratuité). Les fonctions données par un président validé le sont aussi. Un nouveau président (club créé, présidence transférée) doit être validé à nouveau. Fin de période : un encart rouge prévient le club, l’envoi n’est pas coupé.</span></div>
     ${sec('À valider', todo, 'Aucun président en attente.')}${over.length ? sec('Fin de période atteinte', over, '') : ''}${sec('Validés', okL, 'Aucun club validé.')}${none.length ? `<details class="card flat"><summary>Sans président (${none.length})</summary>${none.map(clubCard).join('')}</details>` : ''}</main>`;
 }
 async function loadAclubs() { S.aclubs = (await run(sb.rpc('admin_clubs'))) || []; S.avalN = S.aclubs.filter((x) => x.president_id && !x.reason).length; }

@@ -1,10 +1,12 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr" class="ouv">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>mypocketclub</title>
-<meta name="theme-color" content="#2F5BFF">
+<meta name="theme-color" content="#11162E">
+<meta name="color-scheme" content="light dark">
+<script>try{var t=localStorage.getItem("pc_theme");if(t==="clair"||t==="sombre")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
@@ -21,7 +23,7 @@
 <body>
 <!-- Le nom affiché vient de config.js ; ce titre ne sert qu'au tout premier affichage. -->
 <!-- N° 90 et 97 : écran d'ouverture = grand logo « mypocketclub » (« my » en étiquette, ballon de la marque « étoile creuse » dans le « o », n° 106), disparaît dès que l'application est prête -->
-<div id="app"><div class="splash bigsplash"><span class="wordmark" role="img" aria-label="my pocket club"><span class="my">my</span><span class="pocket">p<img class="ball" src="img/ballon-mypocketclub-etoile.svg" alt="" aria-hidden="true">cket</span><span class="club">club</span></span></div></div>
+<div id="app"><div class="splash bigsplash" data-ouv="1"><span class="wordmark ink" role="img" aria-label="my pocket club"><span class="my">my</span><span class="pocket">p<img class="ball" src="img/ballon-mypocketclub-etoile.svg" alt="" aria-hidden="true">cket</span><span class="club">club</span></span></div></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="app.js"></script>
 </body>

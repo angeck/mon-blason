@@ -1,4 +1,4 @@
-# mypocketclub · alpha 4.10.0
+# mypocketclub · alpha 5.0.0
 
 © 2026 Gaël Raveneau. Tous droits réservés. Ce dépôt est public pendant la phase de test, mais le code, les textes, le nom et le logo ne sont pas libres de droits : aucune réutilisation, copie ou redistribution sans accord écrit. Voir `LICENSE`. La bibliothèque `js/vendor/xlsx.bundle.js` garde sa propre licence (Apache 2.0).
 
@@ -33,6 +33,10 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 - `tests/ecrans.py` : parcours dans un navigateur sans écran, avec le faux client `tests/faux_supabase.js` (488 tests), dont l'import des listes fictives de `tests/fichiers/` (fabriquées par `fabriquer.py`).
 
 Toutes les personnes des tests sont fictives.
+
+## Alpha 5.0.0
+
+Deux ajouts : n° 197 (écran d'ouverture de l'identité : fond encre, cercle jaune, logo « club » bleu clair, slogan « Tout ton club dans ta poche », recherche d'un club sous le slogan, bouton « Se connecter », lien jaune « Je n'ai pas encore de compte », pied de page conservé avec mentions légales, version et contact ; même fond pour l'écran de chargement) et n° 168 (thème sombre : trois choix dans Mon compte, « Comme mon téléphone » par défaut, « Clair », « Sombre », gardés sur l'appareil et dans le compte ; couleurs par rôles `--pc-texte-ecran`, `--pc-action`, `--pc-action-texte`, `--pc-aplat` dans `style.css`, en-tête encre en sombre). Pas de script SQL. À contrôler à l'œil sur un vrai téléphone : contraste des états et des tuiles de l'appel, couleur de club en en-tête. Les PDF et e-mails restent clairs. Logos de sport : le logo est écrit en HTML, aucune version « fond encre » à fabriquer.
 
 ## Alpha 4.10.0
 

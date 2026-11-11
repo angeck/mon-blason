@@ -84,10 +84,10 @@ export function dupBlock(e) {
 export function dupListBlock() {
   const l = S.dups || []; if (!l.length) return '';
   const todo = l.filter((d) => d.can_decide).length;
-  return `<div class="card${todo ? ' warn' : ''}"><b>Doublons signalés</b>${todo ? `<p class="note" style="color:var(--pc-encre)">${todo} à trancher.</p>` : ''}<div class="list">${l.map((d) => {
+  return `<div class="card${todo ? ' warn' : ''}"><b>Doublons signalés</b>${todo ? `<p class="note" style="color:var(--pc-texte-ecran)">${todo} à trancher.</p>` : ''}<div class="list">${l.map((d) => {
     const on = isArmed('dup' + d.id);
     return `<div class="row static"><span class="g">« ${esc(d.title)} » = « ${esc(d.other_title)} »<small>${esc(d.reported_by_name || '')} · ${esc(dt(d.reported_at))}</small></span>${DUPST[d.status] || ''}${d.can_decide ? `<button class="btn small ${on ? 'danger armed' : 'main'}" data-act="dupmerge" data-id="${d.id}">${on ? 'Confirmer la fusion' : 'Fusionner'}</button><button class="btn small ghost" data-act="dupno" data-id="${d.id}">Pas un doublon</button>` : ''}</div>`;
-  }).join('')}</div><p class="note" style="color:var(--pc-encre)">« Fusionner » garde le second exercice : les séances qui utilisaient le premier pointent vers lui, et le premier part à la corbeille.</p></div>`;
+  }).join('')}</div><p class="note" style="color:var(--pc-texte-ecran)">« Fusionner » garde le second exercice : les séances qui utilisaient le premier pointent vers lui, et le premier part à la corbeille.</p></div>`;
 }
 Object.assign(ACTIONS, {
   dupstart: (el, d) => { S.dupFor = d.id; S.dupQ = ''; render(true); },

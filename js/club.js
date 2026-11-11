@@ -82,7 +82,7 @@ export function licencesBlock() {
   const tot = (k) => all.reduce((s0, p) => s0 + (+(adminOf(p.id) || {})[k] || 0), 0);
   const feeTile = !nf ? `<div class="card"><span class="big">${paid}/${all.length}</span><span class="det">cotisations payées · ${eur(tot('fee_paid'))} sur ${eur(tot('fee_amount'))}</span></div>` : seeOk ? `<div class="card"><span class="big">${paid}/${all.length}</span><span class="det">cotisations à jour</span></div>` : `<div class="card"><span class="big">${all.filter((p) => adminOf(p.id)?.health_doc).length}/${all.length}</span><span class="det">certificats fournis</span></div>`;
   let h = `<div class="sec"><h2>${nf ? 'Joueurs et licences' : 'Joueurs, licences et cotisations'}</h2></div><div class="grid2"><div class="card"><span class="big">${lic}/${all.length}</span><span class="det">licenciés</span></div>${feeTile}</div>`;
-  if (noBirth) h += `<button class="card warn" data-act="lf" data-v="Date de naissance manquante" style="border:0;text-align:left;font:inherit;color:inherit"><b>${plural(noBirth, 'joueur sans date de naissance', 'joueurs sans date de naissance')}</b><span class="note" style="color:var(--pc-encre)">À compléter : sans elle, le joueur est traité comme mineur. Touche pour voir la liste.</span></button>`;
+  if (noBirth) h += `<button class="card warn" data-act="lf" data-v="Date de naissance manquante" style="border:0;text-align:left;font:inherit;color:inherit"><b>${plural(noBirth, 'joueur sans date de naissance', 'joueurs sans date de naissance')}</b><span class="note" style="color:var(--pc-texte-ecran)">À compléter : sans elle, le joueur est traité comme mineur. Touche pour voir la liste.</span></button>`;
   const F = ['Tous', 'Licence à finir', ...(!nf ? ['Reste à payer'] : seeOk ? ['Cotisation pas à jour'] : []), 'Certificat manquant', ...(noBirth ? ['Date de naissance manquante'] : [])];
   const sub = (p, a) => (nf ? '' : ` · Dû ${eur(a.fee_amount)} · Réglé ${eur(a.fee_paid || 0)} · Reste ${eur(rest(p))}`);
   h += `<div class="chips">${F.map((x) => `<button class="chip" data-act="lf" data-v="${x}" aria-pressed="${f === x}">${x}</button>`).join('')}</div>`;
@@ -121,7 +121,7 @@ function parseGrid(text) {
 export const EXPORT_WARN = 'Ce fichier contient des données personnelles. Garde-le en lieu sûr et supprime-le quand tu n’en as plus besoin.';
 export function exportBtn(act, label, cls = 'ghost') {
   if (!isArmed(act)) return `<button class="btn ${cls}" data-act="${act}">${icon('down', 20)}${esc(label)}</button>`;
-  return `<div class="card warn" role="alert"><p class="note" style="color:var(--pc-encre);margin:0"><b>${EXPORT_WARN}</b></p><button class="btn main" data-act="${act}">${icon('down', 20)}Confirmer : télécharger le fichier</button></div>`;
+  return `<div class="card warn" role="alert"><p class="note" style="color:var(--pc-texte-ecran);margin:0"><b>${EXPORT_WARN}</b></p><button class="btn main" data-act="${act}">${icon('down', 20)}Confirmer : télécharger le fichier</button></div>`;
 }
 async function exportLicences() {
   try { await buildExport(); } catch (e) { console.error(e); toast("L'export a échoué. Réessaie, ou actualise l'application."); }
@@ -255,7 +255,7 @@ export function clubTab() {
   let h = '';
   // n° 101 : plus de carte « Gestion du club » dans l'onglet : la gestion se fait dans l'espace (bouton aux quatre carrés)
   if (!board && vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>`;
-    h += `<div class="card yellow" style="transform:none"><span class="kick" style="color:var(--pc-encre)">Code pour rejoindre le club</span><span class="codebox">${esc(c.join_code)}</span><button class="btn ink small" data-act="share">${icon('share', 18, '#FFFFFF')}Partager l'invitation</button></div>`;
+    h += `<div class="card yellow" style="transform:none"><span class="kick" style="color:var(--pc-texte-ecran)">Code pour rejoindre le club</span><span class="codebox">${esc(c.join_code)}</span><button class="btn ink small" data-act="share">${icon('share', 18, '#FFFFFF')}Partager l'invitation</button></div>`;
   h += contactsBlock() + teamsBlock() + (board ? '' : feesBlock() + membersBlock());
   return h;
 }

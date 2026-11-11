@@ -61,7 +61,7 @@ function render(keep) {
   else if (unsubToken()) html = unsubScreen(); // n° 185 : lien de désinscription des e-mails d'information, connecté ou non
   else if (!S.session) html = vt === 'legal' ? legalScreen() : vt === 'auth' ? authScreen() : vt === 'pclub' ? publicClubScreen(S.view.id) : vt === 'creq' ? V37_TOP.creq(S.view) : publicHome(); // n° 96 : demande d'ajout d'un club, aussi sans compte
   else if (S.recovery) html = recoveryScreen();
-  else if (!S.me) html = `<div class="splash bigsplash">${wordmark(Math.min(92, Math.round(innerWidth * 0.145)))}</div>`; // n° 90
+  else if (!S.me) html = `<div class="splash bigsplash" data-ouv="1">${wordmark(Math.min(92, Math.round(innerWidth * 0.145)), null, true)}</div>`; // n° 90 ; 5.0.0 : fond encre, comme l'écran d'ouverture
   else if (vt === 'legal') html = legalScreen();
   else if (vt === 'pclub') html = publicClubScreen(S.view.id);
   else if (S.me.deleted_at) html = deletedScreen();
@@ -82,6 +82,8 @@ function render(keep) {
     }
     html = hd + `<main class="bd">${S.view ? '' : syncBar()}${bd}</main>` + tabBar();
   }
+  const ouv = html.includes('data-ouv'); document.documentElement.classList.toggle('ouv', ouv); // 5.0.0 : écran d'ouverture sur fond encre
+  if (ouv) { const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = '#11162E'; }
   app.innerHTML = switchBar() + html;
   window.scrollTo(0, y);
   onScroll();
@@ -185,6 +187,7 @@ document.addEventListener('submit', async (e) => {
 
 // ---------- connexion et réseau ----------
 window.addEventListener('online', () => { S.online = true; refresh(); });
+try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => render(true)); } catch { /* ancien navigateur */ } // 5.0.0 : thème « Comme mon téléphone »
 window.addEventListener('offline', () => { S.online = false; render(true); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.session && navigator.onLine) { S.bgRefresh = true; refresh(); } });
 sb.auth.onAuthStateChange(async (ev, session) => {

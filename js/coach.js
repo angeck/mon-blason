@@ -263,9 +263,9 @@ function boardTodo() {
   const pend = mine.filter((e) => e.sharing === 'public' && e.public_state === 'pending'), neg = mine.filter(tooNegative), rep = S.exReports || [];
   if (!pend.length && !neg.length && !rep.length) return '';
   let h = '<div class="card warn"><b>À traiter par le bureau</b>';
-  if (pend.length) h += `<p class="note" style="color:var(--pc-encre)">${plural(pend.length, 'exercice proposé à tous les clubs attend', 'exercices proposés à tous les clubs attendent')} ta validation.</p>`;
-  if (neg.length) h += `<p class="note" style="color:var(--pc-encre)">${plural(neg.length, 'exercice « À revoir » (avis surtout négatifs)', 'exercices « À revoir » (avis surtout négatifs)')}.</p>`;
-  if (rep.length) h += `<p class="note" style="color:var(--pc-encre)">${plural(rep.length, 'signalement à lire', 'signalements à lire')} : l'exercice est retiré des autres clubs jusqu'à ta décision.</p>`;
+  if (pend.length) h += `<p class="note" style="color:var(--pc-texte-ecran)">${plural(pend.length, 'exercice proposé à tous les clubs attend', 'exercices proposés à tous les clubs attendent')} ta validation.</p>`;
+  if (neg.length) h += `<p class="note" style="color:var(--pc-texte-ecran)">${plural(neg.length, 'exercice « À revoir » (avis surtout négatifs)', 'exercices « À revoir » (avis surtout négatifs)')}.</p>`;
+  if (rep.length) h += `<p class="note" style="color:var(--pc-texte-ecran)">${plural(rep.length, 'signalement à lire', 'signalements à lire')} : l'exercice est retiré des autres clubs jusqu'à ta décision.</p>`;
   h += `<div class="list">${[...new Set([...pend, ...neg, ...rep.map((r) => mine.find((e) => e.id === r.exercise_id)).filter(Boolean)])].map((e) => `<button class="row" data-act="cexo" data-id="${e.id}"><span class="g">${esc(e.title)}<small>${esc(name(e.created_by))}</small></span>${sharePill(e)}</button>`).join('')}</div></div>`;
   return h;
 }
@@ -320,10 +320,10 @@ export function exoPage(id) {
   h += `<button class="btn ${inPlan ? 'ghost' : 'main'}" data-act="cadd" data-id="${e.id}">${inPlan ? 'Déjà dans ma séance ✓' : icon('plus', 20) + addLabel()}</button>`;
   if (!mine) h += `<div class="card"><div class="kick">Ton avis</div><div class="pair"><button class="btn yes" data-act="cvote" data-id="${e.id}" data-v="1" aria-pressed="${my === true}">👍 Utile (${e.up_count})</button><button class="btn no" data-act="cvote" data-id="${e.id}" data-v="0" aria-pressed="${my === false}">👎 À revoir (${e.down_count})</button></div></div>`;
   if (isBoard() && e.club_id === S.clubId && e.sharing === 'public' && e.public_state !== 'validated') {
-    h += `<div class="card warn"><b>Partage à tous les clubs : décision du bureau</b><p class="note" style="color:var(--pc-encre)">Vérifie que le texte et le schéma ne sont pas copiés d'un livre, d'un site ou d'une vidéo, et que la source est citée.</p><div class="btns"><button class="btn main small" data-act="cexval" data-id="${e.id}" data-v="1">Valider</button><button class="btn ghost small" data-act="cexval" data-id="${e.id}" data-v="0">Refuser</button></div></div>`;
+    h += `<div class="card warn"><b>Partage à tous les clubs : décision du bureau</b><p class="note" style="color:var(--pc-texte-ecran)">Vérifie que le texte et le schéma ne sont pas copiés d'un livre, d'un site ou d'une vidéo, et que la source est citée.</p><div class="btns"><button class="btn main small" data-act="cexval" data-id="${e.id}" data-v="1">Valider</button><button class="btn ghost small" data-act="cexval" data-id="${e.id}" data-v="0">Refuser</button></div></div>`;
   }
   const reps = (S.exReports || []).filter((r) => r.exercise_id === e.id);
-  if (reps.length) h += `<div class="card warn"><b>Signalements</b>${reps.map((r) => `<p class="note" style="color:var(--pc-encre)">« ${esc(r.reason)} »</p>`).join('')}</div>`;
+  if (reps.length) h += `<div class="card warn"><b>Signalements</b>${reps.map((r) => `<p class="note" style="color:var(--pc-texte-ecran)">« ${esc(r.reason)} »</p>`).join('')}</div>`;
   if (mine) h += `<button class="btn ghost" data-act="cexedit" data-id="${e.id}">Modifier</button>`;
   else h += S.exRep === e.id
     ? `<form id="exrepf" class="card"><div class="field"><label for="exr">Pourquoi signales-tu cet exercice ?</label><input id="exr" name="reason" required minlength="3" maxlength="500" placeholder="Ex. copié d'un livre, contenu inadapté"></div><button class="btn main small" type="submit">Envoyer le signalement</button></form>`
@@ -356,7 +356,7 @@ export function exoForm() {
   // N° 86 : plus d'aide « Préparer avec une IA » ni de choix vidéo / schéma : le schéma est préparé par mypocketclub sur demande
   return `<form id="exf" class="card lift">
   ${field('exn', 'Nom', `<input id="exn" name="title" required minlength="2" maxlength="80" value="${esc(f.title || '')}" placeholder="Ex. Passe et va en deux colonnes">`)}
-  ${dup ? `<div class="card warn"><b>Un exercice « ${esc(dup.title)} » existe déjà.</b><span class="note" style="color:var(--pc-encre)">Vérifie que ce n'est pas un doublon avant d'enregistrer.</span></div>` : ''}
+  ${dup ? `<div class="card warn"><b>Un exercice « ${esc(dup.title)} » existe déjà.</b><span class="note" style="color:var(--pc-texte-ecran)">Vérifie que ce n'est pas un doublon avant d'enregistrer.</span></div>` : ''}
   <div class="grid2">${field('exs', 'Sport', `<select id="exs" name="sport" data-exre="1">${[...new Set([sp, 'Tous les sports', f.sport].filter(Boolean))].map((x) => `<option ${f.sport === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
   ${field('exc', 'Catégorie', `<select id="exc" name="category">${CATS.map((x) => `<option ${f.category === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
   ${field('exl', 'Niveau', `<select id="exl" name="level"><option value="">Non précisé</option>${LEVELS.concat(f.level && !LEVELS.includes(f.level) ? [f.level] : []).map((x) => `<option ${f.level === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`)}
@@ -521,7 +521,7 @@ export function hoursPage() {
   const h = S.hr; if (!h.lines) return monthNav(h) + loading();
   const st = h.stmts[0], locked = st && st.status !== 'refused', tot = h.lines.reduce((a, l) => a + l.minutes, 0);
   let out = monthNav(h) + `<div class="card lift" style="flex-direction:row;align-items:center;justify-content:space-between"><span class="big">${fmtMin(tot)}</span><span>${st ? STATE[st.status] : '<span class="pill">Pas encore envoyé</span>'}</span></div>`;
-  if (st?.status === 'refused' && st.comment) out += `<div class="card warn"><b>Refusé par ${esc(name(st.decided_by))}</b><span class="note" style="color:var(--pc-encre)">« ${esc(st.comment)} » · corrige puis renvoie.</span></div>`;
+  if (st?.status === 'refused' && st.comment) out += `<div class="card warn"><b>Refusé par ${esc(name(st.decided_by))}</b><span class="note" style="color:var(--pc-texte-ecran)">« ${esc(st.comment)} » · corrige puis renvoie.</span></div>`;
   if (st?.status === 'validated') out += `<p class="note">Validé par ${esc(name(st.decided_by))} le ${new Date(st.decided_at).toLocaleDateString('fr-FR')}.</p>`;
   const bt = byTeam(h.lines);
   if (bt.length > 1) out += `<div class="chips">${bt.map(([k, v]) => `<span class="pill blue">${esc(k)} : ${fmtMin(v)}</span>`).join('')}</div>`;

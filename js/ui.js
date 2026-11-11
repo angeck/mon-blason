@@ -1,6 +1,6 @@
 // mypocketclub · éléments d'interface communs : logos, icônes, blason du club, en-tête, onglets, thème.
 import { BRAND, CGU_VERSION } from '../config.js';
-import { S, esc, club, onColor, contrast, lum, initials, isActive, toValidate, myTeamIds, casquettes, store, hooks } from './core.js';
+import { S, sb, esc, club, onColor, contrast, lum, initials, isActive, toValidate, myTeamIds, casquettes, store, hooks } from './core.js';
 
 // ---------- Ballons (n° 97 · charte mypocketclub validée le 3 novembre 2026 · fichiers dans img/, copies de claude/logos/mypocketclub/) ----------
 // Une seule famille, jaune et encre. Hors club, ou club d'un autre sport (ou omnisports) : ballon de la marque « étoile creuse » (n° 106) ;
@@ -12,8 +12,8 @@ export const ballSrc = (sport) => `img/ballon-${ballName(sport)}.svg`;
 export const ball = (size, sport) => `<img class="ball" src="${ballSrc(sport)}" width="${size}" height="${size}" alt="" aria-hidden="true" style="display:inline-block;vertical-align:middle">`;
 // Mot-symbole « mypocketclub » : « my » en étiquette jaune inclinée, « p●cket » encre (ballon dans le « o »), « club » bleu, sans espace.
 // Les tailles sont en em (règles de 04-jetons-design.css), le style est dans style.css (.wordmark).
-export function wordmark(px, sport) {
-  return `<span class="wordmark" role="img" aria-label="${esc(BRAND.aria || BRAND.name)}" style="font-size:${px}px"><span class="my">my</span><span class="pocket">p${ball(Math.round(px * 0.62), sport)}cket</span><span class="club">club</span></span>`;
+export function wordmark(px, sport, ink = false) {
+  return `<span class="wordmark${ink ? ' ink' : ''}" role="img" aria-label="${esc(BRAND.aria || BRAND.name)}" style="font-size:${px}px"><span class="my">my</span><span class="pocket">p${ball(Math.round(px * 0.62), sport)}cket</span><span class="club">club</span></span>`;
 }
 
 // ---------- Icônes au trait ----------
@@ -65,11 +65,21 @@ export function crest(c, size = 44, bg) {
 
 // ---------- Thème : en-tête mypocketclub, ou aux couleurs du club si le président l'a activé ----------
 export function brandMode() { return !S.session || !S.me || !S.clubId || !isActive() || S.onb !== null || ['account', 'legal', 'cgu', 'creq', 'creqs', 'creqmail'].includes(S.view?.type); }
-export function applyTheme() {
-  const c = club(), r = document.documentElement.style, perso = !brandMode() && c?.custom_header;
-  const bg = perso ? c.color1 : '#2F5BFF';
+// 5.0.0 · n° 168 : thème clair, sombre, ou celui du téléphone (choix gardé sur l'appareil et dans le compte)
+export const THEMES = [['auto', 'Comme mon téléphone'], ['clair', 'Clair'], ['sombre', 'Sombre']];
+export const themeChoice = () => { const v = store.get('pc_theme'); return THEMES.some((t) => t[0] === v) ? v : 'auto'; };
+export const isDark = () => { const c = themeChoice(); return c === 'sombre' || (c === 'auto' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches); };
+export function setThemeChoice(v) { store.set('pc_theme', v); const u = S.session?.user; if (u) { u.user_metadata = { ...(u.user_metadata || {}), theme: v }; sb.auth.updateUser({ data: { theme: v } }).catch(() => {}); } }
+export function applyTheme(ouv = false) {
+  const root = document.documentElement, mt = S.session?.user?.user_metadata?.theme;
+  if (mt && THEMES.some((t) => t[0] === mt) && !store.get('pc_theme')) store.set('pc_theme', mt); // thème du compte, sur un nouvel appareil
+  const ch = themeChoice(); if (ch === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', ch);
+  root.classList.toggle('ouv', ouv);
+  const c = club(), r = root.style, perso = !brandMode() && c?.custom_header;
+  root.setAttribute('data-club-perso', perso ? 'on' : 'off');
+  const bg = perso ? c.color1 : isDark() ? '#11162E' : '#2F5BFF';
   S.headerBg = bg; r.setProperty('--pc-entete', bg); r.setProperty('--pc-entete-texte', onColor(bg));
-  const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = bg;
+  const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = ouv ? '#11162E' : bg;
   document.title = BRAND.title || BRAND.name; // n° 91 : nom en minuscules, comme le logo
 }
 

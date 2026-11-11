@@ -49,7 +49,7 @@ const myPending = () => S.hconf.filter((c) => c.user_id === S.me.id && !c.confir
 export function hoursHome() {
   return myPending().map(({ c, k }) => {
     const m = monthOf(k.month);
-    return `<div class="card yellow"><span class="kick" style="color:var(--pc-encre)">Heures des coachs</span><b style="font-family:var(--pc-titre);font-size:22px;line-height:1.1">As-tu vérifié tes heures ${de(m)} ?</b><button class="btn ghost small" data-act="hcdetail" data-id="${k.month}" style="align-self:flex-start">${hFmt(c.minutes)} déclarées · voir le détail</button><div class="btns"><button class="btn main small" data-act="hcok" data-id="${k.id}">${icon('check', 18, 'currentColor', 3)}C’est bon</button><button class="btn ghost small" data-act="hcdetail" data-id="${k.month}">Je corrige</button></div><p class="note">Après « C’est bon », les heures ${de(m)} sont figées : une correction passe par le trésorier ou le président.</p></div>`;
+    return `<div class="card yellow"><span class="kick" style="color:var(--pc-texte-ecran)">Heures des coachs</span><b style="font-family:var(--pc-titre);font-size:22px;line-height:1.1">As-tu vérifié tes heures ${de(m)} ?</b><button class="btn ghost small" data-act="hcdetail" data-id="${k.month}" style="align-self:flex-start">${hFmt(c.minutes)} déclarées · voir le détail</button><div class="btns"><button class="btn main small" data-act="hcok" data-id="${k.id}">${icon('check', 18, 'currentColor', 3)}C’est bon</button><button class="btn ghost small" data-act="hcdetail" data-id="${k.month}">Je corrige</button></div><p class="note">Après « C’est bon », les heures ${de(m)} sont figées : une correction passe par le trésorier ou le président.</p></div>`;
   }).join('');
 }
 const managers = () => isPresident() || hasArea('tresorerie');

@@ -1,7 +1,7 @@
 // mypocketclub · Mon compte : profil, autres rôles, clubs, mes données (export, suppression), déconnexion.
 import { BRAND, VERSION } from '../config.js';
 import { S, sb, esc, fl, roleLabel, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, JOIN_ROLES, club, myMem, active, isBoard, isPresident, teamName, niceFirst, niceLast, download, fmtDay, store, coachTeams } from './core.js';
-import { header, crest, icon, delBtn, field } from './ui.js';
+import { header, crest, icon, delBtn, field, THEMES, themeChoice, setThemeChoice } from './ui.js';
 import { adminButtons } from './v43.js'; // n° 124 : « Clubs à valider »
 import { adminsButton } from './v46.js'; // n° 148 : administrateurs
 import { logoutAllBtn } from './v47.js'; // n° 44 et 147
@@ -33,6 +33,7 @@ export function accountScreen() {
   ${field('pm', 'Adresse e-mail', `<input id="pm" value="${esc(S.session.user.email)}" readonly>`)}
   ${field('pt', "Téléphone (visible de l'encadrement et des familles concernées)", `<input id="pt" name="phone" type="tel" value="${esc(me.phone || '')}">`)}
   <button class="btn main" type="submit">Enregistrer mon profil</button></form>`;
+  h += themeCard(); // 5.0.0 : n° 168
   h += consentsCard(me); // n° 180
   h += roleRequest();
   h += benevolatCard();
@@ -54,6 +55,9 @@ export function accountScreen() {
   <p class="note" style="text-align:center">${esc(S.session.user.email)} · ${esc(BRAND.name)} ${esc(VERSION)}</p>${contactLine()}</main>`;
   return h;
 }
+// 5.0.0 · n° 168 : apparence, trois choix gardés sur l'appareil et dans le compte
+const themeCard = () => `<div class="sec"><h2>Apparence</h2></div><div class="card" role="group" aria-label="Apparence de l'application"><div class="chips">${THEMES.map(([v, l]) => `<button type="button" class="chip" data-act="theme" data-v="${v}" aria-pressed="${themeChoice() === v}">${l}</button>`).join('')}</div><p class="note">« Comme mon téléphone » suit le réglage clair ou sombre de ton téléphone. Ton choix est gardé dans ton compte.</p></div>`;
+Object.assign(ACTIONS, { theme: (el, d) => { setThemeChoice(d.v); render(true); } });
 // N° 180 (4.9.0) : mes accords, datés ; enregistrés dès qu'on coche ou décoche
 const dt = (iso) => (iso ? new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
 function consentsCard(me) {
@@ -83,7 +87,7 @@ function benevolatCard() {
 // Compte dont la suppression est demandée
 export function deletedScreen() {
   const when = new Date(new Date(S.me.deleted_at).getTime() + 30 * 864e5);
-  return header({ title: 'Compte en cours de suppression', brand: true }) + `<main class="bd"><div class="card warn"><b>Ton compte sera effacé le ${esc(fmtDay(when))}.</b><p class="note" style="color:var(--pc-encre)">Tu as été retiré de tes clubs et groupes. Tu peux encore tout annuler : tes profils et tes groupes reviennent.</p><button class="btn main" data-act="undelacc">Annuler la suppression</button></div><button class="btn ghost" data-act="export">${icon('down', 20)}Télécharger mes données</button><button class="btn ghost" data-act="logout">Me déconnecter</button></main>`;
+  return header({ title: 'Compte en cours de suppression', brand: true }) + `<main class="bd"><div class="card warn"><b>Ton compte sera effacé le ${esc(fmtDay(when))}.</b><p class="note" style="color:var(--pc-texte-ecran)">Tu as été retiré de tes clubs et groupes. Tu peux encore tout annuler : tes profils et tes groupes reviennent.</p><button class="btn main" data-act="undelacc">Annuler la suppression</button></div><button class="btn ghost" data-act="export">${icon('down', 20)}Télécharger mes données</button><button class="btn ghost" data-act="logout">Me déconnecter</button></main>`;
 }
 
 Object.assign(ACTIONS, {
@@ -147,7 +151,7 @@ function contactChoice(c) {
   const k = S.cstate, roles = k.roles.join(', ');
   const box = (n, l, on) => `<label class="check"><input type="checkbox" name="${n}" ${on ? 'checked' : ''}><span>${l}</span></label>`;
   return `<form id="contactf" class="card ${k.confirmed ? '' : 'yellow'}" data-anchor="moncontact"><div class="kick">${k.confirmed ? 'Mes coordonnées de contact' : 'À confirmer'} · ${esc(c.name)}</div><b>${esc(roles)}</b>
-  <p class="note" style="margin:0;color:var(--pc-encre)"><b>Choisis ce que les gens voient de toi :</b></p>
+  <p class="note" style="margin:0;color:var(--pc-texte-ecran)"><b>Choisis ce que les gens voient de toi :</b></p>
   ${box('phone', 'Mon téléphone' + (S.me.phone ? ' · ' + esc(S.me.phone) : ' (à ajouter dans « Mon profil »)'), k.show_phone)}${box('email', 'Mon adresse e-mail · ' + esc(S.session.user.email), k.show_email)}
   <button class="btn main" type="submit">${k.confirmed ? 'Enregistrer mon choix' : 'Confirmer mon choix'}</button><p class="note">Rien de coché : aucune coordonnée, on t’écrit par l’application. Tu peux changer à tout moment.</p>
   <p class="note" style="margin:0"><b>Qui le voit :</b> les membres du club (pas les supporteurs) voient le bureau ; les supporteurs et les visiteurs connectés voient le contact licences ; les clubs du même sport voient aussi le contact rencontres.</p></form>`; // n° 137 : d'abord le choix, ensuite qui le voit

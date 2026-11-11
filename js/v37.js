@@ -18,7 +18,7 @@ export function topFollowed() {
   }
   const l = S.top5 || [];
   if (!l.length) return '';
-  return `<div class="sec"><h2>Les plus suivies</h2><span class="det">sur ${esc(BRAND.name)}</span></div><div class="card"><div class="list">${l.map((t, i) => `<button class="row" data-act="pclub" data-id="${esc(t.club_id)}"><b style="width:22px;flex:none;font-family:var(--pc-titre);font-size:20px;color:var(--pc-bleu)">${i + 1}</b>${crest({ name: t.club_name, logo: t.logo, crest_bg: t.crest_bg, color1: t.color1, crest_outline: t.crest_outline }, 30, '#FFFFFF')}<span class="g">${esc(t.team_name)}<small>${esc([t.club_name, t.city, t.sport].filter(Boolean).join(' · '))} · suivie par ${plural(+t.followers || 0, 'personne')}</small></span><span class="chev"></span></button>`).join('')}</div></div>`;
+  return `<div class="sec"><h2>Les plus suivies</h2><span class="det">sur ${esc(BRAND.name)}</span></div><div class="card"><div class="list">${l.map((t, i) => `<button class="row" data-act="pclub" data-id="${esc(t.club_id)}"><b style="width:22px;flex:none;font-family:var(--pc-titre);font-size:20px;color:var(--pc-action)">${i + 1}</b>${crest({ name: t.club_name, logo: t.logo, crest_bg: t.crest_bg, color1: t.color1, crest_outline: t.crest_outline }, 30, '#FFFFFF')}<span class="g">${esc(t.team_name)}<small>${esc([t.club_name, t.city, t.sport].filter(Boolean).join(' · '))} · suivie par ${plural(+t.followers || 0, 'personne')}</small></span><span class="chev"></span></button>`).join('')}</div></div>`;
 }
 
 // ---------- n° 96 · « Mon club n'est pas dans la liste » ----------
@@ -26,7 +26,7 @@ const SPORTS = ['Basket-ball', 'Volley-ball', 'Football', 'Rugby', 'Handball', '
 export function notListedLine(words, many) {
   if (!words) return '';
   if (many) return `<button class="btn link" data-act="creq" style="align-self:center">Mon club n’est pas dans la liste</button>`;
-  return `<button class="card" data-act="creq" style="border:2px dashed var(--pc-bleu);text-align:left;font:inherit;color:inherit;background:var(--pc-bleu-pale)"><span class="kick" style="color:var(--pc-bleu)">Mon club n’est pas dans la liste</span><b style="font-size:18px">« ${esc(words)} »</b><span class="det">Touche ici pour demander son arrivée sur ${esc(BRAND.name)}.</span></button>`;
+  return `<button class="card" data-act="creq" style="border:2px dashed var(--pc-action);text-align:left;font:inherit;color:inherit;background:var(--pc-bleu-pale)"><span class="kick" style="color:var(--pc-action)">Mon club n’est pas dans la liste</span><b style="font-size:18px">« ${esc(words)} »</b><span class="det">Touche ici pour demander son arrivée sur ${esc(BRAND.name)}.</span></button>`;
 }
 function creqForm() {
   const F = S.creq || {}, me = S.me || {};
@@ -40,7 +40,7 @@ function creqForm() {
   <p class="note" style="margin:0">La ville et le sport permettent de distinguer deux clubs qui portent le même nom.</p>
   <label class="check"><input type="checkbox" name="age" ${F.age ? 'checked' : ''}><span><b>J’ai 15 ans ou plus</b><br><span class="det">Moins de 15 ans : demande à un parent de faire la demande.</span></span></label>
   <label class="check"><input type="checkbox" name="consent" ${F.consent ? 'checked' : ''}><span><b>J’accepte que mon nom soit transmis au club</b><br><span class="det">Obligatoire : le club saura qu’un de ses membres a fait la demande. Ton e-mail sert seulement à te prévenir quand ton club arrive sur ${esc(BRAND.name)}.</span></span></label>
-  <div class="card pale" style="transform:none"><b>Version de test</b><span class="note" style="color:var(--pc-encre)">Ta demande est enregistrée, mais rien n’est encore envoyé au club ni à toi par e-mail.</span></div>
+  <div class="card pale" style="transform:none"><b>Version de test</b><span class="note" style="color:var(--pc-texte-ecran)">Ta demande est enregistrée, mais rien n’est encore envoyé au club ni à toi par e-mail.</span></div>
   <button class="btn main" type="submit">Envoyer ma demande</button></form>`;
 }
 function creqScreen() {
@@ -50,7 +50,7 @@ function creqScreen() {
 }
 
 // ---------- n° 96 · page Admin (Gaël) : demandes de clubs et aperçu de l'e-mail au dirigeant ----------
-const SIM = `<div class="card warn" style="transform:none"><b>L’option n’est pas activée : simulation</b><span class="note" style="color:var(--pc-encre)">Aucun e-mail n’est envoyé, ni au club ni à la personne. Les coordonnées du dirigeant sont à chercher à la main.</span></div>`;
+const SIM = `<div class="card warn" style="transform:none"><b>L’option n’est pas activée : simulation</b><span class="note" style="color:var(--pc-texte-ecran)">Aucun e-mail n’est envoyé, ni au club ni à la personne. Les coordonnées du dirigeant sont à chercher à la main.</span></div>`;
 const keyOf = (r) => (String(r.club_name || '') + '|' + String(r.city || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9|]/g, '');
 const sameClub = (r) => (S.creqs || []).filter((x) => keyOf(x) === keyOf(r));
 function creqsScreen() {
