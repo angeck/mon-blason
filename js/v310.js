@@ -9,6 +9,7 @@ import {
   S, sb, esc, hooks, run, toast, render, refresh, armed, isArmed, ACTIONS, club, active, isBoard, isPresident, coachTeams, coachOf,
   SEASON, team, teamName, name, plural, fmtShort, hm, evTeams, store, toValidate, playersOfTeam, isMajor, myKids, mySelf, FONCTIONS, hasArea, fl,
 } from './core.js';
+import { entTag } from './core.js';
 import { icon, header, dayBadge, field, clubSeason, casqIcon } from './ui.js';
 import { upcoming, evCard, canCallRoll, appelPage, teamTabs, cancelBtn } from './agenda.js';
 import { plansForEvent, fmtMin, exosForCounts } from './coach.js';
@@ -182,7 +183,7 @@ export function teamsFold() {
   const l = S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée');
   const cats = [...new Set(l.map((t) => t.category || 'Autres'))].sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
   const many = l.length > 8;
-  const row = (t) => `<button class="row" data-act="tsopen" data-id="${t.id}"><span class="g">${esc(t.name)}<small>${esc([t.category !== t.name ? t.category : '', t.gender].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`;
+  const row = (t) => `<button class="row" data-act="tsopen" data-id="${t.id}"><span class="g">${esc(t.name)}${entTag(t.id)}<small>${esc([t.category !== t.name ? t.category : '', t.gender].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`;
   const inner = !l.length ? '<p class="empty">Aucune équipe.</p>' : many ? cats.map((c) => `<div class="kick" style="margin-top:8px">${esc(c)}</div><div class="list">${l.filter((t) => (t.category || 'Autres') === c).map(row).join('')}</div>`).join('') : `<div class="list">${l.map(row).join('')}</div>`;
   // n° 116 : créer, importer et doublons dans le même dépliant (plus de bloc « Créer des équipes » à part)
   return `<details class="card" ${S.pfold === 'equipes' ? 'open' : ''} data-pfold="equipes"><summary>${icon('team', 18)} Équipes</summary>${inner}${teamToolsBlock(true)}</details>`;

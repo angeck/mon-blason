@@ -5,7 +5,7 @@ import {
   S, sb, $, run, toast, hooks, ACTIONS, FORMS, INPUTS, CHANGES, club, active, isActive, ROLES, roleLabel, teamName, teamsLabel, evTeams, pl, pname, team,
   loadMe, loadClub, loadGroup, checkVersion, fmtShort, hm, esc, timeRange,
 } from './js/core.js';
-import { header, tabBar, applyTheme, wordmark, icon } from './js/ui.js';
+import { header, tabBar, seeTab, applyTheme, wordmark, icon } from './js/ui.js';
 import { authScreen, cguScreen, onboarding, legalScreen, publicHome, publicClubScreen, recoveryScreen, mountCaptcha, openPendingJoin, restoreForm } from './js/auth.js';
 import { homeTab, homeTitle } from './js/accueil.js';
 import { agendaTab, eventForm, eventPage, appelPage } from './js/agenda.js';
@@ -47,7 +47,7 @@ function viewScreen(v) {
     case 'group': return [header({ back: true, kicker: "Groupe d'échange", title: esc(grp(v.id)?.name || 'Groupe') }), groupPage(v.id)];
     case 'msgfwd': return [header({ back: true, kicker: 'Messages', title: 'Transférer' }), forwardPage()]; // n° 84
     case 'player': { const p = pl(v.id); return [header({ back: true, kicker: 'Fiche joueur', title: esc(p ? pname(p) : 'Fiche') }), playerPage(v.id)]; }
-    case 'team': { const t = team(v.id); return [header({ back: true, kicker: 'Équipe', title: esc(t?.name || 'Équipe'), tags: t ? [t.category !== t.name ? t.category : '', t.gender, 'Saison ' + t.season].filter(Boolean) : [] }), teamPage(v.id)]; }
+    case 'team': { const t = team(v.id); return [header({ back: true, kicker: 'Équipe', title: esc(t?.name || 'Équipe'), tags: t ? [t.category !== t.name ? t.category : '', t.gender, 'Saison ' + t.season, ['acceptee', 'demandee', 'invitee'].includes(t.partner_state) ? 'Entente' : ''].filter(Boolean) : [] }), teamPage(v.id)]; }
     case 'member': return [header({ back: true, kicker: 'Fiche du membre', title: esc(S.names[v.id] || 'Membre') }), memberPage(v.id)];
     case 'import': return [header({ back: true, kicker: 'Ajouter des joueurs', title: esc(teamName(v.id)) }), importPage(v.id)];
     default: { if (V310_VIEWS[v.type]) { const o = V310_VIEWS[v.type](v); return [o.head, o.body]; } if (VIE_VIEWS[v.type]) { const o = VIE_VIEWS[v.type](v); return [o.head, o.body]; } const cv = COACH_VIEWS[v.type]; if (!cv) return null; const [k, t, fn] = cv(v); return [header({ back: true, kicker: k, title: t }), fn()]; }
@@ -90,6 +90,8 @@ function render(keep) {
   onScroll();
   mountCaptcha();
   restoreForm(); // n° 175 : retour de « Conditions » ou « Vos données » : l'inscription garde sa saisie
+  applyDraft(); // 5.2.1 : la saisie en cours revient après un redessin (retour de l'arrière-plan, temps réel)
+  dateHints();
   if (hooks.afterRender) hooks.afterRender(); // n° 189 : historique du téléphone (js/v51.js)
 }
 async function refresh(msg) {
@@ -100,6 +102,7 @@ async function refresh(msg) {
   if (!S.joinChecked) { S.joinChecked = true; await openPendingJoin(); }
   if (!S.purged) { S.purged = true; sb.rpc('purge_trash').then(() => {}, () => {}); }
   await loadClub();
+  restoreDraftScreen(); // 5.2.1 : après un rechargement, retour là où la saisie avait commencé
   await Promise.all([loadCoachCounts(), loadEvPlans(), loadAdminCounts(), loadV310(), loadV43(), loadV44()]).catch(() => {});
   if (S.view?.type === 'group') await loadGroup(S.view.id);
   const bg = S.bgRefresh; S.bgRefresh = false;
@@ -160,10 +163,64 @@ function subscribe() {
 // ---------- aiguillage ----------
 Object.assign(ACTIONS, {
   refresh: () => refresh(true),
-  tab: (el, d) => { S.tab = +d.i; S.view = null; S.stack = []; S.sel = null; S.tmpLogo = undefined; render(); },
+  tab: (el, d) => { seeTab(+d.i); S.tab = +d.i; S.view = null; S.stack = []; S.sel = null; S.tmpLogo = undefined; render(); },
   // n° 101 : le bouton Retour retrouve la position de défilement de l'écran d'avant
   back: () => { const v = (S.stack || []).pop() || null, y = v?._y || 0; if (v) delete v._y; S.view = v; S.form = null; S.tmpLogo = undefined; render(); if (y) requestAnimationFrame(() => window.scrollTo(0, y)); },
 });
+// ---------- jour de la semaine sous les champs date (5.2.1) ----------
+// Le calendrier du téléphone ne dit pas quel jour on a présélectionné : on l'écrit sous le champ (« Samedi 21 novembre 2026 »), à jour à chaque choix.
+const dayName = (v) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v || ''); if (!m) return '';
+  const s = new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+function dateHint(x) {
+  let h = x.nextElementSibling;
+  if (!h || !h.classList?.contains('dayhint')) { h = document.createElement('span'); h.className = 'det dayhint'; h.setAttribute('aria-live', 'polite'); x.after(h); }
+  const t = dayName(x.value); h.textContent = t; h.hidden = !t;
+}
+const dateHints = () => document.querySelectorAll('input[type=date], input[type=datetime-local]').forEach(dateHint);
+const isDateInput = (t) => t?.tagName === 'INPUT' && (t.type === 'date' || t.type === 'datetime-local');
+document.addEventListener('input', (e) => { if (isDateInput(e.target)) dateHint(e.target); });
+document.addEventListener('change', (e) => { if (isDateInput(e.target)) dateHint(e.target); });
+// ---------- brouillons de saisie (5.2.1) ----------
+// Ce que la personne tape dans un formulaire est gardé sur l'appareil : au retour dans l'application, après un rechargement
+// (mise à jour, téléphone qui ferme l'appli) et quand l'écran se redessine tout seul (temps réel, retour de l'arrière-plan).
+// Jamais les mots de passe ni les fichiers. Effacé au changement d'écran, à l'envoi du formulaire et à la déconnexion (3 h au plus).
+const DRAFT_KEY = 'pc_draft', DRAFT_MAX = 3 * 3600e3;
+const dctx = () => [S.tab, S.view?.type || '', S.view?.id || '', S.onb || ''].join('|');
+const readDraft = () => { try { const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); return d && d.uid === S.me?.id && Date.now() - d.ts < DRAFT_MAX ? d : null; } catch { return null; } };
+const writeDraft = (d) => { try { if (d) localStorage.setItem(DRAFT_KEY, JSON.stringify(d)); else localStorage.removeItem(DRAFT_KEY); } catch { /* stockage plein ou bloqué */ } };
+const isChk = (x) => x.type === 'checkbox' || x.type === 'radio';
+function noteDraft(t) {
+  if (!S.me || !t?.id || !t.closest) return;
+  const f = t.closest('form[id]'); if (!f || !('value' in t) || ['password', 'file', 'hidden'].includes(t.type)) return;
+  let d = readDraft(); const c = dctx();
+  if (!d || d.ctx !== c) d = { uid: S.me.id, ctx: c, tab: S.tab, onb: S.onb || '', view: S.view?.type || '', forms: {} };
+  (d.forms[f.id] = d.forms[f.id] || {})[t.id] = isChk(t) ? t.checked : t.value;
+  d.ts = Date.now(); writeDraft(d);
+}
+function applyDraft() {
+  if (S.inAct) return; // une action de la personne redessine l'écran à sa façon : on ne touche à rien
+  const d = readDraft(); if (!d || d.ctx !== dctx()) return;
+  for (const [fid, fields] of Object.entries(d.forms)) {
+    const f = document.getElementById(fid); if (!f) continue;
+    for (const [id, v] of Object.entries(fields)) {
+      const x = f.querySelector('#' + CSS.escape(id)); if (!x || (isChk(x) ? x.checked : x.value) === v) continue;
+      if (isChk(x)) x.checked = v; else { x.value = v; x.dispatchEvent(new Event('input', { bubbles: true })); }
+    }
+  }
+}
+// au démarrage de la page (rechargement) : retour sur l'écran où la saisie avait commencé (création du club, onglet, Mon compte)
+function restoreDraftScreen() {
+  if (S.draftBoot) return; S.draftBoot = true;
+  const d = readDraft(); if (!d || S.view) return;
+  if (!['', 'account'].includes(d.view)) return;
+  S.tab = d.tab || 0; if (d.onb) S.onb = d.onb; if (d.view === 'account') S.view = { type: 'account' };
+}
+async function inAct(fn) { S.inAct = true; try { return await fn(); } finally { S.inAct = false; } }
+document.addEventListener('input', (e) => noteDraft(e.target), true);
+document.addEventListener('change', (e) => noteDraft(e.target), true);
 document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   if (el.tagName === 'INPUT') return;
@@ -171,7 +228,9 @@ document.addEventListener('click', async (e) => {
   const a = el.dataset.act, fn = ACTIONS[a]; if (!fn) return console.warn('Action inconnue', a);
   S.delPrev = S.del; S.del = null;
   const before = S.view, y0 = window.scrollY;
-  try { await fn(el, el.dataset); } catch (err) { console.error(err); toast('Oups, une erreur. Réessaie ou actualise.'); }
+  const ctx0 = dctx();
+  try { await inAct(() => fn(el, el.dataset)); } catch (err) { console.error(err); toast('Oups, une erreur. Réessaie ou actualise.'); }
+  if (S.me && dctx() !== ctx0) writeDraft(null); // autre écran : la saisie abandonnée ne revient pas
   // pile des écrans pour le bouton Retour (avec la position de défilement, n° 101)
   // (S.noStack : l'action est déjà revenue à l'écran d'avant, comme « Créer les équipes » : on n'empile pas l'écran quitté)
   if (S.view && before && !['back', 'tab'].includes(a) && !S.noStack && (S.view.type !== before.type || S.view.id !== before.id)) { S.stack = (S.stack || []).concat({ ...before, _y: y0 }).slice(-10); }
@@ -179,12 +238,20 @@ document.addEventListener('click', async (e) => {
   if (S.delPrev && !S.del && S.delPrev !== a) render(true);
 });
 document.addEventListener('input', (e) => { for (const f of INPUTS) if (f(e.target)) return; });
-document.addEventListener('change', async (e) => { for (const f of CHANGES) if (await f(e.target)) return; });
+// (un « change » de champ texte arrive aussi quand l'écran se redessine sous le doigt : ce n'est pas une action de la personne)
+document.addEventListener('change', async (e) => {
+  const t = e.target, run = async () => { for (const f of CHANGES) if (await f(t)) return; };
+  if (t.tagName === 'SELECT' || isChk(t)) await inAct(run); else await run();
+});
 document.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target, fn = FORMS[f.id]; if (!fn) return;
   const btn = f.querySelector('[type=submit]'); if (btn) btn.disabled = true;
-  try { await fn(Object.fromEntries(new FormData(f)), f); } catch (err) { console.error(err); toast('Oups, une erreur. Réessaie.'); } finally { if (btn && document.body.contains(btn)) btn.disabled = false; }
+  const ctx0 = dctx(), dr = readDraft(); if (dr?.forms[f.id]) { delete dr.forms[f.id]; writeDraft(dr); } // envoyé : la saisie de ce formulaire est effacée
+  try { await inAct(() => fn(Object.fromEntries(new FormData(f)), f)); } catch (err) { console.error(err); toast('Oups, une erreur. Réessaie.'); } finally { if (btn && document.body.contains(btn)) btn.disabled = false; }
+  // refus (champ manquant…) : le formulaire est toujours là, on garde ce qui est tapé ; autre écran : plus de brouillon
+  if (S.me && dctx() !== ctx0) writeDraft(null);
+  else { const g = document.getElementById(f.id); g?.querySelectorAll('input[id], select[id], textarea[id]').forEach((x) => { if (isChk(x) ? x.checked !== x.defaultChecked : x.value !== x.defaultValue) noteDraft(x); }); }
 });
 
 // ---------- connexion et réseau ----------
@@ -196,7 +263,7 @@ sb.auth.onAuthStateChange(async (ev, session) => {
   if (session) { saveSwitch(session); if (S.uid && S.uid !== session.user.id) resetUser(); S.uid = session.user.id; } else S.uid = null;
   if (ev === 'TOKEN_REFRESHED') { S.session = session; return; }
   S.session = session;
-  if (!session) { S.me = null; S.mems = []; S.clubs = {}; S.view = null; S.joinChecked = false; S.recovery = false; if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } render(); return; }
+  if (!session) { writeDraft(null); S.me = null; S.mems = []; S.clubs = {}; S.view = null; S.joinChecked = false; S.recovery = false; if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } render(); return; }
   if (ev === 'PASSWORD_RECOVERY') S.recovery = true;   // n° 45 : nouveau mot de passe saisi deux fois
   if (ev === 'SIGNED_IN' && ['auth', 'pclub'].includes(S.view?.type)) S.view = null;
   setTimeout(() => refresh(), 0);

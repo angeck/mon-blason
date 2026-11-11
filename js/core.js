@@ -111,6 +111,9 @@ export const name = (id) => S.names[id] || 'Membre';
 export const nick = (id) => S.nicks[id] || name(id);
 export const shortName = (full) => { const p = String(full || '').trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1][0].toUpperCase() + '.' : p[0] || ''; };
 export const team = (id) => S.teams.find((t) => t.id === id);
+// 5.2.1 : tag « Entente » sur les équipes en entente avec un autre club (confirmée ou en attente)
+const ENT = { acceptee: ['Entente', 'blue'], demandee: ['Entente · en attente', 'wait'], invitee: ['Entente · club invité', 'wait'] };
+export const entTag = (id) => { const e = ENT[team(id)?.partner_state]; return e ? ` <span class="pill ${e[1]}">${e[0]}</span>` : ''; };
 export const teamName = (id) => team(id)?.name || '';
 export const teamsLabel = (ids) => (ids || []).map(teamName).filter(Boolean).join(', ');
 // N° 109 et 111 : catégorie et genre d'une équipe (« U9 F »), jamais son nom, qui peut être un nom interne (« Les Reines »)
@@ -164,6 +167,12 @@ export function canValidate(m) {
   if (['joueur', 'parent', 'supporteur'].includes(m.role) && hasArea('secretariat')) return true;
   if (m.role === 'coach' && (hasArea('secretariat') || hasArea('technique'))) return true;
   return ['joueur', 'parent'].includes(m.role) && !!m.team_id && coachOf(m.team_id);
+}
+// 5.2.1 : après une suppression, retour à l'écran d'avant (et non à l'Accueil) ; l'élément supprimé est aussi retiré de la pile
+export function backAfterDelete(type, id) {
+  S.stack = (S.stack || []).filter((v) => !(v.type === type && (id === undefined || v.id === id)));
+  const v = S.stack.pop() || null; if (v) delete v._y;
+  S.view = v; S.form = null; S.noStack = true;
 }
 export const toValidate = () => S.members.filter((m) => m.status === 'pending' && canValidate(m));
 // N° 32 : rang dans le club (président 3, bureau 2, coach 1, autres 0), comme dans la base

@@ -184,7 +184,9 @@ export function brandPreview(nm, c1, logo, bg, perso) {
   return `<div class="hd" style="border-radius:24px;--pc-entete:${esc(h)};--pc-entete-texte:${onColor(h)};background:${esc(h)};color:${onColor(h)}"><div class="top">${crest({ name: nm, color1: c1, logo, crest_bg: bg }, 44)}<div class="who"><b>${esc(nm || 'Mon club')}</b><span>Aperçu de l'en-tête</span></div></div></div>`;
 }
 export function logoFields(hasLogo, bg) {
-  return `${field('lg', 'Logo du club (image, facultatif)', '<input id="lg" type="file" accept="image/*" data-logo="1">')}${hasLogo ? '<button type="button" class="btn small ghost" data-act="logorm">Retirer le logo</button>' : ''}
+  // 5.2.1 : pipette : on touche le logo pour prendre une couleur exacte (principale, seconde, fond de l'écu)
+  const pip = hasLogo ? `<div class="chips" role="group" aria-label="Pipette : prendre une couleur sur le logo"><button type="button" class="chip" data-act="pipette" data-v="c1">${icon('target', 16)} Pipette : couleur principale</button><button type="button" class="chip" data-act="pipette" data-v="c2">${icon('target', 16)} Pipette : seconde couleur</button><button type="button" class="chip" data-act="pipette" data-v="bg">${icon('target', 16)} Pipette : fond de l'écu</button></div>` : '';
+  return `${field('lg', 'Logo du club (image, facultatif)', '<input id="lg" type="file" accept="image/*" data-logo="1">')}${hasLogo ? '<button type="button" class="btn small ghost" data-act="logorm">Retirer le logo</button>' : ''}${pip}
   ${field('lbg', "Fond de l'écu derrière le logo", `<input id="lbg" name="bg" type="color" value="${esc((bg || '#ffffff').toLowerCase())}">`)}
   <p class="note">Une image prise sur ton téléphone ou enregistrée depuis la page du club. Les couleurs du logo sont proposées automatiquement, tu peux les changer. En enregistrant un logo, le club certifie avoir le droit de l'utiliser.</p>`;
 }
@@ -269,6 +271,34 @@ Object.assign(ACTIONS, {
   onb: (el, d) => { S.tmpLogo = undefined; S.onb = d.v || null; if (!d.v && isActive()) S.onb = null; render(); },
   onbopen: () => { S.onb = ''; S.view = null; render(); },
   jrole: (el, d) => { S.join.role = d.v; render(true); },
+  // 5.2.1 : pipette. Le logo s'affiche en grand dans une fenêtre ; un toucher prend la couleur du point touché.
+  pipette: (el, d) => {
+    const f = el.closest('form'), input = f?.querySelector(`[name=${d.v}]`), src = S.tmpLogo === undefined ? club()?.logo : S.tmpLogo;
+    if (!input || !src) return toast('Ajoute d’abord un logo.');
+    const ov = document.createElement('div'); ov.className = 'pipov'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'Pipette');
+    const lab = { c1: 'la couleur principale', c2: 'la seconde couleur', bg: 'le fond de l’écu' }[d.v];
+    ov.innerHTML = `<div class="pipbox"><b>Touche le logo pour choisir ${lab}</b><canvas></canvas><span class="det pipsw" aria-live="polite">Touche un point du logo</span><button type="button" class="btn ghost" data-pipclose="1">Annuler</button></div>`;
+    document.body.appendChild(ov);
+    const cv = ov.querySelector('canvas'), sw = ov.querySelector('.pipsw'), img = new Image();
+    const close = () => ov.remove();
+    ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-pipclose]')) close(); });
+    img.onload = () => {
+      const k = Math.min(1, 300 / img.width, 300 / img.height);
+      cv.width = Math.max(1, Math.round(img.width * k)); cv.height = Math.max(1, Math.round(img.height * k));
+      const cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(img, 0, 0, cv.width, cv.height);
+      const pick = (e) => {
+        const r = cv.getBoundingClientRect(), x = Math.min(cv.width - 1, Math.max(0, Math.floor((e.clientX - r.left) * cv.width / r.width))), y = Math.min(cv.height - 1, Math.max(0, Math.floor((e.clientY - r.top) * cv.height / r.height)));
+        const [R, G, B, A] = cx.getImageData(x, y, 1, 1).data;
+        if (A < 128) { sw.textContent = 'Zone transparente : touche une partie colorée.'; return; }
+        const hex = '#' + [R, G, B].map((v) => v.toString(16).padStart(2, '0')).join('');
+        input.value = hex; input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true }));
+        updatePreview(f); close(); toast('Couleur prise sur le logo : ' + hex.toUpperCase() + '.');
+      };
+      cv.addEventListener('click', pick);
+    };
+    img.onerror = () => { close(); toast('Logo illisible.'); };
+    img.src = src;
+  },
   logorm: (el) => { S.tmpLogo = null; const f = el.closest('form'); el.remove(); updatePreview(f); },
   jcheck: async () => {
     const r = await run(sb.rpc('teams_for_code', { p_code: S.join.code })); if (!r) return;

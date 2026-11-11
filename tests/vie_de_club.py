@@ -2531,6 +2531,22 @@ w("reset role;")
 ok("n° 78 · pas d'entente : « Notre club »", "not (select from_partner from players where first_name = 'Pimpe' and last_name = 'Test')")
 ok("n° 78 · import_players reste fermée au visiteur", "not has_function_privilege('anon', 'import_players(uuid, uuid, jsonb)', 'execute')")
 
+# ---------- 5.2.1 · un membre du bureau qui demande « coach » attend la validation ----------
+section("5.2.1 · demande de coach par un membre du bureau")
+w("reset role;")
+w("\\i ../supabase/alpha_5_2_1.sql")
+w("\\i ../supabase/alpha_5_2_1.sql")  # relancée deux fois
+w("set role authenticated;")
+AS("b3"); w(f"select join_club(:'code', 'coach', {T('Seniors')}, null);")
+ok("5.2.1 · un membre du bureau qui demande coach reste en attente", f"exists(select 1 from memberships where user_id = auth.uid() and role = 'coach' and team_id = {T('Seniors')} and status = 'pending')")
+ok("5.2.1 · il n'est pas coach tant que personne n'a validé", f"not exists(select 1 from memberships where user_id = auth.uid() and role = 'coach' and team_id = {T('Seniors')} and status = 'active')")
+ASPRES(); w(f"select join_club(:'code', 'coach', {T('Reines')}, null);")
+ok("5.2.1 · le président obtient toujours le rôle tout de suite", f"exists(select 1 from memberships where user_id = auth.uid() and role = 'coach' and team_id = {T('Reines')} and status = 'active')")
+ASPRES(); w(f"select validate_membership(id, null, null) from memberships where club_id = {C1} and role = 'coach' and team_id = {T('Seniors')} and status = 'pending';")
+ok("5.2.1 · le président valide la demande du membre du bureau", f"exists(select 1 from memberships where role = 'coach' and team_id = {T('Seniors')} and status = 'active' and user_id = {P('b3')})")
+w("reset role;")
+ok("5.2.1 · join_club reste fermée au visiteur", "not has_function_privilege('anon', 'join_club(text, text, uuid, text, text)', 'execute')")
+
 # ---------- rapport ----------
 w("\\echo ''")
 w("\\echo '========== RAPPORT =========='")

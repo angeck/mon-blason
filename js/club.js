@@ -4,6 +4,9 @@ import {
   S, sb, esc, fl, roleLabel, hasArea, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, BCATS, SEASON, XLSX_URL, club, isBoard, isPresident,
   coachTeams, coachOf, teamName, name, pname, adminOf, toValidate, canValidate, norm, loadJs, download, toDataUrl, num, plural, onColor, contrast, rankOf, myRank, niceFirst, niceLast,
 } from './core.js';
+import { entTag } from './core.js';
+// 5.2.1 : équipes en entente portées par un autre club et acceptées : visibles du président et du Directeur technique avec le tag « Entente »
+const partnerRows = () => (S.partnerTeams || []).filter((x) => x.state === 'acceptee').map((x) => `<div class="row static" style="flex-wrap:wrap"><span class="g">${esc(x.team_name)}<small>Équipe en entente · portée par ${esc(x.host_club)}</small></span><span class="pill blue">Entente</span></div>`).join('');
 import { icon, field } from './ui.js';
 import { brandPreview, logoFields, updatePreview } from './auth.js';
 import { teamForm, loadXlsx } from './equipe.js';
@@ -176,8 +179,8 @@ export function teamsBlock() {
   const board = isBoard(), list = S.cteams;
   let h = `<div class="sec"><h2>Équipes</h2><span class="det">${board ? list.length : ''}</span></div><div class="card"><div class="list">${list.length ? list.map((t) => {
     const sub = [t.category !== t.name ? t.category : '', t.gender, t.coach ? 'Coach : ' + t.coach : '', t.slots].filter(Boolean).join(' · ');
-    return `<div class="row static" style="flex-wrap:wrap"><button class="g" data-act="team" data-id="${t.id}" style="background:none;border:0;text-align:left;padding:0;min-height:44px;color:inherit">${esc(t.name)}<small>${esc(sub)}</small>${t.coaches != null ? `<small>Coachs : ${t.coaches} · Effectif : ${plural(t.players, 'joueur')}</small>` : ''}</button>${t.state === 'Fantôme' ? '<span class="pill wait">Fantôme · en attente de validation</span>' : t.state === 'Archivée' ? '<span class="pill">Archivée</span>' : t.followed ? '<span class="pill blue">Suivie</span>' : ''}</div>`;
-  }).join('') : '<p class="empty">Aucune équipe.</p>'}</div></div>`;
+    return `<div class="row static" style="flex-wrap:wrap"><button class="g" data-act="team" data-id="${t.id}" style="background:none;border:0;text-align:left;padding:0;min-height:44px;color:inherit">${esc(t.name)}<small>${esc(sub)}</small>${t.coaches != null ? `<small>Coachs : ${t.coaches} · Effectif : ${plural(t.players, 'joueur')}</small>` : ''}</button>${t.state === 'Fantôme' ? '<span class="pill wait">Fantôme · en attente de validation</span>' : t.state === 'Archivée' ? '<span class="pill">Archivée</span>' : t.followed ? '<span class="pill blue">Suivie</span>' : ''}${entTag(t.id)}</div>`;
+  }).join('') : '<p class="empty">Aucune équipe.</p>'}${partnerRows()}</div></div>`;
   // n° 101 : la création d'équipe (à la main ou par import) est dans l'espace (Président, rubrique Technique), plus dans l'onglet Club
   return h;
 }
@@ -248,7 +251,7 @@ export function effectifsBlock() {
   const row = (t) => {
     const ps = S.players.filter((p) => p.team_id === t.id || S.pteams.some((x) => x.player_id === p.id && x.team_id === t.id)), ad = ps.map((p) => adminOf(p.id));
     const lic = ad.filter((a) => a?.licence_state === 'Licencié').length, pre = ad.filter((a) => /^Préinscrit/.test(a?.licence_state || '')).length, fee = ad.filter((a) => a && a.fee_amount != null), paid = fee.filter((a) => +a.fee_paid >= +a.fee_amount).length;
-    return `<button class="row" data-act="team" data-id="${t.id}"><span class="g">${esc(t.name)}${t.state === 'Fantôme' ? ' · fantôme' : ''}<small>${esc([plural(ps.length, 'joueur'), plural(lic, 'licencié'), plural(pre, 'préinscrit'), fee.length ? `cotisations ${paid}/${fee.length}` : ''].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`;
+    return `<button class="row" data-act="team" data-id="${t.id}"><span class="g">${esc(t.name)}${t.state === 'Fantôme' ? ' · fantôme' : ''}${entTag(t.id)}<small>${esc([plural(ps.length, 'joueur'), plural(lic, 'licencié'), plural(pre, 'préinscrit'), fee.length ? `cotisations ${paid}/${fee.length}` : ''].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`;
   };
   return `<div class="sec" id="effectifs"><h2>Effectifs</h2><span class="det">${plural(ts.length, 'équipe')}</span></div><div class="card"><div class="list">${ts.map(row).join('')}</div></div>`;
 }

@@ -95,12 +95,13 @@ export const espaceBtn = () => { const n = hooks.rolesTotal ? hooks.rolesTotal()
 export const searchBtn = () => `<button class="roundbtn" data-act="csearch" aria-label="Chercher un club">${icon('search', 22, '#11162E', 2.2)}</button>`;
 // opts : { title, kicker, sub, back, tags[], brand, role }
 // N° 27 : même en-tête partout. Bande du haut : (retour) · logo C · loupe (n° 56) · Espace · Mon compte ;
+// 5.2.1 : « Mes rôles » reste visible dans les sous-pages aussi (retour direct à ses rôles), sauf sur l'écran « Mes rôles » lui-même
 // dans un espace : (retour) · Mon compte (n° 85 : plus de logo ; n° 99 : plus de pastille du rôle)
 export function header(o = {}) {
   const c = club(), br = o.brand || brandMode(), sport = br ? null : (c?.sport || null); // hors club : ballon de la marque, étoile creuse (n° 106)
   const acc = S.session && S.me && S.view?.type !== 'account' && S.me.cgu_version === CGU_VERSION && !S.me.deleted_at; // n° 180
   const inClub = acc && S.clubId && isActive() && S.onb === null;
-  let h = `<div class="band">${o.back ? backBtn() : ''}<span class="logo">${wordmark(22, sport)}</span>${acc && S.view?.type !== 'csearch' ? searchBtn() : ''}${inClub && !o.back && casquettes().length ? espaceBtn() : ''}${acc ? accountBtn() : '<span style="width:44px"></span>'}</div>`;
+  let h = `<div class="band">${o.back ? backBtn() : ''}<span class="logo">${wordmark(22, sport)}</span>${acc && S.view?.type !== 'csearch' ? searchBtn() : ''}${inClub && S.view?.type !== 'espace' && casquettes().length ? espaceBtn() : ''}${acc ? accountBtn() : '<span style="width:44px"></span>'}</div>`;
   const tags = o.tags?.length ? `<div class="tags">${o.tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : '';
   // N° 116 (alpha 4.1.0) : un seul bloc bleu dans les espaces : en-tête, puis qui (blason, équipe ou rôle, « club · saison »),
   // puis la rangée des casquettes, puis les onglets de l'espace. Chaque information n'apparaît qu'une fois.
@@ -123,12 +124,16 @@ export const SPACE_VIEWS = ['espace', 'rub', 'fonctions', 'journal', 'timport', 
 
 // ---------- Onglets ----------
 const TABS = [['Accueil', 'home'], ['Agenda', 'cal'], ['Messages', 'msg'], ['Équipe', 'team'], ['Club', 'shield']];
+const tabCounts = () => ({ Messages: Object.values(S.unread || {}).reduce((a, b) => a + b, 0), Agenda: hooks.toAnswer ? hooks.toAnswer() : 0 });
+export function seeTab(i) { const t = TABS[i]?.[0], c = tabCounts(); if (t && c[t]) (S.tabSeen = S.tabSeen || {})[t] = c[t]; }
 export function tabBar() {
   // 5.1.0 (n° 190) : les onglets ne comptent que ce qui touche le compte (messages non lus, réponses à donner) ;
   // les demandes à valider et les heures à vérifier passent sur le bouton « Mes rôles » et sur chaque rôle
-  const counts = { Messages: Object.values(S.unread || {}).reduce((a, b) => a + b, 0), Agenda: hooks.toAnswer ? hooks.toAnswer() : 0 };
+  const counts = tabCounts(), seen = (S.tabSeen = S.tabSeen || {});
+  // 5.2.1 : toucher un onglet efface sa pastille, que l'action soit faite ou non ; elle revient seulement si le nombre augmente
+  Object.keys(counts).forEach((t) => { if (seen[t] > counts[t]) seen[t] = counts[t]; });
   return `<div class="tb"><nav aria-label="Onglets">${TABS.map(([t, ic], i) => {
-    const cur = i === S.tab && !S.view, n = counts[t] || 0;
+    const cur = i === S.tab && !S.view, n = (counts[t] || 0) > (seen[t] || 0) ? counts[t] : 0;
     return `<button data-act="tab" data-i="${i}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${icon(ic, 24, 'currentColor', cur ? 2.2 : 2)}</span><span>${t}</span>${n ? `<span class="n" aria-label="${n} ${t === 'Messages' ? 'non lus' : 'à répondre'}">${n > 99 ? '99+' : n}</span>` : ''}</button>`;
   }).join('')}</nav>${rolesNav()}</div>`;
 }

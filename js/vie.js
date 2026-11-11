@@ -6,6 +6,7 @@ import {
   SEASON, hasArea, AREAS, FONCTIONS, fl, casquettes, isCoachCasq, team, teamName, name, nick, plural, fmtShort, hm, evTeams, store, playersOfTeam, toValidate, myKids, loadNames,
   teamsOfPlayer, isMajor, pl,
 } from './core.js';
+import { backAfterDelete } from './core.js';
 import { icon, crest, delBtn, field, header, dayBadge, casqIcon, clubSeason } from './ui.js';
 import { upcoming, teamTabs } from './agenda.js';
 import { pendRows, licencesBlock, namesToCheck, feesBlock, teamsBlock, brandBlock, contactsBlock, trashBlock, membersBlock, effectifsBlock } from './club.js';
@@ -378,7 +379,7 @@ function respAsk() {
 function journalView() {
   const l = S.journal;
   const body = l == null ? '<p class="empty">Chargement…</p>' : l.length ? `<div class="card"><div class="list">${l.map((x) => `<div class="row static"><span class="g">${esc(x.action)}${x.target ? ' · ' + esc(x.target) : ''}<small>${esc(new Date(x.at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }))} · par ${esc(x.actor)}${x.detail ? ' · ' + esc(Object.entries(x.detail).map(([k, v]) => k + ' : ' + (typeof v === 'object' ? JSON.stringify(v) : v)).join(', ').slice(0, 140)) : ''}</small></span></div>`).join('')}</div></div>` : '<p class="empty">Aucune action sensible pour l’instant.</p>';
-  return { head: header({ back: true, kicker: roleKicker('Espace Président'), title: 'Journal des actions' }), body: '<p class="note">Versements, réductions, fiches modifiées, fonctions, validations d’heures… les 100 dernières actions. Lisible du seul président.</p>' + body };
+  return { head: header({ back: true, kicker: roleKicker('Espace Président'), title: 'Journal des actions', casq: casqTabs() }), body: '<p class="note">Versements, réductions, fiches modifiées, fonctions, validations d’heures… les 100 dernières actions. Lisible du seul président.</p>' + body };
 }
 
 // ---------- recherche connectée (n° 56) et accueil multi-clubs ----------
@@ -399,7 +400,7 @@ export function otherClubsHome() {
 export const VIE_VIEWS = {
   espace: () => espaceView(), rub: (v) => rubView(v.id), annonces: () => annoncesView(), annonce: (v) => annonceView(v.id), annform: () => annFormView(),
   fonctions: () => fonctionsView(), journal: () => journalView(), csearch: () => searchView(),
-  timport: () => { currentCasq(); return { head: header({ back: true, kicker: roleKicker('Équipes'), title: 'Importer des équipes' }), body: teamImportPage() }; }, // n° 102
+  timport: () => { currentCasq(); return { head: header({ back: true, kicker: roleKicker('Équipes'), title: 'Importer des équipes', casq: casqTabs() }), body: teamImportPage() }; }, // n° 102
 };
 
 // ---------- actions ----------
@@ -442,7 +443,7 @@ Object.assign(ACTIONS, {
   },
   annread: async (el, d) => { await markRead(d.id); render(true); },
   annevent: async (el, d) => { const a = S.annonces.find((x) => x.id === d.id); await markRead(d.id); S.view = { type: 'event', id: a.event_id }; render(); },
-  anndel: async (el, d) => { if (!armed('an' + d.id)) return; if (await run(sb.rpc('delete_announcement', { p_id: d.id }), 'Annonce supprimée.')) { S.view = null; await refresh(); } },
+  anndel: async (el, d) => { if (!armed('an' + d.id)) return; if (await run(sb.rpc('delete_announcement', { p_id: d.id }), 'Annonce supprimée.')) { backAfterDelete('annonce', d.id); await refresh(); } },
   // bénévoles
   volun: async (el, d) => { if (await run(sb.rpc('volunteer', { p_mission: d.id, p_on: d.v === '1' }), d.v === '1' ? 'Merci ! Tu es inscrit.' : 'Désinscription faite.')) { await reloadMissions(); render(true); } },
   vunassign: async (el, d) => { if (await run(sb.rpc('assign_volunteer', { p_mission: d.id, p_user: d.u, p_on: false }), 'Bénévole retiré.')) { await reloadMissions(); render(true); } },

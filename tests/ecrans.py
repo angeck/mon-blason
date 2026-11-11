@@ -41,11 +41,11 @@ with sync_playwright() as p:
 
     check('accueil : salutation et rendez-vous à répondre', has('Salut Gaël') and has('À répondre'))
     check('accueil : demande à valider visible', has('1 demande à valider'))
-    check('n° 52 : la prochaine séance de la série compte, pas celle dans 16 jours', has('5 réponses à donner') and has('1 sur 5'))
+    check('5.2.1 : seuls les rendez-vous proches ou le prochain de l’équipe comptent (pas la série dans 16 jours, ni les séances libres à 22 jours et plus)', has('4 réponses à donner') and has('1 sur 4'))
     shot('01-accueil')
     act('[data-act=tab][data-i="1"]')
     check('n° 52 : séance lointaine sans « À répondre » dans l’agenda', pg.evaluate("!document.querySelector('[data-act=event][data-id=e6b] .pill.wait') && !!document.querySelector('[data-act=event][data-id=e6] .pill.wait')"))
-    check('n° 57 : trois entraînements identiques sans lien de série : seul le premier est « À répondre »', pg.evaluate("!!document.querySelector('[data-act=event][data-id=e9a] .pill.wait') && !document.querySelector('[data-act=event][data-id=e9b] .pill.wait') && !document.querySelector('[data-act=event][data-id=e9c] .pill.wait')"))
+    check('5.2.1 : trois entraînements libres loin devant, alors que l’équipe a des rendez-vous plus proches : aucun n’est « À répondre »', pg.evaluate("!document.querySelector('[data-act=event][data-id=e9a] .pill.wait') && !document.querySelector('[data-act=event][data-id=e9b] .pill.wait') && !document.querySelector('[data-act=event][data-id=e9c] .pill.wait')"))
 
     # n° 57 : scénarios de contrôle sur des séances fictives (série de 9 séances, deux séries, séances sans lien), en avançant l'horloge
     ctl = pg.evaluate("""async () => {
@@ -63,14 +63,20 @@ with sync_playwright() as p:
       out.sans_lien_0 = open(0); out.sans_lien_8 = open(8);
       S.events = [mk('e0', 8, null, 'Libre'), { ...mk('e1', 15, null, 'Libre'), created_by: 'u-y' }, { ...mk('e2', 22, null, 'Libre'), type: 'Match' }];
       out.pas_un_groupe = open(0);
+      S.events = [{ ...mk('m0', 3, null, 'Match'), type: 'Match' }, ...weekly('f', 10, 'sF', 'Samedi', 3)];
+      out.match_puis_seance = open(0); out.match_passe = open(4);
+      S.events = [{ ...mk('k0', 30, null, 'AG'), type: 'Réunion', team_ids: [] }, { ...mk('k1', 60, null, 'Fête'), type: 'Fête', team_ids: [] }];
+      out.club_jusqu_a_reponse = open(0);
       S.events = saved;
       return out;
     }""")
     check('n° 57 : série de 9 séances → une seule séance à répondre', ctl['serie_0'] == 'a0')
     check('n° 57 : 8 jours plus tard → la deuxième séance apparaît', ctl['serie_8'] == 'a0,a1' and ctl['serie_8h'] == 'a1')
-    check('n° 57 : deux séries (mardi et jeudi) → deux séances au plus', ctl['deux_series'] == 'b0,c0')
+    check('5.2.1 : mardi et jeudi de la même équipe → seule la prochaine séance, la suivante 7 jours avant', ctl['deux_series'] == 'b0')
     check('n° 57 : séances identiques sans lien de série → même résultat qu’une série', ctl['sans_lien_0'] == 'd0' and ctl['sans_lien_8'] == 'd0,d1')
-    check('n° 57 : créateur différent ou match → pas du même groupe', ctl['pas_un_groupe'] == 'e0,e1,e2')
+    check('5.2.1 : même équipe, créateur différent ou match → un seul rendez-vous d’équipe à répondre (le prochain)', ctl['pas_un_groupe'] == 'e0')
+    check('5.2.1 : prochain match dans 3 jours → l’entraînement dans 10 jours n’est pas en encart', ctl['match_puis_seance'] == 'm0' and ctl['match_passe'] == 'f0')
+    check('5.2.1 : rendez-vous du club → en encart jusqu’à la réponse, sans attendre 7 jours', ctl['club_jusqu_a_reponse'] == 'k0,k1')
     act('[data-act=event][data-id=e6b]')
     check('n° 52 : on peut répondre en avance, date d’entrée annoncée', has('Tu peux répondre dès maintenant') and pg.locator('[data-act=rsvp][data-p=p-lily]').count() >= 1)
     act('[data-act=back]')
@@ -198,6 +204,17 @@ with sync_playwright() as p:
     check('import sans les coordonnées', pg.evaluate("window.__CALLS.some(c => c[1] === 'import_players' && c[2].p_rows[0].email === null)"))
     act('[data-act=tab][data-i="0"]'); act('[data-act=account]')
     check('mon compte : données et suppression', has('Télécharger mes données') and has('Supprimer mon compte'))
+    # 5.2.1 : la saisie en cours revient après un redessin de l'écran et après un rechargement de la page
+    pg.fill('#pn', 'Brouillon'); pg.wait_for_timeout(100)
+    pg.evaluate("(async()=>{const {render}=await import('/js/core.js'); render(true);})()"); pg.wait_for_timeout(200)
+    check('5.2.1 : saisie gardée quand l’écran se redessine tout seul', pg.input_value('#pn') == 'Brouillon')
+    # rechargement simulé par une seconde page du même navigateur (la page principale garde ses données de test)
+    pgd = ctx.new_page(); pgd.add_init_script("navigator.serviceWorker && (navigator.serviceWorker.register = () => Promise.resolve())")
+    pgd.goto('http://127.0.0.1:8765/index.html'); pgd.wait_for_selector('#pn', timeout=8000); pgd.wait_for_timeout(600)
+    check('5.2.1 : après un rechargement, retour sur Mon compte avec la saisie', 'Télécharger mes données' in pgd.inner_text('#app') and pgd.input_value('#pn') == 'Brouillon')
+    pgd.close()
+    act('[data-act=back]'); act('[data-act=account]')
+    check('5.2.1 : quitter l’écran efface la saisie abandonnée', pg.input_value('#pn') != 'Brouillon')
     # ---------- alpha 3.4 · petit logo p●c et convocations ----------
     act('[data-act=back]'); act('[data-act=tab][data-i="1"]'); act('[data-act=event][data-id=e2]')
     check('3.4 : encadré convocation sur un match à domicile', has('Convocation des clubs reçus') and has('Pré-convocation'))
@@ -1411,7 +1428,7 @@ with sync_playwright() as p:
     check('accueil public : recherche, se connecter, lien « Je n’ai pas encore de compte »', 'Chercher un club' in t2() and 'Se connecter' in t2() and 'Je n’ai pas encore de compte' in t2().replace("'", '’'))
     # 5.0.0 · n° 197 : écran d'ouverture de l'identité
     check('n° 197 · slogan de l’identité', 'Tout ton club dans ta poche' in t2())
-    check('n° 197 · pied : mentions légales, version, contact et site', all(x in t2() for x in ['Mentions légales', 'Vos données', 'Conditions', 'alpha 5.2.0 · version de test', 'contact@', 'Site :']))
+    check('n° 197 · pied : mentions légales, version, contact et site', all(x in t2() for x in ['Mentions légales', 'Vos données', 'Conditions', 'alpha 5.2.1 · version de test', 'contact@', 'Site :']))
     check('n° 197 · fond encre et logo « club » bleu clair', pg2.evaluate("getComputedStyle(document.documentElement).backgroundColor") == 'rgb(17, 22, 46)' and pg2.evaluate("getComputedStyle(document.querySelector('.ouvert .wordmark .club')).color") == 'rgb(107, 139, 255)')
     check('n° 197 · la recherche est visible sans défiler sur 360 × 640', (pg2.set_viewport_size({'width': 360, 'height': 640}) or True) and pg2.evaluate("document.querySelector('#psf button[type=submit]').getBoundingClientRect().bottom") <= 640)
     shot2 = lambda n: OUT and pg2.screenshot(path=os.path.join(OUT, n + '.png'))
@@ -1477,6 +1494,23 @@ with sync_playwright() as p:
     pg5.click('[data-act=theme][data-v=auto]'); pg5.wait_for_timeout(200)
     check('n° 168 · retour à « Comme mon téléphone »', pg5.evaluate("document.documentElement.getAttribute('data-theme')") is None)
     pg5.close(); ctx2.close()
+    # ---------- 5.2.1 : jour de la semaine sous les champs date, tag Entente, pipette (page neuve, mêmes données de test) ----------
+    pgn = ctx.new_page(); pgn.on('pageerror', lambda e: errors.append(str(e)))
+    pgn.add_init_script("navigator.serviceWorker && (navigator.serviceWorker.register = () => Promise.resolve())")
+    pgn.goto('http://127.0.0.1:8765/index.html'); pgn.wait_for_selector('.tb', timeout=8000)
+    pgn.click('[data-act=tab][data-i="1"]'); pgn.click('[data-act=evnew]'); pgn.wait_for_selector('#ed'); pgn.fill('#ed', '2026-11-21T12:00'); pgn.wait_for_timeout(100)
+    check('5.2.1 : le jour de la semaine s’écrit sous le champ date', pgn.inner_text('#ed + .dayhint') == 'Samedi 21 novembre 2026')
+    pgn.evaluate("(async()=>{const {S,render}=await import('/js/core.js'); S.teams[0].partner_state='acceptee'; S.partnerTeams=[{team_id:'x',team_name:'U13 Entente',host_club:'AS Voisins',state:'acceptee'}]; S.tab=4; S.view=null; render();})()"); pgn.wait_for_timeout(300)
+    check('5.2.1 : une équipe en entente porte le tag « Entente » dans les équipes du club', pgn.locator('#app .pill:has-text("Entente")').count() >= 1)
+    check('5.2.1 : l’équipe en entente portée par un autre club apparaît au président', 'portée par AS Voisins' in pgn.inner_text('#app'))
+    pgn.evaluate("(async()=>{const {S}=await import('/js/core.js'); const c=document.createElement('canvas'); c.width=40;c.height=40; const x=c.getContext('2d'); x.fillStyle='#ff0000'; x.fillRect(0,0,20,40); x.fillStyle='#00aa00'; x.fillRect(20,0,20,40); S.tmpLogo=c.toDataURL('image/png');})()")
+    for sel in ['[data-act=espace]', '[data-act=casq][data-v="f:Trésorier"]', '[data-act=ftab][data-v=rubs]', '[data-act=rub][data-id=communication]']:
+        pgn.click(sel, timeout=4000); pgn.wait_for_timeout(150)
+    pgn.click('summary:has-text("Blason, couleurs et réglages")'); pgn.wait_for_timeout(150)
+    pgn.click('[data-act=pipette][data-v=c1]'); pgn.wait_for_selector('.pipov canvas'); pgn.wait_for_timeout(200)
+    bx = pgn.locator('.pipov canvas').bounding_box(); pgn.mouse.click(bx['x'] + bx['width'] * 0.75, bx['y'] + bx['height'] * 0.5); pgn.wait_for_timeout(200)
+    check('5.2.1 : la pipette prend la couleur du point touché sur le logo', pgn.input_value('[name=c1]') == '#00aa00' and pgn.locator('.pipov').count() == 0)
+    pgn.close()
     b.close()
 srv.shutdown()
 errs = [e for e in errors if 'favicon' not in e and 'Failed to load resource' not in e]

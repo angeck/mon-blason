@@ -5,6 +5,7 @@ import {
   toLocalInput, fmtDay, plural, download, norm, follows, hooks, hasArea, myMem, isPresident,
   SEASON, durOf, endOf, timeRange, fmtDur, DEF_DUR, fmtShort,
 } from './core.js';
+import { backAfterDelete } from './core.js';
 import { icon, dayBadge, delBtn, field, crest, ball } from './ui.js';
 import { plansForEvent, fmtMin, courtSvg, openPlanForEvent } from './coach.js';
 import { missionsBlock, myMissionLabel } from './vie.js';
@@ -30,26 +31,18 @@ export const followOnly = (e) => isTeamType(e) && !evTeams(e).some(coachOf) && !
 export const coachOnly = (e) => isTeamType(e) && evTeams(e).some(coachOf) && !iPlayIn(evTeams(e));
 // N° 52 : une séance d'une série n'entre dans « À répondre » que si c'est la prochaine séance de la série, ou 7 jours avant sa date
 export const OPEN_DAYS = 7;
-// N° 57 : une « série » = les séances liées par series_id ; pour les entraînements sans lien (recopiés, importés, anciens),
-// les séances identiques (mêmes équipes, même titre, même jour de la semaine, même heure, même créateur) comptent comme une série.
-export function serieKey(e) {
-  if (e.series_id) return 's:' + e.series_id;
-  if (e.type !== 'Entraînement') return null;
-  const d = new Date(e.starts_at);
-  return ['t', [...(e.team_ids || [])].sort().join(','), (e.title || '').trim().toLowerCase(), d.getDay(), d.getHours() + ':' + d.getMinutes(), e.created_by || ''].join('|');
-}
+// 5.2.1 : quand une réponse est demandée.
+// - Rendez-vous d'équipe (entraînement, match, plateau, tournoi) : 7 jours avant sa date, ou s'il est le prochain rendez-vous
+//   de l'équipe, toutes sortes confondues. Une fois le prochain entraînement ou match répondu, les suivants (à plus d'une semaine) ne sont plus en encart.
+// - Rendez-vous du club ou autre rendez-vous : l'encart reste jusqu'à la réponse (sauf série : la prochaine séance, ou 7 jours avant).
 export function isOpen(e) {
-  const key = serieKey(e);
-  if (!key) return true;
   const now = Date.now(), t = new Date(e.starts_at).getTime();
   if (t <= now + OPEN_DAYS * 864e5) return true;
-  let next = null;
-  for (const x of S.events) {
-    if (x.cancelled || serieKey(x) !== key) continue;
-    const tx = new Date(x.starts_at).getTime();
-    if (tx >= now - 2 * 3600e3 && (!next || tx < new Date(next.starts_at).getTime())) next = x;
-  }
-  return !next || next.id === e.id;
+  let rival;
+  if (isTeamType(e)) { const ts = evTeams(e); rival = (x) => isTeamType(x) && evTeams(x).some((id) => ts.includes(id)); }
+  else if (e.series_id) rival = (x) => x.series_id === e.series_id;
+  else return true;
+  return !S.events.some((x) => x.id !== e.id && !x.cancelled && rival(x) && new Date(x.starts_at).getTime() >= now - 2 * 3600e3 && new Date(x.starts_at).getTime() < t);
 }
 export const opensOn = (e) => new Date(new Date(e.starts_at).getTime() - OPEN_DAYS * 864e5);
 // Convocation : un match peut ne convoquer que certains joueurs (3.2)
@@ -543,7 +536,7 @@ Object.assign(ACTIONS, {
     if (!isArmed(key) && mode === 'series') { const n = await run(sb.rpc('delete_events', { p_event: d.id, p_mode: 'series', p_dry: true })); if (n === null) return; S.delCount = n; }
     if (!armed(key)) return;
     const n = await run(sb.rpc('delete_events', { p_event: d.id, p_mode: mode, p_dry: false }));
-    if (n !== null) { toast(mode === 'one' ? 'Rendez-vous supprimé.' : plural(n, 'séance supprimée', 'séances supprimées') + '.'); S.view = null; S.tab = 1; await refresh(); }
+    if (n !== null) { toast(mode === 'one' ? 'Rendez-vous supprimé.' : plural(n, 'séance supprimée', 'séances supprimées') + '.'); backAfterDelete('event', d.id); await refresh(); }
   },
   selmode: () => { S.sel = S.sel ? null : new Set(); S.del = null; S.pastOpen = false; render(true); }, // n° 130 : la barre des passés se referme seulement en sortant de la sélection
   seldel: async () => {

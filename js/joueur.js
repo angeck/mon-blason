@@ -1,6 +1,7 @@
 // mypocketclub · fiche joueur : informations, parents, autorisations datées, licence et cotisation, corbeille.
 import { BRAND } from '../config.js';
 import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, club, isBoard, isPresident, hasArea, coachOf, contactsHidden, team, teamName, pl, pname, adminOf, parentsOf, isParentOf, canManagePlayer, canAdminPlayer, outranks, isMajor, name, num, plural } from './core.js';
+import { backAfterDelete } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 import { payFamilySoon } from './v310.js';
 
@@ -148,7 +149,7 @@ Object.assign(ACTIONS, {
   paydel: async (el, d) => { if (!armed('pay' + d.id)) return; if (await run(sb.from('player_payments').delete().eq('id', d.id), 'Versement retiré.')) await refresh(); },
   paid: async (el, d) => { if (!armed('paid' + d.id)) return; if (await run(sb.rpc('mark_paid', { p_player: d.id, p_paid: true }), 'Cotisation payée.')) await refresh(); },
   unpaid: async (el, d) => { if (!armed('unpaid' + d.id)) return; if (await run(sb.rpc('mark_paid', { p_player: d.id, p_paid: false }), 'Cotisation repassée en « À payer ».')) await refresh(); },
-  pdel: async (el, d) => { if (!armed('p' + d.id)) return; if (await run(sb.rpc('trash_item', { p_kind: 'player', p_id: d.id }), 'Fiche mise à la corbeille. Restaurable pendant 30 jours (onglet Club).')) { S.view = null; await refresh(); } },
+  pdel: async (el, d) => { if (!armed('p' + d.id)) return; if (await run(sb.rpc('trash_item', { p_kind: 'player', p_id: d.id }), 'Fiche mise à la corbeille. Restaurable pendant 30 jours (onglet Club).')) { backAfterDelete('player', d.id); await refresh(); } },
 });
 Object.assign(FORMS, {
   plf: async (v, f) => {

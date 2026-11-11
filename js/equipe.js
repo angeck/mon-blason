@@ -4,6 +4,8 @@ import {
   active, isBoard, isPresident, coachOf, team, teamName, myTeamIds, myPlayers, playersOfTeam, pname, adminOf, toValidate, niceFirst, niceLast, norm,
   loadJs, plural, fmtShort, evTeams, follows, mySelf, myKids, pl,
 } from './core.js';
+import { entTag } from './core.js';
+import { backAfterDelete } from './core.js';
 export { importFile };
 import { smartParse, analyse, fromMapping, doubts, COLS, decodeText, bestSheet } from './importer.js';
 import { icon, delBtn, field, crest } from './ui.js';
@@ -87,7 +89,7 @@ const initialsOf = (n) => String(n || '').split(' ').map((w) => w[0]).slice(0, 2
 function startFollow() {
   const list = (S.cteams || []).filter((t) => t.state === 'Visible' && !t.followed && !follows(t.id));
   let h = `<div class="card lift"><b style="font-family:var(--pc-titre);font-size:22px;line-height:1.1">Tu veux commencer à suivre une équipe ?</b><p class="note" style="margin:0">Ses matchs, plateaux et tournois apparaîtront dans ton agenda.</p></div>`;
-  h += `<div class="sec"><h2>Les équipes du club</h2><span class="det">${list.length || ''}</span></div><div class="card"><div class="list">${list.length ? list.map((t) => `<div class="row static"><button class="g" data-act="team" data-id="${t.id}" style="background:none;border:0;text-align:left;padding:0;min-height:44px;color:inherit">${esc(t.name)}<small>${esc([t.category !== t.name ? t.category : '', t.gender, t.slots].filter(Boolean).join(' · '))}</small></button><button class="btn small main" style="flex:none" data-act="follow" data-id="${t.id}">Suivre</button></div>`).join('') : '<p class="empty">Le club n’a pas encore d’équipe visible.</p>'}</div></div>`;
+  h += `<div class="sec"><h2>Les équipes du club</h2><span class="det">${list.length || ''}</span></div><div class="card"><div class="list">${list.length ? list.map((t) => `<div class="row static"><button class="g" data-act="team" data-id="${t.id}" style="background:none;border:0;text-align:left;padding:0;min-height:44px;color:inherit">${esc(t.name)}${entTag(t.id)}<small>${esc([t.category !== t.name ? t.category : '', t.gender, t.slots].filter(Boolean).join(' · '))}</small></button><button class="btn small main" style="flex:none" data-act="follow" data-id="${t.id}">Suivre</button></div>`).join('') : '<p class="empty">Le club n’a pas encore d’équipe visible.</p>'}</div></div>`;
   return h + topFollowed();
 }
 export function teamTab() {
@@ -129,6 +131,16 @@ export function teamPage(tid) {
   let h = `<div class="card lift">${ct && ct.coaches != null ? `<div class="chips"><span class="pill blue">Coachs : ${ct.coaches}</span><span class="pill blue">Effectif : ${plural(ct.players, 'joueur')}</span></div>` : ''}<div class="kick">Créneaux et gymnase</div><div>${esc(t.slots || 'Non renseignés')}</div>${t.state === 'Fantôme' ? `<span class="pill wait">Fantôme · en attente de validation</span><p class="note">Visible du bureau et de ses coachs seulement, aucune notification. Les familles la verront une fois validée.</p>${!S.tsp ? '' : `<button class="btn main ${isArmed('tv' + tid) ? 'ink' : ''}" data-act="tvisible" data-id="${tid}">${isArmed('tv' + tid) ? "Confirmer : l'équipe devient visible des familles" : "Rendre l'équipe visible"}</button>`}` : t.state === 'Archivée' ? '<span class="pill">Archivée</span>' : ''}${!myTeamIds().includes(tid) ? followBtn(tid) : ''}</div>`;
   // n° 113 (n° 101 point 2) : la fiche reste consultable ; les boutons de gestion sont dans l'espace de l'équipe (onglet Effectif)
   const manage = (board || coach) && !!S.tsp;
+  // 5.2.1 : tant que l'équipe n'a pas de coach, « Nommer un coach » passe en haut de la page, déplié ; ensuite il reprend sa place plus bas
+  const hasCoach = ct && ct.coaches != null ? ct.coaches > 0 : S.members.some((m) => m.team_id === tid && m.role === 'coach' && m.status === 'active');
+  let nom = '';
+  if (manage) {
+    // n° 136 : tous les adultes du club (la base donne la liste ; coach et coach assistant sont réservés aux adultes)
+    const cands = (S.ccands || {})[tid];
+    if (cands === undefined) loadCands(tid);
+    nom = `<details class="card"${hasCoach ? '' : ' open'}><summary>${board ? 'Nommer un coach ou un assistant' : 'Ajouter un coach assistant'}</summary><form id="coachf" data-id="${tid}" class="stack">${field('cfu', 'Adulte du club', `<select id="cfu" name="user" ${cands && cands.length ? '' : 'disabled'}>${cands ? cands.map((x) => `<option value="${x.uid}">${esc(x.label)}</option>`).join('') || '<option value="">Aucun autre adulte dans le club</option>' : '<option value="">Chargement…</option>'}</select>`)}${board ? '<label class="check"><input type="checkbox" name="assistant"><span>Coach assistant</span></label>' : '<input type="hidden" name="assistant" value="on">'}<button class="btn main" type="submit" ${cands && cands.length ? '' : 'disabled'}>Nommer</button><p class="note">Tous les adultes membres du club (ils ont rejoint avec le code). Coach et coach assistant sont réservés aux adultes.</p></form></details>`;
+  }
+  if (manage && !hasCoach) h += nom;
   if ((board || coach) && !S.tsp) h += `<button class="btn" data-act="tsgo" data-id="${tid}" data-tab="effectif">${icon('shield', 20)}Gérer dans l'espace de l'équipe</button>`;
   const vp = toValidate().filter((m) => m.team_id === tid);
   if (manage && vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card">${pendRows(vp)}</div>`;
@@ -136,10 +148,7 @@ export function teamPage(tid) {
   if (manage) {
     h += `<button class="btn main" data-act="import" data-id="${tid}">${icon('plus', 20)}Ajouter des joueurs (un par un, liste, Excel, photo)</button>`;
     h += `<details class="card"><summary>${board ? "Réglages de l'équipe" : "Créneaux de l'équipe"}</summary>${board ? teamForm(t, 'teamedit') : `<form id="teamslots" data-id="${tid}" class="stack">${field('tsl', 'Créneaux et gymnase', `<input id="tsl" name="slots" value="${esc(t.slots || '')}">`)}<button class="btn main" type="submit">Enregistrer</button></form>`}${t.partner_hidden && (t.partner_state || 'aucune') === 'aucune' ? `<button class="btn ghost small" data-act="pfshow" data-id="${tid}">Réafficher « Équipe en entente ? »</button>` : ''}</details>`;
-    // n° 136 : tous les adultes du club (la base donne la liste ; coach et coach assistant sont réservés aux adultes)
-    const cands = (S.ccands || {})[tid];
-    if (cands === undefined) loadCands(tid);
-    h += `<details class="card"><summary>${board ? 'Nommer un coach ou un assistant' : 'Ajouter un coach assistant'}</summary><form id="coachf" data-id="${tid}" class="stack">${field('cfu', 'Adulte du club', `<select id="cfu" name="user" ${cands && cands.length ? '' : 'disabled'}>${cands ? cands.map((x) => `<option value="${x.uid}">${esc(x.label)}</option>`).join('') || '<option value="">Aucun autre adulte dans le club</option>' : '<option value="">Chargement…</option>'}</select>`)}${board ? '<label class="check"><input type="checkbox" name="assistant"><span>Coach assistant</span></label>' : '<input type="hidden" name="assistant" value="on">'}<button class="btn main" type="submit" ${cands && cands.length ? '' : 'disabled'}>Nommer</button><p class="note">Tous les adultes membres du club (ils ont rejoint avec le code). Coach et coach assistant sont réservés aux adultes.</p></form></details>`;
+    if (hasCoach) h += nom;
   }
   if (board && manage) h += `<div class="btns">${t.state === 'Visible' ? `<button class="btn ghost small" data-act="tstate" data-id="${tid}" data-v="Fantôme">Repasser en mode fantôme</button>` : ''}${t.state !== 'Archivée' ? `<button class="btn ghost small ${isArmed('rn' + tid) ? 'danger armed' : ''}" data-act="trenew" data-id="${tid}">${isArmed('rn' + tid) ? `Confirmer : archiver et recréer pour ${NEXT_SEASON}` : `Archiver et reconduire pour ${NEXT_SEASON}`}</button>` : ''}</div>`;
   // n° 103 : « Supprimer (doublon) », séparé d'« Archiver », pour le président et le bureau Technique (corbeille 30 jours, restaurable)
@@ -226,7 +235,7 @@ Object.assign(ACTIONS, {
   unfollow: async (el, d) => { if (await run(sb.from('team_follows').delete().eq('user_id', S.me.id).eq('team_id', d.id), 'Tu ne suis plus cette équipe.')) await refresh(); },
   tstate: async (el, d) => { if (await run(sb.from('teams').update({ state: d.v }).eq('id', d.id), d.v === 'Visible' ? 'Équipe visible.' : 'Équipe en mode fantôme.')) await refresh(); },
   trenew: async (el, d) => { if (!armed('rn' + d.id)) return; const n = await run(sb.rpc('renew_team', { p_team: d.id, p_season: NEXT_SEASON }), `Équipe reconduite pour ${NEXT_SEASON} (mode fantôme).`); if (n) { S.view = { type: 'team', id: n }; await refresh(); } },
-  tdel: async (el, d) => { if (!armed('t' + d.id)) return; if (await run(sb.rpc('trash_item', { p_kind: 'team', p_id: d.id }), 'Équipe mise à la corbeille. Le bureau peut la restaurer pendant 30 jours.')) { S.view = null; await refresh(); } },
+  tdel: async (el, d) => { if (!armed('t' + d.id)) return; if (await run(sb.rpc('trash_item', { p_kind: 'team', p_id: d.id }), 'Équipe mise à la corbeille. Le bureau peut la restaurer pendant 30 jours.')) { backAfterDelete('team', d.id); await refresh(); } },
   import: (el, d) => { S.imp = { tid: d.id, text: '', rows: null, matches: {}, map: null }; S.view = { type: 'import', id: d.id }; render(); },
   impcheck: async () => { S.imp.photo = S.imp.photo && !!S.imp.text; await readInput(S.imp.text); },
   impmap: async () => { const I = S.imp; if (!I.map.columns.some((c) => ['name', 'first', 'last'].includes(c.k))) return toast('Indique au moins la colonne du nom.'); I.rows = fromMapping(I.map.body, I.map.columns, I.swap); I.map = null; await checkImport(); },

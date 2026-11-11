@@ -14,13 +14,13 @@ import { legalLinks, LEGAL } from './legal.js';
 
 function roleRequest() {
   const r = S.rq, c = club(); if (!c) return '';
-  const mine = myMem(), auto = r.role === 'supporteur' || isPresident() || (r.role === 'coach' && isBoard());
+  const mine = myMem(), auto = r.role === 'supporteur' || isPresident();
   return `<details id="rqbox" class="card lift" ${r.open ? 'open' : ''}><summary data-act="rqopen">Demander un autre rôle dans ${esc(c.name)}</summary>
   <div class="det">Mes rôles : ${mine.filter((m) => m.status === 'active').map((m) => esc(roleLabel(m)) + (m.team_id ? ' ' + esc(teamName(m.team_id)) : '')).join(', ') || '—'}</div>
   ${mine.filter((m) => m.status === 'pending').map((m) => `<div class="row static"><span class="g">Demande en attente<small>${esc(roleLabel(m))}${m.team_id ? ' ' + esc(teamName(m.team_id)) : ''}</small></span><button class="btn small ghost" data-act="mcancel" data-id="${m.id}">Annuler la demande</button></div>`).join('')}
   <div class="chips">${JOIN_ROLES.map((x) => `<button class="chip" data-act="rqrole" data-v="${x}" aria-pressed="${r.role === x}">${ROLES[x]}</button>`).join('')}</div>
   ${roleExtra(r, 'r', S.teams)}
-  <p class="note">${auto ? 'Accès immédiat.' : r.role === 'bureau' ? 'Validé par le président.' : r.role === 'coach' ? 'Validé par le bureau ou le président.' : "Validé par le coach de l'équipe, le bureau ou le président."}</p>
+  <p class="note">${auto ? 'Accès immédiat.' : r.role === 'bureau' ? 'Validé par le président.' : r.role === 'coach' ? 'Validé par le président ou le Directeur technique.' : "Validé par le coach de l'équipe, le bureau ou le président."}</p>
   <button class="btn main" data-act="rqsend">Envoyer la demande</button></details>`;
 }
 
@@ -101,7 +101,7 @@ Object.assign(ACTIONS, {
     const r = S.rq; if (!checkRole(r)) return;
     const same = r.role !== 'parent' && myMem().find((m) => m.role === r.role && (m.team_id || '') === (r.team || '') && (r.role !== 'bureau' || (m.fonction || 'Membre du bureau') === (r.fonction || 'Membre du bureau')));
     if (same) return toast(same.status === 'active' ? `Tu es déjà ${ROLES[r.role].toLowerCase()}${r.team ? ' ' + teamName(r.team) : ''}.` : `Une demande est déjà en attente pour ${ROLES[r.role].toLowerCase()}${r.team ? ' ' + teamName(r.team) : ''} : tu peux l'annuler juste au-dessus.`);
-    const auto = r.role === 'supporteur' || isPresident() || (r.role === 'coach' && isBoard());
+    const auto = r.role === 'supporteur' || isPresident();
     if (r.role === 'bureau') { if (await run(sb.rpc('request_bureau', { p_club: S.clubId, p_code: null, p_fonction: r.fonction || 'Membre du bureau' }), isPresident() ? 'Fonction ajoutée.' : 'Demande envoyée au président.')) { S.rq = { role: 'joueur', team: '', open: false }; await refresh(); } return; }
     if (await run(sb.rpc('join_club', { p_code: club().join_code, p_role: r.role, p_team: r.team || null, p_child_first: r.childf || null, p_child_last: r.childl || null }), auto ? 'Rôle ajouté.' : 'Demande envoyée.')) { S.rq = { role: 'joueur', team: '', open: false }; await refresh(); }
   },

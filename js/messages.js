@@ -1,6 +1,7 @@
 // mypocketclub · messages : groupes d'échange, messages en direct, sondages (supprimables, restaurables par le bureau).
 import { annoncesBlock } from './vie.js';
 import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, isBoard, name, nick, teamName, fmtShort, loadGroup, parentsOf, playersOfTeam, plural, norm } from './core.js';
+import { backAfterDelete } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 
 export const grp = (id) => S.groups.find((g) => g.id === id);
@@ -146,8 +147,8 @@ Object.assign(ACTIONS, {
   polldel: async (el, d) => { if (!armed('poll' + d.id)) return; if (await run(sb.rpc('trash_item', { p_kind: 'poll', p_id: d.id }), 'Sondage supprimé (restaurable pendant 30 jours).')) { await loadGroup(S.view.id); render(true); } },
   pollrestore: async (el, d) => { if (await run(sb.rpc('restore_item', { p_kind: 'poll', p_id: d.id }), 'Sondage restauré.')) { await loadGroup(S.view.id); render(true); } },
   gmute: async () => { const mine = S.gmembers.find((x) => x.user_id === S.me.id); if (mine && await run(sb.from('group_members').update({ muted: !mine.muted }).eq('group_id', S.view.id).eq('user_id', S.me.id))) { mine.muted = !mine.muted; render(true); } },
-  gleave: async () => { if (await run(sb.from('group_members').delete().eq('group_id', S.view.id).eq('user_id', S.me.id), 'Tu as quitté le groupe.')) { S.view = null; await refresh(); } },
-  gdel: async (el, d) => { if (!armed('g' + d.id)) return; if (await run(sb.from('groups').delete().eq('id', d.id), 'Groupe supprimé.')) { S.view = null; await refresh(); } },
+  gleave: async () => { if (await run(sb.from('group_members').delete().eq('group_id', S.view.id).eq('user_id', S.me.id), 'Tu as quitté le groupe.')) { backAfterDelete('group', S.view.id); await refresh(); } },
+  gdel: async (el, d) => { if (!armed('g' + d.id)) return; if (await run(sb.from('groups').delete().eq('id', d.id), 'Groupe supprimé.')) { backAfterDelete('group', d.id); await refresh(); } },
 });
 FORMS.msgf = async (v) => {
   const att = S.msgatt || [], txt = (v.body || '').trim(); if (!txt && !att.length) return;
