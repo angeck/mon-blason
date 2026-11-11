@@ -2547,6 +2547,55 @@ ok("5.2.1 · le président valide la demande du membre du bureau", f"exists(sele
 w("reset role;")
 ok("5.2.1 · join_club reste fermée au visiteur", "not has_function_privilege('anon', 'join_club(text, text, uuid, text, text)', 'execute')")
 
+# ---------- 5.3.0 · n° 186 : groupes d'échange avec un mineur, signalement ----------
+section("5.3.0 · n° 186 groupes avec un mineur")
+w("reset role;")
+w("\\i ../supabase/alpha_5_3_0.sql")
+w("\\i ../supabase/alpha_5_3_0.sql")  # relancée deux fois
+for i_, (k, f_, l_) in enumerate([('m186', 'Jade', 'Mineure186'), ('m186b', 'Noé', 'Mineur186'), ('p186', 'Parent', 'De186'), ('s186', 'Soutien', 'Supporteur186'), ('c186', 'Coach', 'Autre186')]):
+    uid_ = f"00000000-0000-4000-8000-000000186{i_:03d}"
+    people[k] = (uid_, f_, l_)
+    w(f"insert into auth.users(id, raw_user_meta_data) values ('{uid_}', '{{\"first_name\":\"{f_}\",\"last_name\":\"{l_}\",\"full_name\":\"{f_} {l_}\",\"cgu_version\":\"test\"}}') on conflict do nothing;")
+w(f"insert into memberships(club_id, user_id, role, team_id, status) values ({C1}, {P('m186')}, 'joueur', {T('U9')}, 'active'), ({C1}, {P('m186b')}, 'joueur', {T('U9')}, 'active'), ({C1}, {P('p186')}, 'parent', {T('U9')}, 'active'), ({C1}, {P('s186')}, 'supporteur', null, 'active'), ({C1}, {P('c186')}, 'coach', {T('Seniors')}, 'active');")
+w(f"insert into players(club_id, team_id, user_id, first_name, last_name, birth_date) values ({C1}, {T('U9')}, {P('m186')}, 'Jade', 'Mineure186', current_date - interval '16 years'), ({C1}, {T('U9')}, {P('m186b')}, 'Noé', 'Mineur186', current_date - interval '15 years');")
+w(f"insert into player_parents(player_id, user_id) select id, {P('p186')} from players where user_id = {P('m186')};")
+def MKG(nom, team=None):   # le groupe est créé en une requête, ses membres en une autre (comme l'application)
+    w(f"insert into groups(club_id, name, created_by{', team_id' if team else ''}) values ({C1}, '{nom}', auth.uid(){', ' + team if team else ''});")
+MEM = lambda nom, ids: f"insert into group_members(group_id, user_id) select g.id, u from groups g, unnest(array[{ids}]::uuid[]) u where g.name = '{nom}'"
+w("set role authenticated;")
+ASPRES(); MKG('g186a'); fails("n° 186 · un adulte et un mineur sans son parent : refusé", MEM('g186a', f"auth.uid(), {P('m186')}"))
+ASPRES(); MKG('g186b'); works("n° 186 · un adulte, le mineur et son parent : accepté", MEM('g186b', f"auth.uid(), {P('m186')}, {P('p186')}"))
+ASPRES(); MKG('g186c'); works("n° 186 · deux mineurs entre eux : libre", MEM('g186c', f"auth.uid(), {P('m186')}, {P('m186b')}") if False else MEM('g186c', f"{P('m186')}, {P('m186b')}"))
+ASPRES(); MKG('g186d'); fails("n° 186 · un supporteur avec un mineur : refusé", MEM('g186d', f"{P('s186')}, {P('m186')}, {P('p186')}"))
+ASPRES(); MKG('g186e'); works("n° 186 · un supporteur avec des adultes : accepté", MEM('g186e', f"auth.uid(), {P('s186')}, {P('p186')}"))
+ASPRES(); fails("n° 186 · le parent ne peut pas être retiré tant que le mineur est là", "delete from group_members where group_id = (select id from groups where name = 'g186b') and user_id = " + P('p186'))
+AS('p186'); fails("n° 186 · le parent ne peut pas quitter non plus", "delete from group_members where group_id = (select id from groups where name = 'g186b') and user_id = auth.uid()")
+AS('m186'); works("n° 186 · le mineur peut quitter le groupe", "delete from group_members where group_id = (select id from groups where name = 'g186b') and user_id = auth.uid()")
+ASPRES(); works("n° 186 · une fois le mineur parti, le parent peut être retiré", "delete from group_members where group_id = (select id from groups where name = 'g186b') and user_id = " + P('p186'))
+# groupes d'équipe
+ASPRES(); MKG('g186t', T('U9')); works("n° 186 · groupe d'équipe : le président l'ouvre avec le mineur", MEM('g186t', f"{P('m186')}"))
+w("reset role;")
+ok("n° 186 · les parents inscrits du mineur sont ajoutés d'office au groupe d'équipe", f"exists(select 1 from group_members gm join groups g on g.id = gm.group_id where g.name = 'g186t' and gm.user_id = {P('p186')})")
+w("set role authenticated;")
+ASPRES(); fails("n° 186 · un supporteur ne rejoint pas un groupe d'équipe où il y a un mineur", f"insert into group_members(group_id, user_id) select id, {P('s186')} from groups where name = 'g186t'")
+ASPRES(); fails("n° 186 · un coach d'une autre équipe n'entre pas dans le groupe d'équipe d'un mineur", f"insert into group_members(group_id, user_id) select id, {P('c186')} from groups where name = 'g186t'")
+ASPRES(); fails("n° 186 · le parent d'office ne peut pas être retiré du groupe d'équipe", f"delete from group_members where user_id = {P('p186')} and group_id = (select id from groups where name = 'g186t')")
+AS('p186'); fails("n° 186 · un parent ne crée pas de groupe d'équipe", f"insert into groups(club_id, name, created_by, team_id) values ({C1}, 'g186u', auth.uid(), {T('U9')})")
+ASPRES(); fails("n° 186 · le lien d'un groupe avec une équipe ne se change pas", "update groups set team_id = null where name = 'g186t'")
+ASPRES(); works("n° 186 · supprimer un groupe avec un mineur reste possible", "delete from groups where name = 'g186t'")
+# signalement
+AS('p186'); works("n° 186 · un membre écrit dans son groupe", "insert into messages(group_id, user_id, body) select id, auth.uid(), 'Message à signaler' from groups where name = 'g186e'")
+AS('s186'); works("n° 186 · un membre du groupe signale un message", "select report_message((select id from messages where body = 'Message à signaler'), 'Pas adapté')")
+w("reset role;")
+ok("n° 186 · le signalement est enregistré avec son auteur", f"exists(select 1 from message_reports where reporter = {P('s186')} and reason = 'Pas adapté')")
+ok("n° 186 · le président est prévenu du signalement", f"exists(select 1 from push_queue q where q.title = 'Message signalé' and q.user_id = (select user_id from memberships where club_id = {C1} and role = 'president' and status = 'active' limit 1))")
+w("set role authenticated;")
+AS('c186'); fails("n° 186 · une personne hors du groupe ne signale pas", "select report_message((select id from messages where body = 'Message à signaler'), null)")
+ASPRES(); ok("n° 186 · le président lit le message signalé", f"(select count(*) from reported_messages({C1}) where body = 'Message à signaler') = 1")
+AS('b1'); fails("n° 186 · le bureau ne lit pas les signalements", f"select * from reported_messages({C1})")
+w("reset role;")
+ok("n° 186 · les nouvelles fonctions sont fermées au visiteur", "not has_function_privilege('anon', 'report_message(bigint, text)', 'execute') and not has_function_privilege('anon', 'reported_messages(uuid)', 'execute') and not has_function_privilege('anon', 'group_minor_problem(uuid)', 'execute')")
+
 # ---------- rapport ----------
 w("\\echo ''")
 w("\\echo '========== RAPPORT =========='")

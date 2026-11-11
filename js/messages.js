@@ -1,6 +1,6 @@
 // mypocketclub · messages : groupes d'échange, messages en direct, sondages (supprimables, restaurables par le bureau).
 import { annoncesBlock } from './vie.js';
-import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, isBoard, name, nick, teamName, fmtShort, loadGroup, parentsOf, playersOfTeam, plural, norm } from './core.js';
+import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, isBoard, isPresident, name, nick, teamName, fmtShort, loadGroup, parentsOf, playersOfTeam, plural, norm } from './core.js';
 import { backAfterDelete } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 
@@ -21,8 +21,15 @@ export function bump(m, kind = 'message') {
   const g = grp(m.group_id); if (!g) return;
   g.last_message_at = m.created_at; S.previews[m.group_id] = { group_id: m.group_id, user_id: m.user_id ?? m.created_by, body: m.body ?? m.question, created_at: m.created_at, kind };
 }
+// n° 186 : le président voit les messages qu'on lui a signalés (ce message seulement, jamais le groupe)
+function reportsBlock() {
+  if (!isPresident()) return '';
+  if (S.reports === undefined) { S.reports = []; sb.rpc('reported_messages', { p_club: S.clubId }).then(({ data }) => { S.reports = (data || []).filter((r) => !r.handled_at); if (S.reports.length) render(true); }, () => {}); }
+  if (!S.reports.length) return '';
+  return `<div class="sec"><h2>Messages signalés (${S.reports.length})</h2></div><div class="card">${S.reports.map((r) => `<div class="row" style="align-items:flex-start"><span class="g"><b>${esc(r.group_name || 'Groupe')}</b><small>${esc(nick(r.author))} : ${esc(r.body || '')}</small>${r.reason ? `<small>Motif : ${esc(r.reason)}</small>` : ''}<small>Signalé par ${esc(nick(r.reporter))} · ${esc(fmtShort(r.created_at))}</small></span><button class="chip" data-act="repdone" data-id="${r.report_id}">Traité</button></div>`).join('')}</div>`;
+}
 export function messagesTab() {
-  let h = annoncesBlock() + `<div class="sec"><h2>Groupes d'échange</h2></div><button class="btn main" data-act="gnew">${icon('plus', 20)}Créer un groupe d'échange</button>`;
+  let h = annoncesBlock() + reportsBlock() + `<div class="sec"><h2>Groupes d'échange</h2></div><button class="btn main" data-act="gnew">${icon('plus', 20)}Créer un groupe d'échange</button>`;
   h += `<div class="card"><div class="list">${S.groups.length ? sortedGroups().map((g) => {
     const p = S.previews[g.id], n = S.unread[g.id] || 0;
     const line = p ? (p.kind === 'sondage' ? 'Sondage : ' : (p.user_id === S.me.id ? 'Toi' : esc(nick(p.user_id)).split(' ')[0]) + ' : ') + esc(String(p.body).slice(0, 70)) : 'Pas encore de message';
@@ -73,7 +80,7 @@ function bubble(m) {
   const auto = files.length && m.body === '📎 ' + files.map((f) => f.name).join(', ').slice(0, 1990);
   return `<div class="bub ${mine ? 'me' : ''}">${mine ? '' : `<div class="who">${esc(nick(m.user_id))}</div>`}${m.forwarded_by ? `<div class="fwd">Transféré par ${esc(mine ? 'toi' : nick(m.user_id))} · message de ${esc(m.forwarded_by)}</div>` : ''}${auto ? '' : `<div>${esc(m.body)}</div>`}
   ${files.map((f) => `<button type="button" class="file" data-act="msgfile" data-path="${esc(f.path)}" data-name="${esc(f.name)}">📎 <span>${esc(f.name)}</span> <small>${kb(f.size || 0)}</small></button>`).join('')}
-  <div class="when">${esc(fmtShort(m.created_at))} · <button type="button" class="linkbtn" data-act="msgfwd" data-id="${m.id}">Transférer</button></div></div>`;
+  <div class="when">${esc(fmtShort(m.created_at))} · <button type="button" class="linkbtn" data-act="msgfwd" data-id="${m.id}">Transférer</button>${mine ? '' : ` · <button type="button" class="linkbtn" data-act="msgrep" data-id="${m.id}">Signaler</button>`}</div></div>`;
 }
 export function forwardPage() {
   const m = S.fwd; if (!m) return '<p class="empty">Message introuvable.</p>';
@@ -106,6 +113,7 @@ export async function openGroup(id) {
 Object.assign(ACTIONS, {
   gnew: () => { S.form = { name: '', sel: new Set(), q: '' }; S.view = { type: 'gform' }; render(); },
   gteam: (el, d) => {
+    S.form.team = S.form.team === undefined || S.form.team === d.id ? d.id : null;   // n° 186 : une seule équipe = groupe d'équipe
     S.members.filter((m) => m.status === 'active' && m.team_id === d.id && m.user_id !== S.me.id).forEach((m) => S.form.sel.add(m.user_id));
     playersOfTeam(d.id).forEach((p) => { if (p.user_id && p.user_id !== S.me.id) S.form.sel.add(p.user_id); parentsOf(p.id).filter((u) => u !== S.me.id).forEach((u) => S.form.sel.add(u)); });
     render(true);
@@ -113,8 +121,14 @@ Object.assign(ACTIONS, {
   gstaff: () => { S.members.filter((m) => m.status === 'active' && ['president', 'bureau', 'coach'].includes(m.role) && m.user_id !== S.me.id).forEach((m) => S.form.sel.add(m.user_id)); render(true); },
   gcreate: async () => {
     const nm = (S.form.name || '').trim(); if (!nm) return toast('Donne un nom au groupe.');
-    const g = await run(sb.from('groups').insert({ club_id: S.clubId, name: nm, created_by: S.me.id }).select().single()); if (!g) return;
-    if (await run(sb.from('group_members').insert([S.me.id, ...S.form.sel].map((u) => ({ group_id: g.id, user_id: u }))), 'Groupe créé.')) { S.groups.unshift(g); S.form = null; await openGroup(g.id); }
+    // n° 186 : groupe d'équipe seulement si tout le monde en est (la base re-vérifie) ; sinon groupe libre
+    const t = S.form.team, inTeam = (u) => t && (S.members.some((m) => m.user_id === u && m.status === 'active' && (m.team_id === t || ['president', 'bureau'].includes(m.role)))
+      || playersOfTeam(t).some((p) => p.user_id === u || parentsOf(p.id).includes(u)));
+    const asTeam = t && [S.me.id, ...S.form.sel].every(inTeam);
+    const g = await run(sb.from('groups').insert({ club_id: S.clubId, name: nm, created_by: S.me.id, ...(asTeam ? { team_id: t } : {}) }).select().single()); if (!g) return;
+    const ids = [S.me.id, ...S.form.sel];
+    if (await run(sb.from('group_members').insert(ids.map((u) => ({ group_id: g.id, user_id: u }))), 'Groupe créé.')) { S.groups.unshift(g); S.form = null; await openGroup(g.id); }
+    else await sb.from('groups').delete().eq('id', g.id);   // refusé par les règles : pas de groupe vide qui traîne
   },
   group: (el, d) => openGroup(d.id),
   attrm: (el, d) => { S.msgatt.splice(+d.i, 1); render(true); },
@@ -124,6 +138,8 @@ Object.assign(ACTIONS, {
     if (error || !data?.signedUrl) { w?.close(); return toast('Fichier introuvable ou plus disponible.'); }
     if (w) w.location = data.signedUrl; else location.href = data.signedUrl;
   },
+  msgrep: async (el, d) => { if (await run(sb.rpc('report_message', { p_message: +d.id, p_reason: null }), 'Merci : le président a été prévenu.')) render(true); },
+  repdone: async (el, d) => { if (await run(sb.from('message_reports').update({ handled_at: new Date().toISOString(), handled_by: S.me.id }).eq('id', d.id))) { S.reports = (S.reports || []).filter((r) => r.report_id !== d.id); render(true); } },
   msgfwd: (el, d) => { const m = S.msgs.find((x) => String(x.id) === String(d.id)); if (!m) return; S.fwd = m; S.stack = (S.stack || []).concat([S.view]); S.view = { type: 'msgfwd' }; render(); },
   fwdto: async (el, d) => {
     const m = S.fwd; if (!m) return;

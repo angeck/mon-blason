@@ -17,7 +17,7 @@ export const SWITCH_PROFILES = [];
 export const CGU_VERSION = '1.1-2026-11-11';
 // N° 46 · Cloudflare Turnstile (anti-robots) : clé PUBLIQUE du site (« Site Key »), faite pour être visible.
 // Vide = pas de vérification. Ne l'activer dans Supabase (Authentication → Bot and Abuse Protection) qu'APRÈS l'avoir mise ici.
-export const TURNSTILE_SITEKEY = '';
+export const TURNSTILE_SITEKEY = '0x4AAAAAAF9T-CBEkMgHhN_H';
 // Étape B · notifications : clé PUBLIQUE d'envoi (VAPID), faite pour être visible.
 // La clé privée qui va avec n'est JAMAIS dans ce dépôt : elle est rangée dans Supabase (Edge Functions → Secrets).
 export const VAPID_PUBLIC_KEY = 'BNQgN8MQbutsuDcCGinWQojb-1q1h1LBMGbHFK_GdZcr1v3LyYY4_9yLJvT32DxTIB6lcHjamaqoxOH5i_vHRBk';
