@@ -90,7 +90,8 @@ export const backBtn = () => `<button class="roundbtn" data-act="back" aria-labe
 // N° 27 : même en-tête partout. Bande du haut : (retour) · logo C · Mon compte, alignés ; dessous le club ; dessous le titre.
 // Picto « Espace » (charte du 31 octobre) : quatre carrés aux symboles des rôles ; seulement pour qui a une fonction
 const ESPACE_SVG = '<svg width="30" height="30" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="12.5" height="12.5" rx="4" fill="#FFC93C"/><path d="M5 11.5V3.8l5 1.8-5 1.8" stroke="#11162E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><rect x="14.5" y="1" width="12.5" height="12.5" rx="4" fill="#C9F5E4"/><circle cx="20.75" cy="7.25" r="3" stroke="#0B5C43" stroke-width="1.5" fill="none"/><path d="M20.75 5.9v2.7" stroke="#0B5C43" stroke-width="1.5" stroke-linecap="round" fill="none"/><rect x="1" y="14.5" width="12.5" height="12.5" rx="4" fill="#DCE4FF"/><circle cx="7.25" cy="18.8" r="1.8" stroke="#2F5BFF" stroke-width="1.5" fill="none"/><path d="M4 24.5c0-2 1.4-3 3.25-3s3.25 1 3.25 3" stroke="#2F5BFF" stroke-width="1.5" stroke-linecap="round" fill="none"/><rect x="14.5" y="14.5" width="12.5" height="12.5" rx="4" fill="#11162E"/><path d="M20.75 16.6l3.2 1.2v2.8c0 1.9-1.3 3.2-3.2 3.8-1.9-.6-3.2-1.9-3.2-3.8v-2.8z" stroke="#FFFFFF" stroke-width="1.5" stroke-linejoin="round" fill="none"/></svg>';
-export const espaceBtn = () => `<button class="roundbtn" data-act="espace" aria-label="Mes espaces">${ESPACE_SVG}</button>`;
+// 5.1.0 : « Mes rôles » (n° 194, même nom que sur ordinateur) ; pastille = ce qui attend dans tous mes rôles (n° 190)
+export const espaceBtn = () => { const n = hooks.rolesTotal ? hooks.rolesTotal() : 0; return `<button class="roundbtn" data-act="espace" aria-label="Mes rôles${n ? ' · ' + n + ' à traiter' : ''}">${ESPACE_SVG}${n ? `<span class="dot" aria-hidden="true">${n > 99 ? '99+' : n}</span>` : ''}</button>`; };
 export const searchBtn = () => `<button class="roundbtn" data-act="csearch" aria-label="Chercher un club">${icon('search', 22, '#11162E', 2.2)}</button>`;
 // opts : { title, kicker, sub, back, tags[], brand, role }
 // N° 27 : même en-tête partout. Bande du haut : (retour) · logo C · loupe (n° 56) · Espace · Mon compte ;
@@ -118,16 +119,17 @@ export const clubSeason = (season) => [club()?.name, season ? 'saison ' + season
 // ---------- Icônes des casquettes (n° 85, n° 98) ----------
 export const casqIcon = (k, size = 20) => icon(k === 'coach' || String(k).startsWith('coach:') ? 'flag' : k === 'president' ? 'crown' : (k === 'f:Directeur technique' || k === 'f:Directeur sportif') ? 'target' : 'user', size);
 // Écrans qui font partie d'un espace (le rôle ouvert est allumé dans « Mes rôles » sur ordinateur)
-export const SPACE_VIEWS = ['espace', 'rub', 'gestion', 'fonctions', 'journal', 'timport', 'fview']; // n° 133 : l'espace d'une fonction ouvert par le président garde « Président » allumé (Mes rôles, sur ordinateur)
+export const SPACE_VIEWS = ['espace', 'rub', 'fonctions', 'journal', 'timport', 'fview']; // n° 133 : l'espace d'une fonction ouvert par le président garde « Président » allumé (Mes rôles, sur ordinateur)
 
 // ---------- Onglets ----------
 const TABS = [['Accueil', 'home'], ['Agenda', 'cal'], ['Messages', 'msg'], ['Équipe', 'team'], ['Club', 'shield']];
 export function tabBar() {
-  const v = toValidate(), mine = myTeamIds();
-  const counts = { Club: v.length, Équipe: v.filter((m) => mine.includes(m.team_id)).length, Messages: Object.values(S.unread || {}).reduce((a, b) => a + b, 0), Accueil: hooks.hoursPending ? hooks.hoursPending() : 0 }; // n° 75 : Accueil = heures à vérifier
+  // 5.1.0 (n° 190) : les onglets ne comptent que ce qui touche le compte (messages non lus, réponses à donner) ;
+  // les demandes à valider et les heures à vérifier passent sur le bouton « Mes rôles » et sur chaque rôle
+  const counts = { Messages: Object.values(S.unread || {}).reduce((a, b) => a + b, 0), Agenda: hooks.toAnswer ? hooks.toAnswer() : 0 };
   return `<div class="tb"><nav aria-label="Onglets">${TABS.map(([t, ic], i) => {
     const cur = i === S.tab && !S.view, n = counts[t] || 0;
-    return `<button data-act="tab" data-i="${i}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${icon(ic, 24, 'currentColor', cur ? 2.2 : 2)}</span><span>${t}</span>${n ? `<span class="n" aria-label="${n} ${t === 'Messages' ? 'non lus' : t === 'Accueil' ? 'à vérifier' : 'à valider'}">${n > 99 ? '99+' : n}</span>` : ''}</button>`;
+    return `<button data-act="tab" data-i="${i}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${icon(ic, 24, 'currentColor', cur ? 2.2 : 2)}</span><span>${t}</span>${n ? `<span class="n" aria-label="${n} ${t === 'Messages' ? 'non lus' : 'à répondre'}">${n > 99 ? '99+' : n}</span>` : ''}</button>`;
   }).join('')}</nav>${rolesNav()}</div>`;
 }
 // N° 104 · ordinateur : sous les onglets (consulter et répondre), un bloc « Mes rôles » (agir), un bouton par casquette ;
@@ -138,7 +140,7 @@ function rolesNav() {
   const inSpace = SPACE_VIEWS.includes(S.view?.type);
   return `<nav class="roles" aria-label="Mes rôles"><span class="rolestitle">Mes rôles</span>${l.map((x) => {
     const cur = inSpace && x.k === S.casq;
-    return `<button data-act="casq" data-v="${esc(x.k)}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${casqIcon(x.k, 22)}</span><span>${esc(x.label)}</span></button>`;
+    return `<button data-act="casq" data-v="${esc(x.k)}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${casqIcon(x.k, 22)}</span><span>${esc(x.label)}</span>${hooks.roleBadge ? hooks.roleBadge(x.k) : ''}</button>`; // n° 190
   }).join('')}</nav>`;
 }
 

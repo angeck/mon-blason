@@ -154,12 +154,12 @@ export function adultMembers() {
 }
 // Ce que donne chaque fonction (garde-fou : le président voit les droits avant de confirmer)
 export const FONCTION_RIGHTS = {
-  'Vice-président': 'Toutes les rubriques, comme le président, sauf supprimer le club, transférer la présidence, nommer le bureau, régler la visibilité et les droits des coachs',
+  'Vice-président': 'Tous les accès, comme le président, sauf supprimer le club, transférer la présidence, nommer le bureau, régler la visibilité et les droits des coachs',
   'Trésorier': 'Trésorerie : cotisations, versements, relances, tarifs, réductions, heures des coachs, état des licences', 'Trésorier adjoint': 'Comme le trésorier',
   'Secrétaire': 'Secrétariat : demandes, fiches, licences, import et export', 'Secrétaire adjoint': 'Comme le secrétaire',
   'Correspondant licences': 'Licences (état, numéro, certificat fourni) et contact licences', 'Directeur technique': 'Technique : toutes les équipes, coachs, exercices, ententes',
   'Correspondant rencontres': 'Événements : matchs, plateaux, tournois, convocations, bénévoles', 'Chargé de communication': 'Communication : annonces et lecteurs',
-  'Responsable sponsoring': 'Pas d’espace pour l’instant (rubrique Commun)', 'Membre du bureau': 'Rubrique Commun, et les rubriques que tu ouvres en plus',
+  'Responsable sponsoring': 'Pas d’espace pour l’instant (partie Commun)', 'Membre du bureau': 'La partie Commun, et les accès que tu ouvres en plus',
 };
 export function rightsNote() {
   return `<details class="card"><summary>Ce que donne chaque fonction</summary><div class="list">${FONCTIONS.map((f) => `<div class="row static"><span class="g">${esc(fl(f))}<small>${esc(FONCTION_RIGHTS[f] || '')}</small></span></div>`).join('')}</div><p class="note">Les droits s’additionnent quand une personne a plusieurs fonctions. Seuls les adultes reçoivent une fonction.</p></details>`;
@@ -186,7 +186,7 @@ export function teamsFold() {
   // n° 116 : créer, importer et doublons dans le même dépliant (plus de bloc « Créer des équipes » à part)
   return `<details class="card" ${S.pfold === 'equipes' ? 'open' : ''} data-pfold="equipes"><summary>${icon('team', 18)} Équipes</summary>${inner}${teamToolsBlock(true)}</details>`;
 }
-const PTABS = [['ensemble', 'Vue d’ensemble'], ['demandes', 'Demandes'], ['qui', 'Fonctions'], ['reglages', 'Réglages'], ['journal', 'Journal']];
+const PTABS = [['ensemble', 'Vue d’ensemble'], ['demandes', 'Demandes'], ['qui', 'Fonctions du bureau'], ['reglages', 'Réglages'], ['journal', 'Journal']];
 // N° 116 : les cinq onglets du président au bas du bloc bleu de l'en-tête, juste sous les casquettes
 export function presidentTabs() {
   const t = S.ptab || 'ensemble';
@@ -217,7 +217,7 @@ function quiView() {
     const cur = (S.desig || []).find((x) => x.resp === k);
     return `<div class="card"><b style="font-size:18px">${esc(l)}</b><span class="det">${esc(d)}</span>${field('ds' + k, cur ? 'Désigné' : 'Par défaut : ' + defaultHolder(k), `<select id="ds${k}" data-desig="${k}"><option value="">${esc('Par défaut · ' + defaultHolder(k))}</option>${ad.map((u) => `<option value="${u}" ${cur?.user_id === u ? 'selected' : ''}>${esc(name(u))}</option>`).join('')}</select>`)}</div>`;
   }).join('');
-  h += `<button class="btn" data-act="fonctions">${icon('user', 20)}Fonctions du bureau (nommer, retirer, rubriques en plus)</button>` + rightsNote();
+  h += `<button class="btn" data-act="fonctions">${icon('user', 20)}Fonctions du bureau (nommer, retirer, accès en plus)</button>` + rightsNote();
   return h;
 }
 function reglagesView() {
@@ -249,7 +249,7 @@ function fviewView(v) {
   const o = hooks.fnSpace ? hooks.fnSpace(f, false) : null; // 4.4.0 (n° 114) : même présentation que la personne qui a la fonction
   // n° 133 : la casquette « Président » reste allumée (en jaune) : on voit tout de suite qu'on est ici grâce à elle
   if (isPresident()) S.casq = 'president';
-  return { head: header({ back: true, kicker: 'Espace Président · Bureau', title: esc(fl(f)), casq: casqTabs() || (isPresident() ? `<div class="casq" role="tablist" aria-label="Mes casquettes"><button role="tab" data-act="casq" data-v="president" aria-selected="true">${casqIcon('president')}<span>Président</span></button></div>` : ''), tabs: o?.tabs || '' }), body: `<div class="card pale"><p class="note" style="margin:0">Tu vois l’espace « ${esc(fl(f))} » avec ton compte : ce que tu fais ici est inscrit au journal <b>à ton nom</b>.${holder(f).length ? ' Titulaire : ' + esc(holder(f).join(', ')) + '.' : ' Personne n’a cette fonction : c’est toi qui t’en occupes.'}</p></div>` + (o ? o.body : fonctionSpace(f, true)) };
+  return { head: header({ back: true, kicker: 'Espace Président · Bureau', title: esc(fl(f)), casq: casqTabs() || (isPresident() ? `<div class="casq" role="tablist" aria-label="Mes rôles"><button role="tab" data-act="casq" data-v="president" aria-selected="true">${casqIcon('president')}<span>Président</span>${hooks.roleBadge ? hooks.roleBadge('president') : ''}</button></div>` : ''), tabs: o?.tabs || '' }), body: `<div class="card pale"><p class="note" style="margin:0">Tu vois l’espace « ${esc(fl(f))} » avec ton compte : ce que tu fais ici est inscrit au journal <b>à ton nom</b>.${holder(f).length ? ' Titulaire : ' + esc(holder(f).join(', ')) + '.' : ' Personne n’a cette fonction : c’est toi qui t’en occupes.'}</p></div>` + (o ? o.body : fonctionSpace(f, true)) };
 }
 
 // ---------- contact licences (sans tout le Secrétariat) ----------

@@ -17,10 +17,10 @@ export function homeTitle() {
 }
 export function homeTab() {
   const fut = homeEvents(), today = fut.filter(isToday), todo = fut.filter(needsAnswer), next = todo.find((e) => !isToday(e));
-  let h = clubTrashBanner() + sendBanner() + presidencyCard() + contactAsk() + pushHome(); // n° 122 : encart jaune de la fonction reçue // n° 114 : club dans la corbeille, présidence proposée ; puis l'encart des notifications
+  let h = clubTrashBanner() + sendBanner() + presidencyCard() + (hooks.welcomeHome ? hooks.welcomeHome() : '') + contactAsk() + pushHome(); // 5.1.0 (n° 196) : bienvenue // n° 122 : encart jaune de la fonction reçue // n° 114 : club dans la corbeille, présidence proposée ; puis l'encart des notifications
   const vp = toValidate().length;
-  // n° 94 : président et bureau → une seule touche, la page « Gestion du club » s'ouvre à l'endroit des demandes ; le coach garde l'onglet Club
-  if (vp) h += isBoard() ? `<button class="btn main" data-act="gestion" data-v="demandes">${plural(vp, 'demande à valider', 'demandes à valider')}</button>` : `<button class="btn main" data-act="tab" data-i="4">${plural(vp, 'demande à valider', 'demandes à valider')}</button>`;
+  // n° 94 ; 5.1.0 (n° 191) : une seule touche mène là où la personne valide (Président › Demandes, Secrétariat, Technique, espace coach)
+  if (vp) h += `<button class="btn main" data-act="vdem">${plural(vp, 'demande à valider', 'demandes à valider')}</button>`;
   h += todayHome(today); // n° 156 : le jour J, le rendez-vous passe en tête de l'Accueil (tous les rôles ; « Faire l'appel » pour le coach)
   h += adminValidateHome() + adminHome() + coachHome() + annoncesHome() + hoursHome() + resultsHome(); // n° 88 : cartes du coach en tête ; n° 96 : demandes de clubs (admin)
   if (next) {

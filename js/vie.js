@@ -8,7 +8,7 @@ import {
 } from './core.js';
 import { icon, crest, delBtn, field, header, dayBadge, casqIcon, clubSeason } from './ui.js';
 import { upcoming, teamTabs } from './agenda.js';
-import { pendRows, licencesBlock, namesToCheck, feesBlock, teamsBlock, brandBlock, contactsBlock, trashBlock, membersBlock } from './club.js';
+import { pendRows, licencesBlock, namesToCheck, feesBlock, teamsBlock, brandBlock, contactsBlock, trashBlock, membersBlock, effectifsBlock } from './club.js';
 import { ensureExos, plansForEvent, planForEvent, fmtMin } from './coach.js';
 import { searchBlock } from './auth.js';
 import { arrange, hoursHome, hoursCheckBlock, clubResults, partnerRequests } from './v35.js';
@@ -46,7 +46,8 @@ export function casqTabs() {
   // n° 85 : rangée bien visible, reconnaissable comme des boutons de rôle (contour marqué, icône devant chaque nom)
   // n° 98 : icône « cible » pour le directeur sportif ; n° 116 : rangée dans le bloc bleu de l'en-tête, casquette ouverte
   // en jaune (style.css), sans la phrase « Tes casquettes · touche pour changer d'espace »
-  return `<div class="casq" role="tablist" aria-label="Mes casquettes">${l.map((x) => `<button role="tab" data-act="casq" data-v="${esc(x.k)}" aria-selected="${x.k === S.casq}">${casqIcon(x.k)}<span>${esc(x.label)}</span></button>`).join('')}</div>`;
+  // 5.1.0 : nommée « Mes rôles » (n° 194) ; chiffre de ce qui attend dans chaque rôle (n° 190)
+  return `<div class="casq" role="tablist" aria-label="Mes rôles">${l.map((x) => `<button role="tab" data-act="casq" data-v="${esc(x.k)}" aria-selected="${x.k === S.casq}">${casqIcon(x.k)}<span>${esc(x.label)}</span>${hooks.roleBadge ? hooks.roleBadge(x.k) : ''}</button>`).join('')}</div>`;
 }
 // N° 101 : rappel du rôle dans l'en-tête des pages ouvertes depuis un espace (« Gestion du club », « Fonctions du bureau », journal)
 export function roleKicker(fallback) {
@@ -80,10 +81,6 @@ const clubTeamIds = () => S.teams.filter((t) => !t.deleted_at && t.state !== 'Ar
 // n° 113 (3.10.0) : l'ancien espace coach (une seule page) est remplacé par js/v310.js (liste des équipes, puis espace de l'équipe)
 
 export function presidentOverview() {
-  const vp = toValidate(), byRole = {};
-  vp.forEach((m) => { const r = m.role === 'parent' ? 'parent de joueur' : m.role === 'bureau' ? 'bureau' : m.role; byRole[r] = (byRole[r] || 0) + 1; });
-  let alert = '';
-  if (vp.length) alert = `<div class="card" style="flex-direction:row;align-items:center;gap:12px;border:3px solid var(--pc-jaune)"><span style="display:flex;flex-direction:column;flex:1"><b style="font-size:18px">${plural(vp.length, 'demande à valider', 'demandes à valider')}</b><span class="det">${esc(Object.entries(byRole).map(([r, n]) => n + ' ' + r).join(', '))}</span></span><button class="btn main small" style="flex:none" data-act="gestion" data-v="demandes">Voir</button></div>`;
   const fees = S.padmin.filter((a) => a.fee_amount != null), due = fees.reduce((a, x) => a + +x.fee_amount, 0), paid = fees.reduce((a, x) => a + Math.min(+x.fee_paid || 0, +x.fee_amount), 0);
   const tiles = `<div class="tiles"><button class="tile" data-act="rub" data-id="secretariat"><b>${S.players.filter((p) => !p.from_partner).length}</b><span>Licenciés</span></button><button class="tile" data-act="rub" data-id="technique"><b>${S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').length}</b><span>Équipes</span></button><button class="tile ok" data-act="rub" data-id="tresorerie"><b>${due ? Math.round((100 * paid) / due) + ' %' : '—'}</b><span>Cotisations</span></button></div>`;
   const benev = !S.vstats ? '' : `<button class="card" data-act="rub" data-id="evenements" style="border:0;text-align:left;font:inherit;color:inherit;flex-direction:row;align-items:center;gap:12px"><span class="g" style="flex:1"><b>Bénévoles</b><span class="det" style="display:block">Membres : ${(S.vstats.members?.yes || []).length} bénévoles · ${(S.vstats.members?.no || []).length} non${S.vstats.supporters ? ` · supporteurs : ${(S.vstats.supporters.yes || []).length} · ${(S.vstats.supporters.no || []).length} non · ${(S.vstats.supporters.none || []).length} sans réponse` : ''}</span></span><span class="chev"></span></button>`;
@@ -94,12 +91,6 @@ export function presidentOverview() {
   const ag = upcoming(S.events.filter((e) => e.type === 'AG' && !e.cancelled))[0];
   if (ag) todo.push(['event', ag.id, 'AG du club : ' + fmtShort(ag.starts_at).split(' · ')[0], 'Dans ' + Math.max(1, Math.round((new Date(ag.starts_at) - Date.now()) / (7 * 864e5))) + ' sem.']);
   const suivre = !todo.length ? '' : `<div class="sec"><h2>À suivre</h2></div><div class="card"><div class="list">${todo.map(([a, id, t, p]) => `<button class="row" data-act="${a}" data-id="${esc(id)}" data-tab="${esc(id)}"><span class="g">${esc(t)}</span><span class="pill ${p === 'À valider' ? 'wait' : 'blue'}">${esc(p)}</span></button>`).join('')}</div></div>`;
-  const c = club();
-  const regl = `<div class="sec"><h2>Réglages du club</h2></div><div class="card">
-    ${sw('custom_header', 'Aux couleurs du club', 'L’en-tête prend la couleur principale du club.', c.custom_header)}
-    ${sw('public_listed', 'Apparaître dans la recherche des clubs', 'Nom, ville, équipes visibles et créneaux seulement.', c.public_listed !== false)}
-    ${sw('coach_sees_fees', 'Les coachs voient licences et cotisations', 'De leurs joueurs seulement, sans les réductions.', c.coach_sees_fees !== false)}</div>`;
-  const outils = `<button class="btn main" data-act="gestion">${icon('shield', 20)}Gestion du club</button><div class="grid2"><button class="btn small" data-act="fonctions">${icon('user', 18)}Fonctions du bureau</button><button class="btn small" data-act="journal">${icon('doc', 18)}Journal des actions</button></div>`; // n° 88 : la gestion venue de l'onglet Club
   return arrange('president', [
     // n° 116 : plus de carte « N demandes à valider » (la tuile du bandeau le dit déjà et ouvre l'onglet Demandes)
     { id: 'chiffres', label: 'Chiffres du club', html: tiles },
@@ -109,14 +100,12 @@ export function presidentOverview() {
     { id: 'ententes', label: 'Ententes', html: partnerRequests() },
     { id: 'benevoles', label: 'Bénévoles', html: benev },
     { id: 'suivre', label: 'À suivre', html: suivre },
-    { id: 'gestion', label: 'Gestion du club', html: `<button class="btn" data-act="gestion">${icon('shield', 20)}Gestion du club</button>` },
-  ]); // n° 114 : réglages, fonctions et journal sont dans leurs onglets ; n° 116 : plus de « Rubriques » (doublon du dépliant « Bureau »), « Créer des équipes » dans le dépliant « Équipes »
-  void regl; void outils; void alert;
+  ]); // 5.1.0 (n° 191) : plus de « Gestion du club » ; n° 114 : réglages, fonctions et journal sont dans leurs onglets ; n° 116 : plus de « Rubriques » (doublon du dépliant « Bureau »), « Créer des équipes » dans le dépliant « Équipes »
 }
 export const sw = (k, t, d, on) => `<label class="switch"><input type="checkbox" data-clubset="${k}" ${on ? 'checked' : ''}><span><b>${esc(t)}</b><br><span class="det">${esc(d)}</span></span></label>`;
 export function rubList(keys) {
   keys = [...new Set(keys)].filter((a) => RUB_SUB[a]); // n° 119 : « licences » (contact licences) n'a pas de ligne à part
-  return `<div class="sec"><h2>Rubriques</h2></div><div class="card"><div class="list">${keys.map((a) => `<button class="row" data-act="rub" data-id="${a}"><span style="width:40px;height:40px;border-radius:14px;background:var(--pc-bleu-pale);display:flex;align-items:center;justify-content:center;flex:none">${icon(AREA_ICON[a], 20, 'var(--pc-action)')}</span><span class="g">${esc(AREAS[a] || 'Commun')}<small>${esc(RUB_SUB[a])}</small></span><span class="chev"></span></button>`).join('')}</div></div>`;
+  return `<div class="sec"><h2>Accès</h2></div><div class="card"><div class="list">${keys.map((a) => `<button class="row" data-act="rub" data-id="${a}"><span style="width:40px;height:40px;border-radius:14px;background:var(--pc-bleu-pale);display:flex;align-items:center;justify-content:center;flex:none">${icon(AREA_ICON[a], 20, 'var(--pc-action)')}</span><span class="g">${esc(AREAS[a] || 'Commun')}<small>${esc(RUB_SUB[a])}</small></span><span class="chev"></span></button>`).join('')}</div></div>`;
 }
 const RUB_SUB = {
   tresorerie: 'Tarifs, réductions, cotisations, relances, export', secretariat: 'Demandes, membres, licences, dates de naissance',
@@ -127,15 +116,14 @@ export function fonctionSpace(f, asPresident = false) {
   const own = (FONCTION_AREAS[f] || []).filter(hasArea), extra = (S.areas || []).filter((a) => !own.includes(a));
   let h = '';
   const lic = licencesOnlyBlock(); // n° 114 : contact licences sans tout le Secrétariat
-  if (!own.length && !lic) h += `<div class="card pale"><b>${esc(fl(f))}</b><p class="note">Ta fonction donne accès à la rubrique Commun. Le président peut t'ouvrir d'autres rubriques.</p></div>` + rubBody('commun');
+  if (!own.length && !lic) h += `<div class="card pale"><b>${esc(fl(f))}</b><p class="note">Ta fonction donne accès à la partie Commun. Le président peut t’ouvrir d’autres accès.</p></div>` + rubBody('commun');
   h += lic;
   const bl = [{ id: 'alerte', pin: true, html: h }];
   if (own.includes('tresorerie') || extra.includes('tresorerie')) bl.push({ id: 'heures', label: 'Heures des coachs', html: hoursCheckBlock() });
   if (own.includes('technique')) bl.push({ id: 'ententes', label: 'Ententes', html: partnerRequests() }, { id: 'resultats', label: 'Derniers résultats', html: clubResults() });
   own.forEach((a, i) => bl.push({ id: a, label: AREAS[a], html: (i || own.length > 1 ? `<div class="sec"><h2>${esc(AREAS[a])}</h2></div>` : '') + rubBody(a) }));
   if (['technique', 'secretariat'].some((x) => own.includes(x) || extra.includes(x))) bl.push({ id: 'joueurs', label: 'Ajouter des joueurs', html: addPlayersBlock(clubTeamIds()) }); // n° 95
-  if (!asPresident) bl.push({ id: 'rubriques', label: 'Rubriques', html: rubList((own.length ? ['commun'] : []).concat(extra)) }); // n° 116 : le président passe par « Bureau »
-  bl.push({ id: 'gestion', label: 'Gestion du club', html: `<button class="btn" data-act="gestion">${icon('shield', 20)}Gestion du club</button>` }); // n° 88
+  if (!asPresident) bl.push({ id: 'rubriques', label: 'Accès', html: rubList((own.length ? ['commun'] : []).concat(extra)) }); // n° 116 : le président passe par « Bureau »
   return arrange('f:' + f, bl);
 }
 
@@ -144,12 +132,13 @@ function rubView(a) {
   const ok = a === 'commun' ? isBoard() : hasArea(a);
   // n° 60 : la rangée des casquettes reste visible dans les rubriques, pour changer de casquette sans revenir en arrière
   currentCasq();
-  return { head: header({ back: true, kicker: 'Rubrique', title: esc(AREAS[a] || 'Commun'), casq: ok ? casqTabs() : '' }), body: ok ? rubBody(a) : '<div class="card"><p class="empty">Cette rubrique n’est pas ouverte pour toi. Le président peut l’ouvrir dans « Fonctions du bureau ».</p></div>' };
+  return { head: header({ back: true, kicker: 'Accès', title: esc(AREAS[a] || 'Commun'), casq: ok ? casqTabs() : '' }), body: ok ? rubBody(a) : '<div class="card"><p class="empty">Cet accès n’est pas ouvert pour toi. Le président peut l’ouvrir dans « Fonctions du bureau ».</p></div>' };
 }
 export function rubBody(a) {
   if (a === 'tresorerie') return payTreasurerSoon() + tresoSummary() + feesBlock() + licencesBlock(); // n° 115
-  if (a === 'secretariat') { const vp = toValidate(); return (vp.length ? `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>` : '') + namesToCheck() + licencesBlock() + membersBlock(); }
-  if (a === 'technique') return `<div class="grid2"><button class="btn small" data-act="choursb">${icon('check', 18)}Heures des coachs</button><button class="btn small" data-act="cexos" data-tab="club">${icon('doc', 18)}Exercices du club</button><button class="btn small" data-act="cstats">${icon('team', 18)}Statistiques</button><button class="btn small" data-act="evnew" data-type="Match">${icon('calplus', 18)}Nouveau match</button></div>` + teamToolsBlock() + teamsBlock();
+  if (a === 'secretariat') { const vp = toValidate(); return (vp.length ? `<div class="sec" id="demandes"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>` : '') + namesToCheck() + effectifsBlock() + licencesBlock() + membersBlock(); } // n° 191 : effectifs
+  // n° 191 : les demandes de coachs, venues de « Gestion du club »
+  if (a === 'technique') { const rq = toValidate().filter((m) => m.role === 'coach'); return (rq.length ? `<div class="sec" id="demandes"><h2>Demandes de coachs</h2><span class="pill wait">${rq.length}</span></div><div class="card lift">${pendRows(rq)}</div>` : '') + `<div class="grid2"><button class="btn small" data-act="choursb">${icon('check', 18)}Heures des coachs</button><button class="btn small" data-act="cexos" data-tab="club">${icon('doc', 18)}Exercices du club</button><button class="btn small" data-act="cstats">${icon('team', 18)}Statistiques</button><button class="btn small" data-act="evnew" data-type="Match">${icon('calplus', 18)}Nouveau match</button></div>` + teamToolsBlock() + teamsBlock(); }
   // n° 121 : dans l'espace Communication, seulement ce qui incombe à la personne (ses annonces et leurs lecteurs) ;
   // les annonces des autres fonctions restent dans l'onglet Messages, comme pour tout le monde
   if (a === 'communication') { const mine = S.annonces.filter((x) => x.created_by === S.me.id); return `<button class="btn main" data-act="annnew">${icon('plus', 20)}Nouvelle annonce</button><div class="sec"><h2>Mes annonces</h2><span class="det">${mine.length || ''}</span></div>` + (mine.length ? annList(mine.slice(0, 8), false) : '<p class="empty">Tu n’as pas encore écrit d’annonce. Les annonces du club sont dans l’onglet Messages.</p>') + '<p class="note">Ouvre une annonce pour voir qui l’a lue.</p>' + contactsBlock() + brandBlock(); }
@@ -355,11 +344,11 @@ function fonctionsView() {
   if (!isPresident()) return { head: header({ back: true, title: 'Fonctions du bureau' }), body: '<p class="empty">Réservé au président.</p>' };
   const bm = S.members.filter((m) => m.role === 'bureau' && m.status === 'active').sort((a, b) => name(a.user_id).localeCompare(name(b.user_id), 'fr'));
   const users = [...new Set(bm.map((m) => m.user_id))], ba = S.bareas || [];
-  let b = respAsk() + '<p class="note">Une fonction ouvre ses rubriques. Tu peux ouvrir une rubrique en plus à un membre ; la rubrique Commun est à tout le bureau.</p>';
+  let b = respAsk() + '<p class="note">Une fonction ouvre ses accès. Tu peux ouvrir un accès en plus à un membre ; la partie Commun est à tout le bureau.</p>';
   b += users.length ? users.map((u) => {
     const ms = bm.filter((m) => m.user_id === u), own = ms.flatMap((m) => FONCTION_AREAS[m.fonction || 'Membre du bureau'] || []);
     return `<div class="card"><b style="font-size:18px">${esc(name(u))}</b>${ms.map((m) => `<div class="grid2" style="align-items:end">${field('fo' + m.id, 'Fonction', `<select id="fo${m.id}" data-fonc="${m.id}" data-u="${u}">${FONCTIONS.map((f) => `<option ${(m.fonction || 'Membre du bureau') === f ? 'selected' : ''} value="${esc(f)}">${fl(f)}</option>`).join('')}</select>`)}${delBtn('mdel', m.id, 'Retirer', 'Confirmer', isArmed('m' + m.id))}</div>${(m.fonction || 'Membre du bureau') === 'Membre du bureau' ? field('ft' + m.id, 'Intitulé affiché (facultatif, « Autre »)', `<input id="ft${m.id}" data-ftitle="${m.id}" maxlength="40" value="${esc(m.title || '')}" placeholder="Ex. Responsable maillots">`) : ''}`).join('')}
-    <div class="kick">Rubriques</div><div class="chips">${Object.entries(AREAS).map(([a, l]) => own.includes(a) ? `<span class="pill ok">${l}</span>` : `<button class="chip" data-act="barea" data-u="${u}" data-v="${a}" aria-pressed="${ba.some((x) => x.user_id === u && x.area === a)}">${l}</button>`).join('')}</div></div>`;
+    <div class="kick">Accès</div><div class="chips">${Object.entries(AREAS).map(([a, l]) => own.includes(a) ? `<span class="pill ok">${l}</span>` : `<button class="chip" data-act="barea" data-u="${u}" data-v="${a}" aria-pressed="${ba.some((x) => x.user_id === u && x.area === a)}">${l}</button>`).join('')}</div></div>`;
   }).join('') : '<p class="empty">Aucun membre du bureau pour l’instant.</p>';
   const cand = [...new Set(S.members.filter((m) => m.status === 'active' && m.user_id !== S.me.id).map((m) => m.user_id))].sort((a, c) => name(a).localeCompare(name(c), 'fr'));
   b += `<form id="nomf" class="card"><div class="kick">Nommer quelqu'un</div><div class="grid2">${field('nu', 'Membre du club', `<select id="nu" name="user" required><option value="">Choisir…</option>${cand.map((u) => `<option value="${u}">${esc(name(u))}</option>`).join('')}</select>`)}${field('nf', 'Fonction', `<select id="nf" name="fonction">${FONCTIONS.map((f) => `<option value="${esc(f)}">${fl(f)}</option>`).join('')}</select>`)}</div><button class="btn main small" type="submit">Nommer</button><p class="note">Une seule personne pour la vice-présidence, le secrétariat, la trésorerie, le contact licences et le contact rencontres ; plusieurs pour les adjoints et les membres. Chaque nomination est inscrite au journal.</p></form>`;
@@ -481,7 +470,7 @@ Object.assign(ACTIONS, {
   },
   barea: async (el, d) => {
     const on = !(S.bareas || []).some((x) => x.user_id === d.u && x.area === d.v);
-    if (await run(sb.rpc('set_board_area', { p_club: S.clubId, p_user: d.u, p_area: d.v, p_on: on }), on ? 'Rubrique ouverte.' : 'Rubrique fermée.')) { S.bareas = (await sb.from('board_areas').select('*').eq('club_id', S.clubId)).data || []; render(true); }
+    if (await run(sb.rpc('set_board_area', { p_club: S.clubId, p_user: d.u, p_area: d.v, p_on: on }), on ? 'Accès ouvert.' : 'Accès fermé.')) { S.bareas = (await sb.from('board_areas').select('*').eq('club_id', S.clubId)).data || []; render(true); }
   },
 });
 function keepAnn() { const fm = document.getElementById('annf'); if (!fm) return; const v = Object.fromEntries(new FormData(fm)); S.annf.title = v.title; S.annf.body = v.body; }

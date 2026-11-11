@@ -287,6 +287,7 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .casq button{flex:none;display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 18px 0 14px;border-radius:24px;font-weight:700;font-size:16px;border:2px solid var(--pc-texte-ecran);background:var(--pc-papier);color:var(--pc-texte-ecran);box-shadow:0 2px 0 var(--pc-texte-ecran)}
 /* n° 99 : casquette ouverte en bleu mypocketclub (texte blanc, contraste 5,2:1) ; le jaune reste pour l'action principale de l'écran */
 .casq button[aria-selected="true"]{border-color:var(--pc-action);background:var(--pc-action);color:var(--pc-action-texte);box-shadow:0 2px 0 var(--pc-texte-ecran)}
+.casq button .n{min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--pc-jaune);color:var(--pc-encre);font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;margin-left:2px;box-shadow:0 0 0 1.5px var(--pc-encre)} /* 5.1.0 (n° 190) : ce qui attend dans ce rôle */
 /* n° 116 (alpha 4.1.0) : un seul bloc bleu dans les espaces : en-tête, qui, casquettes, onglets.
    Casquette ouverte en jaune, texte encre (contraste 12:1) ; les autres au contour, couleur du texte de l'en-tête. */
 .hd .casq button{background:transparent;color:inherit;border-color:currentColor;box-shadow:none;min-height:44px;font-size:15px}

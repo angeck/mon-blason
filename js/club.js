@@ -9,7 +9,6 @@ import { brandPreview, logoFields, updatePreview } from './auth.js';
 import { teamForm, loadXlsx } from './equipe.js';
 import { decodeText, bestSheet } from './importer.js';
 import { statusPills, feeState } from './joueur.js';
-import { coachClubBlock } from './coach.js';
 
 // ---------- validations ----------
 function teamPick(m) {
@@ -22,9 +21,14 @@ function teamPick(m) {
   if (['parent', 'joueur'].includes(m.role)) {
     S.vpl = S.vpl || {};
     const want = norm(m.role === 'parent' ? (m.child_first || '') + (m.child_last || '') : name(m.user_id)), opts = S.players.filter((x) => !m.team_id || x.team_id === m.team_id);
-    if (S.vpl[m.id] === undefined) S.vpl[m.id] = (opts.find((x) => norm(pname(x)) === want) || {}).id || '';
+    // 5.1.0 (n° 195) : un nom proche (même nom, prénom qui commence pareil) est aussi proposé d'office, pour éviter un doublon d'enfant
+    const [wf, wl] = m.role === 'parent' ? [norm(m.child_first || ''), norm(m.child_last || '')] : [norm(name(m.user_id).split(' ')[0] || ''), norm(name(m.user_id).split(' ').slice(1).join(' '))];
+    const close = (x) => wl && norm(x.last_name || '') === wl && wf.slice(0, 3) && norm(x.first_name || '').startsWith(wf.slice(0, 3));
+    if (S.vpl[m.id] === undefined) S.vpl[m.id] = (opts.find((x) => norm(pname(x)) === want) || opts.find(close) || {}).id || '';
     const child = [m.child_first, m.child_last].filter(Boolean).join(' ');
-    h += field('vp' + m.id, 'Fiche joueur à relier', `<select id="vp${m.id}" data-vpl="${m.id}"><option value="">Créer une nouvelle fiche${child ? ' (' + esc(child) + ')' : ''}</option>${opts.map((x) => `<option value="${x.id}" ${S.vpl[m.id] === x.id ? 'selected' : ''}>${esc(pname(x))} · ${esc(teamName(x.team_id) || 'sans équipe')}</option>`).join('')}</select>`);
+    // n° 195 : la personne a déjà un compte ; ce choix dit seulement quelle fiche du club lui correspond (jamais un second compte)
+    h += field('vp' + m.id, m.role === 'parent' ? 'Son enfant dans le club' : 'Sa fiche dans le club', `<select id="vp${m.id}" data-vpl="${m.id}">${opts.map((x) => `<option value="${x.id}" ${S.vpl[m.id] === x.id ? 'selected' : ''}>Relier à : ${esc(pname(x))} · ${esc(teamName(x.team_id) || 'sans équipe')}</option>`).join('')}<option value="" ${S.vpl[m.id] ? '' : 'selected'}>Ajouter comme nouveau joueur du club${child ? ' (' + esc(child) + ')' : ''}</option></select>`)
+      + '<p class="note" style="margin:0">Son compte existe déjà. Ce choix dit seulement quelle fiche du club lui correspond.</p>';
   }
   return h;
 }
@@ -251,25 +255,19 @@ export function effectifsBlock() {
 
 // N° 88 · l'onglet Club montre la vie du club (infos, contacts, équipes) ; la gestion passe dans l'Espace (page « Gestion du club »)
 export function clubTab() {
-  const c = club(), vp = toValidate(), board = isBoard();
+  const c = club(), board = isBoard();
   let h = '';
-  // n° 101 : plus de carte « Gestion du club » dans l'onglet : la gestion se fait dans l'espace (bouton aux quatre carrés)
-  if (!board && vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>`;
+  // n° 101 : la gestion se fait dans l'espace (bouton « Mes rôles ») ; 5.1.0 (n° 190) : les demandes à valider aussi, plus dans l'onglet Club
     h += `<div class="card yellow" style="transform:none"><span class="kick" style="color:var(--pc-texte-ecran)">Code pour rejoindre le club</span><span class="codebox">${esc(c.join_code)}</span><button class="btn ink small" data-act="share">${icon('share', 18, '#FFFFFF')}Partager l'invitation</button></div>`;
-  h += contactsBlock() + teamsBlock() + (board ? '' : feesBlock() + membersBlock());
+  // 5.1.0 (n° 191) : la page « Gestion du club » n'existe plus ; la liste des membres (consulter) est dans l'onglet Club pour tous
+  h += contactsBlock() + teamsBlock() + (board ? '' : feesBlock()) + membersBlock();
   return h;
-}
-export function gestionPage() {
-  const vp = toValidate();
-  let h = '';
-  if (vp.length) h += `<div class="sec" id="demandes"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>`;
-  h += effectifsBlock() + brandBlock() + feesBlock() + licencesBlock() + namesToCheck() + coachClubBlock() + membersBlock() + trashBlock();
-  return h || '<p class="empty">Rien à gérer pour ta fonction.</p>';
 }
 
 Object.assign(ACTIONS, {
   // n° 94 : ouverture directe à l'endroit des demandes (data-v="demandes") ; la pile du bouton Retour est tenue par l'aiguillage (app.js)
-  gestion: (el, d) => { S.view = { type: 'gestion' }; render(); if (d?.v) document.getElementById(d.v)?.scrollIntoView({ block: 'start' }); },
+  // 5.1.0 (n° 191) : un ancien lien « Gestion du club » mène aux demandes à valider de la personne (js/v51.js)
+  gestion: (el, d) => ACTIONS.vdem(el, d),
   share: async () => { const c = club(), txt = `Rejoins ${c.name} sur ${BRAND.name} : ouvre ${location.href.split('#')[0]} puis « Rejoindre un club » avec le code ${c.join_code}.`; if (navigator.share) { try { await navigator.share({ title: BRAND.name, text: txt }); } catch { /* annulé */ } } else { try { await navigator.clipboard.writeText(txt); toast('Invitation copiée.'); } catch { toast(txt); } } },
   mok: async (el, d) => {
     let t = (S.vt || {})[d.id] || null;

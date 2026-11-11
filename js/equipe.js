@@ -220,7 +220,7 @@ export function importPage(tid) {
 Object.assign(ACTIONS, {
   teamsel: (el, d) => { S.teamSel = d.id; render(true); },
   // n° 113 : ouverte depuis un espace (président, bureau, rubrique), la fiche de l'équipe est son espace (onglet Effectif)
-  team: (el, d) => { if (['espace', 'rub', 'gestion', 'tspace', 'fview'].includes(S.view?.type)) S.tsp = d.id; S.view = { type: 'team', id: d.id }; render(); },
+  team: (el, d) => { if (['espace', 'rub', 'tspace', 'fview'].includes(S.view?.type)) S.tsp = d.id; S.view = { type: 'team', id: d.id }; render(); },
   tvisible: async (el, d) => { if (!armed('tv' + d.id)) return; if (await run(sb.from('teams').update({ state: 'Visible' }).eq('id', d.id), 'Équipe visible : les familles peuvent la voir et la rejoindre.')) await refresh(); },
   follow: async (el, d) => { if (await run(sb.from('team_follows').insert({ user_id: S.me.id, team_id: d.id }), 'Équipe suivie : ses matchs apparaissent dans ton agenda.')) await refresh(); },
   unfollow: async (el, d) => { if (await run(sb.from('team_follows').delete().eq('user_id', S.me.id).eq('team_id', d.id), 'Tu ne suis plus cette équipe.')) await refresh(); },

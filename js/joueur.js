@@ -22,7 +22,7 @@ const cls = (v) => (['Licencié', 'Payée'].includes(v) ? 'ok' : ['À payer', 'P
 // permettent (la pastille n'existe que si la licence est lisible ; les montants restent réservés à la trésorerie et au président)
 export function statusPills(p, links = false) {
   const a = adminOf(p.id); if (!a) return '';
-  const pill = (c, t, k) => (links ? `<button class="pill ${c}" data-act="pljump" data-k="${k}" aria-label="${esc(t)} : aller à la rubrique">${esc(t)}</button>` : `<span class="pill ${c}">${esc(t)}</span>`);
+  const pill = (c, t, k) => (links ? `<button class="pill ${c}" data-act="pljump" data-k="${k}" aria-label="${esc(t)} : aller à la section">${esc(t)}</button>` : `<span class="pill ${c}">${esc(t)}</span>`);
   // 4.4.0 (n° 114) : sans accès aux montants, « cotisation à jour » seulement si le président l'a activé
   const fee = a.nofee ? (a.fee_ok == null ? '' : pill(a.fee_ok ? 'ok' : 'ko', 'Cotisation ' + (a.fee_ok ? 'à jour' : 'pas à jour'), 'cotis')) : pill(cls(feeState(a)), 'Cotisation : ' + feeState(a).toLowerCase(), 'cotis');
   return pill(cls(a.licence_state), a.licence_state, 'lic') + fee + (a.health_doc ? '' : pill('ko', 'Certificat manquant', 'certif'));

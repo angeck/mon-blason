@@ -12,10 +12,10 @@ import { agendaTab, eventForm, eventPage, appelPage } from './js/agenda.js';
 import { messagesTab, groupForm, groupPage, grp, scrollEnd, bump, forwardPage } from './js/messages.js';
 import { teamTab, teamPage, importPage } from './js/equipe.js';
 import { playerPage } from './js/joueur.js';
-import { clubTab, memberPage, gestionPage } from './js/club.js';
+import { clubTab, memberPage } from './js/club.js';
 import { accountScreen, deletedScreen } from './js/compte.js';
 import { COACH_VIEWS, loadCoachCounts, loadEvPlans } from './js/coach.js';
-import { VIE_VIEWS, roleKicker, casqTabs, currentCasq } from './js/vie.js';
+import { VIE_VIEWS } from './js/vie.js';
 import { syncPush } from './js/notif.js';
 import './js/convoc.js';
 import './js/v35.js';
@@ -25,6 +25,7 @@ import { V310_VIEWS, syncTeamCtx, teamWrap, loadV310, clubGoneScreen } from './j
 import { loadV43 } from './js/v43.js'; // 4.3.0 : n° 124 (validation des envois), n° 126 (profils de test)
 import { loadV44 } from './js/v44.js';
 import './js/v48.js'; // 4.8.0 : guide « Installer et notifications »
+import './js/v51.js'; // 5.1.0 : n° 189 (retour du téléphone), 190 (pastilles des rôles), 191 (demandes), 196 (bienvenue)
 import { unsubToken, unsubScreen, loadDevices } from './js/v410.js'; // 4.10.0 : n° 184 (appareils connus), n° 185 (désinscription)
 import { registerDevice, notMeToken, notMeScreen } from './js/v47.js'; // 4.7.0 : n° 147 et 44 // 4.4.0 : n° 114 (bandeau et onglets de chaque fonction, droits, exports, saison)
 
@@ -43,7 +44,6 @@ function viewScreen(v) {
       return [header({ back: true, kicker: 'Appel · ' + (e?.type || ''), title: esc(e?.title || 'Appel') }), appelPage(v.id)];
     case 'gform': return [header({ back: true, kicker: 'Messages', title: 'Nouveau groupe' }), groupForm()];
     case 'group': return [header({ back: true, kicker: "Groupe d'échange", title: esc(grp(v.id)?.name || 'Groupe') }), groupPage(v.id)];
-    case 'gestion': currentCasq(); return [header({ back: true, kicker: roleKicker('Président et bureau'), title: 'Gestion du club', casq: casqTabs() }), gestionPage()]; // n° 88 ; n° 101 : rappel du rôle et rangée des casquettes
     case 'msgfwd': return [header({ back: true, kicker: 'Messages', title: 'Transférer' }), forwardPage()]; // n° 84
     case 'player': { const p = pl(v.id); return [header({ back: true, kicker: 'Fiche joueur', title: esc(p ? pname(p) : 'Fiche') }), playerPage(v.id)]; }
     case 'team': { const t = team(v.id); return [header({ back: true, kicker: 'Équipe', title: esc(t?.name || 'Équipe'), tags: t ? [t.category !== t.name ? t.category : '', t.gender, 'Saison ' + t.season].filter(Boolean) : [] }), teamPage(v.id)]; }
@@ -89,6 +89,7 @@ function render(keep) {
   onScroll();
   mountCaptcha();
   restoreForm(); // n° 175 : retour de « Conditions » ou « Vos données » : l'inscription garde sa saisie
+  if (hooks.afterRender) hooks.afterRender(); // n° 189 : historique du téléphone (js/v51.js)
 }
 async function refresh(msg) {
   if (await checkVersion()) return;

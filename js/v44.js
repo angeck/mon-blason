@@ -8,7 +8,7 @@ import {
 } from './core.js';
 import { icon } from './ui.js';
 import { upcoming } from './agenda.js';
-import { pendRows, licencesBlock, namesToCheck, feesBlock, teamsBlock, membersBlock, exportMembers, exportBtn } from './club.js';
+import { pendRows, licencesBlock, namesToCheck, feesBlock, teamsBlock, membersBlock, exportMembers, exportBtn, effectifsBlock, brandBlock } from './club.js';
 import { hoursCheckBlock, clubResults, partnerRequests, arrange } from './v35.js';
 import { exosForCounts } from './coach.js';
 import { teamToolsBlock, dupGroups } from './v38.js';
@@ -63,7 +63,7 @@ function fnSpace(f, mine) {
   // rubriques ouvertes en plus par le président : un seul onglet « Rubriques » (pas une rangée d'onglets de plus par rubrique)
   const have = sets.flatMap((k) => SET_AREAS[k]);
   S.v44x = mine && !isPresident() ? (S.areas || []).filter((a) => !have.includes(a) && a !== 'licences') : [];
-  const last = S.v44x.length ? { id: 'rubs', l: 'Rubriques', set: '' } : { id: 'commun', l: 'Commun', set: '' };
+  const last = S.v44x.length ? { id: 'rubs', l: 'Accès en plus', set: '' } : { id: 'commun', l: 'Commun', set: '' };
   const tabs = sets.flatMap((k) => SETS[k].map(([id, l]) => ({ id, l, set: k }))).concat(isBoard() ? [last] : []);
   const key = (mine ? 'f:' : 'v:') + f;
   S.ftabs = S.ftabs || {};
@@ -72,9 +72,8 @@ function fnSpace(f, mine) {
   const first = cur.set && cur.id === 'ap_' + cur.set; // le bandeau est dans l'Aperçu seulement
   const band = first && BANDS[cur.set] ? BANDS[cur.set](key) : '', b = BODY[cur.id] ? BODY[cur.id]() : '';
   // n° 131 : « Réorganiser » dans chaque onglet qui a plusieurs blocs (ordre propre à la personne, à la fonction et à l'onglet) ;
-  // le bandeau reste en tête ; « Gestion du club » (demandes, membres, corbeille) reste en bas de chaque onglet (n° 88)
-  const inner = Array.isArray(b) ? arrange(key + ':' + cur.id, [{ id: 'bandeau', pin: true, html: band }, ...b]) : band + b;
-  const body = inner + `<button class="btn" data-act="gestion">${icon('shield', 20)}Gestion du club</button>`;
+  // le bandeau reste en tête. 5.1.0 (n° 191) : plus de bouton « Gestion du club » en bas de chaque onglet (la page n'existe plus)
+  const body = Array.isArray(b) ? arrange(key + ':' + cur.id, [{ id: 'bandeau', pin: true, html: band }, ...b]) : band + b;
   return { tabs: nav, body };
 }
 hooks.fnSpace = fnSpace;
@@ -205,7 +204,7 @@ const BODY = {
   tarifs: () => feesBlock(),
   heures: () => [blk('verif', 'Vérification des heures', hoursCheckBlock()), blk('releves', 'Relevés, taux et montants', `<button class="btn" data-act="choursb">${icon('check', 20)}Relevés, taux et montants</button>`)],
   // Secrétaire
-  licences: () => licencesBlock(),
+  licences: () => [blk('effectifs', 'Effectifs par équipe', effectifsBlock()), blk('liste', 'Licences', licencesBlock())], // n° 191 : les effectifs, venus de « Gestion du club »
   fiches: () => { const vp = toValidate(); return [blk('demandes', 'Demandes à valider', vp.length ? `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>` : ''), blk('noms', 'Noms à vérifier', namesToCheck()), blk('membres', 'Membres', membersBlock())]; },
   impexp: () => [blk('ajout', 'Ajouter des joueurs', addPlayersBlock(liveIds())), blk('export', 'Exporter', `<div class="sec"><h2>Exporter</h2></div><div class="card">${canExportMembers() ? `${exportBtn('xlsxmem', 'Exporter les membres et leurs coordonnées (Excel)', '')}<p class="note">Équipe, licence, parents, e-mails, téléphones, contact d’urgence. L’export est inscrit au journal du club, à ton nom.</p>` : '<p class="note" style="margin:0">L’export des coordonnées est réservé au président, au secrétaire et au secrétaire adjoint.</p>'}</div>`)],
   // Correspondant licences
@@ -261,10 +260,10 @@ const BODY = {
   ap_licences: () => [blk('droits', 'Droits', rights(['secretary_sees_fees']))],
   ap_rencontres: () => [blk('convoquer', 'Convocations à envoyer', convokeBlock()), blk('afaire', 'À faire', todo([[homeSoon(60).filter((e) => !(e.place || '').trim()).length, 'match sans gymnase', 'matchs sans gymnase', 'renc'], [clubEvs().reduce((n, e) => n + missing(e.id), 0), 'place de bénévole à pourvoir', 'places de bénévoles à pourvoir', 'benev']]))],
   ap_technique: () => { const req = toValidate().filter((m) => m.role === 'coach'); return [blk('demandes', 'Demandes de coachs', req.length ? `<div class="sec"><h2>Demandes de coachs</h2><span class="pill wait">${req.length}</span></div><div class="card lift">${pendRows(req)}</div>` : ''), blk('afaire', 'À faire', todo([[noCoachTeams().length, 'équipe sans coach', 'équipes sans coach', 'equipes'], [dupGroups().length, 'doublon d’équipe', 'doublons d’équipes', 'equipes']])), blk('droits', 'Droits', rights(['tech_sees_contacts', 'coach_sees_fees']))]; },
-  ap_communication: () => { const mine = S.annonces.filter((x) => x.created_by === S.me.id); return [blk('dernieres', 'Dernières annonces', `<button class="btn main" data-act="annnew">${icon('plus', 20)}Nouvelle annonce</button>` + (mine.length ? `<div class="sec"><h2>Mes dernières annonces</h2></div>` + annList(mine.slice(0, 3), false) : ''))]; },
+  ap_communication: () => { const mine = S.annonces.filter((x) => x.created_by === S.me.id); return [blk('dernieres', 'Dernières annonces', `<button class="btn main" data-act="annnew">${icon('plus', 20)}Nouvelle annonce</button>` + (mine.length ? `<div class="sec"><h2>Mes dernières annonces</h2></div>` + annList(mine.slice(0, 3), false) : '')), blk('blason', 'Blason et couleurs', brandBlock())]; }, // n° 191 : le blason, venu de « Gestion du club »
   ap_evenements: () => { const l = upcoming(S.events.filter((e) => !e.cancelled && ['Événement', 'AG'].includes(e.type) && new Date(e.starts_at) < Date.now() + 30 * DAY)); return [blk('prochains', 'Dans les 30 jours', l.length ? `<div class="sec"><h2>Dans les 30 jours</h2></div><div class="card"><div class="list">${l.map((e) => evRow(e)).join('')}</div></div>` : '<p class="empty">Aucun événement dans les 30 prochains jours.</p>')]; },
   commun: () => rubBody('commun'),
-  rubs: () => rubList(['commun'].concat(S.v44x || [])) + '<p class="note">Rubriques que le président t’a ouvertes en plus de ta fonction.</p>',
+  rubs: () => rubList(['commun'].concat(S.v44x || [])) + '<p class="note">Accès que le président t’a ouverts en plus de ta fonction.</p>',
 };
 
 // ---------- passage de saison pour tout le club (Président › Réglages › Saison) ----------

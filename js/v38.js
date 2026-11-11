@@ -49,7 +49,7 @@ export function teamToolsBlock(inFold = false) {
 // ---------- n° 102 · page « Importer des équipes » ----------
 const BLANK = () => ({ text: '', rows: null, photo: false });
 export function teamImportPage() {
-  if (!(isPresident() || hasArea('technique'))) return '<p class="empty">Réservé au président et au bureau (rubrique Technique).</p>';
+  if (!(isPresident() || hasArea('technique'))) return '<p class="empty">Réservé au président et au bureau (accès Technique).</p>';
   const I = S.timp || (S.timp = BLANK());
   if (!I.rows) {
     return `<div class="card lift">${field('tit', 'Coller une liste', `<textarea id="tit" data-timptext="1" style="min-height:160px" placeholder="Une ligne par équipe ou par créneau&#10;U11 F ; Mercredi 14 h – 15 h 30 ; gymnase Jean-Moulin&#10;Seniors M ; Jeudi 20 h ; salle Coubertin">${esc(I.text)}</textarea>`)}
