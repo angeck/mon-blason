@@ -1,9 +1,11 @@
 // mypocketclub · alpha 4.10.0 : suite de la revue « Légal » du 10 novembre 2026.
 //   n° 184 : « Appareils connus » dans Mon compte, avec « Retirer » (la base efface seule un appareil sans connexion depuis 12 mois) ;
 //   n° 167 : doublons d’exercices (« Signaler un doublon », liste, « Fusionner » / « Pas un doublon ») ;
+//   n° 77 : bilan de la saison de l’équipe (onglet Équipe) ;
+//   n° 75 : pastille « heures à vérifier » sur l’onglet Accueil (la carte « As-tu vérifié tes heures ? » y est déjà) ;
 //   n° 185 : lien de désinscription des e-mails d'information (#desinscription=…), ouvert connecté ou non.
 // (n° 181 : textes dans v310.js ; n° 182 : encart dans v43.js ; n° 183 : bouton d'accord dans joueur.js.)
-import { S, sb, esc, run, toast, render, armed, isArmed, ACTIONS, INPUTS, norm } from './core.js';
+import { S, sb, esc, run, toast, render, armed, isArmed, ACTIONS, INPUTS, norm, SEASON, evTeams, hooks } from './core.js';
 import { BRAND } from '../config.js';
 import { header, icon } from './ui.js';
 import { deviceId } from './v47.js';
@@ -107,3 +109,30 @@ INPUTS.push((t) => {
   const n = document.getElementById('dupq'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch { /* */ } }
   return true;
 });
+
+// ---------- n° 77 · bilan de la saison d'une équipe (d'après les scores saisis) ----------
+export function seasonStats(tid, now = new Date()) {
+  const y = +String(SEASON).split('-')[0] || now.getFullYear(), from = new Date(y, 6, 1), to = new Date(y + 1, 6, 1);   // saison : 1er juillet au 30 juin
+  const s = { rencontres: 0, v: 0, n: 0, d: 0, pour: 0, contre: 0, matchs: 0 };
+  (S.events || []).forEach((e) => {
+    if (!e.scores?.length || e.cancelled || !evTeams(e).includes(tid)) return;
+    const at = new Date(e.starts_at); if (at < from || at >= to) return;
+    s.matchs++;
+    e.scores.forEach((l) => {
+      const us = +l.us, them = +l.them; if (!Number.isFinite(us) || !Number.isFinite(them)) return;
+      s.rencontres++; if (us > them) s.v++; else if (us < them) s.d++; else s.n++;
+      if (!l.forfeit) { s.pour += us; s.contre += them; }
+    });
+  });
+  return s;
+}
+export function seasonBlock(tid) {
+  const s = seasonStats(tid); if (!s.rencontres) return '';
+  const cell = (n, l) => `<div><div class="big">${n}</div><div class="note">${l}</div></div>`;
+  const diff = s.pour - s.contre;
+  return `<div class="sec"><h2>Bilan de la saison</h2><span class="det">${s.rencontres} rencontre${s.rencontres > 1 ? 's' : ''}</span></div><div class="card"><div class="grid2" style="grid-template-columns:repeat(3,1fr);text-align:center">${cell(s.v, s.v > 1 ? 'victoires' : 'victoire')}${cell(s.n, s.n > 1 ? 'nuls' : 'nul')}${cell(s.d, s.d > 1 ? 'défaites' : 'défaite')}</div>
+    <p class="note">Points marqués : <b>${s.pour}</b> · encaissés : <b>${s.contre}</b> · écart : <b>${diff > 0 ? '+' : ''}${diff}</b>. Les forfaits comptent comme une victoire ou une défaite, sans points.</p></div>`;
+}
+
+// ---------- n° 75 · pastille de la carte « As-tu vérifié tes heures ? » sur l'onglet Accueil ----------
+hooks.hoursPending = () => (S.hconf || []).filter((c) => c.user_id === S.me?.id && !c.confirmed_at && (S.hchecks || []).some((k) => k.id === c.check_id)).length;

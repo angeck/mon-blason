@@ -12,6 +12,7 @@ import { partnerBlock } from './v35.js';
 import { pendRows } from './club.js';
 import { statusPills, presence } from './joueur.js';
 import { coachEntry } from './coach.js';
+import { seasonBlock } from './v410.js';
 import { topFollowed } from './v37.js';
 import { canTrashTeam, dupBtn } from './v38.js';
 
@@ -104,6 +105,7 @@ export function teamTab() {
   const rdv = `<div class="sec"><h2>Prochains rendez-vous</h2>${coach ? `<button data-act="evnew" data-team="${tid}">${icon('plus', 18)} Ajouter</button>` : ''}</div>` + (evs.length ? evs.slice(0, 5).map((e) => evCard(e, { answer: true })).join('') : '<p class="empty">Aucun rendez-vous prévu pour l’équipe.</p>');
   // coach de l'équipe : liste complète ; sinon (parent, joueur, et bureau dans ce rôle) : « Prénom N. » ; le détail pour le bureau reste dans « Gestion du club »
   h += coach ? coachBlock(tid) + rdv : rdv + familyBlock(tid);
+  h += seasonBlock(tid); // n° 77
   return h + `<button class="btn ghost" data-act="team" data-id="${tid}">Fiche de l'équipe ${esc(teamName(tid))}</button>`;
 }
 

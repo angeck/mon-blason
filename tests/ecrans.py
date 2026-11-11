@@ -712,9 +712,11 @@ with sync_playwright() as p:
     pg.evaluate("window.__FAKE.hours_checks.push({ id: 'hk1', club_id: 'c-1', month: '2026-10-01' }); window.__FAKE.hours_confirms.push({ check_id: 'hk1', user_id: 'u-me', minutes: 750, confirmed_at: null })")
     pg.evaluate("(async()=>{const c=await import('/js/core.js'); await c.refresh();})()"); pg.wait_for_timeout(300); go("S.view = null; S.tab = 0")
     check('n° 75 · carte « As-tu vérifié tes heures d’octobre ? 12 h 30 déclarées »', has('As-tu vérifié tes heures d’octobre') and has('12 h 30 déclarées'))
+    check('n° 75 · pastille « 1 » sur l’onglet Accueil tant que les heures ne sont pas vérifiées', pg.locator('.tb [data-i="0"] .n').count() == 1 and pg.inner_text('.tb [data-i="0"] .n') == '1')
     shot('45-heures-coach')
     act('[data-act=hcok]')
     check('n° 75 · « C’est bon » : confirmation envoyée, carte retirée', pg.evaluate("window.__CALLS.some(c => c[1] === 'confirm_hours')") and not has('As-tu vérifié tes heures'))
+    check('n° 75 · une fois « C’est bon », la pastille de l’Accueil disparaît', pg.locator('.tb [data-i="0"] .n').count() == 0)
     pg.evaluate("window.__FAKE.memberships.find(m => m.id === 'm1').fonction = 'Trésorier'"); pg.evaluate("(async()=>{const c=await import('/js/core.js'); await c.refresh();})()"); pg.wait_for_timeout(300)
     go("S.casq = 'f:Trésorier'; S.view = { type: 'espace' }"); act('[data-act=ftab][data-v=heures]')  # 4.4.0 : onglet « Heures des coachs »
     check('n° 75 · espace Trésorier : compteur et bouton de demande', has('Heures des coachs') and has('1 / 1 coachs ont confirmé') and has('Demander la vérification des heures'))
@@ -1298,6 +1300,14 @@ with sync_playwright() as p:
     check('n° 167 · fiche : bouton « Signaler un doublon », puis choix de l’autre exercice', 'Signaler un doublon' in d167['a'] and 'Quel exercice est le même' in d167['b'] and 'data-other="xb"' in d167['b'] and 'data-other="xa"' not in d167['b'])
     check('n° 167 · liste : « Signalé » à trancher (Fusionner, Pas un doublon) et « Fusionné » sans boutons', 'Doublons signalés' in d167['l'] and 'Fusionner' in d167['l'] and 'Pas un doublon' in d167['l'] and 'Fusionné' in d167['l'] and d167['l'].count('data-act="dupmerge"') == 1)
     pg.evaluate("(async()=>{const c=await import('/js/core.js'); c.S.exos=window.__exos167; c.S.dups=[]; c.S.dupFor=null;})()")
+    # n° 77 : bilan de la saison d'une équipe
+    b77 = pg.evaluate("""(async()=>{const c=await import('/js/core.js'); const v=await import('/js/v410.js'); const old=c.S.events;
+      c.S.events=[{id:'a',team_ids:['t77'],starts_at:'2026-10-10T14:00:00Z',scores:[{us:50,them:40}]},{id:'b',team_ids:['t77'],starts_at:'2026-10-17T14:00:00Z',scores:[{us:30,them:30},{us:20,them:25}]},
+        {id:'c',team_ids:['t77'],starts_at:'2026-10-24T14:00:00Z',scores:[{us:0,them:20,forfeit:true}]},{id:'d',team_ids:['t77'],starts_at:'2025-10-10T14:00:00Z',scores:[{us:99,them:1}]},
+        {id:'e',team_ids:['autre'],starts_at:'2026-10-10T14:00:00Z',scores:[{us:99,them:1}]},{id:'f',team_ids:['t77'],cancelled:true,starts_at:'2026-10-30T14:00:00Z',scores:[{us:5,them:1}]}];
+      const s=v.seasonStats('t77'), h=v.seasonBlock('t77'), none=v.seasonBlock('vide'); c.S.events=old; return {s,h,none};})()""")
+    check('n° 77 · bilan : 1 victoire, 1 nul, 2 défaites, 100 – 95 (forfait sans points), saison passée et autre équipe écartées', b77['s'] == {'rencontres': 4, 'v': 1, 'n': 1, 'd': 2, 'pour': 100, 'contre': 95, 'matchs': 3})
+    check('n° 77 · bloc « Bilan de la saison » affiché, rien sans score', 'Bilan de la saison' in b77['h'] and 'écart' in b77['h'] and b77['none'] == '')
     # n° 183 : droit à l'image, désaccord entre parents
     pg.evaluate("(async()=>{const {S}=await import('/js/core.js'); const p = S.players.find(x => x.id === 'p-tom'); p.consents = { ...(p.consents || {}), image: { ok: false, at: '2026-11-10T10:00:00Z', conflict: true, votes: {} } }; })()")
     go("S.view = { type: 'player', id: 'p-tom' }")

@@ -1,6 +1,6 @@
 // mypocketclub · éléments d'interface communs : logos, icônes, blason du club, en-tête, onglets, thème.
 import { BRAND, CGU_VERSION } from '../config.js';
-import { S, esc, club, onColor, contrast, lum, initials, isActive, toValidate, myTeamIds, casquettes, store } from './core.js';
+import { S, esc, club, onColor, contrast, lum, initials, isActive, toValidate, myTeamIds, casquettes, store, hooks } from './core.js';
 
 // ---------- Ballons (n° 97 · charte mypocketclub validée le 3 novembre 2026 · fichiers dans img/, copies de claude/logos/mypocketclub/) ----------
 // Une seule famille, jaune et encre. Hors club, ou club d'un autre sport (ou omnisports) : ballon de la marque « étoile creuse » (n° 106) ;
@@ -114,10 +114,10 @@ export const SPACE_VIEWS = ['espace', 'rub', 'gestion', 'fonctions', 'journal', 
 const TABS = [['Accueil', 'home'], ['Agenda', 'cal'], ['Messages', 'msg'], ['Équipe', 'team'], ['Club', 'shield']];
 export function tabBar() {
   const v = toValidate(), mine = myTeamIds();
-  const counts = { Club: v.length, Équipe: v.filter((m) => mine.includes(m.team_id)).length, Messages: Object.values(S.unread || {}).reduce((a, b) => a + b, 0) };
+  const counts = { Club: v.length, Équipe: v.filter((m) => mine.includes(m.team_id)).length, Messages: Object.values(S.unread || {}).reduce((a, b) => a + b, 0), Accueil: hooks.hoursPending ? hooks.hoursPending() : 0 }; // n° 75 : Accueil = heures à vérifier
   return `<div class="tb"><nav aria-label="Onglets">${TABS.map(([t, ic], i) => {
     const cur = i === S.tab && !S.view, n = counts[t] || 0;
-    return `<button data-act="tab" data-i="${i}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${icon(ic, 24, 'currentColor', cur ? 2.2 : 2)}</span><span>${t}</span>${n ? `<span class="n" aria-label="${n} ${t === 'Messages' ? 'non lus' : 'à valider'}">${n > 99 ? '99+' : n}</span>` : ''}</button>`;
+    return `<button data-act="tab" data-i="${i}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${icon(ic, 24, 'currentColor', cur ? 2.2 : 2)}</span><span>${t}</span>${n ? `<span class="n" aria-label="${n} ${t === 'Messages' ? 'non lus' : t === 'Accueil' ? 'à vérifier' : 'à valider'}">${n > 99 ? '99+' : n}</span>` : ''}</button>`;
   }).join('')}</nav>${rolesNav()}</div>`;
 }
 // N° 104 · ordinateur : sous les onglets (consulter et répondre), un bloc « Mes rôles » (agir), un bouton par casquette ;
