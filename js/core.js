@@ -55,10 +55,11 @@ export const refresh = (msg) => hooks.refresh(msg);
 
 // ---------- outils ----------
 export function toast(m, ms = 3200) { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => (t.hidden = true), ms); }
+// 5.2.0 (n° 171) : « correspondant » devient « contact » dans les messages de la base
 export async function run(p, ok) {
   if (!navigator.onLine) { toast('Hors connexion : réessaie quand le réseau revient.'); return null; }
   const { data, error } = await p;
-  if (error) { console.error(error); toast(error.message ? error.message.replace(/^[A-Za-z0-9_]+: /, '') : 'Action impossible'); return null; }
+  if (error) { console.error(error); toast(error.message ? error.message.replace(/^[A-Za-z0-9_]+: /, '').replace(/([Cc])orrespondants? (licences|rencontres)/g, (m, c, w) => (m.includes('ants') ? 'contacts ' : (c === 'C' ? 'Contact ' : 'contact ')) + w) : 'Action impossible'); return null; }
   if (ok) toast(ok);
   return data ?? true;
 }
@@ -139,7 +140,7 @@ export function isMajor(p) {
 // N° 55 : rubriques du bureau (tresorerie, secretariat, technique, communication, evenements), calculées par la base
 export const hasArea = (a) => (S.areas || []).includes(a);
 export const AREAS = { tresorerie: 'Trésorerie', secretariat: 'Secrétariat', technique: 'Technique', communication: 'Communication', evenements: 'Événements' };
-export const FONCTIONS = ['Vice-président', 'Secrétaire', 'Secrétaire adjoint', 'Trésorier', 'Trésorier adjoint', 'Directeur technique', 'Correspondant rencontres', 'Correspondant licences', 'Chargé de communication', 'Responsable sponsoring', 'Membre du bureau'];
+export const FONCTIONS = ['Vice-président', 'Secrétaire', 'Secrétaire adjoint', 'Trésorier', 'Trésorier adjoint', 'Directeur technique', 'Correspondant rencontres', 'Correspondant licences', 'Chargé de communication', 'Responsable événements', 'Responsable sponsoring', 'Membre du bureau'];
 // Casquettes de l'espace (charte du 31 octobre) : Coach, Président, chaque fonction du bureau
 // N° 100 : un coach de plusieurs équipes a une casquette par équipe (« Coach U9 », « Coach Reines », clé « coach:<équipe> ») ;
 // un coach d'une seule équipe garde la casquette « coach », comme avant.

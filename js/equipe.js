@@ -1,6 +1,6 @@
 // mypocketclub · onglet Équipe, fiche d'équipe, ajout et import de joueurs (n° 7, 8, 26).
 import {
-  S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, BCATS, GENRES, SEASON, NEXT_SEASON, XLSX_URL,
+  hooks, S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, BCATS, GENRES, SEASON, NEXT_SEASON, XLSX_URL,
   active, isBoard, isPresident, coachOf, team, teamName, myTeamIds, myPlayers, playersOfTeam, pname, adminOf, toValidate, niceFirst, niceLast, norm,
   loadJs, plural, fmtShort, evTeams, follows, mySelf, myKids, pl,
 } from './core.js';
@@ -132,7 +132,7 @@ export function teamPage(tid) {
   if ((board || coach) && !S.tsp) h += `<button class="btn" data-act="tsgo" data-id="${tid}" data-tab="effectif">${icon('shield', 20)}Gérer dans l'espace de l'équipe</button>`;
   const vp = toValidate().filter((m) => m.team_id === tid);
   if (manage && vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card">${pendRows(vp)}</div>`;
-  if (manage) h += partnerBlock(t);
+  if (manage) h += partnerBlock(t) + (hooks.teamExtra ? hooks.teamExtra(tid) : '');
   if (manage) {
     h += `<button class="btn main" data-act="import" data-id="${tid}">${icon('plus', 20)}Ajouter des joueurs (un par un, liste, Excel, photo)</button>`;
     h += `<details class="card"><summary>${board ? "Réglages de l'équipe" : "Créneaux de l'équipe"}</summary>${board ? teamForm(t, 'teamedit') : `<form id="teamslots" data-id="${tid}" class="stack">${field('tsl', 'Créneaux et gymnase', `<input id="tsl" name="slots" value="${esc(t.slots || '')}">`)}<button class="btn main" type="submit">Enregistrer</button></form>`}${t.partner_hidden && (t.partner_state || 'aucune') === 'aucune' ? `<button class="btn ghost small" data-act="pfshow" data-id="${tid}">Réafficher « Équipe en entente ? »</button>` : ''}</details>`;
@@ -234,7 +234,7 @@ Object.assign(ACTIONS, {
   impback: () => { S.imp.rows = null; S.imp.map = null; render(); },
   impswapall: async () => { const I = S.imp; I.rows.forEach((r) => { [r.first_name, r.last_name] = [r.last_name, r.first_name]; }); await checkImport(); toast('Prénom et nom inversés.'); },
   impok: async () => {
-    const I = S.imp, rows = I.rows.map((r) => ({ first_name: niceFirst(r.first_name), last_name: niceLast(r.last_name), birth_date: r.birth_date || null, licence: r.licence || null, action: r.action || 'create', existing: r.existing || null, email: I.noContacts ? null : r.email || null, phone: I.noContacts ? null : r.phone || null }));
+    const I = S.imp, rows = I.rows.map((r) => ({ first_name: niceFirst(r.first_name), last_name: niceLast(r.last_name), birth_date: r.birth_date || null, licence: r.licence || null, action: r.action || 'create', existing: r.existing || null, email: I.noContacts ? null : r.email || null, phone: I.noContacts ? null : r.phone || null, club: r.club || null }));
     if (rows.some((r) => r.action !== 'skip' && (!r.first_name || !r.last_name))) return toast('Chaque ligne doit avoir un prénom et un nom.');
     const { data: n, error } = navigator.onLine ? await sb.rpc('import_players', { p_club: S.clubId, p_team: I.tid, p_rows: rows }) : { error: { message: 'pas de réseau' } };
     if (error) { console.error(error); return toast('Enregistrement refusé : ' + (error.message || 'erreur inconnue').replace(/^.*?: /, '') + '. Rien n’a été importé.'); }

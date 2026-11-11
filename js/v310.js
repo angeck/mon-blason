@@ -28,6 +28,7 @@ export async function loadV310() {
     sb.from('president_offers').select('*').eq('club_id', S.clubId),
   ]);
   S.desig = d.data || []; S.poffer = (o.data || [])[0] || null;
+  if (hooks.loadV52) await hooks.loadV52();
 }
 
 // ---------- n° 113 · contexte « espace de l'équipe » ----------
@@ -158,7 +159,7 @@ export const FONCTION_RIGHTS = {
   'Trésorier': 'Trésorerie : cotisations, versements, relances, tarifs, réductions, heures des coachs, état des licences', 'Trésorier adjoint': 'Comme le trésorier',
   'Secrétaire': 'Secrétariat : demandes, fiches, licences, import et export', 'Secrétaire adjoint': 'Comme le secrétaire',
   'Correspondant licences': 'Licences (état, numéro, certificat fourni) et contact licences', 'Directeur technique': 'Technique : toutes les équipes, coachs, exercices, ententes',
-  'Correspondant rencontres': 'Événements : matchs, plateaux, tournois, convocations, bénévoles', 'Chargé de communication': 'Communication : annonces et lecteurs',
+  'Correspondant rencontres': 'Événements : matchs, plateaux, tournois, convocations, bénévoles', 'Chargé de communication': 'Communication : annonces et lecteurs', 'Responsable événements': 'Événements : événements du club, participants, bénévoles',
   'Responsable sponsoring': 'Pas d’espace pour l’instant (partie Commun)', 'Membre du bureau': 'La partie Commun, et les accès que tu ouvres en plus',
 };
 export function rightsNote() {
@@ -205,10 +206,10 @@ export function presidentSpace310() {
 }
 // n° 170 (4.8.0) : « Contact licences » et « Contact rencontres » sont des rôles. Ils s'attribuent seulement dans
 // « Fonctions du bureau » ; ici, un aperçu en lecture seule avec un lien. Événements et Communication gardent le choix.
-const ROLE_OF = { licences: 'Correspondant licences', rencontres: 'Correspondant rencontres' };
+const ROLE_OF = { licences: 'Correspondant licences', rencontres: 'Correspondant rencontres', evenements: 'Responsable événements', communication: 'Chargé de communication' }; // 5.2.0 (n° 172) : les quatre sont des rôles
 function quiView() {
   const ad = adultMembers();
-  let h = '<p class="note">Une personne par responsabilité. Sans choix, c’est la personne indiquée par défaut. Les deux contacts sont des rôles : ils s’attribuent dans « Fonctions du bureau ». Tout est inscrit au journal.</p>';
+  let h = '<p class="note">Chaque responsabilité est un rôle : il s’attribue dans « Fonctions du bureau ». Sans personne, c’est la personne indiquée par défaut. Tout est inscrit au journal.</p>';
   h += RESP.map(([k, l, d]) => {
     if (ROLE_OF[k]) {
       const who = holder(ROLE_OF[k])[0];

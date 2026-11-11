@@ -21,11 +21,16 @@ function areasOf(k) {
   const others = new Set(myFonctions().filter((x) => x !== f).flatMap((x) => FONCTION_AREAS[x] || []));
   return (S.areas || []).filter((a) => !others.has(a));
 }
+// 5.2.0 (n° 190) : coachs qui n'ont pas encore confirmé le dernier relevé d'heures demandé (trésorerie et président)
+function lateHours() {
+  const k = (S.hchecks || [])[0]; if (!k) return 0;
+  return (S.hconf || []).filter((c) => c.check_id === k.id && !c.confirmed_at).length;
+}
 // Ce qui attend la personne dans un rôle : demandes à valider (par identifiant, pour ne rien compter deux fois),
 // exercices à valider, heures à vérifier
 function itemsOf(k) {
   const vp = toValidate(), out = { dem: new Set(), exos: 0, hours: 0 };
-  if (k === 'president') { vp.forEach((m) => out.dem.add(m.id)); return out; }
+  if (k === 'president') { vp.forEach((m) => out.dem.add(m.id)); out.hours = lateHours(); return out; } // 5.2.0 : coachs qui n'ont pas confirmé leurs heures
   if (isCoachCasq(k)) {
     const ts = casquettes().find((x) => x.k === k)?.teams || [];
     vp.filter((m) => m.team_id && ts.includes(m.team_id) && ['joueur', 'parent'].includes(m.role)).forEach((m) => out.dem.add(m.id));
@@ -33,6 +38,7 @@ function itemsOf(k) {
     return out;
   }
   const a = areasOf(k);
+  if (a.includes('tresorerie')) out.hours = lateHours(); // 5.2.0 (n° 190) : relevé d'heures en attente de confirmation des coachs
   if (a.includes('secretariat')) vp.filter((m) => ['joueur', 'parent', 'supporteur', 'coach'].includes(m.role)).forEach((m) => out.dem.add(m.id));
   if (a.includes('technique')) { vp.filter((m) => m.role === 'coach').forEach((m) => out.dem.add(m.id)); out.exos = (S.coachCounts || {}).exos || 0; }
   return out;

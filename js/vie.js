@@ -20,7 +20,7 @@ export const FONCTION_AREAS = {
   'Vice-président': Object.keys(AREAS), 'Trésorier': ['tresorerie'], 'Trésorier adjoint': ['tresorerie'], 'Secrétaire': ['secretariat'], 'Secrétaire adjoint': ['secretariat'],
   // n° 114 : « Correspondant licences » = les licences seulement (sous-rubrique « licences », hors AREAS) ; « Correspondant rencontres » (ex-coordinateur)
   // sans la rubrique Technique ; « Directeur technique » (ex-directeur sportif) ; le sponsoring n'a pas encore d'espace
-  'Correspondant licences': [], 'Directeur technique': ['technique'], 'Correspondant rencontres': ['evenements'], 'Chargé de communication': ['communication'],
+  'Correspondant licences': [], 'Directeur technique': ['technique'], 'Correspondant rencontres': ['evenements'], 'Chargé de communication': ['communication'], 'Responsable événements': ['evenements'], // 5.2.0 (n° 172)
   'Responsable sponsoring': [], 'Membre du bureau': [],
 };
 const AREA_ICON = { tresorerie: 'doc', secretariat: 'user', technique: 'team', communication: 'msg', evenements: 'cal', commun: 'shield' };
@@ -351,14 +351,23 @@ function fonctionsView() {
     <div class="kick">Accès</div><div class="chips">${Object.entries(AREAS).map(([a, l]) => own.includes(a) ? `<span class="pill ok">${l}</span>` : `<button class="chip" data-act="barea" data-u="${u}" data-v="${a}" aria-pressed="${ba.some((x) => x.user_id === u && x.area === a)}">${l}</button>`).join('')}</div></div>`;
   }).join('') : '<p class="empty">Aucun membre du bureau pour l’instant.</p>';
   const cand = [...new Set(S.members.filter((m) => m.status === 'active' && m.user_id !== S.me.id).map((m) => m.user_id))].sort((a, c) => name(a).localeCompare(name(c), 'fr'));
-  b += `<form id="nomf" class="card"><div class="kick">Nommer quelqu'un</div><div class="grid2">${field('nu', 'Membre du club', `<select id="nu" name="user" required><option value="">Choisir…</option>${cand.map((u) => `<option value="${u}">${esc(name(u))}</option>`).join('')}</select>`)}${field('nf', 'Fonction', `<select id="nf" name="fonction">${FONCTIONS.map((f) => `<option value="${esc(f)}">${fl(f)}</option>`).join('')}</select>`)}</div><button class="btn main small" type="submit">Nommer</button><p class="note">Une seule personne pour la vice-présidence, le secrétariat, la trésorerie, le contact licences et le contact rencontres ; plusieurs pour les adjoints et les membres. Chaque nomination est inscrite au journal.</p></form>`;
+  b += `<form id="nomf" class="card"><div class="kick">Nommer quelqu'un</div><div class="grid2">${field('nu', 'Membre du club', `<select id="nu" name="user" required><option value="">Choisir…</option>${cand.map((u) => `<option value="${u}" ${S.nomUser === u ? 'selected' : ''}>${esc(name(u))}</option>`).join('')}</select>`)}${field('nf', 'Fonction', `<select id="nf" name="fonction">${FONCTIONS.map((f) => `<option value="${esc(f)}" ${!S.nomAutre && S.nomFn === f ? 'selected' : ''}>${fl(f)}</option>`).join('')}<option value="__autre" ${S.nomAutre ? 'selected' : ''}>Autre (nom libre)…</option></select>`)}</div>${nomAutreBlock()}<button class="btn main small" type="submit">${S.nomAutre ? 'Créer le rôle' : 'Nommer'}</button><p class="note">Une seule personne pour la vice-présidence, le secrétariat, la trésorerie, le contact licences et le contact rencontres ; plusieurs pour les adjoints, les membres et les autres rôles. Chaque nomination est inscrite au journal.</p></form>`;
   b += rightsNote(); // n° 114 : les droits de chaque fonction avant de confirmer
   return { head: header({ back: true, kicker: roleKicker('Espace Président'), title: 'Fonctions du bureau', casq: casqTabs() }), body: b }; // n° 101 ; n° 116 : casquettes dans l'en-tête
+}
+// 5.2.0 (n° 172) : rôle « Autre » : nom libre et accès choisis parmi les cinq (jamais l'accès Président ni la modification des fonctions du bureau)
+function nomAutreBlock() {
+  if (!S.nomAutre) return '';
+  const on = S.nomAreas || (S.nomAreas = new Set());
+  return `<div class="card flat" data-autre="1">${field('otitle', 'Nom du rôle', `<input id="otitle" name="otitle" maxlength="40" placeholder="Ex. Aide-trésorier" value="${esc(S.nomTitle || '')}" data-ntitle="1">`)}
+    <div class="kick">Accès</div><div class="chips">${Object.entries(AREAS).map(([a, l]) => `<button type="button" class="chip" data-act="nomarea" data-v="${a}" aria-pressed="${on.has(a)}">${l}</button>`).join('')}</div>
+    <p class="note">Un rôle « Autre » est un rôle d’aide : il ne donne jamais l’accès Président, ni le droit de nommer le bureau. Les droits sont ceux des accès cochés.</p></div>`;
 }
 // n° 151 (Gaël, 9 novembre 2026) : en nommant un contact (rencontres, licences) ou un chargé de communication, le président
 // choisit à qui vont les missions : à cette personne, à lui-même, ou à la personne qui les a aujourd'hui (rien ne change)
 // n° 170 (4.8.0) : les deux contacts sont des rôles, le rôle donne les missions ; la question ne reste que pour la communication
-const RESP_OF = { 'Chargé de communication': ['communication', 'Communication : annonces et relances'] };
+// 5.2.0 (n° 172) : plus aucune désignation ; la fonction donne les missions. La table reste vide pour garder la mécanique de la question.
+const RESP_OF = {};
 function respAsk() {
   const a = S.resp151; if (!a) return '';
   const cur = (S.desig || []).find((x) => x.resp === a.resp);
@@ -468,6 +477,7 @@ Object.assign(ACTIONS, {
     const u = d.v === 'give' ? a.user : S.me.id;
     if (await run(sb.rpc('set_designation', { p_club: S.clubId, p_resp: a.resp, p_user: u }), d.v === 'give' ? 'Missions confiées : la personne est prévenue.' : 'Tu gardes ces missions.')) { S.resp151 = null; await refresh(); }
   },
+  nomarea: (el, d) => { const s = S.nomAreas || (S.nomAreas = new Set()); s.has(d.v) ? s.delete(d.v) : s.add(d.v); render(true); }, // 5.2.0 (n° 172)
   barea: async (el, d) => {
     const on = !(S.bareas || []).some((x) => x.user_id === d.u && x.area === d.v);
     if (await run(sb.rpc('set_board_area', { p_club: S.clubId, p_user: d.u, p_area: d.v, p_on: on }), on ? 'Accès ouvert.' : 'Accès fermé.')) { S.bareas = (await sb.from('board_areas').select('*').eq('club_id', S.clubId)).data || []; render(true); }
@@ -487,9 +497,16 @@ FORMS.mif = async (v, f) => {
 };
 FORMS.nomf = async (v) => {
   if (!v.user) return toast('Choisis un membre.');
+  if (v.fonction === '__autre') { // 5.2.0 (n° 172)
+    const t = String(v.otitle || '').trim();
+    if (t.length < 2) return toast('Donne un nom au rôle.');
+    if (await run(sb.rpc('create_other_role', { p_club: S.clubId, p_user: v.user, p_title: t, p_areas: [...(S.nomAreas || [])] }), 'Rôle créé : la personne est prévenue.')) { S.nomAutre = false; S.nomAreas = null; S.nomTitle = ''; S.bareas = (await sb.from('board_areas').select('*').eq('club_id', S.clubId)).data || []; await refresh(); }
+    return;
+  }
   if (await run(sb.rpc('set_bureau_fonction', { p_club: S.clubId, p_user: v.user, p_fonction: v.fonction }), 'Fonction attribuée.')) { S.resp151 = RESP_OF[v.fonction] ? { user: v.user, fonction: v.fonction, resp: RESP_OF[v.fonction][0] } : null; await refresh(); }
 };
 INPUTS.push((t) => {
+  if (t.dataset.ntitle) { S.nomTitle = t.value; return true; } // 5.2.0 (n° 172)
   if (t.dataset.dml) { S.dm[+t.dataset.dml].label = t.value; return true; }
   if (t.dataset.dms) { S.dm[+t.dataset.dms].slots = t.value; return true; }
   if (t.dataset.dmy) { S.dm[+t.dataset.dmy].youth = t.checked; return true; } // n° 142
@@ -506,6 +523,7 @@ CHANGES.push(async (t) => {
   }
   if (t.dataset.ftitle) { const v = t.value.trim(); if (await run(sb.rpc('set_bureau_title', { p_membership: t.dataset.ftitle, p_title: v }), v ? 'Intitulé enregistré.' : 'Intitulé retiré.')) await refresh(); return true; } // n° 166
   if (t.dataset.fonc) { if (await run(sb.rpc('set_bureau_fonction', { p_club: S.clubId, p_user: t.dataset.u, p_fonction: t.value, p_membership: t.dataset.fonc }), 'Fonction changée.')) { S.resp151 = RESP_OF[t.value] ? { user: t.dataset.u, fonction: t.value, resp: RESP_OF[t.value][0] } : null; await refresh(); window.scrollTo(0, 0); } else render(true); return true; }
+  if (t.id === 'nf') { const was = !!S.nomAutre; S.nomAutre = t.value === '__autre'; S.nomUser = document.getElementById('nu')?.value || ''; S.nomFn = t.value; if (was !== S.nomAutre) render(true); return true; } // 5.2.0 (n° 172)
   if (t.dataset.massign) return true;
   return false;
 });

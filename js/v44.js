@@ -23,7 +23,7 @@ const DAY = 864e5;
 // ---------- quelle présentation pour quelle fonction ----------
 const FN_SET = {
   'Trésorier': 'tresorerie', 'Trésorier adjoint': 'tresorerie', 'Secrétaire': 'secretariat', 'Secrétaire adjoint': 'secretariat',
-  'Correspondant licences': 'licences', 'Correspondant rencontres': 'rencontres', 'Directeur technique': 'technique', 'Chargé de communication': 'communication',
+  'Correspondant licences': 'licences', 'Correspondant rencontres': 'rencontres', 'Directeur technique': 'technique', 'Chargé de communication': 'communication', 'Responsable événements': 'evenements',
 };
 const DESIG_SET = { licences: 'licences', rencontres: 'rencontres', evenements: 'evenements', communication: 'communication' };
 // rubriques que la présentation d'une fonction contient déjà

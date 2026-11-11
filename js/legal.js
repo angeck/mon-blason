@@ -5,7 +5,7 @@
 import { BRAND } from '../config.js';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.0', date: '10 novembre 2026' };
+export const LEGAL = { version: '1.1', date: '11 novembre 2026' };
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -61,7 +61,7 @@ const SHORT = `
 Organiser la vie du club : agenda, présences, convocations, messages, cotisations. Rien d'autre : pas de publicité, pas de revente, pas de profilage.
 ## Qui voit quoi ?
 - Les autres joueurs et parents voient les joueurs sous la forme « Prénom I. », sans coordonnées ni photo.
-- Les coachs voient le nom et les coordonnées utiles des joueurs de leurs équipes ; le bureau voit ce dont il a besoin pour gérer le club.
+- Les coachs et le contact d'équipe voient le nom et les coordonnées utiles des joueurs de leurs équipes ; le bureau voit ce dont il a besoin pour gérer le club.
 - Une personne non connectée ne voit que la liste des clubs.
 ## Enfants et adolescents
 - Avant 15 ans, un enfant n'a pas de compte : c'est son parent qui gère tout depuis le sien.
@@ -91,7 +91,8 @@ Contact pour toute question : ${C}.
 - **Sécurité** : appareils utilisés pour vous connecter (identifiant et nom de l'appareil), dates de connexion, journal des actions sensibles.
 - **Place dans le club** : club, rôle, fonction au bureau, équipe, lien entre un parent et son enfant.
 - **Vie du club** : rendez-vous et réponses, présences, convocations, messages et groupes d'échange, sondages, missions de bénévole, heures des entraîneurs.
-- **Gestion du club**, visible du bureau seulement : état de la licence, cotisation, remise éventuelle.
+- **Licence et cotisation**, visibles du bureau seulement : état de la licence, cotisation, remise éventuelle.
+- **Renforts et ententes** : le fait qu'un joueur renforce une autre équipe de son club (avec l'accord de sa famille), et, pour une équipe en entente, le club d'origine du joueur.
 - **Accords** : droit à l'image et e-mails d'information, avec leur date.
 - **Contenus que vous créez** : exercices, séances, annonces, fichiers joints.
 mypocketclub ne demande **aucune donnée de santé**. Seul le fait qu'un certificat a été fourni, oui ou non, peut être noté par le club. Merci de ne pas écrire d'information médicale dans l'application.
@@ -106,7 +107,8 @@ Les données viennent de vous, de votre club (qui peut vous inscrire ou inscrire
 Vos données ne servent ni à de la publicité, ni à de la revente, ni à établir un profil de vous.
 ## 4. Qui peut voir vos données ?
 - **Les autres joueurs et parents** voient les joueurs sous la forme « Prénom I. », sans coordonnées ni photo.
-- **Les entraîneurs** voient le nom complet et les coordonnées utiles des joueurs de leurs équipes et de leurs parents.
+- **Les entraîneurs** voient le nom complet et les coordonnées utiles des joueurs de leurs équipes et de leurs parents. Un joueur qui renforce une équipe n'est vu de son coach que sous la forme « Prénom I. » tant que sa famille n'a pas accepté.
+- **Le contact d'équipe**, un adulte choisi pour une équipe (coach, joueur majeur ou membre du bureau), voit les coordonnées des familles et des joueurs de cette équipe seulement. Son droit s'arrête dès qu'il n'a plus le rôle qui le justifiait.
 - **Le bureau du club** voit ce dont il a besoin pour gérer le club. La cotisation, la remise et la licence ne sont visibles que du bureau.
 - **Le contact du club** choisit lui-même si son e-mail ou son téléphone est affiché aux personnes connectées.
 - **Une personne non connectée** ne voit que la liste des clubs.
@@ -178,7 +180,7 @@ mypocketclub est édité par Gaël Raveneau (${C}). L'application est en phase d
 - **Plusieurs rôles.** Un même compte peut porter plusieurs profils : joueur, parent, entraîneur, membre du bureau, supporteur, dans un ou plusieurs clubs.
 ## 4. Le rôle du club
 Chaque club est créé par son président, dont la qualité est vérifiée par mypocketclub. Le club :
-- décide qui tient quelle fonction (bureau, entraîneurs, contacts) et retire les accès quand une personne quitte son rôle ;
+- décide qui tient quelle fonction (bureau, entraîneurs, contacts, contact d'équipe) et retire les accès quand une personne quitte son rôle ;
 - est responsable des informations qu'il enregistre sur ses membres et de l'usage qu'il en fait ;
 - informe ses membres, et les parents des joueurs mineurs, qu'il utilise mypocketclub ;
 - reste seul organisateur de ses activités : entraînements, matchs, déplacements, événements, bénévolat. mypocketclub n'organise, n'encadre et n'assure aucune de ces activités.

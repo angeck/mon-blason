@@ -20,6 +20,9 @@ eq('excel combiné', pick(smartParse(xl)), [
 eq('titre avant en-tête', smartParse([['Liste U9 saison 2026'], ...xl]).length, 3);
 // 3. Colonnes séparées, NOM d'abord
 eq('colonnes séparées', pick(smartParse([['NOM', 'Prénom', 'Né le'], ['DUPONT', 'jean-pierre', '05/06/2017']])), [['Jean-Pierre', 'DUPONT', '2017-06-05', '', '']]);
+// 5.2.0 (n° 78) : colonne « Club » (équipe en entente)
+eq('colonne Club reconnue', smartParse([['Nom', 'Prénom', 'Né le', 'Club'], ['DUPONT', 'Jean', '05/06/2013', 'AS Voisins'], ['MARTIN', 'Léa', '06/07/2013', '']]).map((x) => [x.last_name, x.club]), [['DUPONT', 'AS Voisins'], ['MARTIN', '']]);
+eq('sans colonne Club : champ vide', smartParse([['Nom', 'Prénom', 'Né le'], ['DUPONT', 'Jean', '05/06/2013']]).map((x) => x.club), ['']);
 // 4. Texte lu sur une photo (pas de séparateurs)
 const ocr = `Nom, prénom Date De naissance Mail Numéro de Téléphone Ville
 Anna LE BRAS 16/08/2018 parent.un@exemple.fr 06 11 22 33 44 Testville

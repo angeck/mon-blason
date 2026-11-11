@@ -148,7 +148,7 @@ CHANGES.push((t) => { if (t.dataset.r) { S.rq[t.dataset.r] = t.type === 'checkbo
 // Le président attribue la fonction ; la personne confirme ici ce qu'elle montre (téléphone, e-mail, les deux ou rien).
 // Le choix vaut pour toutes ses fonctions du moment ; une nouvelle fonction demande une nouvelle confirmation.
 function contactChoice(c) {
-  const k = S.cstate, roles = k.roles.join(', ');
+  const k = S.cstate, roles = k.roles.map(fl).join(', ');
   const box = (n, l, on) => `<label class="check"><input type="checkbox" name="${n}" ${on ? 'checked' : ''}><span>${l}</span></label>`;
   return `<form id="contactf" class="card ${k.confirmed ? '' : 'yellow'}" data-anchor="moncontact"><div class="kick">${k.confirmed ? 'Mes coordonnées de contact' : 'À confirmer'} · ${esc(c.name)}</div><b>${esc(roles)}</b>
   <p class="note" style="margin:0;color:var(--pc-texte-ecran)"><b>Choisis ce que les gens voient de toi :</b></p>

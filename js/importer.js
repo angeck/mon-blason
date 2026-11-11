@@ -50,11 +50,12 @@ const HEAD = {
   email: (c) => c.includes('mail') || c.includes('courriel'),
   phone: (c) => c.includes('tel') || c.includes('portable') || c.includes('mobile'),
   licence: (c) => c.includes('licence') || c.includes('license') || c.includes('numlic'),
+  club: (c) => c === 'club' || c.startsWith('clubde') || c === 'clubdorigine' || c === 'clubpartenaire', // 5.2.0 (n° 78) : équipe en entente
 };
 function findHeader(rows) {
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
     const hd = rows[i].map(strip); let hits = 0; const map = {};
-    hd.forEach((c, j) => { if (!c) return; for (const k of ['name', 'first', 'last', 'birth', 'email', 'phone', 'licence']) if (map[k] === undefined && HEAD[k](c)) { if (k === 'first' && HEAD.name(c)) continue; if (k === 'last' && HEAD.name(c)) continue; map[k] = j; hits++; break; } });
+    hd.forEach((c, j) => { if (!c) return; for (const k of ['name', 'first', 'last', 'birth', 'email', 'phone', 'licence', 'club']) if (map[k] === undefined && HEAD[k](c)) { if (k === 'first' && HEAD.name(c)) continue; if (k === 'last' && HEAD.name(c)) continue; map[k] = j; hits++; break; } });
     if (map.name !== undefined || ((map.first !== undefined || map.last !== undefined) && hits >= 1) || hits >= 2) return { i, map };
   }
   return null;
@@ -91,7 +92,7 @@ export function smartParse(input, opts = {}) {
       if (!/\p{L}/u.test(first + last)) return;
       const all = r.join(' ');
       out.push({ first_name: first, last_name: last, birth_date: m.birth !== undefined ? parseDate(r[m.birth]) : '', licence: m.licence !== undefined ? r[m.licence] : (all.match(RX_LIC) || [''])[0],
-        email: (m.email !== undefined ? String(r[m.email]).match(RX_MAIL) : all.match(RX_MAIL))?.[0]?.toLowerCase() || '', phone: normPhone(m.phone !== undefined ? r[m.phone] : (all.match(RX_PHONE) || [''])[0]) });
+        email: (m.email !== undefined ? String(r[m.email]).match(RX_MAIL) : all.match(RX_MAIL))?.[0]?.toLowerCase() || '', phone: normPhone(m.phone !== undefined ? r[m.phone] : (all.match(RX_PHONE) || [''])[0]), club: m.club !== undefined ? String(r[m.club] ?? '').trim() : '' });
     });
   } else {
     rows.slice(h ? h.i + 1 : 0).forEach((r) => {
@@ -105,7 +106,7 @@ export function smartParse(input, opts = {}) {
 
 
 // ---------- n° 26 : « Quelle colonne est quoi ? » ----------
-export const COLS = [['first', 'Prénom'], ['last', 'Nom'], ['name', 'Nom et prénom ensemble'], ['birth', 'Date de naissance'], ['licence', 'N° de licence'], ['email', 'E-mail du parent'], ['phone', 'Téléphone du parent'], ['skip', 'Ignorer']];
+export const COLS = [['first', 'Prénom'], ['last', 'Nom'], ['name', 'Nom et prénom ensemble'], ['birth', 'Date de naissance'], ['licence', 'N° de licence'], ['email', 'E-mail du parent'], ['phone', 'Téléphone du parent'], ['club', 'Club (équipe en entente)'], ['skip', 'Ignorer']];
 const toRows = (input) => {
   const cell = (c) => (c instanceof Date ? new Date(c.getTime() + 12 * 3600e3).toISOString().slice(0, 10) : typeof c === 'number' && /^\d{9}$/.test(String(c)) ? '0' + c : String(c ?? '').trim());
   const rows = Array.isArray(input) ? input.map((r) => (Array.isArray(r) ? r : [r]).map(cell)) : String(input ?? '').split(/\r?\n/).map((l) => (/[;\t]/.test(l) ? l.split(/[;\t]/) : [l]).map((c) => c.trim()));
@@ -151,7 +152,7 @@ export function fromMapping(body, columns, swap) {
     if (columns.some((c) => c.k === 'name')) { const n = splitName(get(r, 'name'), swap); if (n) { first = n.first; last = n.last; } }
     else { const f = splitName(first, false); first = f ? (f.last ? f.first + ' ' + f.last : f.first) : ''; last = isUpperWord(last.replace(/[\s'-]/g, '')) ? last : cap(last.replace(/\([^)]*\)/g, '').trim()); if (swap) [first, last] = [last, first]; }
     const mail = get(r, 'email').match(RX_MAIL);
-    return { first_name: first, last_name: last, birth_date: parseDate(get(r, 'birth')), licence: get(r, 'licence'), email: mail ? mail[0].toLowerCase() : '', phone: normPhone(get(r, 'phone')) };
+    return { first_name: first, last_name: last, birth_date: parseDate(get(r, 'birth')), licence: get(r, 'licence'), email: mail ? mail[0].toLowerCase() : '', phone: normPhone(get(r, 'phone')), club: get(r, 'club') };
   }).filter((x) => /\p{L}/u.test(x.first_name + x.last_name));
 }
 // Cases douteuses après une photo : mot sans voyelle, nom collé, e-mail sans point, date impossible
