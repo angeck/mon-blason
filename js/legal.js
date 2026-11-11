@@ -1,5 +1,5 @@
 // mypocketclub · alpha 4.9.0 · n° 175 et n° 180 : mentions légales, « Vos données » (version courte et politique complète),
-// conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.0 du 10 novembre 2026),
+// conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.1 du 11 novembre 2026),
 // non relus par un juriste. Vouvoiement. Changer LEGAL.version et LEGAL.date (et CGU_VERSION dans config.js
 // pour les conditions) à chaque modification : une nouvelle version des conditions est présentée à la connexion suivante.
 import { BRAND } from '../config.js';
@@ -55,7 +55,8 @@ const SHORT = `
 - Votre compte : nom, prénom, e-mail, téléphone si vous le donnez, mot de passe (chiffré), appareils utilisés pour vous connecter.
 - Votre place dans le club : rôle, équipe, lien entre un parent et son enfant.
 - La vie du club : réponses aux rendez-vous, présences, messages et groupes, missions de bénévole.
-- La gestion du club, visible du bureau seulement : état de la licence, cotisation, remise éventuelle.
+- Licence et cotisation, visibles du bureau seulement : état de la licence, cotisation, remise éventuelle.
+- Renforts et ententes : le fait qu'un joueur renforce une autre équipe de son club (avec l'accord de sa famille), et, pour une équipe en entente, le club d'origine du joueur.
 - Jamais d'information médicale. Merci de ne pas en écrire dans l'application.
 ## Pour quoi faire ?
 Organiser la vie du club : agenda, présences, convocations, messages, cotisations. Rien d'autre : pas de publicité, pas de revente, pas de profilage.
@@ -89,19 +90,20 @@ Contact pour toute question : ${C}.
 ## 2. Quelles données sont traitées ?
 - **Compte** : nom, prénom, adresse e-mail, téléphone si vous le donnez, mot de passe (conservé chiffré), date d'acceptation des conditions et version acceptée.
 - **Sécurité** : appareils utilisés pour vous connecter (identifiant et nom de l'appareil), dates de connexion, journal des actions sensibles.
-- **Place dans le club** : club, rôle, fonction au bureau, équipe, lien entre un parent et son enfant.
+- **Place dans le club** : club, rôle, fonction au bureau, équipe, lien entre un parent et son enfant, contact d'équipe.
 - **Vie du club** : rendez-vous et réponses, présences, convocations, messages et groupes d'échange, sondages, missions de bénévole, heures des entraîneurs.
 - **Licence et cotisation**, visibles du bureau seulement : état de la licence, cotisation, remise éventuelle.
-- **Renforts et ententes** : le fait qu'un joueur renforce une autre équipe de son club (avec l'accord de sa famille), et, pour une équipe en entente, le club d'origine du joueur.
+- **Renforts et ententes** : le fait qu'un joueur renforce une autre équipe de son club, avec la réponse de sa famille ; pour une équipe en entente, le club d'origine du joueur.
 - **Accords** : droit à l'image et e-mails d'information, avec leur date.
 - **Contenus que vous créez** : exercices, séances, annonces, fichiers joints.
 mypocketclub ne demande **aucune donnée de santé**. Seul le fait qu'un certificat a été fourni, oui ou non, peut être noté par le club. Merci de ne pas écrire d'information médicale dans l'application.
 Les données viennent de vous, de votre club (qui peut vous inscrire ou inscrire votre enfant) ou, pour un enfant, de son parent.
 ## 3. Pourquoi, et sur quelle base ?
 | Créer et gérer votre compte, vous connecter | Exécution des conditions d'utilisation |
-| Organiser la vie du club : agenda, présences, convocations, messages, cotisations | Intérêt légitime du club et relation d'adhésion entre le club et ses membres |
+| Organiser la vie du club : agenda, présences, convocations, messages, cotisations, renforts | Intérêt légitime du club et relation d'adhésion entre le club et ses membres |
 | Sécuriser les comptes, prévenir la fraude, tenir un journal des actions sensibles | Intérêt légitime de mypocketclub |
 | Utiliser l'image d'un joueur | Votre accord, ou celui des parents pour un mineur |
+| Faire jouer un joueur en renfort dans une autre équipe | L'accord de sa famille (celle d'un mineur, ou lui-même s'il est majeur) |
 | Vous envoyer des e-mails d'information | Votre accord |
 | Répondre à vos demandes et respecter nos obligations légales | Obligation légale |
 Vos données ne servent ni à de la publicité, ni à de la revente, ni à établir un profil de vous.
@@ -120,6 +122,7 @@ Le club peut exporter la liste de ses membres. Ce fichier est alors sous sa resp
 - **De 15 à 17 ans**, un joueur peut avoir son compte. Nous lui demandons l'e-mail d'un parent pour l'inviter. Sans parent relié, il n'accède qu'aux groupes de son équipe.
 - **Échanges avec un adulte.** Un adulte ne peut pas échanger en privé avec un mineur. En dehors des groupes d'équipe, un parent de chaque mineur est toujours présent dans la conversation.
 - **Droit à l'image.** Il est donné par les parents. Si l'un des deux le refuse, le refus s'applique.
+- **Renforts.** Un mineur ne renforce une autre équipe que si sa famille accepte. Un « non » d'un des parents l'emporte et retire le renfort.
 - **Bénévolat.** Un jeune ne participe à une mission que si son parent l'inscrit et si le club a ouvert cette mission aux jeunes.
 ## 6. Ce que vous pouvez choisir
 Deux accords sont facultatifs, jamais cochés d'avance, et modifiables à tout moment dans « Mon compte » :
@@ -133,6 +136,7 @@ Les e-mails nécessaires au service sont toujours envoyés : convocation, change
 | Présences | Rendues anonymes après 1 saison |
 | Messages et groupes | 2 saisons |
 | Appareils de connexion | Effacés après 12 mois sans usage |
+| Renfort | Jusqu'à la fin de la saison, ou jusqu'à son retrait |
 | Journal des actions sensibles | 1 an |
 | Club supprimé | 90 jours de corbeille, données non consultées, puis effacement |
 | Adresse saisie pour inviter une personne | Effacée après 30 jours sans inscription |
