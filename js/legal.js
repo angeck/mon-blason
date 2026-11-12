@@ -1,11 +1,11 @@
 // mypocketclub · alpha 4.9.0 · n° 175 et n° 180 : mentions légales, « Vos données » (version courte et politique complète),
-// conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.1 du 11 novembre 2026),
+// conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.2 du 12 novembre 2026),
 // non relus par un juriste. Vouvoiement. Changer LEGAL.version et LEGAL.date (et CGU_VERSION dans config.js
 // pour les conditions) à chaque modification : une nouvelle version des conditions est présentée à la connexion suivante.
 import { BRAND } from '../config.js';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.1', date: '11 novembre 2026' };
+export const LEGAL = { version: '1.2', date: '12 novembre 2026' };
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -72,7 +72,7 @@ Organiser la vie du club : agenda, présences, convocations, messages, cotisatio
 Deux accords sont facultatifs, et vous pouvez les retirer à tout moment dans « Mon compte » : le droit à l'image, et les e-mails d'information. Les e-mails nécessaires au service (convocation, sécurité du compte, changement d'un rendez-vous) sont toujours envoyés.
 ## Combien de temps ?
 - Votre fiche dans un club : 2 saisons après votre départ, puis elle est effacée.
-- Votre compte : effacé après 3 ans sans connexion, après un e-mail d'avertissement. Si vous le supprimez vous-même : 30 jours de corbeille, puis effacement.
+- Votre compte : sans connexion pendant 2 saisons (une saison va du 1er juillet au 30 juin), vous êtes prévenu par e-mail, puis le compte passe 30 jours en corbeille avant d'être effacé. Si vous le supprimez vous-même : 30 jours de corbeille, puis effacement.
 - Présences : rendues anonymes après une saison. Messages : 2 saisons.
 - Appareils de connexion : effacés après 12 mois sans usage.
 ## Où sont vos données ?
@@ -91,6 +91,7 @@ Contact pour toute question : ${C}.
 - **Compte** : nom, prénom, adresse e-mail, téléphone si vous le donnez, mot de passe (conservé chiffré), date d'acceptation des conditions et version acceptée.
 - **Sécurité** : appareils utilisés pour vous connecter (identifiant et nom de l'appareil), dates de connexion, journal des actions sensibles.
 - **Place dans le club** : club, rôle, fonction au bureau, équipe, lien entre un parent et son enfant, contact d'équipe.
+- **Signalements** : un message signalé garde la trace de la personne qui l'a signalé et de la date.
 - **Vie du club** : rendez-vous et réponses, présences, convocations, messages et groupes d'échange, sondages, missions de bénévole, heures des entraîneurs.
 - **Licence et cotisation**, visibles du bureau seulement : état de la licence, cotisation, remise éventuelle.
 - **Renforts et ententes** : le fait qu'un joueur renforce une autre équipe de son club, avec la réponse de sa famille ; pour une équipe en entente, le club d'origine du joueur.
@@ -101,7 +102,8 @@ Les données viennent de vous, de votre club (qui peut vous inscrire ou inscrire
 ## 3. Pourquoi, et sur quelle base ?
 | Créer et gérer votre compte, vous connecter | Exécution des conditions d'utilisation |
 | Organiser la vie du club : agenda, présences, convocations, messages, cotisations, renforts | Intérêt légitime du club et relation d'adhésion entre le club et ses membres |
-| Sécuriser les comptes, prévenir la fraude, tenir un journal des actions sensibles | Intérêt légitime de mypocketclub |
+| Sécuriser les comptes, prévenir la fraude, tenir un journal des actions sensibles, traiter les signalements | Intérêt légitime de mypocketclub |
+| Inviter un parent par e-mail à la demande de son enfant | Intérêt légitime du club et de l'enfant ; l'adresse ne sert qu'à cela |
 | Utiliser l'image d'un joueur | Votre accord, ou celui des parents pour un mineur |
 | Faire jouer un joueur en renfort dans une autre équipe | L'accord de sa famille (celle d'un mineur, ou lui-même s'il est majeur) |
 | Vous envoyer des e-mails d'information | Votre accord |
@@ -111,7 +113,9 @@ Vos données ne servent ni à de la publicité, ni à de la revente, ni à étab
 - **Les autres joueurs et parents** voient les joueurs sous la forme « Prénom I. », sans coordonnées ni photo.
 - **Les entraîneurs** voient le nom complet et les coordonnées utiles des joueurs de leurs équipes et de leurs parents. Un joueur qui renforce une équipe n'est vu de son coach que sous la forme « Prénom I. » tant que sa famille n'a pas accepté.
 - **Le contact d'équipe**, un adulte choisi pour une équipe (coach, joueur majeur ou membre du bureau), voit les coordonnées des familles et des joueurs de cette équipe seulement. Son droit s'arrête dès qu'il n'a plus le rôle qui le justifiait.
+- **Le profil « Aide coach »**, que peut avoir un jeune de 15 à 17 ans choisi par un entraîneur ou le président, ne donne aucun droit de plus : il permet de voir l'effectif de l'équipe, sans coordonnées. Il s'arrête à 18 ans.
 - **Le bureau du club** voit ce dont il a besoin pour gérer le club. La cotisation, la remise et la licence ne sont visibles que du bureau.
+- **Le président du club** voit les messages signalés dans les groupes du club, avec leur auteur ; il peut aussi retirer l'accès d'un joueur à son club.
 - **Le contact du club** choisit lui-même si son e-mail ou son téléphone est affiché aux personnes connectées.
 - **Une personne non connectée** ne voit que la liste des clubs.
 - **Un organisme qui finance un club** (mairie, comité) ne voit que des chiffres : jamais de nom.
@@ -119,8 +123,8 @@ Vos données ne servent ni à de la publicité, ni à de la revente, ni à étab
 Le club peut exporter la liste de ses membres. Ce fichier est alors sous sa responsabilité.
 ## 5. Enfants et adolescents
 - **Avant 15 ans**, un enfant n'a pas de compte. Son parent gère sa participation depuis son propre compte.
-- **De 15 à 17 ans**, un joueur peut avoir son compte. Nous lui demandons l'e-mail d'un parent pour l'inviter. Sans parent relié, il n'accède qu'aux groupes de son équipe.
-- **Échanges avec un adulte.** Un adulte ne peut pas échanger en privé avec un mineur. En dehors des groupes d'équipe, un parent de chaque mineur est toujours présent dans la conversation.
+- **De 15 à 17 ans**, un joueur peut avoir son compte. Il peut saisir l'e-mail d'un parent pour l'inviter : le parent reçoit un lien valable 14 jours, crée son compte avec cette adresse, et sa demande doit être validée par le président du club. Sans parent relié, le jeune n'accède qu'aux groupes de son équipe.
+- **Échanges avec un adulte.** Un adulte ne peut pas échanger en privé avec un mineur. En dehors des groupes d'équipe, un parent de chaque mineur est toujours présent dans la conversation. Un supporteur n'est jamais dans un groupe avec un mineur. Tout message peut être signalé au président du club.
 - **Droit à l'image.** Il est donné par les parents. Si l'un des deux le refuse, le refus s'applique.
 - **Renforts.** Un mineur ne renforce une autre équipe que si sa famille accepte. Un « non » d'un des parents l'emporte et retire le renfort.
 - **Bénévolat.** Un jeune ne participe à une mission que si son parent l'inscrit et si le club a ouvert cette mission aux jeunes.
@@ -128,22 +132,25 @@ Le club peut exporter la liste de ses membres. Ce fichier est alors sous sa resp
 Deux accords sont facultatifs, jamais cochés d'avance, et modifiables à tout moment dans « Mon compte » :
 - le **droit à l'image** ;
 - les **e-mails d'information** (rappels, nouveautés, relances), qui contiennent aussi un lien de désinscription.
-Les e-mails nécessaires au service sont toujours envoyés : convocation, changement d'un rendez-vous, sécurité du compte.
+Les e-mails nécessaires au service sont toujours envoyés : convocation, changement d'un rendez-vous, sécurité du compte, invitation d'un parent.
 ## 7. Combien de temps les données sont-elles gardées ?
 | Fiche dans un club | 2 saisons après votre départ, visible du bureau seulement, puis effacée |
-| Compte | Tant que vous l'utilisez ; effacé après 3 ans sans connexion, après un e-mail d'avertissement |
+| Compte | Tant que vous l'utilisez ; sans connexion pendant 2 saisons : e-mail d'avertissement, puis 30 jours de corbeille, puis effacement |
 | Compte que vous supprimez | 30 jours de corbeille, puis effacement |
+| Accès et fiche retirés par le président du club | 30 jours de corbeille (le président peut les restaurer), puis effacement |
+| Message signalé | Gardé avec son signalement, visible du président du club, tant que le message existe |
 | Présences | Rendues anonymes après 1 saison |
 | Messages et groupes | 2 saisons |
 | Appareils de connexion | Effacés après 12 mois sans usage |
 | Renfort | Jusqu'à la fin de la saison, ou jusqu'à son retrait |
 | Journal des actions sensibles | 1 an |
 | Club supprimé | 90 jours de corbeille, données non consultées, puis effacement |
-| Adresse saisie pour inviter une personne | Effacée après 30 jours sans inscription |
+| Adresse saisie pour inviter une personne (par exemple un parent) | Le lien d'invitation vaut 14 jours ; l'adresse est effacée après 30 jours |
 Les copies de sauvegarde sont effacées dans les semaines qui suivent. Le motif d'un départ n'est jamais enregistré.
 ## 8. Où sont les données, et qui nous aide ?
 | Supabase | Base de données, comptes, fichiers · Irlande (Union européenne) |
 | Resend | Envoi des e-mails · États-Unis |
+| Cloudflare | Vérification « vous n'êtes pas un robot » (Turnstile) à l'inscription et à la connexion · États-Unis |
 | GitHub | Pages de l'application (aucune donnée de membre) · États-Unis |
 | OVH | Nom de domaine et boîte de contact · France |
 Les prestataires américains interviennent dans le cadre des garanties prévues par le RGPD pour les transferts hors de l'Union européenne (clauses contractuelles types ou cadre de protection des données entre l'Union européenne et les États-Unis). Cette liste est mise à jour à chaque changement.
@@ -208,7 +215,7 @@ Vous vous engagez à ne pas :
 - **Images créées avec une aide automatique.** Si l'application propose de générer une image ou une animation pour un exercice, vous restez responsable de l'exercice publié et vous vérifiez le résultat avant de le partager.
 - **Logo du club.** Le club certifie avoir le droit d'utiliser le logo qu'il importe.
 ## 8. Signalement et retrait
-Tout contenu peut être signalé, dans l'application ou à ${C}. mypocketclub héberge les contenus des utilisateurs sans les lire à l'avance. Il retire rapidement ce qui lui est signalé et qui est manifestement illicite ou contraire à ces conditions, et peut en informer le président du club concerné.
+Tout contenu peut être signalé, dans l'application ou à ${C}. mypocketclub héberge les contenus des utilisateurs sans les lire à l'avance. Il retire rapidement ce qui lui est signalé et qui est manifestement illicite ou contraire à ces conditions, et peut en informer le président du club concerné. Dans un groupe, le président du club voit les messages signalés.
 ## 9. Données personnelles
 Le traitement de vos données est décrit dans la politique de confidentialité, accessible depuis l'application (« Vos données »).
 ## 10. Suspension, suppression et fin

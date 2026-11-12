@@ -491,6 +491,11 @@ begin
     update profiles pr set deleted_at = now() from auth.users u
       where u.id = pr.id and pr.deleted_at is null and pr.inactive_warned_at < now() - interval '30 days' and coalesce(u.last_sign_in_at, u.created_at) < season_start(now()) - interval '1 year';
   end if;
+
+  -- invitations de parent (adresse saisie par le joueur) : effacées 30 jours après leur création
+  select count(*) into k from parent_invitations where created_at < now() - interval '30 days';
+  item := 'invitations de parent à effacer'; n := k; return next;
+  if p_apply then delete from parent_invitations where created_at < now() - interval '30 days'; end if;
 end $$;
 revoke execute on function purge_expired(boolean), warn_inactive_accounts(boolean) from public, anon, authenticated;
 

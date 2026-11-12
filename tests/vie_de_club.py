@@ -2675,7 +2675,7 @@ w(f"insert into action_log(club_id, action, at) values ({C1}, 'Vieille action 18
 w("select set_config('pc.partner', 'on', false);")
 w(f"update teams set partner_state = 'invitee', partner_name = 'Club invité 187', partner_contact = '{{\"name\":\"Resp\",\"email\":\"resp187@example.test\"}}'::jsonb, created_at = now() - interval '2 months' where id = {T('Reines')};")
 w("select set_config('pc.partner', 'off', false);")
-ok("n° 187 · le comptage ne supprime rien", "(select count(*) from purge_expired()) = 5 and exists(select 1 from messages where body = 'Vieux message 187') and exists(select 1 from attendance where event_id = :'ev187a_id')")
+ok("n° 187 · le comptage ne supprime rien", "(select count(*) from purge_expired()) = 6 and exists(select 1 from messages where body = 'Vieux message 187') and exists(select 1 from attendance where event_id = :'ev187a_id')")
 ok("n° 187 · le comptage voit un vieux message, une présence ancienne, une ligne de journal, un e-mail invité", "(select n from purge_expired() where item = 'messages à effacer') >= 1 and (select n from purge_expired() where item = 'présences à anonymiser') >= 1 and (select n from purge_expired() where item = 'lignes du journal à effacer') >= 1 and (select n from purge_expired() where item = 'e-mails de responsables invités à effacer') >= 1")
 ok("n° 187 · le compte inactif est à prévenir, pas le compte actif", "exists(select 1 from warn_inactive_accounts() where email = 'ancien187@example.test') and not exists(select 1 from warn_inactive_accounts() where email = 'recent187@example.test')")
 w("select count(*) from warn_inactive_accounts(true);")
