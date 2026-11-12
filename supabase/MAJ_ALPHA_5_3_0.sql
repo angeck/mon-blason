@@ -403,7 +403,8 @@ grant execute on function team_helper_candidates(uuid), team_helpers_of(uuid), s
 --     - présences : anonymisées quand la saison suivante commence (totaux gardés par équipe et par saison, plus aucun nom) ;
 --     - journal des actions sensibles : 1 an ;
 --     - e-mail d'un responsable invité (entente) : effacé 30 jours après l'invitation s'il n'y a pas eu d'inscription ;
---     - comptes : 3 ans sans connexion ; l'avertissement par e-mail se prépare avec warn_inactive_accounts() (l'envoi n'est pas branché) ;
+--     - comptes : aucune connexion depuis 2 saisons (la saison en cours et la précédente) ; l'avertissement par e-mail se prépare avec
+--       warn_inactive_accounts() (l'envoi n'est pas branché) ;
 --       30 jours après l'avertissement, le compte entre dans la suppression habituelle (30 jours de corbeille).
 --   Pas encore codé : la fiche d'un joueur parti du club (« 2 saisons après le départ ») : l'application ne note pas encore le départ.
 -- ---------------------------------------------------------------------
@@ -437,10 +438,10 @@ begin
   return query select u.id, u.email::text, pr.first_name
     from auth.users u join profiles pr on pr.id = u.id
     where pr.deleted_at is null and pr.inactive_warned_at is null
-      and coalesce(u.last_sign_in_at, u.created_at) < now() - interval '3 years' + interval '30 days';
+      and coalesce(u.last_sign_in_at, u.created_at) < (season_start(now()) - interval '1 year') + interval '30 days';
   if p_apply then
     update profiles pr set inactive_warned_at = now() from auth.users u
-      where u.id = pr.id and pr.deleted_at is null and pr.inactive_warned_at is null and coalesce(u.last_sign_in_at, u.created_at) < now() - interval '3 years' + interval '30 days';
+      where u.id = pr.id and pr.deleted_at is null and pr.inactive_warned_at is null and coalesce(u.last_sign_in_at, u.created_at) < (season_start(now()) - interval '1 year') + interval '30 days';
   end if;
 end $$;
 
@@ -482,13 +483,13 @@ begin
     perform set_config('pc.partner', 'off', true);
   end if;
 
-  -- comptes : 3 ans sans connexion et prévenus depuis 30 jours
+  -- comptes : aucune connexion depuis 2 saisons et prévenus depuis 30 jours : ils passent en corbeille (30 jours, comme une suppression demandée)
   select count(*) into k from profiles pr join auth.users u on u.id = pr.id
-    where pr.deleted_at is null and pr.inactive_warned_at < now() - interval '30 days' and coalesce(u.last_sign_in_at, u.created_at) < now() - interval '3 years';
-  item := 'comptes inactifs à supprimer'; n := k; return next;
+    where pr.deleted_at is null and pr.inactive_warned_at < now() - interval '30 days' and coalesce(u.last_sign_in_at, u.created_at) < season_start(now()) - interval '1 year';
+  item := 'comptes inactifs à mettre à la corbeille'; n := k; return next;
   if p_apply then
     update profiles pr set deleted_at = now() from auth.users u
-      where u.id = pr.id and pr.deleted_at is null and pr.inactive_warned_at < now() - interval '30 days' and coalesce(u.last_sign_in_at, u.created_at) < now() - interval '3 years';
+      where u.id = pr.id and pr.deleted_at is null and pr.inactive_warned_at < now() - interval '30 days' and coalesce(u.last_sign_in_at, u.created_at) < season_start(now()) - interval '1 year';
   end if;
 end $$;
 revoke execute on function purge_expired(boolean), warn_inactive_accounts(boolean) from public, anon, authenticated;
@@ -526,6 +527,145 @@ begin
 end $$;
 revoke execute on function club_client_view(uuid) from public, anon;
 grant execute on function club_client_view(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 6. Supprimer le compte d'un joueur dans ce club (président seulement)
+--    Le compte global n'est pas touché (la personne peut être dans un autre club).
+--    Ici : l'accès au club est retiré et la fiche part à la corbeille 30 jours.
+--    Restaurer la fiche rend l'accès. Après 30 jours, la fiche est effacée et l'accès ne revient plus.
+-- ---------------------------------------------------------------------
+create table if not exists trashed_memberships (
+  player_id uuid not null references players(id) on delete cascade,
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null,
+  team_id uuid,
+  assistant boolean not null default false,
+  created_at timestamptz not null default now(),
+  primary key (player_id, user_id)
+);
+alter table trashed_memberships enable row level security;   -- aucune lecture directe : tout passe par les fonctions
+
+create or replace function trash_player_account(p_player uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare pl players;
+begin
+  select * into pl from players where id = p_player and deleted_at is null;
+  if pl.id is null or not is_president(pl.club_id) then raise exception 'Seul le président supprime le compte d''un joueur'; end if;
+  if pl.user_id is null then raise exception 'Ce joueur n''a pas de compte : mets simplement sa fiche à la corbeille'; end if;
+  if pl.user_id = auth.uid() then raise exception 'Tu ne peux pas supprimer ton propre compte ici'; end if;
+  if exists(select 1 from memberships where club_id = pl.club_id and user_id = pl.user_id and role in ('president','bureau')) then
+    raise exception 'Cette personne a une fonction au bureau : retire-la d''abord';
+  end if;
+  insert into trashed_memberships(player_id, club_id, user_id, role, team_id, assistant)
+    select pl.id, m.club_id, m.user_id, m.role, m.team_id, m.assistant from memberships m
+     where m.club_id = pl.club_id and m.user_id = pl.user_id and m.status = 'active'
+  on conflict do nothing;
+  delete from group_members where user_id = pl.user_id and group_id in (select id from groups where club_id = pl.club_id);
+  delete from memberships where club_id = pl.club_id and user_id = pl.user_id;
+  perform set_config('pc.trash', 'on', true);
+  update players set deleted_at = now(), deleted_by = auth.uid() where id = pl.id;
+  perform set_config('pc.trash', 'off', true);
+  insert into action_log(club_id, actor, action, detail) values (pl.club_id, auth.uid(), 'compte joueur supprimé du club (corbeille 30 jours)', jsonb_build_object('player', pl.id));
+end $$;
+revoke execute on function trash_player_account(uuid) from public, anon;
+grant execute on function trash_player_account(uuid) to authenticated;
+
+-- Fiche restaurée : l'accès au club revient (sauf si la personne y est déjà revenue par une autre voie)
+create or replace function restore_trashed_memberships() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if old.deleted_at is not null and new.deleted_at is null then
+    insert into memberships(club_id, user_id, role, team_id, assistant, status)
+      select t.club_id, t.user_id, t.role, t.team_id, t.assistant, 'active' from trashed_memberships t
+       where t.player_id = new.id and not exists(select 1 from memberships m where m.club_id = t.club_id and m.user_id = t.user_id);
+    delete from trashed_memberships where player_id = new.id;
+  end if;
+  return new;
+end $$;
+drop trigger if exists players_restore_memberships on players;
+create trigger players_restore_memberships after update of deleted_at on players for each row execute function restore_trashed_memberships();
+
+
+-- ---------------------------------------------------------------------
+-- 7. Invitation du parent d'un joueur de 15 à 17 ans
+--    Le joueur (compte à lui) saisit l'e-mail d'un parent. Le parent reçoit un lien (14 jours, une seule fois),
+--    crée son compte avec CETTE adresse, et sa demande « parent » arrive chez le président, pré-remplie : la validation
+--    du président reste la règle (rien n'est relié sans lui).
+-- ---------------------------------------------------------------------
+create table if not exists parent_invitations (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  player_id uuid not null references players(id) on delete cascade,
+  email text not null,
+  token text not null unique,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  expires_at timestamptz not null default now() + interval '14 days',
+  used_at timestamptz,
+  used_by uuid references auth.users(id) on delete set null
+);
+alter table parent_invitations enable row level security;   -- aucune lecture directe : tout passe par les fonctions
+
+create or replace function invite_parent(p_player uuid, p_email text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare pl players; em text := lower(trim(coalesce(p_email, ''))); own text; k int; iid uuid;
+begin
+  select * into pl from players where id = p_player and deleted_at is null;
+  if pl.id is null or pl.user_id is distinct from auth.uid() then raise exception 'Seul le joueur invite son parent'; end if;
+  if pl.birth_date is null or pl.birth_date > current_date - interval '15 years' or pl.birth_date <= current_date - interval '18 years' then
+    raise exception 'L''invitation d''un parent concerne les joueurs de 15 à 17 ans';
+  end if;
+  if em !~ '^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$' then raise exception 'Adresse e-mail non valide'; end if;
+  select lower(email) into own from auth.users where id = auth.uid();
+  if own = em then raise exception 'Indique l''e-mail d''un parent, pas le tien'; end if;
+  select count(*) into k from parent_invitations where player_id = pl.id and created_at > now() - interval '24 hours';
+  if k >= 3 then raise exception 'Trois invitations par jour au maximum : réessaie demain'; end if;
+  insert into parent_invitations(club_id, player_id, email, token, created_by)
+    values (pl.club_id, pl.id, em, replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''), auth.uid()) returning id into iid;
+  return iid;
+end $$;
+revoke execute on function invite_parent(uuid, text) from public, anon;
+grant execute on function invite_parent(uuid, text) to authenticated;
+
+-- Lue une seule fois, au nom du joueur, par la fonction d'envoi des e-mails
+create or replace function parent_invitation_take(p_id uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare i parent_invitations; r jsonb;
+begin
+  select * into i from parent_invitations where id = p_id and created_by = auth.uid() and sent_at is null and used_at is null and expires_at > now();
+  if i.id is null then return null; end if;
+  update parent_invitations set sent_at = now() where id = i.id;
+  select jsonb_build_object('email', i.email, 'token', i.token, 'expires_at', i.expires_at,
+           'child_first', pl.first_name, 'club', c.name) into r
+    from players pl join clubs c on c.id = pl.club_id where pl.id = i.player_id;
+  return r;
+end $$;
+revoke execute on function parent_invitation_take(uuid) from public, anon;
+grant execute on function parent_invitation_take(uuid) to authenticated;
+
+-- Le parent ouvre le lien : sa demande « parent » part chez le président (adresse du compte = adresse invitée)
+create or replace function accept_parent_invitation(p_token text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare i parent_invitations; pl players; own text; code text;
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  select * into i from parent_invitations where token = p_token;
+  if i.id is null or i.used_at is not null or i.expires_at < now() then raise exception 'Cette invitation n''est plus valable'; end if;
+  select lower(email) into own from auth.users where id = auth.uid();
+  if own is distinct from i.email then raise exception 'Cette invitation est pour une autre adresse e-mail'; end if;
+  select * into pl from players where id = i.player_id and deleted_at is null;
+  if pl.id is null then raise exception 'Cette invitation n''est plus valable'; end if;
+  if exists(select 1 from memberships where club_id = i.club_id and user_id = auth.uid()) then raise exception 'Tu as déjà une demande ou un accès dans ce club'; end if;
+  select join_code into code from clubs where id = i.club_id;
+  perform join_club(code, 'parent', pl.team_id, pl.first_name, pl.last_name);
+  update parent_invitations set used_at = now(), used_by = auth.uid() where id = i.id;
+  return i.club_id;
+end $$;
+revoke execute on function accept_parent_invitation(text) from public, anon;
+grant execute on function accept_parent_invitation(text) to authenticated;
+
 
 select close_visitor_functions();
 

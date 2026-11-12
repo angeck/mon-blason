@@ -182,6 +182,36 @@ async function sendNewDevice(env: Env, auth: string, doFetch: typeof fetch, who:
   return json({ envoye: true });
 }
 
+// ---------- 5.3.0 · invitation du parent d'un joueur de 15 à 17 ans ----------
+// Le joueur saisit l'e-mail d'un parent (invite_parent) ; la base remet l'invitation une seule fois (parent_invitation_take, au nom du joueur).
+export function parentInviteMail(childFirst: string, club: string, link: string, expires: Date) {
+  const d = expires.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long' });
+  const who = childFirst || 'Ton enfant';
+  const text = `Bonjour,\n\n${who} utilise mypocketclub avec le club ${club} et te demande de rejoindre l'application en tant que parent.\n\nOuvre ce lien, crée ton compte avec cette adresse e-mail, et ta demande part au président du club, qui la valide :\n${link}\n\nLe lien reste valable jusqu'au ${d}. Si tu ne connais pas ${who} ou ce club, ignore ce message : rien ne se passe.\n\nmypocketclub · https://mypocketclub.fr`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
+<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
+<p>Bonjour,</p><p><b>${escHtml(who)}</b> utilise mypocketclub avec le club <b>${escHtml(club)}</b> et te demande de rejoindre l'application en tant que parent.</p>
+<p><a href="${escHtml(link)}" style="display:inline-block;background:#2F5BFF;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Rejoindre en tant que parent</a></p>
+<p style="color:#5A6178;font-size:14px">Crée ton compte avec cette adresse e-mail : ta demande part au président du club, qui la valide. Le lien reste valable jusqu'au ${escHtml(d)}.</p>
+<p style="color:#5A6178;font-size:14px">Tu ne connais pas ${escHtml(who)} ou ce club ? Ignore ce message : rien ne se passe.</p>
+<p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
+  return { subject: `mypocketclub · ${who} t'invite à rejoindre ${club}`.slice(0, 120), text, html };
+}
+async function sendParentInvite(env: Env, auth: string, doFetch: typeof fetch, pi: any) {
+  if (typeof pi?.id !== 'string') return json({ erreur: 'invitation inconnue' }, 400);
+  const a = await rpc(env, auth, doFetch, 'parent_invitation_take', { p_id: pi.id });
+  const tok = String(a.data?.token || ''), to = String(a.data?.email || '');
+  if (!a.ok || !/^[a-f0-9]{64}$/.test(tok) || !EMAIL.test(to)) return json({ erreur: 'invitation déjà envoyée ou inconnue' }, 409);
+  const link = (env.appUrl || 'https://angeck.github.io/mon-blason/').replace(/#.*$/, '') + '#parent=' + tok;
+  const m = parentInviteMail(String(a.data?.child_first || ''), String(a.data?.club || 'son club'), link, new Date(a.data?.expires_at));
+  const r = await doFetch('https://api.resend.com/emails', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + env.resendKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: env.from, to: [to], reply_to: env.replyTo, subject: m.subject, text: m.text, html: m.html }),
+  });
+  if (!r.ok) return json({ erreur: 'Resend a refusé l’envoi' }, 502);
+  return json({ envoye: true });
+}
+
 // Qui appelle ? (le jeton de la personne connectée, vérifié par Supabase)
 async function caller(env: Env, auth: string, doFetch: typeof fetch) {
   const h = { apikey: env.anon, Authorization: auth };
@@ -206,7 +236,8 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   let body: any = {}; try { body = await req.json(); } catch { /* corps vide */ }
   if (body?.convocation) return sendConvocation(env, auth, doFetch, who, body.convocation, now); // n° 112, 124
   if (body?.new_device) return sendNewDevice(env, auth, doFetch, who, body.new_device, now); // n° 147
-  if (!body?.test) return json({ erreur: 'seul l’e-mail de test ou une convocation peuvent partir' }, 400);
+  if (body?.parent_invite) return sendParentInvite(env, auth, doFetch, body.parent_invite); // 5.3.0
+  if (!body?.test) return json({ erreur: 'seul l’e-mail de test, une convocation ou une invitation peuvent partir' }, 400);
   if (!who.admin) return json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403);
   const m = testMail(who.name, now);
   const r = await doFetch('https://api.resend.com/emails', {

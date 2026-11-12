@@ -125,5 +125,25 @@ check('n° 147 : alerte déjà envoyée ou d’un autre compte : rien ne part (4
 k = fakeD({ take: { token: 'pas-un-jeton"><script>' } }); r = await F.handle(req({ new_device: { alert: 'al-1' } }), env, k.f);
 check('n° 147 : jeton mal formé : rien ne part', r.status === 409 && !k.calls.some((c) => c[0].includes('resend')));
 check('n° 147 : HTML de l’e-mail : nom de l’appareil échappé', !/<script>/.test(F.newDeviceMail('', '<script>', new Date(), 'https://x/#pasmoi=ab').html));
+// ---------- 5.3.0 : invitation du parent d'un joueur de 15 à 17 ans ----------
+const TOK = 'b'.repeat(64);
+function fakeP({ take = { email: 'parent@exemple.fr', token: TOK, expires_at: '2026-11-26T10:00:00Z', child_first: 'Léa', club: 'Club Test' } } = {}) {
+  const k = fake({ admin: false }), base = k.f;
+  k.f = async (url, o = {}) => { if (url.endsWith('/rpc/parent_invitation_take')) { k.calls.push([url, o]); return { ok: true, status: 200, json: async () => take }; } return base(url, o); };
+  return k;
+}
+k = fakeP(); r = await F.handle(req({ parent_invite: { id: 'inv-1' } }), { ...env, appUrl: 'https://app.exemple/#x' }, k.f); b = await r.json();
+const pi = bodyOf(k, 'api.resend.com/emails');
+check('5.3.0 : invitation envoyée à l’adresse saisie par le joueur, pas à celle du compte', r.status === 200 && JSON.stringify(pi.to) === JSON.stringify(['parent@exemple.fr']));
+check('5.3.0 : invitation lue une seule fois dans la base, au nom du joueur', bodyOf(k, '/rpc/parent_invitation_take')?.p_id === 'inv-1');
+check('5.3.0 : lien #parent=… sur l’adresse de l’application', pi.html.includes('https://app.exemple/#parent=' + TOK) && pi.text.includes('#parent=' + TOK));
+check('5.3.0 : le prénom et le club sont dans l’e-mail', pi.text.includes('Léa') && pi.text.includes('Club Test'));
+k = fakeP({ take: null }); r = await F.handle(req({ parent_invite: { id: 'inv-1' } }), env, k.f);
+check('5.3.0 : invitation déjà envoyée ou d’un autre joueur : rien ne part (409)', r.status === 409 && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeP({ take: { email: 'parent@exemple.fr', token: 'pas-un-jeton"><script>', club: 'C' } }); r = await F.handle(req({ parent_invite: { id: 'inv-1' } }), env, k.f);
+check('5.3.0 : jeton mal formé : rien ne part', r.status === 409 && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeP({ take: { email: 'pas une adresse', token: TOK, club: 'C' } }); r = await F.handle(req({ parent_invite: { id: 'inv-1' } }), env, k.f);
+check('5.3.0 : adresse invalide : rien ne part', r.status === 409 && !k.calls.some((c) => c[0].includes('resend')));
+check('5.3.0 : HTML de l’invitation : prénom et club échappés', !/<script>/.test(F.parentInviteMail('<script>', '<script>', 'https://x/#parent=ab', new Date()).html));
 console.log(`\n   ${ok} réussis sur ${ok + ko} tests d'e-mail`);
 if (ko) process.exitCode = 1;
