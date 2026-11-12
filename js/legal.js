@@ -103,7 +103,7 @@ Les données viennent de vous, de votre club (qui peut vous inscrire ou inscrire
 | Créer et gérer votre compte, vous connecter | Exécution des conditions d'utilisation |
 | Organiser la vie du club : agenda, présences, convocations, messages, cotisations, renforts | Intérêt légitime du club et relation d'adhésion entre le club et ses membres |
 | Sécuriser les comptes, prévenir la fraude, tenir un journal des actions sensibles, traiter les signalements | Intérêt légitime de mypocketclub |
-| Inviter un parent par e-mail à la demande de son enfant | Intérêt légitime du club et de l'enfant ; l'adresse ne sert qu'à cela |
+| Inviter un parent par e-mail, à la demande de son enfant ou d'un adulte du club qui veut échanger avec l'enfant | Intérêt légitime du club et de l'enfant ; l'adresse ne sert qu'à cela |
 | Utiliser l'image d'un joueur | Votre accord, ou celui des parents pour un mineur |
 | Faire jouer un joueur en renfort dans une autre équipe | L'accord de sa famille (celle d'un mineur, ou lui-même s'il est majeur) |
 | Vous envoyer des e-mails d'information | Votre accord |
