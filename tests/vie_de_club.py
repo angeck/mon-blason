@@ -2963,6 +2963,24 @@ w("set role authenticated;")
 AS("c186"); fails("n° 201 · pas de lecture directe des demandes", "select 1/0 from group_requests where name = 'Conv 201'")
 w("reset role;")
 
+# ---------- 5.5.0 · n° 164 : justificatif d'adhésion ----------
+section("5.5.0 · n° 164 justificatif d'adhésion")
+w("reset role;")
+w("\\i ../supabase/alpha_5_5_0.sql")
+w("\\i ../supabase/alpha_5_5_0.sql")  # relancée deux fois
+w(f"insert into players(club_id, team_id, first_name, last_name, birth_date) values ({C1}, {T('Seniors')}, 'Adhérent', 'Cinq55', '1990-05-05'), ({C1}, {T('Seniors')}, 'Sans', 'Versement55', '1990-05-05');")
+w("insert into tests.kv select 'pl55', id::text from players where last_name = 'Cinq55' on conflict (k) do update set v = excluded.v; insert into tests.kv select 'pl55b', id::text from players where last_name = 'Versement55' on conflict (k) do update set v = excluded.v;")
+w(f"insert into player_payments(player_id, amount, method) values ({K('pl55')}, 120, 'Chèque'), ({K('pl55')}, 30, 'Espèces');")
+w("set role authenticated;")
+ASPRES(); ok("n° 164 · le président obtient le justificatif avec la somme réellement versée", f"(membership_attestation({K('pl55')})->>'paid')::numeric = 150 and jsonb_array_length(membership_attestation({K('pl55')})->'payments') = 2")
+ASPRES(); ok("n° 164 · signé par le président, avec la saison", f"(membership_attestation({K('pl55')})->>'signer_role') = 'Président' and (membership_attestation({K('pl55')})->>'season') ~ '^\\d{{4}}-\\d{{4}}$'")
+ASPRES(); fails("n° 164 · pas de justificatif sans versement", f"select membership_attestation({K('pl55b')})")
+AS('j1'); fails("n° 164 · un joueur n'obtient pas le justificatif d'un autre", f"select membership_attestation({K('pl55')})")
+AS('c186'); fails("n° 164 · un coach ne l'obtient pas", f"select membership_attestation({K('pl55')})")
+w("reset role;")
+ok("n° 164 · chaque justificatif délivré est inscrit au journal", f"exists(select 1 from action_log where target_player = {K('pl55')} and action = 'justificatif d''adhésion délivré')")
+ok("n° 164 · fermé au visiteur", "not has_function_privilege('anon', 'membership_attestation(uuid)', 'execute')")
+
 # ---------- rapport ----------
 w("\\echo ''")
 w("\\echo '========== RAPPORT =========='")

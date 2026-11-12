@@ -1,6 +1,6 @@
 // mypocketclub · Mon compte : profil, autres rôles, clubs, mes données (export, suppression), déconnexion.
 import { BRAND, VERSION } from '../config.js';
-import { S, sb, esc, fl, roleLabel, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, JOIN_ROLES, club, myMem, active, isBoard, isPresident, teamName, niceFirst, niceLast, download, fmtDay, store, coachTeams } from './core.js';
+import { hooks, S, sb, esc, fl, roleLabel, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, JOIN_ROLES, club, myMem, active, isBoard, isPresident, teamName, niceFirst, niceLast, download, fmtDay, store, coachTeams } from './core.js';
 import { header, crest, icon, delBtn, field, THEMES, themeChoice, setThemeChoice } from './ui.js';
 import { adminButtons } from './v43.js'; // n° 124 : « Clubs à valider »
 import { adminsButton } from './v46.js'; // n° 148 : administrateurs
@@ -20,7 +20,7 @@ function roleRequest() {
   ${mine.filter((m) => m.status === 'pending').map((m) => `<div class="row static"><span class="g">Demande en attente<small>${esc(roleLabel(m))}${m.team_id ? ' ' + esc(teamName(m.team_id)) : ''}</small></span><button class="btn small ghost" data-act="mcancel" data-id="${m.id}">Annuler la demande</button></div>`).join('')}
   <div class="chips">${JOIN_ROLES.map((x) => `<button class="chip" data-act="rqrole" data-v="${x}" aria-pressed="${r.role === x}">${ROLES[x]}</button>`).join('')}</div>
   ${roleExtra(r, 'r', S.teams)}
-  <p class="note">${auto ? 'Accès immédiat.' : r.role === 'bureau' ? 'Validé par le président.' : r.role === 'coach' ? 'Validé par le président ou le Directeur technique.' : "Validé par le coach de l'équipe, le bureau ou le président."}</p>
+  <p class="note">${auto ? 'Accès immédiat.' : r.role === 'bureau' ? 'Validé par le président.' : r.role === 'coach' ? 'Validé par le président, le directeur technique ou le secrétariat.' : "Validé par le coach de l'équipe, le bureau ou le président."}</p>
   <button class="btn main" data-act="rqsend">Envoyer la demande</button></details>`;
 }
 
@@ -28,6 +28,7 @@ export function accountScreen() {
   const clubs = Object.values(S.clubs), c = club(), me = S.me;
   let h = header({ back: !!S.clubId, kicker: 'Mon compte', title: esc(me.full_name || 'Mon compte'), brand: true }) + '<main class="bd">';
   if (c) h += `<button class="btn main" data-act="rqgo">${icon('plus', 20)}Demander un autre rôle dans ${esc(c.name)}</button>`;
+  if (hooks.helpAccount) h += hooks.helpAccount(); // 5.5.0 : Aide (FAQ et « Pour bien démarrer »)
   h += `<div class="sec"><h2>Mon profil</h2></div><form id="proff" class="card"><div class="grid2">${field('pn', 'Prénom', `<input id="pn" name="first_name" value="${esc(me.first_name || '')}" required>`)}${field('pn2', 'Nom', `<input id="pn2" name="last_name" value="${esc(me.last_name || '')}" required>`)}</div>
   ${field('pp', 'Pseudo (affiché dans les groupes)', `<input id="pp" name="nickname" value="${esc(me.nickname || '')}" maxlength="30">`)}
   ${field('pm', 'Adresse e-mail', `<input id="pm" value="${esc(S.session.user.email)}" readonly>`)}

@@ -17,7 +17,9 @@ export function homeTitle() {
 }
 export function homeTab() {
   const fut = homeEvents(), today = fut.filter(isToday), todo = fut.filter(needsAnswer), next = todo.find((e) => !isToday(e));
-  let h = clubTrashBanner() + sendBanner() + presidencyCard() + (hooks.welcomeHome ? hooks.welcomeHome() : '') + (hooks.renfortHome ? hooks.renfortHome() : '') + contactAsk() + pushHome(); // 5.1.0 (n° 196) : bienvenue // n° 122 : encart jaune de la fonction reçue // n° 114 : club dans la corbeille, présidence proposée ; puis l'encart des notifications
+  // 5.5.0 : l'encart « Pour bien démarrer » remplace, tant qu'il est là, les cartes installer, notifications, bienvenue (n° 196) et fonction (n° 122)
+  const ob = hooks.obHome ? hooks.obHome() : '';
+  let h = clubTrashBanner() + sendBanner() + presidencyCard() + (hooks.renfortHome ? hooks.renfortHome() : '') + (ob || contactAsk() + pushHome()) + (hooks.welcomeHome && !hooks.obHome ? hooks.welcomeHome() : ''); // 5.1.0 (n° 196) : bienvenue // n° 122 : encart jaune de la fonction reçue // n° 114 : club dans la corbeille, présidence proposée ; puis l'encart des notifications
   const vp = toValidate().length;
   // n° 94 ; 5.1.0 (n° 191) : une seule touche mène là où la personne valide (Président › Demandes, Secrétariat, Technique, espace coach)
   if (vp) h += `<button class="btn main" data-act="vdem">${plural(vp, 'demande à valider', 'demandes à valider')}</button>`;

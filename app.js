@@ -26,6 +26,7 @@ import { loadV43 } from './js/v43.js'; // 4.3.0 : n° 124 (validation des envois
 import { loadV44 } from './js/v44.js';
 import './js/v48.js'; // 4.8.0 : guide « Installer et notifications »
 import './js/v52.js'; // 5.2.0 : n° 174 (contact d'équipe), n° 158 (renforts)
+import './js/v55.js'; // 5.5.0 : onboarding « Pour bien démarrer », FAQ (Aide), n° 164 justificatif d'adhésion
 import { validationReminders } from './js/v54.js'; // 5.4.0 : n° 201 (conversation avec un mineur), n° 84 (rattacher), transfert d'une convocation, n° 182
 import './js/v51.js'; // 5.1.0 : n° 189 (retour du téléphone), 190 (pastilles des rôles), 191 (demandes), 196 (bienvenue)
 import { unsubToken, unsubScreen, loadDevices } from './js/v410.js'; // 4.10.0 : n° 184 (appareils connus), n° 185 (désinscription)
@@ -95,6 +96,7 @@ function render(keep) {
   applyDraft(); // 5.2.1 : la saisie en cours revient après un redessin (retour de l'arrière-plan, temps réel)
   dateHints();
   if (hooks.afterRender) hooks.afterRender(); // n° 189 : historique du téléphone (js/v51.js)
+  if (hooks.obAfter) hooks.obAfter(); // 5.5.0 : « Me montrer » et coches à la visite (js/v55.js)
 }
 async function refresh(msg) {
   if (await checkVersion()) return;

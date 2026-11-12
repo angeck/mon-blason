@@ -1,6 +1,6 @@
 // mypocketclub · fiche joueur : informations, parents, autorisations datées, licence et cotisation, corbeille.
 import { BRAND } from '../config.js';
-import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, club, isBoard, isPresident, hasArea, coachOf, contactsHidden, team, teamName, pl, pname, adminOf, parentsOf, isParentOf, canManagePlayer, canAdminPlayer, outranks, isMajor, name, num, plural } from './core.js';
+import { hooks, S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, club, isBoard, isPresident, hasArea, coachOf, contactsHidden, team, teamName, pl, pname, adminOf, parentsOf, isParentOf, canManagePlayer, canAdminPlayer, outranks, isMajor, name, num, plural } from './core.js';
 import { backAfterDelete } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 import { payFamilySoon } from './v310.js';
@@ -136,6 +136,7 @@ export function playerPage(pid) {
   <div class="grid2" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div><div class="kick">Dû</div><b class="big" style="font-size:24px">${eur(due)}</b></div><div><div class="kick">Réglé</div><b class="big" style="font-size:24px">${eur(paid)}</b></div><div><div class="kick">Reste</div><b class="big" style="font-size:24px">${eur(rest)}</b></div></div>
   ${due == null ? '<p class="note">Montant dû inconnu : le tarif de la catégorie ou de l’équipe n’est pas encore dans la grille du club.</p>' : ''}
   ${pays.length ? `<div class="list">${pays.map((x) => `<div class="row static"><span class="g">${eur(x.amount)}<small>${new Date(x.paid_at).toLocaleDateString('fr-FR')}${x.method ? ' · ' + esc(x.method) : ''}</small></span>${canAdminPlayer(p) ? `<button class="pill ${isArmed('pay' + x.id) ? 'armed' : ''}" data-act="paydel" data-id="${x.id}">${isArmed('pay' + x.id) ? 'Confirmer le retrait' : 'Retirer'}</button>` : ''}</div>`).join('')}</div>` : ''}</div>`;
+  if (hooks.attestBtn) h += hooks.attestBtn(p); // 5.5.0 · n° 164 : justificatif d'adhésion
   if (canAdminPlayer(p)) {
     const D = S.discounts.find((x) => x.player_id === pid) || {};
     h += `<form id="payf" data-id="${pid}" class="card"><div class="kick">Ajouter un versement</div><div class="grid2">${field('pa1', 'Montant (€)', `<input id="pa1" name="amount" type="number" step="0.01" min="0.01" inputmode="decimal" required value="${rest ? rest : ''}">`)}${field('pa2', 'Moyen', `<select id="pa2" name="method"><option value="">—</option>${PAY.map((x) => `<option>${x}</option>`).join('')}</select>`)}</div><button class="btn main" type="submit">Ajouter le versement</button>

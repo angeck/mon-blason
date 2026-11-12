@@ -436,3 +436,13 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .pipov{position:fixed;inset:0;z-index:60;background:rgba(17,22,46,.72);display:flex;align-items:center;justify-content:center;padding:16px}
 .pipbox{background:var(--pc-papier);color:var(--pc-texte-ecran);border-radius:24px;padding:18px;display:flex;flex-direction:column;gap:12px;align-items:center;max-width:360px;width:100%}
 .pipbox canvas{max-width:100%;height:auto;border:2px solid var(--pc-trait);border-radius:16px;cursor:crosshair;touch-action:manipulation;background:repeating-conic-gradient(#d8d8d8 0 25%,#fff 0 50%) 50%/16px 16px}
+
+/* 5.5.0 · onboarding « Pour bien démarrer » : coche des lignes, bouton entouré par « Me montrer », barre d'étape */
+.obcard .obblk { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.obck { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--pc-trait); display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
+.obck.on { background: var(--pc-oui-fond); color: var(--pc-oui-texte); border-color: transparent; }
+.obsteps { margin: 6px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.ob-hl { outline: 4px solid var(--pc-jaune) !important; outline-offset: 3px; border-radius: 12px; box-shadow: 0 0 0 9px rgba(255, 201, 60, .35) !important; position: relative; z-index: 5; }
+.obbar { position: fixed; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 60; background: var(--pc-encre); color: #FFFFFF; border-radius: 14px; padding: 12px 14px; display: flex; gap: 10px; align-items: center; box-shadow: var(--pc-ombre); font-weight: 600; }
+.obbar span { flex: 1; }
+.obbar .linkbtn { color: var(--pc-jaune); }

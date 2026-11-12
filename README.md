@@ -1,4 +1,4 @@
-# mypocketclub · alpha 5.4.0
+# mypocketclub · alpha 5.5.0
 
 © 2026 Gaël Raveneau. Tous droits réservés. Ce dépôt est public pendant la phase de test, mais le code, les textes, le nom et le logo ne sont pas libres de droits : aucune réutilisation, copie ou redistribution sans accord écrit. Voir `LICENSE`. La bibliothèque `js/vendor/xlsx.bundle.js` garde sa propre licence (Apache 2.0).
 
