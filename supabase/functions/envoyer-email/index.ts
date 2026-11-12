@@ -11,9 +11,9 @@
 // Facultatifs : MAIL_FROM (par défaut « mypocketclub <notifications@mypocketclub.fr> »), MAIL_REPLY_TO (par défaut contact@mypocketclub.fr),
 // APP_URL (adresse de l'application pour le lien « Ce n'était pas moi », n° 147 ; par défaut https://angeck.github.io/mon-blason/ ;
 // à passer à https://mypocketclub.fr/ au branchement du domaine, todolist n° 8).
-// SUPABASE_URL et SUPABASE_ANON_KEY sont fournis d'office par Supabase. « Verify JWT » reste activé : seule une personne connectée peut appeler.
+// SUPABASE_URL, SUPABASE_ANON_KEY et la clé du serveur (SUPABASE_SECRET_KEYS, sinon SUPABASE_SERVICE_ROLE_KEY ; rappels du n° 182, 5.4.0) sont fournis d'office par Supabase. « Verify JWT » reste activé : seule une personne connectée peut appeler.
 
-export type Env = { url: string; anon: string; resendKey: string; from: string; replyTo: string; appUrl?: string };
+export type Env = { url: string; anon: string; resendKey: string; from: string; replyTo: string; appUrl?: string; service?: string };
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', ...CORS } });
 export const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const escHtml = (s: string) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
@@ -184,18 +184,26 @@ async function sendNewDevice(env: Env, auth: string, doFetch: typeof fetch, who:
 
 // ---------- 5.3.0 · invitation du parent d'un joueur de 15 à 17 ans ----------
 // Le joueur saisit l'e-mail d'un parent (invite_parent) ; la base remet l'invitation une seule fois (parent_invitation_take, au nom du joueur).
-export function parentInviteMail(childFirst: string, club: string, link: string, expires: Date) {
+export function parentInviteMail(childFirst: string, club: string, link: string, expires: Date, purpose = 'joueur', requestedBy = '') {
   const d = expires.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long' });
   const who = childFirst || 'Ton enfant';
-  const text = `Bonjour,\n\n${who} utilise mypocketclub avec le club ${club} et te demande de rejoindre l'application en tant que parent.\n\nOuvre ce lien, crée ton compte avec cette adresse e-mail, et ta demande part au président du club, qui la valide :\n${link}\n\nLe lien reste valable jusqu'au ${d}. Si tu ne connais pas ${who} ou ce club, ignore ce message : rien ne se passe.\n\nmypocketclub · https://mypocketclub.fr`;
+  // 5.4.0 · n° 201 : un adulte du club veut échanger avec l'enfant ; l'accord d'un parent est demandé avant toute conversation
+  const conv = purpose === 'conversation', by = requestedBy || 'Un membre du club';
+  const why = conv ? `${by}, du club ${club}, souhaite échanger avec ${who} dans mypocketclub. Une conversation avec un mineur n'est possible qu'avec un de ses parents et avec ton accord.`
+    : `${who} utilise mypocketclub avec le club ${club} et te demande de rejoindre l'application en tant que parent.`;
+  const whyHtml = conv ? `<b>${escHtml(by)}</b>, du club <b>${escHtml(club)}</b>, souhaite échanger avec <b>${escHtml(who)}</b> dans mypocketclub. Une conversation avec un mineur n'est possible qu'avec un de ses parents et avec ton accord.`
+    : `<b>${escHtml(who)}</b> utilise mypocketclub avec le club <b>${escHtml(club)}</b> et te demande de rejoindre l'application en tant que parent.`;
+  const then = conv ? ' Une fois validé, tu acceptes ou refuses la conversation dans l\'onglet Messages.' : '';
+  const text = `Bonjour,\n\n${why}\n\nOuvre ce lien, crée ton compte avec cette adresse e-mail, et ta demande part au président du club, qui la valide.${then}\n${link}\n\nLe lien reste valable jusqu'au ${d}. Si tu ne connais pas ${who} ou ce club, ignore ce message : rien ne se passe.\n\nmypocketclub · https://mypocketclub.fr`;
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
 <p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
-<p>Bonjour,</p><p><b>${escHtml(who)}</b> utilise mypocketclub avec le club <b>${escHtml(club)}</b> et te demande de rejoindre l'application en tant que parent.</p>
+<p>Bonjour,</p><p>${whyHtml}</p>
 <p><a href="${escHtml(link)}" style="display:inline-block;background:#2F5BFF;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Rejoindre en tant que parent</a></p>
-<p style="color:#5A6178;font-size:14px">Crée ton compte avec cette adresse e-mail : ta demande part au président du club, qui la valide. Le lien reste valable jusqu'au ${escHtml(d)}.</p>
+<p style="color:#5A6178;font-size:14px">Crée ton compte avec cette adresse e-mail : ta demande part au président du club, qui la valide.${escHtml(then)} Le lien reste valable jusqu'au ${escHtml(d)}.</p>
 <p style="color:#5A6178;font-size:14px">Tu ne connais pas ${escHtml(who)} ou ce club ? Ignore ce message : rien ne se passe.</p>
 <p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
-  return { subject: `mypocketclub · ${who} t'invite à rejoindre ${club}`.slice(0, 120), text, html };
+  const subject = conv ? `mypocketclub · ${club} souhaite échanger avec ${who}` : `mypocketclub · ${who} t'invite à rejoindre ${club}`;
+  return { subject: subject.slice(0, 120), text, html };
 }
 async function sendParentInvite(env: Env, auth: string, doFetch: typeof fetch, pi: any) {
   if (typeof pi?.id !== 'string') return json({ erreur: 'invitation inconnue' }, 400);
@@ -203,13 +211,49 @@ async function sendParentInvite(env: Env, auth: string, doFetch: typeof fetch, p
   const tok = String(a.data?.token || ''), to = String(a.data?.email || '');
   if (!a.ok || !/^[a-f0-9]{64}$/.test(tok) || !EMAIL.test(to)) return json({ erreur: 'invitation déjà envoyée ou inconnue' }, 409);
   const link = (env.appUrl || 'https://angeck.github.io/mon-blason/').replace(/#.*$/, '') + '#parent=' + tok;
-  const m = parentInviteMail(String(a.data?.child_first || ''), String(a.data?.club || 'son club'), link, new Date(a.data?.expires_at));
+  const m = parentInviteMail(String(a.data?.child_first || ''), String(a.data?.club || 'son club'), link, new Date(a.data?.expires_at), String(a.data?.purpose || 'joueur'), String(a.data?.requested_by || '').slice(0, 60));
   const r = await doFetch('https://api.resend.com/emails', {
     method: 'POST', headers: { Authorization: 'Bearer ' + env.resendKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from: env.from, to: [to], reply_to: env.replyTo, subject: m.subject, text: m.text, html: m.html }),
   });
   if (!r.ok) return json({ erreur: 'Resend a refusé l’envoi' }, 502);
   return json({ envoye: true });
+}
+
+// ---------- 5.4.0 · n° 182 · rappel au président : club à valider sous 7 jours ----------
+// Pas de tâche planifiée : l'application de n'importe quel membre demande à la base s'il y a un rappel à faire (oui / non),
+// puis appelle cette fonction. Les adresses ne sont lues qu'ici, avec la clé du serveur (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY,
+// fournies d'office par Supabase) ; chaque rappel n'est remis qu'une fois (validation_reminders_take). Ce n'est pas un e-mail d'information :
+// il concerne le compte du club, sans lien de désinscription.
+export function validationReminderMail(first: string, club: string, until: Date) {
+  const d = until.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long' });
+  const hello = first ? `Bonjour ${first},` : 'Bonjour,';
+  const text = `${hello}\n\nLe club ${club} n'est pas encore validé par mypocketclub. Sans validation avant le ${d}, il part à la corbeille : il resterait 90 jours restaurable, puis serait effacé.\n\nPour le faire valider, réponds simplement à cet e-mail (ou écris à contact@mypocketclub.fr) en indiquant ta fonction au club.\n\nmypocketclub · https://mypocketclub.fr`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
+<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
+<p>${escHtml(hello)}</p><p>Le club <b>${escHtml(club)}</b> n'est pas encore validé par mypocketclub. Sans validation <b>avant le ${escHtml(d)}</b>, il part à la corbeille : il resterait 90 jours restaurable, puis serait effacé.</p>
+<p>Pour le faire valider, réponds simplement à cet e-mail (ou écris à <a href="mailto:contact@mypocketclub.fr" style="color:#2F5BFF">contact@mypocketclub.fr</a>) en indiquant ta fonction au club.</p>
+<p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
+  return { subject: `mypocketclub · ${club} : validation avant le ${d}`.slice(0, 120), text, html };
+}
+async function sendValidationReminders(env: Env, doFetch: typeof fetch) {
+  if (!env.service) return json({ erreur: 'clé du serveur absente' }, 500);
+  // clé « sb_secret_… » (nouvelles clés) : seulement dans apikey ; ancienne clé service_role (JWT) : aussi en Authorization
+  const h: Record<string, string> = { apikey: env.service, 'Content-Type': 'application/json', ...(env.service.startsWith('eyJ') ? { Authorization: 'Bearer ' + env.service } : {}) };
+  const r = await doFetch(env.url + '/rest/v1/rpc/validation_reminders_take', { method: 'POST', headers: h, body: '{}' });
+  const rows = r.ok ? await r.json().catch(() => []) : [];
+  let n = 0;
+  for (const x of Array.isArray(rows) ? rows.slice(0, 20) : []) {
+    const to = String(x?.email || '');
+    if (!EMAIL.test(to)) continue;
+    const m = validationReminderMail(String(x?.first_name || '').slice(0, 40), String(x?.club || 'Ton club').slice(0, 80), new Date(x?.valid_by));
+    const s = await doFetch('https://api.resend.com/emails', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + env.resendKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: env.from, to: [to], reply_to: env.replyTo, subject: m.subject, text: m.text, html: m.html }),
+    });
+    if (s.ok) n++;
+  }
+  return json({ envoye: n });
 }
 
 // Qui appelle ? (le jeton de la personne connectée, vérifié par Supabase)
@@ -237,7 +281,8 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   if (body?.convocation) return sendConvocation(env, auth, doFetch, who, body.convocation, now); // n° 112, 124
   if (body?.new_device) return sendNewDevice(env, auth, doFetch, who, body.new_device, now); // n° 147
   if (body?.parent_invite) return sendParentInvite(env, auth, doFetch, body.parent_invite); // 5.3.0
-  if (!body?.test) return json({ erreur: 'seul l’e-mail de test, une convocation ou une invitation peuvent partir' }, 400);
+  if (body?.validation_reminders) return sendValidationReminders(env, doFetch); // 5.4.0 · n° 182
+  if (!body?.test) return json({ erreur: 'seul l’e-mail de test, une convocation, une invitation ou un rappel peuvent partir' }, 400);
   if (!who.admin) return json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403);
   const m = testMail(who.name, now);
   const r = await doFetch('https://api.resend.com/emails', {
@@ -254,6 +299,6 @@ declare const Deno: any;
 if (typeof Deno !== 'undefined' && Deno.serve) {
   Deno.serve((req: Request) => handle(req, {
     url: Deno.env.get('SUPABASE_URL') || '', anon: Deno.env.get('SUPABASE_ANON_KEY') || '', resendKey: Deno.env.get('RESEND_API_KEY') || '',
-    from: Deno.env.get('MAIL_FROM') || 'mypocketclub <notifications@mypocketclub.fr>', replyTo: Deno.env.get('MAIL_REPLY_TO') || 'contact@mypocketclub.fr', appUrl: Deno.env.get('APP_URL') || 'https://angeck.github.io/mon-blason/',
+    from: Deno.env.get('MAIL_FROM') || 'mypocketclub <notifications@mypocketclub.fr>', replyTo: Deno.env.get('MAIL_REPLY_TO') || 'contact@mypocketclub.fr', appUrl: Deno.env.get('APP_URL') || 'https://angeck.github.io/mon-blason/', service: (() => { try { return JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}').default || ''; } catch { return ''; } })() || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
   }).catch((e) => json({ erreur: String((e as Error)?.message || e) }, 500)));
 }

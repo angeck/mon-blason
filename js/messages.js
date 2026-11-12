@@ -1,6 +1,6 @@
 // mypocketclub · messages : groupes d'échange, messages en direct, sondages (supprimables, restaurables par le bureau).
 import { annoncesBlock } from './vie.js';
-import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, isBoard, isPresident, name, nick, teamName, fmtShort, loadGroup, parentsOf, playersOfTeam, plural, norm } from './core.js';
+import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, isBoard, isPresident, name, nick, teamName, fmtShort, loadGroup, parentsOf, playersOfTeam, plural, norm, hooks } from './core.js';
 import { backAfterDelete } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 
@@ -29,7 +29,7 @@ function reportsBlock() {
   return `<div class="sec"><h2>Messages signalés (${S.reports.length})</h2></div><div class="card">${S.reports.map((r) => `<div class="row" style="align-items:flex-start"><span class="g"><b>${esc(r.group_name || 'Groupe')}</b><small>${esc(nick(r.author))} : ${esc(r.body || '')}</small>${r.reason ? `<small>Motif : ${esc(r.reason)}</small>` : ''}<small>Signalé par ${esc(nick(r.reporter))} · ${esc(fmtShort(r.created_at))}</small></span><button class="chip" data-act="repdone" data-id="${r.report_id}">Traité</button></div>`).join('')}</div>`;
 }
 export function messagesTab() {
-  let h = annoncesBlock() + reportsBlock() + `<div class="sec"><h2>Groupes d'échange</h2></div><button class="btn main" data-act="gnew">${icon('plus', 20)}Créer un groupe d'échange</button>`;
+  let h = annoncesBlock() + reportsBlock() + (hooks.grpReqBlock ? hooks.grpReqBlock() : '') + `<div class="sec"><h2>Groupes d'échange</h2></div><button class="btn main" data-act="gnew">${icon('plus', 20)}Créer un groupe d'échange</button>`;
   h += `<div class="card"><div class="list">${S.groups.length ? sortedGroups().map((g) => {
     const p = S.previews[g.id], n = S.unread[g.id] || 0;
     const line = p ? (p.kind === 'sondage' ? 'Sondage : ' : (p.user_id === S.me.id ? 'Toi' : esc(nick(p.user_id)).split(' ')[0]) + ' : ') + esc(String(p.body).slice(0, 70)) : 'Pas encore de message';
@@ -39,6 +39,7 @@ export function messagesTab() {
 }
 
 export function groupForm() {
+  if (!S.form) S.form = S.grqForm?.prev || { name: '', sel: new Set(), q: '' };   // 5.4.0 : retour depuis « Ajouter un parent »
   const f = S.form;
   const people = [...new Map(S.members.filter((m) => m.status === 'active' && m.user_id !== S.me.id).map((m) => [m.user_id, m])).values()]
     .concat(S.pparents.filter((x) => x.user_id !== S.me.id).map((x) => ({ user_id: x.user_id, role: 'parent' })))
@@ -125,6 +126,8 @@ Object.assign(ACTIONS, {
     const t = S.form.team, inTeam = (u) => t && (S.members.some((m) => m.user_id === u && m.status === 'active' && (m.team_id === t || ['president', 'bureau'].includes(m.role)))
       || playersOfTeam(t).some((p) => p.user_id === u || parentsOf(p.id).includes(u)));
     const asTeam = t && [S.me.id, ...S.form.sel].every(inTeam);
+    // 5.4.0 · n° 201 : un mineur sans son parent → l'écran propose d'ajouter le parent ; la conversation attendra son accord
+    if (!asTeam && hooks.minorStep && await hooks.minorStep(nm, [...S.form.sel])) return;
     const g = await run(sb.from('groups').insert({ club_id: S.clubId, name: nm, created_by: S.me.id, ...(asTeam ? { team_id: t } : {}) }).select().single()); if (!g) return;
     const ids = [S.me.id, ...S.form.sel];
     if (await run(sb.from('group_members').insert(ids.map((u) => ({ group_id: g.id, user_id: u }))), 'Groupe créé.')) { S.groups.unshift(g); S.form = null; await openGroup(g.id); }

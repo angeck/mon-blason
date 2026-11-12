@@ -26,6 +26,7 @@ import { loadV43 } from './js/v43.js'; // 4.3.0 : n° 124 (validation des envois
 import { loadV44 } from './js/v44.js';
 import './js/v48.js'; // 4.8.0 : guide « Installer et notifications »
 import './js/v52.js'; // 5.2.0 : n° 174 (contact d'équipe), n° 158 (renforts)
+import { validationReminders } from './js/v54.js'; // 5.4.0 : n° 201 (conversation avec un mineur), n° 84 (rattacher), transfert d'une convocation, n° 182
 import './js/v51.js'; // 5.1.0 : n° 189 (retour du téléphone), 190 (pastilles des rôles), 191 (demandes), 196 (bienvenue)
 import { unsubToken, unsubScreen, loadDevices } from './js/v410.js'; // 4.10.0 : n° 184 (appareils connus), n° 185 (désinscription)
 import { captureParentToken, acceptParentInvite } from './js/joueur.js'; // 5.3.0 : invitation du parent d'un joueur de 15 à 17 ans
@@ -101,7 +102,7 @@ async function refresh(msg) {
   await loadMe();
   if (S.me && S.devFor !== S.me.id) { S.devFor = S.me.id; registerDevice().then(loadDevices); } // n° 147 ; 4.10.0 : la liste des appareils suit : appareil connu ou nouveau (alerte par e-mail)
   if (!S.joinChecked) { S.joinChecked = true; await openPendingJoin(); await acceptParentInvite(); }
-  if (!S.purged) { S.purged = true; sb.rpc('purge_trash').then(() => {}, () => {}); }
+  if (!S.purged) { S.purged = true; sb.rpc('purge_trash').then(() => {}, () => {}); validationReminders().catch(() => {}); } // 5.4.0 · n° 182 : rappels de validation par e-mail
   await loadClub();
   restoreDraftScreen(); // 5.2.1 : après un rechargement, retour là où la saisie avait commencé
   await Promise.all([loadCoachCounts(), loadEvPlans(), loadAdminCounts(), loadV310(), loadV43(), loadV44()]).catch(() => {});

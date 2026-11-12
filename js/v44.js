@@ -4,7 +4,7 @@
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_4_4_0.sql) ; l'écran n'est qu'un confort.
 import {
   S, sb, esc, hooks, run, toast, render, refresh, armed, isArmed, ACTIONS, club, isBoard, isPresident, hasArea, myFonctions, fl,
-  team, teamName, name, plural, fmtShort, evTeams, toValidate, NEXT_SEASON, SEASON,
+  team, teamName, name, plural, fmtShort, evTeams, toValidate, NEXT_SEASON, SEASON, passSeason,
 } from './core.js';
 import { entTag } from './core.js';
 import { icon } from './ui.js';
@@ -269,9 +269,9 @@ const BODY = {
 
 // ---------- passage de saison pour tout le club (Président › Réglages › Saison) ----------
 hooks.seasonBlock = () => {
-  const l = live().filter((t) => (t.season || '') !== NEXT_SEASON), on = isArmed('season');
-  if (!l.length) return `<div class="card"><p class="note" style="margin:0">Toutes les équipes sont déjà sur la saison ${esc(NEXT_SEASON)}.</p></div>`;
-  return `<div class="card"><b>Passer tout le club en ${esc(NEXT_SEASON)}</b><p class="note">${plural(l.length, 'équipe', 'équipes')} de ${esc(SEASON)} : chacune est archivée (elle reste consultable) et recréée pour ${esc(NEXT_SEASON)}, en mode fantôme, avec ses coachs. Les joueurs restent dans l’équipe archivée : ajoute-les ensuite à la nouvelle. La case « Je participe au bénévolat du club » repart cochée pour les membres. Le passage est inscrit au journal.</p><button class="btn ${on ? 'danger armed' : ''}" data-act="seasonall">${on ? `Confirmer : passer ${plural(l.length, 'équipe', 'équipes')} en ${esc(NEXT_SEASON)}` : `Passer le club en ${esc(NEXT_SEASON)}`}</button><p class="note">Pour une seule équipe : Équipes › l’équipe › Effectif › « Archiver et reconduire ».</p></div>`;
+  const TO = passSeason(live()), l = live().filter((t) => (t.season || '') !== TO), on = isArmed('season');   // 5.4.0 : saison calculée
+  if (!l.length) return `<div class="card"><p class="note" style="margin:0">Toutes les équipes sont déjà sur la saison ${esc(TO)}.</p></div>`;
+  return `<div class="card"><b>Passer tout le club en ${esc(TO)}</b><p class="note">${plural(l.length, 'équipe', 'équipes')} de ${esc([...new Set(l.map((t) => t.season || SEASON))].join(', '))} : chacune est archivée (elle reste consultable) et recréée pour ${esc(TO)}, en mode fantôme, avec ses coachs. Les joueurs restent dans l’équipe archivée : ajoute-les ensuite à la nouvelle. La case « Je participe au bénévolat du club » repart cochée pour les membres. Le passage est inscrit au journal.</p><button class="btn ${on ? 'danger armed' : ''}" data-act="seasonall">${on ? `Confirmer : passer ${plural(l.length, 'équipe', 'équipes')} en ${esc(TO)}` : `Passer le club en ${esc(TO)}`}</button><p class="note">Pour une seule équipe : Équipes › l’équipe › Effectif › « Archiver et reconduire ».</p></div>`;
 };
 
 // ---------- chargement (trésorerie : heures validées du mois dernier et leur montant) ----------
@@ -312,9 +312,10 @@ Object.assign(ACTIONS, {
   xlsxmem: () => { if (armed('xlsxmem')) exportMembers(); }, // n° 178 : avertissement d'abord
   seasonall: async () => {
     if (!armed('season')) return;
-    const r = await run(sb.rpc('renew_club_season', { p_club: S.clubId, p_season: NEXT_SEASON }));
+    const TO = passSeason(live());
+    const r = await run(sb.rpc('renew_club_season', { p_club: S.clubId, p_season: TO }));
     if (!r) return;
-    toast(`Club passé en ${NEXT_SEASON} : ${plural(r.teams, 'équipe recréée', 'équipes recréées')} en mode fantôme${r.kept ? ', ' + plural(r.kept, 'déjà prête', 'déjà prêtes') : ''}.`);
+    toast(`Club passé en ${TO} : ${plural(r.teams, 'équipe recréée', 'équipes recréées')} en mode fantôme${r.kept ? ', ' + plural(r.kept, 'déjà prête', 'déjà prêtes') : ''}.`);
     await refresh();
   },
 });

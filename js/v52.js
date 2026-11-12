@@ -15,6 +15,10 @@ export async function loadV52() {
   if (!S.clubId) return;
   const r = await sb.from('team_contacts').select('*').eq('club_id', S.clubId);
   S.tcontacts = r.data || [];
+  // 5.4.0 · n° 158 : renforts acceptés que je peux voir (encadrement, ou ma famille) : un renfort ne compte que là où il est invité
+  const rf = await sb.from('team_reinforcements').select('team_id,player_id').eq('club_id', S.clubId).eq('state', 'accepte');
+  S.reinfs = rf.error ? [] : rf.data || [];
+  if (hooks.loadV54) await hooks.loadV54();
   // n° 136 (2) : équipes dont je suis l'aide coach, et leurs noms (« Prénom I. »), ajoutés à la liste du club
   const hh = await sb.rpc('my_helper_teams'); S.myHelp = !hh.error && Array.isArray(hh.data) ? hh.data.filter((x) => x.club_id === S.clubId) : [];
   for (const x of S.myHelp) {

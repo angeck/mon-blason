@@ -145,5 +145,30 @@ check('5.3.0 : jeton mal formé : rien ne part', r.status === 409 && !k.calls.so
 k = fakeP({ take: { email: 'pas une adresse', token: TOK, club: 'C' } }); r = await F.handle(req({ parent_invite: { id: 'inv-1' } }), env, k.f);
 check('5.3.0 : adresse invalide : rien ne part', r.status === 409 && !k.calls.some((c) => c[0].includes('resend')));
 check('5.3.0 : HTML de l’invitation : prénom et club échappés', !/<script>/.test(F.parentInviteMail('<script>', '<script>', 'https://x/#parent=ab', new Date()).html));
+// ---------- 5.4.0 · n° 201 : invitation du parent pour une conversation ----------
+k = fakeP({ take: { email: 'parent@exemple.fr', token: TOK, expires_at: '2026-11-26T10:00:00Z', child_first: 'Lou', club: 'Club Test', purpose: 'conversation', requested_by: 'Coach' } });
+r = await F.handle(req({ parent_invite: { id: 'inv-2' } }), env, k.f);
+const pc = bodyOf(k, 'api.resend.com/emails');
+check('n° 201 : l’invitation dit qui veut échanger avec l’enfant, et pourquoi l’accord est demandé', r.status === 200 && pc.text.includes('Coach, du club Club Test, souhaite échanger avec Lou') && pc.text.includes('onglet Messages') && pc.subject.includes('souhaite échanger avec Lou'));
+check('n° 201 : HTML : nom du demandeur échappé', !/<script>/.test(F.parentInviteMail('Lou', 'C', 'https://x/#parent=ab', new Date(), 'conversation', '<script>').html));
+// ---------- 5.4.0 · n° 182 : rappel de validation au président ----------
+function fakeR({ rows = [{ club: 'Club 54', valid_by: '2026-11-20T10:00:00Z', email: 'pres@exemple.fr', first_name: 'Paul' }] } = {}) {
+  const k = fake({ admin: false }), base = k.f;
+  k.f = async (url, o = {}) => { if (url.endsWith('/rpc/validation_reminders_take')) { k.calls.push([url, o]); return { ok: true, status: 200, json: async () => rows }; } return base(url, o); };
+  return k;
+}
+k = fakeR(); r = await F.handle(req({ validation_reminders: true }), { ...env, service: 'cle-serveur' }, k.f); b = await r.json();
+const vr = bodyOf(k, 'api.resend.com/emails'), take = k.calls.find((c) => c[0].endsWith('/rpc/validation_reminders_take'));
+check('n° 182 : le rappel part à l’adresse du président, réponses vers contact@', r.status === 200 && b.envoye === 1 && JSON.stringify(vr.to) === JSON.stringify(['pres@exemple.fr']) && vr.reply_to === 'contact@mypocketclub.fr');
+check('n° 182 : les adresses sont lues avec la clé du serveur, pas celle de la personne', take && take[1].headers.apikey === 'cle-serveur' && !take[1].headers.Authorization);
+k = fakeR(); r = await F.handle(req({ validation_reminders: true }), { ...env, service: 'eyJancienne' }, k.f);
+check('n° 182 : ancienne clé service_role : aussi en Authorization', k.calls.find((c) => c[0].endsWith('/rpc/validation_reminders_take'))?.[1].headers.Authorization === 'Bearer eyJancienne');
+check('n° 182 : le club et la date limite sont dans l’e-mail', vr.text.includes('Club 54') && vr.text.includes('20 novembre 2026'));
+k = fakeR(); r = await F.handle(req({ validation_reminders: true }), env, k.f);
+check('n° 182 : sans clé du serveur, rien ne part', r.status === 500 && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeR({ rows: [{ club: 'C', valid_by: '2026-11-20T10:00:00Z', email: 'pas une adresse' }] }); r = await F.handle(req({ validation_reminders: true }), { ...env, service: 'x' }, k.f); b = await r.json();
+check('n° 182 : adresse invalide : rien ne part', b.envoye === 0 && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeR(); r = await F.handle(req({ validation_reminders: true }, ''), { ...env, service: 'x' }, k.f);
+check('n° 182 : il faut être connecté pour déclencher l’envoi', r.status === 401);
 console.log(`\n   ${ok} réussis sur ${ok + ko} tests d'e-mail`);
 if (ko) process.exitCode = 1;

@@ -46,7 +46,15 @@ export function isOpen(e) {
 }
 export const opensOn = (e) => new Date(new Date(e.starts_at).getTime() - OPEN_DAYS * 864e5);
 // Convocation : un match peut ne convoquer que certains joueurs (3.2)
-export const convoked = (e, pid) => !(e.convoked || []).length || e.convoked.includes(pid);
+// 5.4.0 · n° 158 : un renfort n'est concerné que par les rendez-vous où le coach l'invite (tous les renforts, choisi, ou convoqué)
+const reinfLinks = () => S.reinfs || [];
+export const isReinf = (pid, tids) => reinfLinks().some((r) => r.player_id === pid && tids.includes(r.team_id));
+const regularIn = (p, tids) => !!p && (tids.includes(p.team_id) || S.pteams.some((x) => x.player_id === p.id && tids.includes(x.team_id) && !isReinf(p.id, [x.team_id])));
+export const reinfInvited = (e, pid) => {
+  const t = evTeams(e); if (!isReinf(pid, t) || regularIn(S.players.find((x) => x.id === pid), t)) return true;
+  return e.reinforcements === 'tous' || (e.reinforcement_players || []).includes(pid) || (e.convoked || []).includes(pid);
+};
+export const convoked = (e, pid) => reinfInvited(e, pid) && (!(e.convoked || []).length || e.convoked.includes(pid));
 const myFiche = () => S.players.find((p) => p.user_id === S.me.id);
 const meConvoked = (e) => !(e.convoked || []).length || (myFiche() && e.convoked.includes(myFiche().id));
 // N° 59 : un compte qui n'est que supporteur (ou dont la demande attend la validation) n'a pas de réponse à donner, sauf invitation nominative
@@ -282,8 +290,19 @@ function convField(f) {
   if (!isPresident() && ![...f.teams].every(coachOf)) return '<p class="note">La convocation des joueurs est faite par le coach de l’équipe.</p>';
   const tid = [...f.teams][0], ps = playersOfTeam(tid).sort((a, b) => pname(a).localeCompare(pname(b), 'fr'));
   let h = `<div class="field"><span class="lab">Convoquer</span><div class="chips"><button type="button" class="chip" data-act="evconvm" data-v="all" aria-pressed="${f.convMode !== 'some'}">Toute l'équipe</button><button type="button" class="chip" data-act="evconvm" data-v="some" aria-pressed="${f.convMode === 'some'}">Joueurs choisis${f.convMode === 'some' ? ' (' + f.conv.size + ')' : ''}</button></div></div>`;
-  if (f.convMode === 'some') h += `<div class="card flat" style="max-height:320px;overflow:auto;gap:0">${ps.map((p) => `<label class="check" style="padding:6px 0"><input type="checkbox" data-evconv="${p.id}" ${f.conv.has(p.id) ? 'checked' : ''}><span>${esc(pname(p))}</span></label>`).join('') || '<p class="empty">Aucune fiche joueur.</p>'}</div><p class="note">Seuls les joueurs choisis (et leurs parents) répondent ; les autres voient le rendez-vous sans être convoqués.</p>`;
+  if (f.convMode === 'some') h += `<div class="card flat" style="max-height:320px;overflow:auto;gap:0">${ps.map((p) => `<label class="check" style="padding:6px 0"><input type="checkbox" data-evconv="${p.id}" ${f.conv.has(p.id) ? 'checked' : ''}><span>${esc(pname(p))}${isReinf(p.id, [tid]) ? ' <span class="det">· renfort</span>' : ''}</span></label>`).join('') || '<p class="empty">Aucune fiche joueur.</p>'}</div><p class="note">Seuls les joueurs choisis (et leurs parents) répondent ; les autres voient le rendez-vous sans être convoqués.</p>`;
   return h;
+}
+// 5.4.0 · n° 158 : inviter les renforts (équipe seule par défaut)
+function reinfField(f) {
+  if (!TEAM_TYPES.includes(f.type) || f.aud !== 'team' || !f.teams.size) return '';
+  const tids = [...f.teams], rs = [...new Map(reinfLinks().filter((r) => tids.includes(r.team_id)).map((r) => [r.player_id, r])).values()];
+  if (!rs.length) return '';
+  if (['Match', 'Plateau', 'Tournoi'].includes(f.type) && f.teams.size === 1 && f.convMode === 'some') return '<p class="note">Renforts : coche ceux que tu convoques dans la liste des joueurs.</p>';
+  const mode = f.rfMode || 'aucun', who = (pid) => { const p = pl(pid); return p ? pname(p) : 'Renfort'; };
+  let h = `<div class="field"><span class="lab">Renforts (${rs.length})</span><div class="chips">${[['aucun', 'Équipe seule'], ['tous', 'Avec tous les renforts'], ['choisis', 'Renforts choisis' + (mode === 'choisis' ? ' (' + f.rf.size + ')' : '')]].map(([v, l]) => `<button type="button" class="chip" data-act="evrfm" data-v="${v}" aria-pressed="${mode === v}">${l}</button>`).join('')}</div></div>`;
+  if (mode === 'choisis') h += `<div class="card flat" style="max-height:240px;overflow:auto;gap:0">${rs.sort((a, b) => who(a.player_id).localeCompare(who(b.player_id), 'fr')).map((r) => `<label class="check" style="padding:6px 0"><input type="checkbox" data-evrf="${r.player_id}" ${f.rf.has(r.player_id) ? 'checked' : ''}><span>${esc(who(r.player_id))}</span></label>`).join('')}</div>`;
+  return h + '<p class="note">Un renfort (et sa famille) ne voit que les rendez-vous où tu l’invites.</p>';
 }
 function repeatFields(f) {
   if (f.type !== 'Entraînement' || f.id) return '';
@@ -338,6 +357,7 @@ export function eventForm() {
   ${titleField(f)}
   ${field('el', 'Lieu', `<input id="el" name="place" data-evauto="1" value="${esc(f.place || '')}" placeholder="Ex. Gymnase de Boissy">`)}
   ${convField(f)}
+  ${reinfField(f)}
   ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && hasArea('evenements') ? `<label class="check"><input type="checkbox" name="mkconv" ${f.mkconv ? 'checked' : ''}><span>Préparer la convocation des clubs reçus après l'enregistrement</span></label>` : ''}
   ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && !hasArea('evenements') ? '<p class="note">Le contact rencontres du club sera prévenu pour préparer la convocation des clubs reçus.</p>' : ''}
   <button class="btn main" type="submit">${f.id ? 'Enregistrer les changements' : 'Enregistrer'}</button></form>`;
@@ -489,7 +509,7 @@ Object.assign(ACTIONS, {
   event: (el, d) => { S.view = { type: 'event', id: d.id }; render(); },
   evnew: (el, d) => {
     const coachT = coachTeams(), team = d.team || (!isBoard() && coachT.length === 1 ? coachT[0] : '');
-    S.form = { type: d.type || 'Entraînement', starts_at: today(), aud: team || !isBoard() ? 'team' : 'club', sup: supDefault(d.type || 'Entraînement'), teams: new Set(team ? [team] : []), people: new Set(), pq: '', conv: new Set(), convMode: 'all' };
+    S.form = { type: d.type || 'Entraînement', starts_at: today(), aud: team || !isBoard() ? 'team' : 'club', sup: supDefault(d.type || 'Entraînement'), teams: new Set(team ? [team] : []), people: new Set(), pq: '', conv: new Set(), convMode: 'all', rfMode: 'aucun', rf: new Set() };
     S.view = { type: 'evform' }; render();
   },
   // n° 84 : créer notre rendez-vous (match à l'extérieur) depuis une convocation reçue
@@ -499,20 +519,21 @@ Object.assign(ACTIONS, {
     const cat = (m.team || '').trim().toLowerCase();
     const mine = S.teams.filter((t) => cat && (String(t.category || '').toLowerCase() === cat || String(t.name || '').toLowerCase() === cat));
     const team = mine.length === 1 ? mine[0].id : '';
-    S.form = { type: 'Match', title: '', titleAuto: true, opponents: from?.from_club || '', place: m.place || '', at_home: false, starts_at: toLocalInput(new Date(m.starts_at)), aud: 'team', sup: supDefault('Match'), teams: new Set(team ? [team] : []), people: new Set(), pq: '', conv: new Set(), convMode: 'all', fromConvoc: { send: d.send, src: d.src } };
+    S.form = { type: 'Match', title: '', titleAuto: true, opponents: from?.from_club || '', place: m.place || '', at_home: false, starts_at: toLocalInput(new Date(m.starts_at)), aud: 'team', sup: supDefault('Match'), teams: new Set(team ? [team] : []), people: new Set(), pq: '', conv: new Set(), convMode: 'all', rfMode: 'aucun', rf: new Set(), fromConvoc: { send: d.send, src: d.src } };
     S.view = { type: 'evform' }; render();
   },
   evedit: (el, d) => {
     const e = S.events.find((x) => x.id === d.id);
-    S.form = { id: e.id, type: e.type, title: e.title, opponents: e.opponents, place: e.place, starts_at: toLocalInput(new Date(e.starts_at)), aud: e.audience, sup: e.with_supporters !== false, supSet: true, teams: new Set(evTeams(e)), people: new Set(e.people || []), pq: '', conv: new Set(e.convoked || []), convMode: (e.convoked || []).length ? 'some' : 'all', at_home: e.at_home !== false, dur: e.all_day ? 'jour' : String(durOf(e)), titleAuto: false };
+    S.form = { id: e.id, type: e.type, title: e.title, opponents: e.opponents, place: e.place, starts_at: toLocalInput(new Date(e.starts_at)), aud: e.audience, sup: e.with_supporters !== false, supSet: true, teams: new Set(evTeams(e)), people: new Set(e.people || []), pq: '', conv: new Set(e.convoked || []), convMode: (e.convoked || []).length ? 'some' : 'all', rfMode: e.reinforcements || 'aucun', rf: new Set(e.reinforcement_players || []), at_home: e.at_home !== false, dur: e.all_day ? 'jour' : String(durOf(e)), titleAuto: false };
     S.view = { type: 'evform' }; render();
   },
   evtype: (el, d) => { keepForm(); S.form.type = d.v; if (!S.form.supSet && !S.form.id) S.form.sup = supDefault(d.v); S.form.dur = String(usualDur(d.v, S.form.teams)); render(true); },
   evaud: (el, d) => { keepForm(); S.form.aud = d.v; render(true); },
   evtauto: () => { keepForm(); S.form.titleAuto = true; render(true); },
   evsup: (el, d) => { keepForm(); S.form.sup = d.v === '1'; S.form.supSet = true; render(true); },
-  evteam: (el, d) => { keepForm(); S.form.teams[S.form.teams.has(d.id) ? 'delete' : 'add'](d.id); S.form.conv = new Set(); render(true); },
+  evteam: (el, d) => { keepForm(); S.form.teams[S.form.teams.has(d.id) ? 'delete' : 'add'](d.id); S.form.conv = new Set(); S.form.rf = new Set(); render(true); },
   evconvm: (el, d) => { keepForm(); S.form.convMode = d.v; render(true); },
+  evrfm: (el, d) => { keepForm(); S.form.rfMode = d.v; S.form.rf = S.form.rf || new Set(); render(true); },
   evremind: async (el, d) => { const n = await run(sb.rpc('remind_event', { p_event: d.id })); if (n !== null) { toast(n ? plural(n, 'personne relancée', 'personnes relancées') + ' : un rappel apparaît en haut de leur Accueil.' : 'Tout le monde a déjà répondu.'); await refresh(); } },
   rsvp: async (el, d) => {
     const R = respOf(d.id), pid = d.p || null, cur = pid ? R.kid(pid) : R.mine;
@@ -595,6 +616,10 @@ FORMS.evf = async (v) => {
   const conv = ['Match', 'Plateau', 'Tournoi'].includes(f.type) && aud === 'team' && f.teams.size === 1 && f.convMode === 'some' ? [...f.conv] : [];
   if (f.convMode === 'some' && conv.length === 0 && ['Match', 'Plateau', 'Tournoi'].includes(f.type) && aud === 'team' && f.teams.size === 1) return toast('Choisis au moins un joueur à convoquer.');
   const base = { club_id: S.clubId, audience: aud, team_ids: aud === 'team' ? [...f.teams] : [], people: aud === 'people' ? [...f.people] : [], convoked: conv, type: f.type, title: v.title.trim(), place: (v.place || '').trim(), opponents: (v.opponents || '').trim(), at_home: ['Match', 'Plateau', 'Tournoi'].includes(f.type) ? !!v.at_home : true, with_supporters: aud === 'club' ? !!f.sup : true };
+  // 5.4.0 · n° 158 : renforts invités (pas avec une liste de convoqués : on les coche dans la liste)
+  const rfOn = aud === 'team' && TEAM_TYPES.includes(f.type) && !conv.length, rfMode = rfOn ? (f.rfMode || 'aucun') : 'aucun';
+  if (rfMode === 'choisis' && !(f.rf || new Set()).size) return toast('Choisis au moins un renfort, ou « Équipe seule ».');
+  base.reinforcements = rfMode; base.reinforcement_players = rfMode === 'choisis' ? [...f.rf] : [];
   const allDay = v.dur === 'jour'; base.all_day = allDay; base.duration_min = allDay ? null : +v.dur || DEF_DUR[f.type] || 120;
   const start = new Date(v.starts_at), th = titleHour(v.title);
   if (th && (th.h !== start.getHours() || th.mi !== start.getMinutes()) && !confirm(`Le titre parle de ${th.h} h ${String(th.mi).padStart(2, '0')}, mais l’heure choisie est ${hm(start)}. Enregistrer quand même ?`)) return;
@@ -638,6 +663,7 @@ CHANGES.push(async (t) => {
   if (t.dataset.evdur) { keepForm(); render(true); return true; }
   if (t.dataset.evrep) { keepForm(); S.form.repeat = t.checked; if (!t.checked) S.form.until = ''; render(true); return true; }
   if (t.dataset.evconv) { keepForm(); S.form.conv[t.checked ? 'add' : 'delete'](t.dataset.evconv); render(true); return true; }
+  if (t.dataset.evrf) { keepForm(); S.form.rf = S.form.rf || new Set(); S.form.rf[t.checked ? 'add' : 'delete'](t.dataset.evrf); render(true); return true; }
   if (t.dataset.evpeople) { keepForm(); S.form.people[t.checked ? 'add' : 'delete'](t.dataset.evpeople); render(true); return true; }
   if (t.dataset.evsel) { S.sel[t.checked ? 'add' : 'delete'](t.dataset.evsel); S.del = null; if (t.closest('details[data-past]')) S.pastOpen = true; render(true); return true; } // n° 130 : la barre des passés reste ouverte pendant la sélection
   return false;

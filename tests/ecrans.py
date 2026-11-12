@@ -334,7 +334,7 @@ with sync_playwright() as p:
     check('n° 180 · cocher le droit à l’image l’envoie à la base, sans toucher aux e-mails', pg.evaluate("window.__CALLS.some(c => c[1] === 'set_my_consents' && c[2].p_image === true && c[2].p_optin === null)"))
     check('n° 180 · le formulaire du profil n’envoie plus les e-mails d’information', pg.locator('#proff [name=optin]').count() == 0)
     act('[data-act=legal][data-v=mentions]')
-    check('mentions légales : adresse de contact, éditeur, hébergeurs, Irlande, version et date', has('contact@mypocketclub.fr') and not has('@gmail.com') and has('Gaël Raveneau') and has('Irlande') and has('Kellermann') and has('version 1.2 du 12 novembre 2026') and not has('Paris (région'))
+    check('mentions légales : adresse de contact, éditeur, hébergeurs, Irlande, version et date', has('contact@mypocketclub.fr') and not has('@gmail.com') and has('Gaël Raveneau') and has('Irlande') and has('Kellermann') and has('version 1.3 du 12 novembre 2026') and not has('Paris (région'))
     act('[data-act=back]')
     act('[data-act=legal][data-v=donnees]')
     check('n° 175 · « Vos données » : version courte, lien vers la politique complète', has('Qui s\'occupe de vos données ?') and has('Prénom I.') and pg.locator('[data-act=legal][data-v=politique]').count() == 1)
@@ -342,7 +342,7 @@ with sync_playwright() as p:
     check('n° 175 · politique complète : 13 parties, prestataires, durées', has('13. Modification de cette politique') and has('Resend') and has('sans connexion pendant 2 saisons') and not has('(J)'))
     act('[data-act=back]'); act('[data-act=back]')
     act('[data-act=legal][data-v=cgu]')
-    check('n° 175 · conditions d’utilisation : 15 articles, version affichée', has('15. Droit applicable et contact') and has('version 1.2 du 12 novembre 2026'))
+    check('n° 175 · conditions d’utilisation : 15 articles, version affichée', has('15. Droit applicable et contact') and has('version 1.3 du 12 novembre 2026'))
     act('[data-act=back]')
     check('n° 175 · retour sur Mon compte', has('Mes accords'))
     # n° 180 : ancienne version des conditions : écran « Avant de continuer », accord redemandé avec les deux cases
@@ -1429,7 +1429,7 @@ with sync_playwright() as p:
     check('accueil public : recherche, se connecter, lien « Je n’ai pas encore de compte »', 'Chercher un club' in t2() and 'Se connecter' in t2() and 'Je n’ai pas encore de compte' in t2().replace("'", '’'))
     # 5.0.0 · n° 197 : écran d'ouverture de l'identité
     check('n° 197 · slogan de l’identité', 'Tout ton club dans ta poche' in t2())
-    check('n° 197 · pied : mentions légales, version, contact et site', all(x in t2() for x in ['Mentions légales', 'Vos données', 'Conditions', 'alpha 5.3.1 · version de test', 'contact@', 'Site :']))
+    check('n° 197 · pied : mentions légales, version, contact et site', all(x in t2() for x in ['Mentions légales', 'Vos données', 'Conditions', 'alpha 5.4.0 · version de test', 'contact@', 'Site :']))
     check('n° 197 · fond encre et logo « club » bleu clair', pg2.evaluate("getComputedStyle(document.documentElement).backgroundColor") == 'rgb(17, 22, 46)' and pg2.evaluate("getComputedStyle(document.querySelector('.ouvert .wordmark .club')).color") == 'rgb(107, 139, 255)')
     check('n° 197 · la recherche est visible sans défiler sur 360 × 640', (pg2.set_viewport_size({'width': 360, 'height': 640}) or True) and pg2.evaluate("document.querySelector('#psf button[type=submit]').getBoundingClientRect().bottom") <= 640)
     shot2 = lambda n: OUT and pg2.screenshot(path=os.path.join(OUT, n + '.png'))
@@ -1514,6 +1514,80 @@ with sync_playwright() as p:
     bx = pgn.locator('.pipov canvas').bounding_box(); pgn.mouse.click(bx['x'] + bx['width'] * 0.75, bx['y'] + bx['height'] * 0.5); pgn.wait_for_timeout(200)
     check('5.2.1 : la pipette prend la couleur du point touché sur le logo', pgn.input_value('[name=c1]') == '#00aa00' and pgn.locator('.pipov').count() == 0)
     pgn.close()
+    # ---------- 5.4.0 : saison, renforts ciblés, conversation avec un mineur, rattacher et transférer une convocation, rappel ----------
+    pg4 = ctx.new_page(); pg4.on('pageerror', lambda e: errors.append(str(e)))
+    pg4.add_init_script("navigator.serviceWorker && (navigator.serviceWorker.register = () => Promise.resolve())")
+    pg4.goto('http://127.0.0.1:8765/index.html'); pg4.wait_for_selector('.tb', timeout=8000)
+    t4 = lambda: pg4.inner_text('#app')
+    calls = lambda n: pg4.evaluate("(n) => window.__CALLS.filter((c) => c[1] === n).map((c) => c[2])", n)
+    sea = pg4.evaluate("""async () => { const c = await import('/js/core.js');
+      return [c.seasonOf(new Date(2027, 5, 30)), c.seasonOf(new Date(2027, 6, 1)), c.seasonAfter('2026-2027'), c.passSeason([{ season: '2025-2026' }]), c.passSeason([{ season: c.SEASON }]) === c.NEXT_SEASON]; }""")
+    check('5.4.0 · saison : 30 juin 2027 → 2026-2027, 1er juillet 2027 → 2027-2028', sea[0] == '2026-2027' and sea[1] == '2027-2028' and sea[2] == '2027-2028')
+    check('5.4.0 · passage de saison : vers la saison en cours si une équipe est restée en arrière, sinon vers la suivante', sea[3] == pg4.evaluate("(async()=>(await import('/js/core.js')).SEASON)()") and sea[4])
+    inv = pg4.evaluate("""async () => { const { S } = await import('/js/core.js'); const A = await import('/js/agenda.js');
+      const t = S.teams[0].id, saved = [S.reinfs, S.players, S.pteams];
+      S.reinfs = [{ team_id: t, player_id: 'p-rf' }]; S.players = S.players.concat([{ id: 'p-rf', team_id: 'autre', first_name: 'Renfo', last_name: 'Test' }]); S.pteams = S.pteams.concat([{ player_id: 'p-rf', team_id: t }]);
+      const e = (o) => ({ id: 'x', team_ids: [t], audience: 'team', convoked: [], reinforcements: 'aucun', reinforcement_players: [], ...o });
+      const r = [A.convoked(e({}), 'p-rf'), A.convoked(e({ reinforcements: 'tous' }), 'p-rf'), A.convoked(e({ reinforcements: 'choisis', reinforcement_players: ['p-rf'] }), 'p-rf'), A.convoked(e({ convoked: ['p-rf'] }), 'p-rf')];
+      [S.reinfs, S.players, S.pteams] = saved; return r; }""")
+    check('5.4.0 · n° 158 : un renfort n’est concerné que s’il est invité (tous, choisi ou convoqué)', inv == [False, True, True, True])
+    # formulaire du rendez-vous : choix des renforts
+    pg4.evaluate("""(async()=>{ const { S, render, ACTIONS } = await import('/js/core.js'); const t = S.teams[0].id; S.reinfs = [{ team_id: t, player_id: S.players.find((p) => p.team_id === t)?.id || 'p-tom' }];
+      S.tab = 1; S.view = null; render(); ACTIONS.evnew(null, { team: t }); })()"""); pg4.wait_for_selector('#evf')
+    check('5.4.0 · n° 158 : le formulaire propose « Équipe seule » (par défaut), « Avec tous les renforts », « Renforts choisis »', all(x in t4() for x in ['Renforts (1)', 'Équipe seule', 'Avec tous les renforts', 'Renforts choisis']) and pg4.get_attribute('[data-act=evrfm][data-v=aucun]', 'aria-pressed') == 'true')
+    pg4.click('[data-act=evrfm][data-v=choisis]'); pg4.wait_for_timeout(150)
+    pg4.click('#evf [type=submit]'); pg4.wait_for_timeout(300)
+    check('5.4.0 · n° 158 : « Renforts choisis » sans renfort coché : refusé', not calls('create_events'))
+    pg4.click('[data-act=evrfm][data-v=tous]'); pg4.wait_for_timeout(150)
+    pg4.fill('#ed', '2026-11-25T18:00'); pg4.click('#evf [type=submit]'); pg4.wait_for_timeout(400)
+    ce = calls('create_events')
+    check('5.4.0 · n° 158 : l’entraînement part « avec tous les renforts »', bool(ce) and ce[-1]['p'].get('reinforcements') == 'tous' and ce[-1]['p'].get('reinforcement_players') == [])
+    # n° 201 : groupe avec un mineur sans son parent
+    pg4.evaluate("""(async()=>{ window.__GMC = [{ user_id: 'u-kid', player_id: 'p-tom', first_name: 'Tom', parents: [{ user_id: 'u-p1', name: 'Nina Parent' }] }];
+      const { S, render, ACTIONS } = await import('/js/core.js'); S.tab = 2; S.view = null; S.stack = []; render(); })()""")
+    pg4.click('[data-act=gnew]'); pg4.wait_for_selector('#gn'); pg4.fill('#gn', 'Conv Tom'); pg4.locator('[data-gsel]').first.check(); pg4.wait_for_timeout(100)
+    pg4.click('[data-act=gcreate]'); pg4.wait_for_timeout(400)
+    check('5.4.0 · n° 201 : un mineur sans son parent : l’écran propose d’ajouter son parent, pas d’erreur', 'Ajouter un parent' in t4() and 'Nina Parent' in t4() and not calls('group_minor_check') == [] and pg4.evaluate("!window.__CALLS.some((c) => c[0] === 'from' && c[1] === 'groups' && c[2] === 'insert')"))
+    pg4.click('[data-act=grqsend]'); pg4.wait_for_timeout(400)
+    rmg = pg4.evaluate('window.__RMG')
+    check('5.4.0 · n° 201 : la demande part vers le parent choisi, sans créer le groupe', bool(rmg) and rmg['p_parent'] == 'u-p1' and rmg['p_email'] is None and rmg['p_player'] == 'p-tom' and rmg['p_name'] == 'Conv Tom')
+    pg4.evaluate("window.__GMC = [{ user_id: 'u-kid', player_id: 'p-tom', first_name: 'Tom', parents: [] }]; window.__RMG = null")
+    pg4.click('[data-act=gnew]'); pg4.wait_for_selector('#gn'); pg4.fill('#gn', 'Conv Tom 2'); pg4.locator('[data-gsel]').first.check(); pg4.click('[data-act=gcreate]'); pg4.wait_for_selector('#grqm')
+    check('5.4.0 · n° 201 : sans parent inscrit, un champ pour l’e-mail du parent (pas demandé à l’enfant)', 'E-mail d' in t4() and 'Ne la demande pas à l' in t4())
+    pg4.click('[data-act=grqsend]'); pg4.wait_for_timeout(200)
+    check('5.4.0 · n° 201 : e-mail vide : rien ne part', not pg4.evaluate('window.__RMG'))
+    pg4.fill('#grqm', 'parent@exemple.fr'); pg4.click('[data-act=grqsend]'); pg4.wait_for_timeout(400)
+    check('5.4.0 · n° 201 : l’invitation part par la fonction d’envoi', (pg4.evaluate('window.__RMG') or {}).get('p_email') == 'parent@exemple.fr' and pg4.evaluate("window.__CALLS.some((c) => c[0] === 'functions' && c[2]?.parent_invite?.id === 'inv-9')"))
+    pg4.evaluate("""(async()=>{ window.__GRQ = [{ id: 'gr-1', mine: false, to_answer: true, name: 'Conv Léo', child_first: 'Léo', creator: 'Karim', members: [], state: 'attente', created_at: new Date().toISOString() },
+      { id: 'gr-2', mine: true, to_answer: false, name: 'Conv Tom', child_first: 'Tom', creator: 'Gaël', members: [], state: 'attente', created_at: new Date().toISOString(), parent_label: 'parent invité par e-mail', waiting_signup: true }];
+      const { S, render, hooks } = await import('/js/core.js'); await hooks.loadV54(); S.tab = 2; S.view = null; render(); })()"""); pg4.wait_for_timeout(300)
+    check('5.4.0 · n° 201 : onglet Messages : la demande à valider (parent) et la demande envoyée en attente', 'Demandes de conversation' in t4() and 'Karim souhaite échanger avec Léo' in t4().replace(chr(10), ' ') and 'le parent ne s’est pas encore inscrit' in t4() and pg4.locator('[data-act=grqrem]').count() == 0)
+    OUT and pg4.screenshot(path=os.path.join(OUT, '95-demandes-conversation.png'), full_page=True)
+    pg4.click('[data-act=grqyes]'); pg4.wait_for_timeout(300)
+    check('5.4.0 · n° 201 : le parent accepte', any(a.get('p_id') == 'gr-1' and a.get('p_accept') is True for a in calls('answer_group_request')))
+    # n° 84 et transfert : convocation reçue
+    pg4.evaluate("""(async()=>{ const { S, hooks, render } = await import('/js/core.js'); const d = new Date(Date.now() + 5 * 864e5); d.setHours(15, 0, 0, 0);
+      S.events.push({ id: 'ev-m54', club_id: S.clubId, type: 'Match', title: 'Match U9 contre Palaiseau', starts_at: d.toISOString(), team_ids: [S.teams[0].id], audience: 'team', cancelled: false, convoked: [] });
+      const d2 = new Date(d); d2.setHours(14);
+      S.creceived = [{ id: 'cs-1', from_club: 'Palaiseau Basket', step: 'C', version: 1, ref: 'PB-1', sent_at: new Date().toISOString(), read_at: null }];
+      S.cvev = { id: 'cs-1', list: [{ source_event_id: 'src-1', title: 'Match U9', starts_at: d2.toISOString(), place: 'Gymnase', team: 'U9', linked_event: null }] };
+      S.view = null; S.tab = 0; render(); document.querySelector('main.bd').innerHTML = hooks.receivedBlock(); })()"""); pg4.wait_for_timeout(200)
+    check('5.4.0 · n° 84 : « Rattacher » au match du même jour déjà dans l’agenda', pg4.locator('[data-act=cvlink][data-ev=ev-m54]').count() == 1 and 'Rattacher à « Match U9 contre Palaiseau »' in t4())
+    pg4.click('[data-act=cvlink]'); pg4.wait_for_timeout(300)
+    check('5.4.0 · n° 84 : le match reçu est relié au rendez-vous existant', any(a.get('p_event') == 'ev-m54' and a.get('p_source') == 'src-1' for a in calls('link_convocation')))
+    pg4.evaluate("(async()=>{ const { hooks, S } = await import('/js/core.js'); document.querySelector('main.bd').innerHTML = hooks.receivedBlock(); })()")
+    pg4.click('[data-act=cvfwd]'); pg4.wait_for_timeout(300)
+    check('5.4.0 · transfert : choix des personnes du club, sans le contact de l’autre club', 'Transférer' in t4() and 'Le contact de l' in t4() and pg4.locator('[data-cvfsel]').count() >= 1)
+    pg4.click('[data-act=cvfsend]'); pg4.wait_for_timeout(200)
+    check('5.4.0 · transfert : personne choisie : rien ne part', not pg4.evaluate('window.__FWD'))
+    pg4.locator('[data-cvfsel]').first.check(); pg4.wait_for_timeout(150); pg4.click('[data-act=cvfsend]'); pg4.wait_for_timeout(300)
+    check('5.4.0 · transfert : la convocation part aux personnes choisies', (pg4.evaluate('window.__FWD') or {}).get('p_send') == 'cs-1' and len(pg4.evaluate('window.__FWD').get('p_users')) == 1)
+    # n° 182 : la base dit qu'un rappel est à faire → la fonction d'envoi est appelée
+    rem = pg4.evaluate("""async () => { const m = await import('/js/v54.js'); const n0 = window.__CALLS.filter((c) => c[0] === 'functions' && c[2]?.validation_reminders).length;
+      await m.validationReminders(); const n1 = window.__CALLS.filter((c) => c[0] === 'functions' && c[2]?.validation_reminders).length;
+      window.__VREM = true; await m.validationReminders(); const n2 = window.__CALLS.filter((c) => c[0] === 'functions' && c[2]?.validation_reminders).length; return [n0, n1, n2]; }""")
+    check('5.4.0 · n° 182 : sans rappel à faire, rien n’est appelé ; sinon la fonction d’envoi part une fois', rem[0] == 0 and rem[1] == 0 and rem[2] == 1)
+    pg4.close()
     b.close()
 srv.shutdown()
 errs = [e for e in errors if 'favicon' not in e and 'Failed to load resource' not in e]

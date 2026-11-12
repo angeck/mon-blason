@@ -32,7 +32,12 @@ export const SPORTS = ['Basket-ball', 'Volley-ball'];
 export const TEAM_TYPES = ['Entraînement', 'Match', 'Plateau', 'Tournoi'];
 export const BCATS = ['U7 (baby)', 'U9', 'U11', 'U13', 'U15', 'U17', 'U18', 'U20', 'U21', 'Seniors', 'Loisirs', 'Vétérans'];
 export const GENRES = ['Féminine', 'Masculine', 'Mixte'];
-export const SEASON = '2026-2027', NEXT_SEASON = '2027-2028';
+// 5.4.0 : la saison se calcule d'après la date (1er juillet au 30 juin) : « 2026-2027 », puis « 2027-2028 », etc.
+export const seasonOf = (d = new Date()) => { const y = d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1; return `${y}-${y + 1}`; };
+export const seasonAfter = (s) => { const y = +String(s || '').split('-')[0]; return y ? `${y + 1}-${y + 2}` : seasonAfter(seasonOf()); };
+export const SEASON = seasonOf(), NEXT_SEASON = seasonAfter(SEASON);
+// Passage de saison : vers la saison en cours si des équipes sont restées sur une ancienne (après le 1er juillet), sinon vers la suivante
+export const passSeason = (teams) => ((teams || []).some((t) => (t.season || SEASON) < SEASON) ? SEASON : NEXT_SEASON);
 export const HOLIDAYS_ZONE_C = [['2026-10-17', '2026-11-01'], ['2026-12-19', '2027-01-03'], ['2027-02-06', '2027-02-21'], ['2027-04-03', '2027-04-18'], ['2027-07-03', '2027-08-31']];
 export const XLSX_URL = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
 

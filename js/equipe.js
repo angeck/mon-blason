@@ -1,6 +1,6 @@
 // mypocketclub · onglet Équipe, fiche d'équipe, ajout et import de joueurs (n° 7, 8, 26).
 import {
-  hooks, S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, BCATS, GENRES, SEASON, NEXT_SEASON, XLSX_URL,
+  hooks, S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, BCATS, GENRES, SEASON, NEXT_SEASON, XLSX_URL, seasonAfter,
   active, isBoard, isPresident, coachOf, team, teamName, myTeamIds, myPlayers, playersOfTeam, pname, adminOf, toValidate, niceFirst, niceLast, norm,
   loadJs, plural, fmtShort, evTeams, follows, mySelf, myKids, pl,
 } from './core.js';
@@ -154,7 +154,7 @@ export function teamPage(tid) {
     h += `<details class="card"><summary>${board ? "Réglages de l'équipe" : "Créneaux de l'équipe"}</summary>${board ? teamForm(t, 'teamedit') : `<form id="teamslots" data-id="${tid}" class="stack">${field('tsl', 'Créneaux et gymnase', `<input id="tsl" name="slots" value="${esc(t.slots || '')}">`)}<button class="btn main" type="submit">Enregistrer</button></form>`}${t.partner_hidden && (t.partner_state || 'aucune') === 'aucune' ? `<button class="btn ghost small" data-act="pfshow" data-id="${tid}">Réafficher « Équipe en entente ? »</button>` : ''}</details>`;
     if (hasCoach) h += nom;
   }
-  if (board && manage) h += `<div class="btns">${t.state === 'Visible' ? `<button class="btn ghost small" data-act="tstate" data-id="${tid}" data-v="Fantôme">Repasser en mode fantôme</button>` : ''}${t.state !== 'Archivée' ? `<button class="btn ghost small ${isArmed('rn' + tid) ? 'danger armed' : ''}" data-act="trenew" data-id="${tid}">${isArmed('rn' + tid) ? `Confirmer : archiver et recréer pour ${NEXT_SEASON}` : `Archiver et reconduire pour ${NEXT_SEASON}`}</button>` : ''}</div>`;
+  if (board && manage) h += `<div class="btns">${t.state === 'Visible' ? `<button class="btn ghost small" data-act="tstate" data-id="${tid}" data-v="Fantôme">Repasser en mode fantôme</button>` : ''}${t.state !== 'Archivée' ? `<button class="btn ghost small ${isArmed('rn' + tid) ? 'danger armed' : ''}" data-act="trenew" data-id="${tid}">${isArmed('rn' + tid) ? `Confirmer : archiver et recréer pour ${seasonAfter(t.season)}` : `Archiver et reconduire pour ${seasonAfter(t.season)}`}</button>` : ''}</div>`;
   // n° 103 : « Supprimer (doublon) », séparé d'« Archiver », pour le président et le bureau Technique (corbeille 30 jours, restaurable)
   if (canTrashTeam() && manage) h += `<div class="sec"><h2>Équipe en double ?</h2></div><div class="card"><p class="note" style="margin:0">Pour une équipe créée deux fois. Elle part à la corbeille pendant 30 jours : le bureau peut la restaurer. Pour la fin de saison, utilise plutôt « Archiver et reconduire ».</p>${dupBtn(tid)}</div>`;
   return h + (board || coach ? teamRoster(tid) : ''); // n° 93 : la liste des familles est dans l'onglet Équipe, pas en double ici
@@ -238,7 +238,7 @@ Object.assign(ACTIONS, {
   follow: async (el, d) => { if (await run(sb.from('team_follows').insert({ user_id: S.me.id, team_id: d.id }), 'Équipe suivie : ses matchs apparaissent dans ton agenda.')) await refresh(); },
   unfollow: async (el, d) => { if (await run(sb.from('team_follows').delete().eq('user_id', S.me.id).eq('team_id', d.id), 'Tu ne suis plus cette équipe.')) await refresh(); },
   tstate: async (el, d) => { if (await run(sb.from('teams').update({ state: d.v }).eq('id', d.id), d.v === 'Visible' ? 'Équipe visible.' : 'Équipe en mode fantôme.')) await refresh(); },
-  trenew: async (el, d) => { if (!armed('rn' + d.id)) return; const n = await run(sb.rpc('renew_team', { p_team: d.id, p_season: NEXT_SEASON }), `Équipe reconduite pour ${NEXT_SEASON} (mode fantôme).`); if (n) { S.view = { type: 'team', id: n }; await refresh(); } },
+  trenew: async (el, d) => { if (!armed('rn' + d.id)) return; const to = seasonAfter(S.teams.find((x) => x.id === d.id)?.season); const n = await run(sb.rpc('renew_team', { p_team: d.id, p_season: to }), `Équipe reconduite pour ${to} (mode fantôme).`); if (n) { S.view = { type: 'team', id: n }; await refresh(); } },
   tdel: async (el, d) => { if (!armed('t' + d.id)) return; if (await run(sb.rpc('trash_item', { p_kind: 'team', p_id: d.id }), 'Équipe mise à la corbeille. Le bureau peut la restaurer pendant 30 jours.')) { backAfterDelete('team', d.id); await refresh(); } },
   import: (el, d) => { S.imp = { tid: d.id, text: '', rows: null, matches: {}, map: null }; S.view = { type: 'import', id: d.id }; render(); },
   impcheck: async () => { S.imp.photo = S.imp.photo && !!S.imp.text; await readInput(S.imp.text); },

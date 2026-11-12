@@ -192,6 +192,9 @@ const RPC = {
   export_members: () => { window.__EXPMEM = (window.__EXPMEM || 0) + 1; return [{ team: 'U9', first_name: 'Tom', last_name: 'Dupont', birth_date: '2017-03-02', licence_state: 'Préinscrit club', licence_number: '', health_doc: false, parents: 'Gaël Test', emails: 'gael@exemple.fr', phones: '06 00 00 00 00', emergency: '' }]; },
   log_export: (a) => { window.__LOGEXP = a; return null; },
   renew_club_season: (a) => { window.__SEASON = a; return { teams: D.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').length, kept: 0, volunteers: 1 }; },
+  // 5.4.0 : rappels de validation (n° 182), demandes de conversation (n° 201), transfert d'une convocation
+  validation_reminders_pending: () => window.__VREM ?? false, my_group_requests: () => window.__GRQ || [], group_minor_check: () => window.__GMC || [],
+  request_minor_group: (a) => { window.__RMG = a; return { id: 'gr-9', invitation_id: a.p_email ? 'inv-9' : null }; }, forward_convocation: (a) => { window.__FWD = a; return (a.p_users || []).length; },
   export_my_data: () => ({ profil: D.profiles[0] }), validate_membership: ({ mid }) => { D.memberships.find((m) => m.id === mid).status = 'active'; return null; },
 };
 window.__RPC = RPC; // 4.6.0 : les tests d'écrans ajoutent des réponses (admin_list…)

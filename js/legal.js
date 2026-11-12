@@ -1,11 +1,11 @@
 // mypocketclub · alpha 4.9.0 · n° 175 et n° 180 : mentions légales, « Vos données » (version courte et politique complète),
-// conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.2 du 12 novembre 2026),
+// conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.3 du 12 novembre 2026),
 // non relus par un juriste. Vouvoiement. Changer LEGAL.version et LEGAL.date (et CGU_VERSION dans config.js
 // pour les conditions) à chaque modification : une nouvelle version des conditions est présentée à la connexion suivante.
 import { BRAND } from '../config.js';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.2', date: '12 novembre 2026' };
+export const LEGAL = { version: '1.3', date: '12 novembre 2026' };
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -124,9 +124,9 @@ Le club peut exporter la liste de ses membres. Ce fichier est alors sous sa resp
 ## 5. Enfants et adolescents
 - **Avant 15 ans**, un enfant n'a pas de compte. Son parent gère sa participation depuis son propre compte.
 - **De 15 à 17 ans**, un joueur peut avoir son compte. Il peut saisir l'e-mail d'un parent pour l'inviter : le parent reçoit un lien valable 14 jours, crée son compte avec cette adresse, et sa demande doit être validée par le président du club. Sans parent relié, le jeune n'accède qu'aux groupes de son équipe.
-- **Échanges avec un adulte.** Un adulte ne peut pas échanger en privé avec un mineur. En dehors des groupes d'équipe, un parent de chaque mineur est toujours présent dans la conversation. Un supporteur n'est jamais dans un groupe avec un mineur. Tout message peut être signalé au président du club.
+- **Échanges avec un adulte.** Un adulte ne peut pas échanger en privé avec un mineur. En dehors des groupes d'équipe, un parent de chaque mineur est toujours présent dans la conversation. Un supporteur n'est jamais dans un groupe avec un mineur. Pour ouvrir une conversation avec un mineur, l'adulte ajoute un de ses parents : un parent déjà inscrit, ou un parent invité par e-mail (adresse saisie par un adulte du club, jamais demandée à l'enfant). La conversation n'est créée qu'avec l'accord de ce parent ; sans réponse sous 14 jours, elle est annulée. Tout message peut être signalé au président du club.
 - **Droit à l'image.** Il est donné par les parents. Si l'un des deux le refuse, le refus s'applique.
-- **Renforts.** Un mineur ne renforce une autre équipe que si sa famille accepte. Un « non » d'un des parents l'emporte et retire le renfort.
+- **Renforts.** Un mineur ne renforce une autre équipe que si sa famille accepte. Un « non » d'un des parents l'emporte et retire le renfort. Le renfort et sa famille ne voient que les rendez-vous de cette équipe où le coach l'invite.
 - **Bénévolat.** Un jeune ne participe à une mission que si son parent l'inscrit et si le club a ouvert cette mission aux jeunes.
 ## 6. Ce que vous pouvez choisir
 Deux accords sont facultatifs, jamais cochés d'avance, et modifiables à tout moment dans « Mon compte » :
@@ -146,6 +146,7 @@ Les e-mails nécessaires au service sont toujours envoyés : convocation, change
 | Journal des actions sensibles | 1 an |
 | Club supprimé | 90 jours de corbeille, données non consultées, puis effacement |
 | Adresse saisie pour inviter une personne (par exemple un parent) | Le lien d'invitation vaut 14 jours ; l'adresse est effacée après 30 jours |
+| Demande de conversation avec un mineur (qui la fait, le parent sollicité, sa réponse) | Effacée 30 jours après la réponse ou l'annulation |
 Les copies de sauvegarde sont effacées dans les semaines qui suivent. Le motif d'un départ n'est jamais enregistré.
 ## 8. Où sont les données, et qui nous aide ?
 | Supabase | Base de données, comptes, fichiers · Irlande (Union européenne) |
