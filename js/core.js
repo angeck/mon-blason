@@ -271,7 +271,7 @@ export async function loadClub() {
   S.vask = S.areas.includes('evenements') ? (await sb.rpc('volunteer_ask_state', { p_club: cid })).data || null : null;
   if (S.vask && typeof S.vask !== 'object') S.vask = null; // n° 142 : qui n'a pas répondu à l'encart bénévole
   // n° 109 : convocations reçues d'autres clubs dans mypocketclub (rubrique Événements)
-  const crv = S.areas.includes('evenements') ? await sb.rpc('convocations_received', { p_club: cid }) : { data: [] }; S.creceived = Array.isArray(crv.data) ? crv.data : [];
+  const crv = await sb.rpc('convocations_received', { p_club: cid });   // n° 200 : la base répond aussi au contact d'équipe (pour son équipe), et rien aux autres S.creceived = Array.isArray(crv.data) ? crv.data : [];
   const clubIds = [...new Set(S.mems.filter((m) => m.status === 'active').map((m) => m.club_id))];
   S.overview = clubIds.length > 1 ? ((await sb.rpc('my_clubs_overview')).data || []) : [];
   S.payments = pay.data || []; S.follows = (fol.data || []).map((x) => x.team_id); S.cteams = ct.data || []; S.myGroups = mg.data || [];

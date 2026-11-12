@@ -2596,6 +2596,37 @@ AS('b1'); fails("n° 186 · le bureau ne lit pas les signalements", f"select * f
 w("reset role;")
 ok("n° 186 · les nouvelles fonctions sont fermées au visiteur", "not has_function_privilege('anon', 'report_message(bigint, text)', 'execute') and not has_function_privilege('anon', 'reported_messages(uuid)', 'execute') and not has_function_privilege('anon', 'group_minor_problem(uuid)', 'execute')")
 
+# ---------- 5.3.0 · n° 200 : le contact d'équipe reçoit les convocations d'un autre club ----------
+section("5.3.0 · n° 200 contact d'équipe et convocations reçues")
+w("reset role;")
+for i_, (k, f_, l_) in enumerate([('ca200', 'Contact', 'Treize200'), ('cb200', 'Contact', 'Onze200')]):
+    uid_ = f"00000000-0000-4000-8000-000000200{i_:03d}"
+    people[k] = (uid_, f_, l_)
+    w(f"insert into auth.users(id, raw_user_meta_data) values ('{uid_}', '{{\"first_name\":\"{f_}\",\"last_name\":\"{l_}\",\"full_name\":\"{f_} {l_}\",\"cgu_version\":\"test\"}}') on conflict do nothing;")
+w(f"insert into teams(club_id, name, category, gender, state) values ({C2}, 'U13F C2', 'U13', 'Féminine', 'Visible'), ({C2}, 'U11M C2', 'U11', 'Masculine', 'Visible');")
+w(f"insert into memberships(club_id, user_id, role, team_id, status) select {C2}, {P('ca200')}, 'coach', id, 'active' from teams where name = 'U13F C2';")
+w(f"insert into memberships(club_id, user_id, role, team_id, status) select {C2}, {P('cb200')}, 'coach', id, 'active' from teams where name = 'U11M C2';")
+w(f"insert into team_contacts(team_id, club_id, user_id) select id, {C2}, {P('ca200')} from teams where name = 'U13F C2';")
+w(f"insert into team_contacts(team_id, club_id, user_id) select id, {C2}, {P('cb200')} from teams where name = 'U11M C2';")
+w(f"insert into convocation_sends(club_id, event_id, ref, step, version, doc_hash, channel, target_club_id, target_name, status, payload) values ({C1}, {EVC}, 'AT-200-C', 'C', 1, 'h200', 'app', {C2}, 'Volley Test', 'envoye', '{{\"club\":{{\"name\":\"AS Test Basket\"}},\"events\":[{{\"id\":\"00000000-0000-4000-8000-0000000200a1\",\"title\":\"Match U13F\",\"starts_at\":\"2026-12-12T14:00:00Z\",\"place\":\"Gymnase 13\",\"cancelled\":false,\"team\":{{\"name\":\"U13F\",\"category\":\"U13\",\"gender\":\"Féminine\"}}}},{{\"id\":\"00000000-0000-4000-8000-0000000200a2\",\"title\":\"Match U15M\",\"starts_at\":\"2026-12-12T16:00:00Z\",\"place\":\"Gymnase 15\",\"cancelled\":false,\"team\":{{\"name\":\"U15M\",\"category\":\"U15\",\"gender\":\"Masculine\"}}}}]}}'::jsonb);")
+w("insert into tests.kv(k, v) select 'send200', id::text from convocation_sends where ref = 'AT-200-C' limit 1 on conflict (k) do update set v = excluded.v;")
+w(f"insert into events(club_id, title, type, starts_at, audience, at_home, opponents, team_ids) select {C2}, 'Match U13F reçu', 'Match', '2026-12-12T14:00:00Z', 'team', true, 'AS Test Basket', array[id] from teams where name = 'U13F C2' returning id \\gset ev200_")
+w("insert into tests.kv(k, v) values ('ev200', :'ev200_id') on conflict (k) do update set v = excluded.v;")
+w("set role authenticated;")
+AS('ca200'); ok("n° 200 · le contact de l'équipe U13F voit la convocation", f"exists(select 1 from convocations_received({C2}) where ref = 'AT-200-C')")
+AS('cb200'); ok("n° 200 · le contact d'une autre catégorie (U11) ne la voit pas", f"not exists(select 1 from convocations_received({C2}) where ref = 'AT-200-C')")
+AS('ca200'); ok("n° 200 · il ne voit que le match de son équipe", f"(select count(*) from convocation_received_events({K('send200')})) = 1 and (select place from convocation_received_events({K('send200')})) = 'Gymnase 13'")
+AS('cb200'); ok("n° 200 · l'autre contact ne voit aucun match", f"(select count(*) from convocation_received_events({K('send200')})) = 0")
+AS('ca200'); ok("n° 200 · il ouvre le document, limité à son match", f"jsonb_array_length((convocation_open({K('send200')})->'data'->'events')) = 1")
+AS('cb200'); fails("n° 200 · l'autre contact n'ouvre pas le document", f"select convocation_open({K('send200')})")
+AS('ca200'); works("n° 200 · il crée le rendez-vous de son équipe depuis le match reçu", f"select link_convocation({K('send200')}, '00000000-0000-4000-8000-0000000200a1', {K('ev200')})")
+AS('ca200'); fails("n° 200 · il ne relie pas le match d'une autre catégorie", f"select link_convocation({K('send200')}, '00000000-0000-4000-8000-0000000200a2', {K('ev200')})")
+AS('cb200'); fails("n° 200 · l'autre contact ne relie rien", f"select link_convocation({K('send200')}, '00000000-0000-4000-8000-0000000200a1', {K('ev200')})")
+AS('pres2'); ok("n° 200 · le club reçu (rencontres, président) voit toujours les deux matchs", f"(select count(*) from convocation_received_events({K('send200')})) = 2")
+AS('j1'); ok("n° 200 · une personne sans rôle ne reçoit rien", f"not exists(select 1 from convocations_received({C2}))")
+w("reset role;")
+ok("n° 200 · les fonctions d'aide sont fermées au visiteur", "not has_function_privilege('anon', 'contact_gets_send(uuid)', 'execute') and not has_function_privilege('anon', 'contact_matches_event(uuid, jsonb)', 'execute')")
+
 # ---------- rapport ----------
 w("\\echo ''")
 w("\\echo '========== RAPPORT =========='")

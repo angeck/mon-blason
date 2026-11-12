@@ -39,9 +39,13 @@ export function teamRoster(tid) {
   const av = (p) => `<span class="avatar">${esc(p.name.split(' ').map((w) => w[0]).slice(0, 2).join(''))}</span>`;
   const line = (p, sub) => `<div class="row static">${av(p)}<span class="g">${esc(p.name)}<small>${sub}</small></span></div>`;
   // n° 118 : chaque joueur de l'Effectif ouvre sa fiche (modifiable dans l'espace de l'équipe, en lecture seule ailleurs)
-  const pline = (p) => (p.player && pl(p.player) ? `<button class="row" data-act="player" data-id="${p.player}">${av(p)}<span class="g">${esc(p.name)}<small>Joueur</small></span><span class="chev"></span></button>` : line(p, 'Joueur'));
+  // n° 199 : les renforts de l'équipe sont signalés dans l'Effectif (mention « Renfort », état de la demande), vus de l'encadrement seulement
+  const rf = hooks.renfortRows && (isBoard() || coachOf(tid)) ? hooks.renfortRows(tid) : { ids: new Set(), extra: () => '' };
+  const sub = (p) => (p.player && rf.ids.has(p.player) ? 'Joueur · Renfort' : 'Joueur');
+  const pline = (p) => (p.player && pl(p.player) ? `<button class="row" data-act="player" data-id="${p.player}">${av(p)}<span class="g">${esc(p.name)}<small>${sub(p)}</small></span><span class="chev"></span></button>` : line(p, sub(p)));
+  const rfExtra = rf.extra(new Set(players.map((p) => p.player).filter(Boolean)));
   return `<div class="sec"><h2>Coachs</h2><span class="det">${coaches.length}</span></div><div class="card"><div class="list">${coaches.length ? coaches.map((p) => line(p, p.tags.some((x) => x.assistant) ? 'Coach assistant' : 'Coach')).join('') : '<p class="empty">Pas encore de coach.</p>'}</div></div>
-  <div class="sec"><h2>Effectif</h2><span class="det">${plural(players.length, 'joueur')}</span></div><div class="card"><div class="list">${players.length ? players.map(pline).join('') : '<p class="empty">Aucun joueur pour l’instant.</p>'}</div></div><p class="note">Les parents figurent sur la fiche de leur enfant.</p>`;
+  <div class="sec"><h2>Effectif</h2><span class="det">${plural(players.length, 'joueur')}</span></div><div class="card"><div class="list">${players.length || rfExtra ? players.map(pline).join('') + rfExtra : '<p class="empty">Aucun joueur pour l’instant.</p>'}</div></div><p class="note">Les parents figurent sur la fiche de leur enfant.${rf.ids.size || rfExtra ? ' Les renforts ne comptent ni dans les licenciés ni dans les cotisations.' : ''}</p>`;
 }
 const cteam = (tid) => S.cteams.find((x) => x.id === tid);
 // Vue d'une équipe suivie ou d'une autre équipe du club (sans les joueurs ni leur nombre, n° 41)

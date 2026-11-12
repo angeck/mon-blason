@@ -48,9 +48,11 @@ async function loadHome() {
   const r = await sb.from('team_reinforcements').select('id,team_id,player_id,state').eq('state', 'demande').in('player_id', ids);
   S.rfHome = r.data || []; render(true);
 }
+// N° 200 : le contact d'une équipe (hors accès Événements) retrouve les convocations reçues pour son équipe en tête de l'Accueil
+const contactConvocs = () => (!S.areas.includes('evenements') && (S.tcontacts || []).some((c) => c.user_id === S.me.id) && hooks.receivedBlock ? hooks.receivedBlock() : '');
 hooks.renfortHome = () => {
   if (S.rfHome === undefined) loadHome();
-  return (S.rfHome || []).map((r) => {
+  return contactConvocs() + (S.rfHome || []).map((r) => {
     const p = S.players.find((x) => x.id === r.player_id), t = team(r.team_id);
     return `<div class="card lift"><div class="kick">Renfort demandé</div><p><b>${esc(p ? p.first_name : '')}</b> est demandé en renfort de l'équipe ${esc(t ? teamName(t.id) : '')}. Son équipe d'origine ne change pas.</p><div class="btns"><button class="btn main" data-act="rfyes" data-id="${r.id}">Accepter</button><button class="btn ghost" data-act="rfno" data-id="${r.id}">Refuser</button></div></div>`;
   }).join('');
@@ -69,3 +71,13 @@ Object.assign(FORMS, {
 });
 hooks.loadV52 = loadV52;
 hooks.teamExtra = teamExtra;
+// N° 199 : renforts de l'équipe pour l'Effectif (ids des renforts acceptés ; lignes « en attente » ou acceptées absentes de la liste)
+hooks.renfortRows = (tid) => {
+  const L = (S.rfl || {})[tid];
+  if (L === undefined) { loadLists(tid); return { ids: new Set(), extra: () => '' }; }
+  const list = L && Array.isArray(L.list) ? L.list.filter((r) => r.state !== 'refuse') : [];
+  return {
+    ids: new Set(list.filter((r) => r.state === 'accepte').map((r) => r.player_id)),
+    extra: (present) => list.filter((r) => !present.has(r.player_id)).map((r) => `<div class="row static"><span class="avatar">${esc((r.label || '?').slice(0, 1))}</span><span class="g">${esc(r.label)}<small>Renfort · ${STATE[r.state] || esc(r.state)}</small></span></div>`).join(''),
+  };
+};

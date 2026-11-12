@@ -174,4 +174,103 @@ end $$;
 revoke execute on function reported_messages(uuid) from public, anon;
 grant execute on function reported_messages(uuid) to authenticated;
 
+-- ---------------------------------------------------------------------
+-- N° 200 · le contact d'équipe reçoit les convocations des autres clubs (envoyées dans mypocketclub seulement)
+--   Une convocation est adressée à un club, pas à une équipe : le contact d'une équipe reçoit les matchs de la convocation dont
+--   l'équipe de l'autre club a la même catégorie et le même genre que la sienne (genre vide ou « Mixte » : accepté).
+--   Il ne voit que ces matchs ; le contact rencontres, le vice-président et le président gardent tout.
+-- ---------------------------------------------------------------------
+create or replace function contact_matches_event(c uuid, x jsonb) returns boolean language sql stable security definer set search_path = public as $$
+  select auth.uid() is not null and coalesce((x->>'cancelled')::boolean, false) = false
+    and exists(select 1 from team_contacts tc join teams t on t.id = tc.team_id
+               where tc.club_id = c and tc.user_id = auth.uid() and t.deleted_at is null and team_contact_eligible(t.id, auth.uid())
+                 and t.category <> '' and lower(t.category) = lower(coalesce(x->'team'->>'category', ''))
+                 and (t.gender = coalesce(x->'team'->>'gender', '') or t.gender in ('', 'Mixte') or coalesce(x->'team'->>'gender', '') in ('', 'Mixte')));
+$$;
+create or replace function convocation_events_of(p jsonb) returns jsonb language sql immutable as $$
+  select coalesce(p->'data'->'events', p->'events', '[]'::jsonb);
+$$;
+create or replace function contact_gets_send(p_send uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from convocation_sends s, jsonb_array_elements(convocation_events_of(s.payload)) x
+                where s.id = p_send and s.channel = 'app' and s.target_club_id is not null and contact_matches_event(s.target_club_id, x));
+$$;
+revoke execute on function contact_matches_event(uuid, jsonb), convocation_events_of(jsonb), contact_gets_send(uuid) from public, anon;
+
+create or replace function convocations_received(p_club uuid) returns table(id uuid, from_club text, step text, version int, ref text, sent_at timestamptz, read_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+declare full_access boolean := receives_convocations(p_club);
+begin
+  return query select s.id, (select c.name from clubs c where c.id = s.club_id), s.step, s.version, s.ref, s.sent_at, s.read_at
+    from convocation_sends s where s.target_club_id = p_club and s.channel = 'app' and s.sent_at > now() - interval '120 days'
+      and (full_access or contact_gets_send(s.id)) order by s.sent_at desc limit 30;
+end $$;
+revoke execute on function convocations_received(uuid) from public, anon;
+grant execute on function convocations_received(uuid) to authenticated;
+
+create or replace function convocation_open(p_send uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare s convocation_sends; cn text; full_access boolean; pl jsonb;
+begin
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.channel <> 'app' then raise exception 'Document introuvable'; end if;
+  full_access := receives_convocations(s.target_club_id);
+  if not full_access and not contact_gets_send(p_send) then
+    if has_area(s.club_id, 'evenements') then return jsonb_build_object('step', s.step, 'version', s.version, 'data', s.payload); end if;
+    raise exception 'Document réservé au correspondant rencontres du club reçu et au contact de l''équipe concernée';
+  end if;
+  if s.read_at is null then
+    update convocation_sends set read_at = now(), read_by = auth.uid(), status = 'lu' where id = s.id;
+    select name into cn from clubs where id = s.target_club_id;
+    if s.sent_by is not null then
+      perform push_enqueue(s.sent_by, 'Convocation lue', coalesce(cn, 'Le club reçu') || ' a ouvert ' || case when s.step = 'P' then 'la pré-convocation' else 'la convocation' end, 'convocation', 'convread:' || s.id);
+    end if;
+  end if;
+  pl := s.payload;
+  if not full_access then   -- le contact d'équipe ne lit que les matchs de son équipe
+    select jsonb_agg(x order by ord) into pl from (select x, ord from jsonb_array_elements(convocation_events_of(s.payload)) with ordinality t(x, ord)) z where contact_matches_event(s.target_club_id, x);
+    pl := case when s.payload ? 'data' then jsonb_set(s.payload, '{data,events}', coalesce(pl, '[]'::jsonb)) else jsonb_set(s.payload, '{events}', coalesce(pl, '[]'::jsonb)) end;
+  end if;
+  return jsonb_build_object('step', s.step, 'version', s.version, 'data', pl);
+end $$;
+revoke execute on function convocation_open(uuid) from public, anon;
+grant execute on function convocation_open(uuid) to authenticated;
+
+create or replace function convocation_received_events(p_send uuid) returns table(source_event_id uuid, title text, starts_at timestamptz, place text, team text, linked_event uuid)
+language plpgsql stable security definer set search_path = public as $$
+declare s convocation_sends; full_access boolean;
+begin
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.channel <> 'app' or s.target_club_id is null then return; end if;
+  full_access := receives_convocations(s.target_club_id);
+  if not full_access and not contact_gets_send(p_send) then return; end if;
+  return query
+    select (x->>'id')::uuid, coalesce(x->>'title', ''), (x->>'starts_at')::timestamptz, coalesce(x->>'place', ''),
+           coalesce(x->'team'->>'name', ''),
+           (select l.event_id from convocation_links l join events e on e.id = l.event_id
+             where l.send_id = s.id and l.source_event_id = (x->>'id')::uuid and l.club_id = s.target_club_id)
+    from jsonb_array_elements(convocation_events_of(s.payload)) x
+    where coalesce((x->>'cancelled')::boolean, false) = false and x->>'id' is not null
+      and (full_access or contact_matches_event(s.target_club_id, x))
+    order by 3, 2;
+end $$;
+revoke execute on function convocation_received_events(uuid) from public, anon;
+grant execute on function convocation_received_events(uuid) to authenticated;
+
+create or replace function link_convocation(p_send uuid, p_source uuid, p_event uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare s convocation_sends; e events; full_access boolean; ok_src boolean;
+begin
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.channel <> 'app' or s.target_club_id is null then raise exception 'Convocation introuvable'; end if;
+  full_access := receives_convocations(s.target_club_id);
+  select exists(select 1 from jsonb_array_elements(convocation_events_of(s.payload)) x where (x->>'id')::uuid = p_source and (full_access or contact_matches_event(s.target_club_id, x))) into ok_src;
+  if not ok_src then raise exception 'Convocation introuvable'; end if;
+  select * into e from events where id = p_event;
+  if e.id is null or e.club_id <> s.target_club_id or not (has_area(e.club_id, 'evenements') or is_team_contact_all(e.team_ids)) then raise exception 'Rendez-vous introuvable dans ton club'; end if;
+  insert into convocation_links(send_id, source_event_id, club_id, event_id, created_by) values (p_send, p_source, s.target_club_id, p_event, auth.uid())
+    on conflict (send_id, source_event_id, club_id) do update set event_id = excluded.event_id, created_by = excluded.created_by, created_at = now();
+end $$;
+revoke execute on function link_convocation(uuid, uuid, uuid) from public, anon;
+grant execute on function link_convocation(uuid, uuid, uuid) to authenticated;
+
 select close_visitor_functions();
