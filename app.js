@@ -26,6 +26,7 @@ import { loadV43 } from './js/v43.js'; // 4.3.0 : n° 124 (validation des envois
 import { loadV44 } from './js/v44.js';
 import './js/v48.js'; // 4.8.0 : guide « Installer et notifications »
 import './js/v52.js'; // 5.2.0 : n° 174 (contact d'équipe), n° 158 (renforts)
+import './js/v56.js'; // 5.6.0 : n° 202 compte administrateur (espace admin, double vérification)
 import './js/v55.js'; // 5.5.0 : onboarding « Pour bien démarrer », FAQ (Aide), n° 164 justificatif d'adhésion
 import { validationReminders } from './js/v54.js'; // 5.4.0 : n° 201 (conversation avec un mineur), n° 84 (rattacher), transfert d'une convocation, n° 182
 import './js/v51.js'; // 5.1.0 : n° 189 (retour du téléphone), 190 (pastilles des rôles), 191 (demandes), 196 (bienvenue)
@@ -72,6 +73,7 @@ function render(keep) {
   else if (S.me.cgu_version !== CGU_VERSION) html = cguScreen(); // n° 180 : nouvelle version des conditions présentée à la connexion
   else if (S.view?.type === 'account') html = accountScreen();
   else if (V37_TOP[vt]) html = V37_TOP[vt](S.view); // n° 96 : demande d'ajout d'un club, page Admin
+  else if (!vt && hooks.adminLanding && (html = hooks.adminLanding())) { /* 5.6.0 · n° 202 : compte administrateur sans club : espace admin ou code à 6 chiffres */ }
   else if (!S.clubId || !isActive() || S.onb !== null) html = onboarding();
   else if (club()?.deleted_at && !active().some((m) => m.role === 'president')) html = clubGoneScreen(); // n° 114 : club dans la corbeille
   else {

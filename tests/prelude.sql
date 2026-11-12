@@ -21,3 +21,5 @@ language sql as $$ insert into net.calls(url, body, headers) values (url, body, 
 -- 4.7.0 (n° 147) : connexions de Supabase, pour vérifier « Ce n'était pas moi »
 create table if not exists auth.sessions(id uuid primary key default gen_random_uuid(), user_id uuid);
 create table if not exists auth.refresh_tokens(id bigserial primary key, user_id varchar(255), session_id uuid);
+-- 5.6.0 (n° 202) : jeton de la session (niveau de vérification « aal ») et facteurs de double vérification
+create or replace function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;

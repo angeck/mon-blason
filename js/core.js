@@ -197,10 +197,11 @@ export async function loadNames(ids) {
 }
 export async function loadMe() {
   const uid = S.session.user.id;
-  const [prof, mems, adm] = await Promise.all([sb.rpc('my_profile'), sb.from('memberships').select('*').eq('user_id', uid), sb.rpc('is_app_admin')]);
+  const [prof, mems, adm, acct] = await Promise.all([sb.rpc('my_profile'), sb.from('memberships').select('*').eq('user_id', uid), sb.rpc('is_app_admin'), sb.rpc('admin_account')]);
   S.me = prof.data || { id: uid, full_name: '', first_name: '', last_name: '' };
   S.mems = mems.data || [];
   S.isAdmin = adm?.data === true; // n° 86 : administrateur mypocketclub (demandes de schéma, n° 96 : demandes de clubs)
+  S.adminAcct = S.isAdmin || acct?.data === true; // 5.6.0 · n° 202 : compte administrateur ; S.isAdmin seulement après le code à 6 chiffres (double vérification)
   const ids = [...new Set(S.mems.map((m) => m.club_id))];
   S.clubs = {};
   if (ids.length) { const { data } = await sb.from('clubs').select('*').in('id', ids); (data || []).forEach((c) => (S.clubs[c.id] = c)); }

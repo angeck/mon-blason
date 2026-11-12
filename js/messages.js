@@ -26,7 +26,7 @@ function reportsBlock() {
   if (!isPresident()) return '';
   if (S.reports === undefined) { S.reports = []; sb.rpc('reported_messages', { p_club: S.clubId }).then(({ data }) => { S.reports = (data || []).filter((r) => !r.handled_at); if (S.reports.length) render(true); }, () => {}); }
   if (!S.reports.length) return '';
-  return `<div class="sec"><h2>Messages signalés (${S.reports.length})</h2></div><div class="card">${S.reports.map((r) => `<div class="row" style="align-items:flex-start"><span class="g"><b>${esc(r.group_name || 'Groupe')}</b><small>${esc(nick(r.author))} : ${esc(r.body || '')}</small>${r.reason ? `<small>Motif : ${esc(r.reason)}</small>` : ''}<small>Signalé par ${esc(nick(r.reporter))} · ${esc(fmtShort(r.created_at))}</small></span><button class="chip" data-act="repdone" data-id="${r.report_id}">Traité</button></div>`).join('')}</div>`;
+  return `<div class="sec"><h2>Messages signalés (${S.reports.length})</h2></div><div class="card">${S.reports.map((r) => `<div class="row" style="align-items:flex-start"><span class="g"><b>${esc(r.group_name || 'Groupe')}</b><small>${esc(nick(r.author))} : ${esc(r.body || '')}</small>${r.reason ? `<small>Motif : ${esc(r.reason)}</small>` : ''}<small>Signalé par ${esc(nick(r.reporter))} · ${esc(fmtShort(r.created_at))}</small></span><span style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><button class="chip" data-act="repdone" data-id="${r.report_id}">Traité</button>${r.forwarded_at ? '<span class="pill ok">Transmis</span>' : `<button class="chip" data-act="repfwd" data-id="${r.report_id}">Transmettre à mypocketclub</button>`}</span></div>`).join('')}<p class="note">« Transmettre » envoie ce message seul (pas la conversation) à l’équipe de mypocketclub, pour un cas grave.</p></div>`;
 }
 export function messagesTab() {
   let h = annoncesBlock() + reportsBlock() + (hooks.grpReqBlock ? hooks.grpReqBlock() : '') + `<div class="sec"><h2>Groupes d'échange</h2></div><button class="btn main" data-act="gnew">${icon('plus', 20)}Créer un groupe d'échange</button>`;
@@ -142,6 +142,7 @@ Object.assign(ACTIONS, {
     if (w) w.location = data.signedUrl; else location.href = data.signedUrl;
   },
   msgrep: async (el, d) => { if (await run(sb.rpc('report_message', { p_message: +d.id, p_reason: null }), 'Merci : le président a été prévenu.')) render(true); },
+  repfwd: async (el, d) => { if (await run(sb.rpc('forward_report', { p_report: d.id }), 'Message transmis à mypocketclub.')) { const r = (S.reports || []).find((x) => x.report_id === d.id); if (r) r.forwarded_at = new Date().toISOString(); render(true); } }, // 5.6.0 · n° 202
   repdone: async (el, d) => { if (await run(sb.from('message_reports').update({ handled_at: new Date().toISOString(), handled_by: S.me.id }).eq('id', d.id))) { S.reports = (S.reports || []).filter((r) => r.report_id !== d.id); render(true); } },
   msgfwd: (el, d) => { const m = S.msgs.find((x) => String(x.id) === String(d.id)); if (!m) return; S.fwd = m; S.stack = (S.stack || []).concat([S.view]); S.view = { type: 'msgfwd' }; render(); },
   fwdto: async (el, d) => {

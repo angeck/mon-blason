@@ -446,3 +446,10 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .obbar { position: fixed; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 60; background: var(--pc-encre); color: #FFFFFF; border-radius: 14px; padding: 12px 14px; display: flex; gap: 10px; align-items: center; box-shadow: var(--pc-ombre); font-weight: 600; }
 .obbar span { flex: 1; }
 .obbar .linkbtn { color: var(--pc-jaune); }
+/* 5.6.0 · n° 202 : espace admin */
+@media (max-width:959px){.admtb nav{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.admnums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;text-align:center}
+.admnums.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.admnums .big{font-size:28px}
+.admquote{margin:0;padding:10px 14px;border-left:4px solid var(--pc-jaune);background:var(--pc-bleu-pale);border-radius:0 12px 12px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.admsecret{display:block;padding:10px 12px;border-radius:12px;background:var(--pc-bleu-pale);font-size:16px;letter-spacing:.08em;overflow-wrap:anywhere;user-select:all}
