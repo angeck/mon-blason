@@ -26,9 +26,10 @@ function roleRequest() {
 
 export function accountScreen() {
   const clubs = Object.values(S.clubs), c = club(), me = S.me;
-  let h = header({ back: !!S.clubId, kicker: 'Mon compte', title: esc(me.full_name || 'Mon compte'), brand: true }) + '<main class="bd">';
+  let h = header({ back: !!S.clubId || S.isAdmin || S.adminAcct, kicker: 'Mon compte', title: esc(me.full_name || 'Mon compte'), brand: true }) + '<main class="bd">';
   if (c) h += `<button class="btn main" data-act="rqgo">${icon('plus', 20)}Demander un autre rôle dans ${esc(c.name)}</button>`;
   if (hooks.helpAccount) h += hooks.helpAccount(); // 5.5.0 : Aide (FAQ et « Pour bien démarrer »)
+  if (hooks.attestAccount) h += hooks.attestAccount(); // 5.7.0 · n° 207 : demander une attestation de paiement
   h += `<div class="sec"><h2>Mon profil</h2></div><form id="proff" class="card"><div class="grid2">${field('pn', 'Prénom', `<input id="pn" name="first_name" value="${esc(me.first_name || '')}" required>`)}${field('pn2', 'Nom', `<input id="pn2" name="last_name" value="${esc(me.last_name || '')}" required>`)}</div>
   ${field('pp', 'Pseudo (affiché dans les groupes)', `<input id="pp" name="nickname" value="${esc(me.nickname || '')}" maxlength="30">`)}
   ${field('pm', 'Adresse e-mail', `<input id="pm" value="${esc(S.session.user.email)}" readonly>`)}
@@ -84,7 +85,7 @@ function benevolatCard() {
   else if (real) body = `<label class="check"><input type="checkbox" data-volunteer="1" ${S.me.volunteer === false ? '' : 'checked'}><span>Je participe au bénévolat du club<small class="det" style="display:block">Tu reçois les demandes « On cherche des bénévoles » et les relances.</small></span></label>`;
   else if (c.supporters_volunteer) body = `<label class="check"><input type="checkbox" data-supvol="1" ${S.me.supporter_volunteer ? 'checked' : ''}><span>Je participe au bénévolat du club<small class="det" style="display:block">Événements du club et matchs des équipes que tu suis.</small></span></label>`;
   else body = '<p class="note">Le club n’ouvre pas le bénévolat aux supporteurs.</p>';
-  return `<div class="sec"><h2>Bénévolat</h2></div><div class="card">${body}</div>`;
+  return `<div class="sec"><h2>Bénévolat</h2></div><div class="card" data-anchor="benevolat">${body}</div>`;
 }
 // Compte dont la suppression est demandée
 export function deletedScreen() {
@@ -93,7 +94,7 @@ export function deletedScreen() {
 }
 
 Object.assign(ACTIONS, {
-  account: () => { S.view = { type: 'account' }; render(); loadDevices().then(() => { if (S.view?.type === 'account') render(true); }); }, // 4.10.0 : la liste des appareils se charge à l'ouverture
+  account: () => { S.view = { type: 'account' }; S.attMine = undefined; render(); loadDevices().then(() => { if (S.view?.type === 'account') render(true); }); }, // 4.10.0 : la liste des appareils se charge à l'ouverture
   rqgo: () => { S.rq.open = true; S.view = { type: 'account' }; render(); setTimeout(() => document.getElementById('rqbox')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); },
   rqopen: () => { S.rq.open = !S.rq.open; render(true); },
   rqrole: (el, d) => { S.rq.role = d.v; render(true); },

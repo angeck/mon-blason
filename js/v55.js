@@ -11,6 +11,7 @@ import { header, icon } from './ui.js';
 import { V310_VIEWS } from './v310.js';
 import { N, standalone } from './notif.js';
 import { Pdf } from './pdfmin.js';
+import { SHOTS } from './faq_shots.js'; // 5.7.0 · n° 206 : captures de la FAQ (fabriquées par tools/captures_faq.py)
 
 // ---------- progression (métadonnées du compte) ----------
 const meta = () => S.session?.user?.user_metadata?.onboarding || {};
@@ -36,7 +37,7 @@ const myEventIds = () => new Set(S.events.filter((e) => e.created_by === S.me.id
 // ---------- les fiches (textes du document 16, vérifiés dans le code 5.4.0) ----------
 // show : sélecteurs des boutons à entourer, un par écran ; auto : coche automatique ; faq : FAQ seulement (pas de ligne)
 const TAB = (i) => `[data-act=tab][data-i="${i}"]`;
-const ROLESBTN = '[data-act=espace]';
+const ROLESBTN = '[data-act=espace], .tb nav.roles [data-act=casq]'; // 5.7.0 : sur ordinateur, le bloc « Mes rôles » à gauche
 export const FICHES = {
   T1: { q: 'Comment installer mypocketclub sur mon téléphone ?', line: () => (/Mobi|Android|iPhone/i.test(navigator.userAgent) ? 'Installer l’appli sur ton téléphone · 1 min' : 'Mettre l’appli sur ton téléphone'),
     why: 'L’appli s’ouvre depuis une icône, comme les autres, et peut te prévenir des rendez-vous. Sur iPhone, c’est obligatoire pour recevoir les notifications.',
@@ -45,7 +46,7 @@ export const FICHES = {
   T2: { q: 'Comment recevoir les notifications ?', line: () => (N.state === 'ios-install' ? 'Activer les notifications (installe d’abord l’appli)' : 'Activer les notifications'),
     why: 'Être prévenu d’un nouveau rendez-vous, d’un changement, d’un rappel ou d’une annonce, même appli fermée. Une seule fois par appareil, pour tous tes clubs.',
     steps: ['Touche la silhouette en haut à droite (Mon compte).', 'Descends jusqu’à « Notifications ».', 'Touche « Activer les notifications ».', 'Dans la fenêtre du téléphone, touche « Autoriser ». Si elles sont bloquées : réglages du téléphone ou du navigateur, puis Notifications, puis mypocketclub.'],
-    extra: () => (N.state === 'off' ? '<button class="btn main" data-act="pushon">Activer maintenant</button>' : ''), show: ['[data-act=account]', '[data-act=pushon]'], auto: () => N.state === 'on' },
+    extra: () => (N.state === 'off' ? '<button class="btn main" data-act="pushon">Activer maintenant</button>' : ''), show: ['[data-act=account]', '[data-act=pushon], [data-anchor=push]'], auto: () => N.state === 'on' },
   T3: { q: 'Comment dire si je viens ?', line: 'Répondre à un rendez-vous', who: () => realRole(),
     why: 'Le coach sait qui vient ; ta réponse remplit l’appel.',
     steps: ['Sur l’Accueil, la carte jaune « À répondre » ; sinon l’onglet Agenda (la pastille compte les réponses à donner).', 'Touche « Je viens » ou « Je ne viens pas » (pour un enfant : « Léo vient » ; pour un événement : « Je participe »).', 'Tu peux changer ta réponse en touchant l’autre bouton.'],
@@ -66,7 +67,8 @@ export const FICHES = {
   K4: { q: 'Où sont mes accords ?', faq: true, why: 'Droit à l’image et e-mails d’information : tu les changes quand tu veux.', steps: ['Mon compte › « Mes accords ». Pour un enfant, le droit à l’image est sur sa fiche. Les e-mails nécessaires (convocations, sécurité) partent toujours.'] },
   K5: { q: 'Comment devenir bénévole ?', line: 'Devenir bénévole', who: () => adult() && (has('parent') || has('joueur') || has('supporteur')),
     why: 'Le club compte sur ses membres pour la table de marque, l’arbitrage, la buvette. Tu choisis tes missions.',
-    steps: ['Mon compte › « Bénévolat » : « Je participe au bénévolat du club ».', 'Réservé aux adultes ; pour un supporteur, seulement si le club l’ouvre.'], auto: () => S.me.volunteer === true || S.me.supporter_volunteer === true },
+    steps: ['Touche la silhouette en haut à droite (Mon compte).', 'Descends jusqu’au cadre « Bénévolat ».', 'Coche « Je participe au bénévolat du club ».', 'Ensuite, les missions (table de marque, buvette…) apparaissent sur les rendez-vous et sur l’Accueil : touche « Je prends » sur celles qui te vont.', 'Supporteur : possible seulement si ton club l’a ouvert aux supporteurs. Le bénévolat est réservé aux adultes.'],
+    show: ['[data-act=account]', '[data-anchor=benevolat]'], auto: () => S.me.volunteer === true || S.me.supporter_volunteer === true },
   K6: { q: 'Comment quitter un club ?', faq: true, why: 'Ton compte reste ; tu n’as plus accès à ce club.', steps: ['Mon compte › « Quitter [club] », puis « Confirmer ».'] },
   K7: { q: 'Mon téléphone est perdu, ou je veux changer mon mot de passe', faq: true, why: 'Pour protéger ton compte.', steps: ['Mon compte › « Sécurité » : « Me déconnecter de tous les appareils » (deux touches), la liste des appareils connus, « Changer mon mot de passe ».'] },
   K8: { q: 'Comment récupérer ou supprimer mes données ?', faq: true, why: 'Tes données t’appartiennent.', steps: ['Mon compte › « Mes données » : « Télécharger mes données » (un fichier).', '« Supprimer mon compte » (deux touches) : tu es retiré tout de suite des clubs ; 30 jours pour annuler en te reconnectant.'] },
@@ -188,9 +190,10 @@ hooks.obHome = () => {
 function fichePage(id) {
   const f = FICHES[id]; if (!f) return '<p class="empty">Fiche introuvable.</p>';
   const ok = isDone(id), extra = txt(f.extra) || '';
+  const shot = SHOTS.has(id) ? `<figure class="obshot"><button type="button" data-act="obzoom" data-id="${id}" aria-label="Agrandir la capture"><picture><source media="(min-width:960px)" srcset="img/faq/${id}-pc.jpg"><img src="img/faq/${id}-tel.jpg" alt="Capture de l’écran : ${esc(f.q)}" loading="lazy"></picture></button><figcaption class="note">L’écran, zone à toucher en jaune${/Mobi|Android|iPhone/i.test(navigator.userAgent) ? ' · touche pour agrandir' : ''}</figcaption></figure>` : '';
   return `<div class="card lift"><div class="kick">À quoi ça sert</div><p style="margin:0">${esc(f.why)}</p></div>
-  <div class="card"><div class="kick">Comment faire</div><ol class="obsteps">${f.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol></div>
-  <div class="btns">${f.show ? `<button class="btn main" data-act="obshow" data-id="${id}">Me montrer</button>` : ''}${extra}
+  <div class="card"><div class="kick">Comment faire</div><ol class="obsteps">${f.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>${shot}</div>
+  <div class="btns">${f.show ? `<button class="btn main" data-act="obshow" data-id="${id}">Me montrer</button><button class="btn ghost" data-act="obgo" data-id="${id}">Y aller</button>` : ''}${extra}
   ${f.line ? (ok ? `<button class="btn ghost" data-act="obundo" data-id="${id}">Pas encore fait</button>` : `<button class="btn ${f.show ? 'ghost' : 'main'}" data-act="obdone" data-id="${id}">C’est fait</button>`) : ''}</div>`;
 }
 V310_VIEWS.obfiche = (v) => ({ head: header({ back: true, kicker: FICHES[v.id]?.faq ? 'Aide' : 'Pour bien démarrer', title: esc(FICHES[v.id]?.q || 'Aide') }), body: fichePage(v.id) });
@@ -209,23 +212,45 @@ hooks.helpAccount = () => `<button class="btn ghost" data-act="faq">${icon('msg'
 
 // ---------- « Me montrer » : un bouton entouré par écran ----------
 let showBar = null;
+// premier élément visible qui correspond (sur ordinateur, les quatre carrés sont cachés : c'est le bloc « Mes rôles »)
+const seen = (sel) => [...document.querySelectorAll(sel)].find((x) => x.offsetParent !== null || x.getClientRects().length) || null;
 function clearShow() { document.querySelectorAll('.ob-hl').forEach((x) => x.classList.remove('ob-hl')); if (showBar) { showBar.remove(); showBar = null; } }
+// 5.7.0 · n° 206 : bandeau jaune ; sur ordinateur, panneau vertical avec toutes les étapes de la fiche
+function barHtml(f, j, found) {
+  const n = f.show.length, cur = Math.min(j, n - 1);
+  const head = found ? (cur + 1 < n ? `Étape ${cur + 1} sur ${n} · touche la zone jaune` : 'Dernière étape · touche la zone jaune') : `Étape ${cur + 1} sur ${n} · ${esc(f.steps[Math.min(cur, f.steps.length - 1)])}`;
+  return `<div class="obbar-q">${esc(f.q)}</div><b class="obbar-now">${head}</b><ol class="obbar-steps">${f.steps.map((t, k) => `<li class="${k === cur ? 'on' : k < cur ? 'done' : ''}">${esc(t)}</li>`).join('')}</ol><button data-act="obstop" class="btn small ink">Arrêter</button>`;
+}
 function paintShow() {
   clearShow();
   const s = S.obShow; if (!s) return;
   const f = FICHES[s.id]; if (!f?.show) { S.obShow = null; return; }
   // l'étape la plus avancée visible à l'écran (la personne a peut-être déjà touché le bouton d'avant)
-  let j = -1; for (let k = f.show.length - 1; k >= s.i; k--) { if (document.querySelector(f.show[k])) { j = k; break; } }
+  let j = -1; for (let k = f.show.length - 1; k >= s.i; k--) { if (seen(f.show[k])) { j = k; break; } }
   showBar = document.createElement('div'); showBar.className = 'obbar';
-  if (j < 0) {   // le bouton suivant n'est pas sur cet écran (plusieurs rôles, autre onglet) : on dit quoi chercher
-    showBar.innerHTML = `<span>Étape ${Math.min(s.i, f.show.length - 1) + 1} sur ${f.show.length} · ${esc(f.steps[Math.min(s.i, f.steps.length - 1)])}</span><button data-act="obstop" class="linkbtn">Arrêter</button>`;
-    document.body.appendChild(showBar); return;
-  }
+  // sur ordinateur, le bandeau vertical se range dans la colonne de gauche, sous les onglets et « Mes rôles »
+  const side = innerWidth >= 960 && document.querySelector('.tb');
+  if (side) showBar.classList.add('side');
+  const put = () => (side ? side.appendChild(showBar) : document.body.appendChild(showBar));
+  if (j < 0) { showBar.innerHTML = barHtml(f, s.i, false); put(); return; }
   s.i = j;
-  const el = document.querySelector(f.show[j]); el.classList.add('ob-hl'); el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  showBar.innerHTML = `<span>${j + 1 < f.show.length ? `Étape ${j + 1} sur ${f.show.length} · touche le bouton entouré` : 'Dernière étape · touche le bouton entouré'}</span><button data-act="obstop" class="linkbtn">Arrêter</button>`;
-  document.body.appendChild(showBar);
+  const el = seen(f.show[j]); el.classList.add('ob-hl'); el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  showBar.innerHTML = barHtml(f, j, true);
+  put();
   el.addEventListener('click', () => { if (S.obShow) { S.obShow.i = j + 1; if (S.obShow.i >= f.show.length) { S.obShow = null; setTimeout(clearShow, 50); } } }, { once: true, capture: true });
+}
+// 5.7.0 · n° 206 : « Y aller » refait les étapes à la place de la personne et entoure la dernière zone
+const tick = () => new Promise((r) => setTimeout(r, 120));
+export async function goFiche(id) {
+  const f = FICHES[id]; if (!f?.show) return false;
+  S.obShow = { id, i: 0 }; S.view = null; S.stack = []; S.tab = 0; S.noStack = true; render(); await tick();
+  for (let k = 0; k < f.show.length - 1; k++) {
+    const el = seen(f.show[k]); if (!el) break;
+    el.click(); await tick(); await tick();
+  }
+  const last = seen(f.show[f.show.length - 1]);
+  if (S.obShow) { S.obShow.i = f.show.length - 1; paintShow(); }
+  return !!last;
 }
 hooks.obAfter = () => {
   // coches automatiques à la visite (ouvrir un groupe, l'onglet Équipe, son espace…)
@@ -236,24 +261,27 @@ hooks.obAfter = () => {
 };
 
 Object.assign(ACTIONS, {
-  obfiche: (el, d) => { S.view = { type: 'obfiche', id: d.id }; render(); },
+  obfiche: (el, d) => { S.obShow = null; clearShow(); S.view = { type: 'obfiche', id: d.id }; render(); }, // 5.7.0 · n° 206 : plus de reste de « Me montrer »
   obmore: (el, d) => { S.obMore = { ...(S.obMore || {}), [d.v]: true }; render(true); },
-  obdone: (el, d) => { saveMeta({ done: [...doneSet(), d.id] }); toast('C’est noté.'); const v = (S.stack || []).pop() || null; S.view = v; S.noStack = true; render(); },
-  obundo: (el, d) => { const s = doneSet(); s.delete(d.id); saveMeta({ done: [...s] }); render(true); },
+  obdone: (el, d) => { S.obShow = null; clearShow(); saveMeta({ done: [...doneSet(), d.id] }); toast('C’est noté.'); const v = (S.stack || []).pop() || null; S.view = v; S.noStack = true; render(); },
+  obundo: (el, d) => { S.obShow = null; clearShow(); const s = doneSet(); s.delete(d.id); saveMeta({ done: [...s] }); render(true); },
   obhide: () => { saveMeta({ hidden: true }); toast('Masqué. Tu le retrouves dans Mon compte › Aide.'); render(true); },
   obshowcard: () => { saveMeta({ hidden: false }); S.view = null; S.stack = []; S.tab = 0; render(); },
   obshow: (el, d) => { S.obShow = { id: d.id, i: 0 }; S.view = null; S.stack = []; S.tab = 0; S.noStack = true; render(); },
   obstop: () => { S.obShow = null; clearShow(); },
-  faq: () => { S.faqQ = ''; S.view = { type: 'faq' }; render(); },
+  faq: () => { S.obShow = null; clearShow(); S.faqQ = ''; S.view = { type: 'faq' }; render(); },
+  obgo: async (el, d) => { if (!(await goFiche(d.id))) toast('Cet écran n’est pas accessible avec tes rôles actuels.'); },
+  obzoom: (el, d) => {
+    if (innerWidth >= 960) return;
+    const z = document.createElement('div'); z.className = 'obzoom'; z.setAttribute('role', 'dialog'); z.setAttribute('aria-label', 'Capture agrandie');
+    z.innerHTML = `<img src="img/faq/${d.id}-tel.jpg" alt=""><button class="btn ink small">Fermer</button>`;
+    z.addEventListener('click', () => z.remove()); document.body.appendChild(z);
+  },
 });
 document.addEventListener('input', (e) => { if (e.target?.dataset?.faqq) { S.faqQ = e.target.value; render(true); const n = document.getElementById('faqq'); if (n) { n.focus(); const p = n.value.length; try { n.setSelectionRange(p, p); } catch { /* */ } } } });
 
 // ---------- n° 164 · justificatif d'adhésion (comité d'entreprise) ----------
-hooks.attestBtn = (p) => {
-  if (!p || p.from_partner || !(isPresident() || hasArea('tresorerie'))) return '';
-  if (!S.payments.some((x) => x.player_id === p.id)) return '';
-  return `<button class="btn ghost" data-act="attest" data-id="${p.id}">${icon('down', 20)}Justificatif d’adhésion (PDF)</button><p class="note">Pour un comité d’entreprise : il atteste l’adhésion et les sommes réellement versées au club. Chaque justificatif délivré est inscrit au journal.</p>`;
-};
+// 5.7.0 : le bouton de la fiche joueur ouvre le formulaire du n° 204 (js/v57.js)
 const eur = (n) => (+n).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 export function attestationPdf(d, now = new Date()) {
   const pdf = new Pdf(), L = 20, R = 190, W = R - L; let y = 30;
@@ -275,9 +303,3 @@ export function attestationPdf(d, now = new Date()) {
   pdf.text(L, 285, `Document établi avec ${BRAND.name} à partir des versements notés par le club.`, { size: 8.5, color: '#4A5068' });
   return pdf.bytes();
 }
-ACTIONS.attest = async (el, d) => {
-  const r = await run(sb.rpc('membership_attestation', { p_player: d.id })); if (!r) return;
-  const p = pl(d.id), bytes = attestationPdf(r);
-  download(new Blob([bytes], { type: 'application/pdf' }), `Justificatif-adhesion-${(p ? pname(p) : 'joueur').replace(/[^\p{L}\p{N}]+/gu, '-')}-${r.season}.pdf`);
-  toast('Justificatif téléchargé.');
-};

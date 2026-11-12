@@ -262,7 +262,13 @@ Object.assign(ACTIONS, {
     await openPendingJoin(); render();
   },
   joincancel: () => { store.set('pc_join', ''); S.join = { code: '', role: 'supporteur', teams: [] }; S.onb = isActive() ? null : ''; render(); },
-  logout: async () => { await unlinkPush(); await sb.auth.signOut(); },
+  // 5.7.0 · n° 205 : déconnexion immédiate (le désabonnement des notifications n'attend pas plus d'une seconde) ;
+  // si la déconnexion côté serveur échoue, la session de cet appareil est quand même fermée
+  logout: async () => {
+    await Promise.race([unlinkPush().catch(() => {}), new Promise((r) => setTimeout(r, 1000))]);
+    let r = null; try { r = await sb.auth.signOut(); } catch (e) { r = { error: e }; }
+    if (r?.error) { try { await sb.auth.signOut({ scope: 'local' }); } catch { /* */ } }
+  },
   legal: (el, d) => { // n° 175 : la saisie de l'inscription (sauf les mots de passe) est gardée le temps de lire les textes
     const f = el?.closest?.('form[id]') || document.querySelector('#authf, #cguf');
     if (f && S.view?.type !== 'legal') S.formKeep = { id: f.id, v: [...f.querySelectorAll('input[name]')].filter((x) => x.type !== 'password' && x.type !== 'file').map((x) => [x.name, x.type === 'checkbox' ? x.checked : x.value]) };

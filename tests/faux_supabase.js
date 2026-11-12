@@ -208,6 +208,15 @@ const RPC = {
   admin_log_list: () => [{ at: '2026-11-12T09:30:00Z', admin_name: 'Gaël Test', action: 'abonnement modifié', club_name: 'Volley Test', detail: {} }],
   admin_set_subscription: (a) => { window.__SUB = a; return null; }, admin_extend_validation: (a) => { window.__EXT = a; return '2027-01-11'; },
   admin_report_done: (a) => { window.__REPDONE = a; return null; }, forward_report: (a) => { window.__REPFWD = a; return null; },
+  // 5.7.0 · n° 204 et 207 : attestations de paiement
+  attestation_settings: () => window.__ASET || { legal_id: '', address: '', phone: '', email: '', footer: '', stamp: null, city: 'Testville' },
+  set_attestation_settings: (a) => { window.__ASETW = a; window.__ASET = { ...(window.__ASET || {}), legal_id: a.p_legal_id, address: a.p_address, phone: a.p_phone, email: a.p_email, footer: a.p_footer, city: 'Testville' }; return null; },
+  set_club_stamp: (a) => { window.__STAMP = a; return null; }, my_signature: () => window.__SIG ?? null, set_my_signature: (a) => { window.__SIG = a.p_img; return null; },
+  attestation_data: (a) => { window.__ATTD = a; return { club: 'BC Testville', city: 'Testville', sport: 'Basket-ball', first_name: 'Tom', last_name: 'Dupont', birth_date: '2017-03-02', team: 'U9', category: 'U9', season: '2026-2027', paid: 50, payments: [{ amount: 50, paid_at: '2026-11-09T10:00:00Z', method: 'Chèque' }], signer: 'Gaël Test', signer_role: 'Président', requester: a.p_requester, legal_id: a.p_legal_id || '', address: '1 rue du Test\n00000 Testville', phone: '0100000000', email: 'club@exemple.invalid', footer: 'Association loi 1901', stamp: null, signature: null }; },
+  club_attestation_requests: () => window.__AREQ || [], my_attestation_players: () => window.__AMINE || [],
+  request_attestation: (a) => { window.__AREQUEST = a; (window.__AMINE || []).forEach((x) => { if (x.player_id === a.p_player) x.status = 'attente'; }); return 'req-new'; },
+  deliver_attestation: (a) => { window.__ADELIV = a; return null; }, refuse_attestation: (a) => { window.__AREFUSE = a; return null; },
+  attestation_pdf: () => 'JVBERi0xLjQK',
   export_my_data: () => ({ profil: D.profiles[0] }), validate_membership: ({ mid }) => { D.memberships.find((m) => m.id === mid).status = 'active'; return null; },
 };
 window.__RPC = RPC; // 4.6.0 : les tests d'écrans ajoutent des réponses (admin_list…)

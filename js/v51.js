@@ -30,7 +30,8 @@ function lateHours() {
 // exercices à valider, heures à vérifier
 function itemsOf(k) {
   const vp = toValidate(), out = { dem: new Set(), exos: 0, hours: 0 };
-  if (k === 'president') { vp.forEach((m) => out.dem.add(m.id)); out.hours = lateHours(); return out; } // 5.2.0 : coachs qui n'ont pas confirmé leurs heures
+  const att = (S.attReqs || []).filter((x) => x.status === 'attente').map((x) => 'att:' + x.id); // 5.7.0 · n° 207 : attestations demandées
+  if (k === 'president') { vp.forEach((m) => out.dem.add(m.id)); att.forEach((id) => out.dem.add(id)); out.hours = lateHours(); return out; } // 5.2.0 : coachs qui n'ont pas confirmé leurs heures
   if (isCoachCasq(k)) {
     const ts = casquettes().find((x) => x.k === k)?.teams || [];
     vp.filter((m) => m.team_id && ts.includes(m.team_id) && ['joueur', 'parent'].includes(m.role)).forEach((m) => out.dem.add(m.id));
@@ -38,7 +39,7 @@ function itemsOf(k) {
     return out;
   }
   const a = areasOf(k);
-  if (a.includes('tresorerie')) out.hours = lateHours(); // 5.2.0 (n° 190) : relevé d'heures en attente de confirmation des coachs
+  if (a.includes('tresorerie')) { out.hours = lateHours(); att.forEach((id) => out.dem.add(id)); } // 5.2.0 (n° 190) : relevé d'heures en attente de confirmation des coachs
   if (a.includes('secretariat')) vp.filter((m) => ['joueur', 'parent', 'supporteur', 'coach'].includes(m.role)).forEach((m) => out.dem.add(m.id));
   if (a.includes('technique')) { vp.filter((m) => m.role === 'coach').forEach((m) => out.dem.add(m.id)); out.exos = (S.coachCounts || {}).exos || 0; }
   return out;

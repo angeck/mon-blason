@@ -72,7 +72,7 @@ export function pushCard() {
   else if (st === 'denied') body = `<p class="note">Les notifications sont bloquées pour ${BRAND.name} sur cet appareil. Pour les rouvrir : réglages du téléphone ou du navigateur, puis Notifications, puis ${BRAND.name}.</p>`;
   else body = '<p class="note">Ce navigateur ne reçoit pas les notifications. Essaie avec Chrome, Edge, Firefox ou Safari à jour.</p>';
   // 4.8.0 : le guide « Installer et notifications » (js/v48.js), toujours à portée dans Mon compte
-  return `<div class="sec"><h2>Notifications</h2></div><div class="card">${body}<button class="btn small ghost" data-act="guide">${icon('doc', 18)}Guide : installer l’application et activer les notifications</button></div>`;
+  return `<div class="sec"><h2>Notifications</h2></div><div class="card" data-anchor="push">${body}<button class="btn small ghost" data-act="guide">${icon('doc', 18)}Guide : installer l’application et activer les notifications</button></div>`;
 }
 
 // Encart en tête de l'Accueil, à chaque ouverture, tant que la personne n'a fait aucun choix sur cet appareil :

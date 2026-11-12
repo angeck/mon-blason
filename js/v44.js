@@ -256,7 +256,7 @@ const BODY = {
       blk('benevoles', 'Bénévoles', benevBlock(l.filter((e) => new Date(e.starts_at) < Date.now() + 30 * DAY)))];
   },
   // ---------- n° 153 · Aperçu de chaque fonction : ce qui est à faire, puis les droits réglés par le président (n° 155) ----------
-  ap_tresorerie: () => [blk('afaire', 'À faire', todo([[lateFees().length, 'cotisation non réglée', 'cotisations non réglées', 'cotis'], [(S.coachCounts || {}).hours || 0, 'relevé d’heures à valider', 'relevés d’heures à valider', 'heures']], 'f:Trésorier'))],
+  ap_tresorerie: () => [blk('attreq', 'Attestations demandées', hooks.attestReqBlock ? hooks.attestReqBlock() : ''), blk('afaire', 'À faire', todo([[lateFees().length, 'cotisation non réglée', 'cotisations non réglées', 'cotis'], [(S.coachCounts || {}).hours || 0, 'relevé d’heures à valider', 'relevés d’heures à valider', 'heures']], 'f:Trésorier'))],
   ap_secretariat: () => { const vp = toValidate(); return [blk('demandes', 'Demandes à valider', vp.length ? `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>` : ''), blk('afaire', 'À faire', todo([[incomplete().length, 'fiche incomplète', 'fiches incomplètes', 'fiches']])), blk('droits', 'Droits', rights(['secretary_sees_fees']))]; },
   ap_licences: () => [blk('droits', 'Droits', rights(['secretary_sees_fees']))],
   ap_rencontres: () => [blk('convoquer', 'Convocations à envoyer', convokeBlock()), blk('afaire', 'À faire', todo([[homeSoon(60).filter((e) => !(e.place || '').trim()).length, 'match sans gymnase', 'matchs sans gymnase', 'renc'], [clubEvs().reduce((n, e) => n + missing(e.id), 0), 'place de bénévole à pourvoir', 'places de bénévoles à pourvoir', 'benev']]))],

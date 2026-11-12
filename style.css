@@ -442,10 +442,32 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .obck { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--pc-trait); display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
 .obck.on { background: var(--pc-oui-fond); color: var(--pc-oui-texte); border-color: transparent; }
 .obsteps { margin: 6px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
-.ob-hl { outline: 4px solid var(--pc-jaune) !important; outline-offset: 3px; border-radius: 12px; box-shadow: 0 0 0 9px rgba(255, 201, 60, .35) !important; position: relative; z-index: 5; }
-.obbar { position: fixed; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 60; background: var(--pc-encre); color: #FFFFFF; border-radius: 14px; padding: 12px 14px; display: flex; gap: 10px; align-items: center; box-shadow: var(--pc-ombre); font-weight: 600; }
-.obbar span { flex: 1; }
-.obbar .linkbtn { color: var(--pc-jaune); }
+/* 5.7.0 · n° 206 : pendant « Me montrer », la zone à toucher passe en jaune mypocketclub */
+.ob-hl { background: var(--pc-jaune) !important; color: var(--pc-encre) !important; border-color: var(--pc-encre) !important; outline: 3px solid var(--pc-encre) !important; outline-offset: 2px; border-radius: 14px; box-shadow: 0 0 0 8px rgba(255, 201, 60, .45) !important; position: relative; z-index: 5; animation: obpulse 1.4s ease-in-out 3; }
+.ob-hl * { color: var(--pc-encre) !important; }
+.ob-hl svg { stroke: var(--pc-encre) !important; }
+@keyframes obpulse { 50% { box-shadow: 0 0 0 14px rgba(255, 201, 60, .2) !important; } }
+@media (prefers-reduced-motion: reduce) { .ob-hl { animation: none; } }
+.obbar { position: fixed; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 60; background: var(--pc-jaune); color: var(--pc-encre); border-radius: 16px; padding: 12px 14px; display: flex; gap: 10px; align-items: center; box-shadow: 0 10px 24px rgba(17,22,46,.18); }
+.obbar-q, .obbar-steps { display: none; }
+.obbar-now { flex: 1; font-weight: 700; }
+.obbar .btn.ink { flex: none; }
+@media (min-width: 960px) {
+  .obbar { flex-direction: column; align-items: stretch; padding: 16px; }
+  .obbar.side { position: static; width: auto; pointer-events: auto; box-shadow: none; }
+  .obbar-q { display: block; font-family: var(--pc-titre); font-weight: 800; font-size: 17px; line-height: 1.2; }
+  .obbar-steps { display: block; margin: 0; padding-left: 20px; font-size: 14px; }
+  .obbar-steps li { margin: 4px 0; }
+  .obbar-steps li.on { font-weight: 700; }
+  .obbar-steps li.done { opacity: .55; text-decoration: line-through; }
+}
+.obshot { margin: 8px 0 0; }
+.obshot button { border: 0; padding: 0; background: none; display: block; cursor: zoom-in; }
+.obshot img { width: 120px; height: auto; border-radius: 12px; border: 2px solid var(--pc-trait); display: block; }
+.obshot figcaption { margin-top: 4px; }
+@media (min-width: 960px) { .obshot img { width: 100%; max-width: 760px; cursor: default; } .obshot button { cursor: default; } }
+.obzoom { position: fixed; inset: 0; z-index: 90; background: rgba(17,22,46,.88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; }
+.obzoom img { max-width: 100%; max-height: calc(100% - 70px); border-radius: 14px; }
 /* 5.6.0 · n° 202 : espace admin */
 @media (max-width:959px){.admtb nav{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .admnums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;text-align:center}
