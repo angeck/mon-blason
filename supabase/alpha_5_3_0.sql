@@ -273,4 +273,231 @@ end $$;
 revoke execute on function link_convocation(uuid, uuid, uuid) from public, anon;
 grant execute on function link_convocation(uuid, uuid, uuid) to authenticated;
 
+-- ---------------------------------------------------------------------
+-- N° 136 (2) · profil « Aide coach » pour les mineurs
+--   Un joueur de 15 à 17 ans (compte à lui) est choisi par un coach de l'équipe ou le président. Il n'a AUCUN droit en plus, sauf voir les
+--   joueurs de l'équipe en « Prénom I. » (sans coordonnées ni photo) et le nom des coachs. Le droit se calcule à chaque usage : il tombe
+--   dès que la personne n'est plus mineure ou plus membre du club. Aucun accès aux rendez-vous, à l'appel, aux messages ni aux fiches.
+-- ---------------------------------------------------------------------
+create table if not exists team_helpers (
+  team_id uuid not null references teams(id) on delete cascade,
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  set_by uuid references auth.users(id) on delete set null,
+  set_at timestamptz not null default now(),
+  primary key (team_id, user_id)
+);
+alter table team_helpers enable row level security;
+drop policy if exists "aides coach lues" on team_helpers;
+create policy "aides coach lues" on team_helpers for select using (user_id = auth.uid() or is_president(club_id) or coaches_team(team_id));
+revoke all on team_helpers from anon;
+grant select on team_helpers to authenticated;
+
+create or replace function team_helper_eligible(c uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select u is not null and exists(select 1 from players p where p.club_id = c and p.user_id = u and p.deleted_at is null)
+    and not account_is_adult(c, u)
+    and exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active');
+$$;
+create or replace function can_set_team_helper(t uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from teams x where x.id = t and x.deleted_at is null) and (coaches_team(t) or is_president((select club_id from teams where id = t)));
+$$;
+revoke execute on function team_helper_eligible(uuid, uuid), can_set_team_helper(uuid) from public, anon;
+
+create or replace function team_helper_candidates(p_team uuid) returns table(uid uuid, label text)
+language plpgsql stable security definer set search_path = public as $$
+declare t teams;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null or not can_set_team_helper(p_team) then raise exception 'Réservé au coach de l''équipe et au président'; end if;
+  return query
+    select p.user_id, p.first_name || ' ' || upper(left(coalesce(nullif(p.last_name, ''), ' '), 1)) || '.'
+    from players p where p.club_id = t.club_id and p.user_id is not null and p.deleted_at is null and team_helper_eligible(t.club_id, p.user_id)
+      and not exists(select 1 from team_helpers h where h.team_id = p_team and h.user_id = p.user_id)
+    order by p.first_name;
+end $$;
+
+create or replace function team_helpers_of(p_team uuid) returns table(uid uuid, label text, set_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+declare t teams;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null or not (can_set_team_helper(p_team) or is_board(t.club_id)) then raise exception 'Réservé à l''encadrement de l''équipe'; end if;
+  return query select h.user_id, p.first_name || ' ' || upper(left(coalesce(nullif(p.last_name, ''), ' '), 1)) || '.', h.set_at
+    from team_helpers h join profiles p on p.id = h.user_id where h.team_id = p_team order by h.set_at;
+end $$;
+
+create or replace function set_team_helper(p_team uuid, p_user uuid, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare t teams; tn text;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null or not can_set_team_helper(p_team) then raise exception 'Réservé au coach de l''équipe et au président'; end if;
+  if p_on then
+    if not team_helper_eligible(t.club_id, p_user) then raise exception 'Seul un joueur mineur du club, avec son propre compte, peut être aide coach'; end if;
+    insert into team_helpers(team_id, club_id, user_id, set_by) values (p_team, t.club_id, p_user, auth.uid()) on conflict do nothing;
+    if found then
+      perform push_enqueue(x, 'Aide coach', 'Tu es aide coach de l''équipe ' || left(t.name, 40) || '. Tu vois les noms des joueurs et des coachs, rien de plus.', 'aide:' || p_team, 'aide:' || p_team || ':' || x || ':' || to_char(now(), 'YYYYMMDDHH24'), './')
+        from (select p_user x union select pp.user_id from players pl join player_parents pp on pp.player_id = pl.id where pl.user_id = p_user and pl.club_id = t.club_id) z;
+    end if;
+  else
+    delete from team_helpers where team_id = p_team and user_id = p_user;
+  end if;
+  perform log_action(t.club_id, p_user, null, case when p_on then 'aide coach ajouté' else 'aide coach retiré' end, jsonb_build_object('equipe', t.name));
+end $$;
+
+create or replace function my_helper_teams() returns table(team_id uuid, team_name text, club_id uuid)
+language sql stable security definer set search_path = public as $$
+  select h.team_id, t.name, h.club_id from team_helpers h join teams t on t.id = h.team_id
+  where h.user_id = auth.uid() and t.deleted_at is null and team_helper_eligible(h.club_id, h.user_id);
+$$;
+
+-- Ce que voit l'aide coach : les coachs (nom complet) et les joueurs (« Prénom I. »), au format de club_roster
+create or replace function helper_roster(p_team uuid) returns table(kind text, ref uuid, user_id uuid, first_name text, last_name text, role text, team_id uuid, assistant boolean, since timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+declare t teams;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null or not exists(select 1 from team_helpers h where h.team_id = p_team and h.user_id = auth.uid()) or not team_helper_eligible(t.club_id, auth.uid()) then return; end if;
+  return query
+    select 'membre'::text, m.id, m.user_id, p.first_name, p.last_name, m.role, m.team_id, m.assistant, m.created_at
+      from memberships m join profiles p on p.id = m.user_id where m.club_id = t.club_id and m.team_id = p_team and m.role = 'coach' and m.status = 'active'
+    union all
+    select 'joueur'::text, x.id, null::uuid, x.first_name, case when x.last_name = '' then '' else left(x.last_name, 1) || '.' end, 'joueur'::text, p_team, false, x.created_at
+      from players x where x.club_id = t.club_id and x.deleted_at is null and (x.team_id = p_team or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = p_team));
+end $$;
+revoke execute on function team_helper_candidates(uuid), team_helpers_of(uuid), set_team_helper(uuid, uuid, boolean), my_helper_teams(), helper_roster(uuid) from public, anon;
+grant execute on function team_helper_candidates(uuid), team_helpers_of(uuid), set_team_helper(uuid, uuid, boolean), my_helper_teams(), helper_roster(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- N° 187 · durées de conservation : suppressions automatiques (temps 2)
+--   Une saison court du 1er juillet au 30 juin. Les règles sont écrites dans purge_expired(), qui NE TOURNE PAS toute seule :
+--   Gaël la lance à la main (purge_expired() = simple comptage, purge_expired(true) = suppression), puis la planifie quand il est sûr.
+--     - messages : effacés quand la 3e saison après leur saison commence (on garde la saison en cours et la précédente) ;
+--     - présences : anonymisées quand la saison suivante commence (totaux gardés par équipe et par saison, plus aucun nom) ;
+--     - journal des actions sensibles : 1 an ;
+--     - e-mail d'un responsable invité (entente) : effacé 30 jours après l'invitation s'il n'y a pas eu d'inscription ;
+--     - comptes : 3 ans sans connexion ; l'avertissement par e-mail se prépare avec warn_inactive_accounts() (l'envoi n'est pas branché) ;
+--       30 jours après l'avertissement, le compte entre dans la suppression habituelle (30 jours de corbeille).
+--   Pas encore codé : la fiche d'un joueur parti du club (« 2 saisons après le départ ») : l'application ne note pas encore le départ.
+-- ---------------------------------------------------------------------
+create table if not exists attendance_archive (
+  club_id uuid not null references clubs(id) on delete cascade,
+  team_id uuid references teams(id) on delete set null,
+  season text not null,
+  present int not null default 0,
+  absent int not null default 0,
+  retard int not null default 0,
+  primary key (club_id, season, team_id)
+);
+alter table attendance_archive enable row level security;
+drop policy if exists "totaux de présence lus par l'encadrement" on attendance_archive;
+create policy "totaux de présence lus par l'encadrement" on attendance_archive for select using (is_board(club_id) or coaches_team(team_id));
+revoke all on attendance_archive from anon;
+grant select on attendance_archive to authenticated;
+alter table profiles add column if not exists inactive_warned_at timestamptz;
+
+-- Premier jour de la saison qui contient la date (1er juillet)
+create or replace function season_start(ts timestamptz) returns date language sql immutable as $$
+  select make_date(extract(year from ((ts at time zone 'Europe/Paris') - interval '6 months'))::int, 7, 1);
+$$;
+create or replace function season_label(ts timestamptz) returns text language sql immutable as $$
+  select extract(year from season_start(ts))::int || '-' || (extract(year from season_start(ts))::int + 1);
+$$;
+
+create or replace function warn_inactive_accounts(p_apply boolean default false) returns table(user_id uuid, email text, first_name text)
+language plpgsql security definer set search_path = public as $$
+begin
+  return query select u.id, u.email::text, pr.first_name
+    from auth.users u join profiles pr on pr.id = u.id
+    where pr.deleted_at is null and pr.inactive_warned_at is null
+      and coalesce(u.last_sign_in_at, u.created_at) < now() - interval '3 years' + interval '30 days';
+  if p_apply then
+    update profiles pr set inactive_warned_at = now() from auth.users u
+      where u.id = pr.id and pr.deleted_at is null and pr.inactive_warned_at is null and coalesce(u.last_sign_in_at, u.created_at) < now() - interval '3 years' + interval '30 days';
+  end if;
+end $$;
+
+create or replace function purge_expired(p_apply boolean default false) returns table(item text, n bigint)
+language plpgsql security definer set search_path = public as $$
+declare cur date := season_start(now()); k bigint;
+begin
+  -- messages : saison de création + 2 saisons
+  select count(*) into k from messages m where season_start(m.created_at) + interval '2 years' <= now();
+  item := 'messages à effacer'; n := k; return next;
+  if p_apply then delete from messages m where season_start(m.created_at) + interval '2 years' <= now(); end if;
+
+  -- présences : totaux gardés, noms retirés dès la saison suivante
+  select count(*) into k from attendance a join events e on e.id = a.event_id where e.starts_at < cur;
+  item := 'présences à anonymiser'; n := k; return next;
+  if p_apply then
+    insert into attendance_archive(club_id, team_id, season, present, absent, retard)
+      select e.club_id, p.team_id, season_label(e.starts_at), count(*) filter (where a.status = 'present'), count(*) filter (where a.status = 'absent'), count(*) filter (where a.status = 'retard')
+      from attendance a join events e on e.id = a.event_id join players p on p.id = a.player_id where e.starts_at < cur
+      group by e.club_id, p.team_id, season_label(e.starts_at)
+      on conflict (club_id, season, team_id) do update set present = attendance_archive.present + excluded.present, absent = attendance_archive.absent + excluded.absent, retard = attendance_archive.retard + excluded.retard;
+    delete from attendance a using events e where e.id = a.event_id and e.starts_at < cur;
+  end if;
+
+  -- journal des actions sensibles : 1 an
+  select count(*) into k from action_log where at < now() - interval '1 year';
+  item := 'lignes du journal à effacer'; n := k; return next;
+  if p_apply then delete from action_log where at < now() - interval '1 year'; end if;
+
+  -- e-mail d'un responsable invité (entente) : 30 jours après l'invitation (date lue au journal)
+  select count(*) into k from teams t where t.partner_state = 'invitee' and coalesce(t.partner_contact->>'email', '') <> ''
+    and coalesce((select max(l.at) from action_log l where l.club_id = t.club_id and l.action = 'Entente : club invité' and l.detail->>'équipe' = t.name), t.created_at) < now() - interval '30 days';
+  item := 'e-mails de responsables invités à effacer'; n := k; return next;
+  if p_apply then
+    perform set_config('pc.partner', 'on', true);
+    update teams t set partner_contact = t.partner_contact - 'email'
+      where t.partner_state = 'invitee' and coalesce(t.partner_contact->>'email', '') <> ''
+        and coalesce((select max(l.at) from action_log l where l.club_id = t.club_id and l.action = 'Entente : club invité' and l.detail->>'équipe' = t.name), t.created_at) < now() - interval '30 days';
+    perform set_config('pc.partner', 'off', true);
+  end if;
+
+  -- comptes : 3 ans sans connexion et prévenus depuis 30 jours
+  select count(*) into k from profiles pr join auth.users u on u.id = pr.id
+    where pr.deleted_at is null and pr.inactive_warned_at < now() - interval '30 days' and coalesce(u.last_sign_in_at, u.created_at) < now() - interval '3 years';
+  item := 'comptes inactifs à supprimer'; n := k; return next;
+  if p_apply then
+    update profiles pr set deleted_at = now() from auth.users u
+      where u.id = pr.id and pr.deleted_at is null and pr.inactive_warned_at < now() - interval '30 days' and coalesce(u.last_sign_in_at, u.created_at) < now() - interval '3 years';
+  end if;
+end $$;
+revoke execute on function purge_expired(boolean), warn_inactive_accounts(boolean) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- N° 188 · vue client du président (la vue mairie / comité est repoussée, décision de Gaël du 11 novembre)
+--   Le président voit, en lecture seule : le statut de son club (test, gratuit, payant), la période d'engagement, le nombre de licenciés
+--   et, si le club est payant, le montant estimé. Gaël fixe ces valeurs à la main (table club_subscription) ; rien n'est modifiable par le club.
+-- ---------------------------------------------------------------------
+create table if not exists club_subscription (
+  club_id uuid primary key references clubs(id) on delete cascade,
+  status text not null default 'test' check (status in ('test', 'gratuit', 'payant')),
+  engaged_from date,
+  engaged_to date,
+  rate_cents int check (rate_cents is null or rate_cents between 0 and 10000),   -- prix par joueur et par an, en centimes (200 = 2,00 €)
+  free_teams int not null default 1 check (free_teams between 0 and 20),         -- équipes gratuites (la première équipe est gratuite)
+  note text not null default '' check (length(note) <= 300),
+  updated_at timestamptz not null default now()
+);
+alter table club_subscription enable row level security;
+revoke all on club_subscription from anon, authenticated;
+
+create or replace function club_client_view(p_club uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare sub club_subscription; lic int; paying int; due int;
+begin
+  if not is_president(p_club) then raise exception 'Réservé au président du club'; end if;
+  select * into sub from club_subscription where club_id = p_club;
+  select count(*) into lic from players where club_id = p_club and deleted_at is null;
+  -- joueurs payants : tous, sauf ceux des équipes gratuites (les plus nombreuses)
+  select greatest(0, lic - coalesce((select sum(c) from (select count(*) c from players x where x.club_id = p_club and x.deleted_at is null and x.team_id is not null group by x.team_id order by c desc limit coalesce(sub.free_teams, 1)) f), 0)) into paying;
+  due := case when coalesce(sub.status, 'test') = 'payant' and sub.rate_cents is not null then paying * sub.rate_cents else null end;
+  return jsonb_build_object('status', coalesce(sub.status, 'test'), 'engaged_from', sub.engaged_from, 'engaged_to', sub.engaged_to,
+    'licensees', lic, 'paying_players', paying, 'rate_cents', sub.rate_cents, 'due_cents', due, 'note', coalesce(sub.note, ''));
+end $$;
+revoke execute on function club_client_view(uuid) from public, anon;
+grant execute on function club_client_view(uuid) to authenticated;
+
 select close_visitor_functions();
