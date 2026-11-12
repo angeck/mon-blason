@@ -144,6 +144,9 @@ const RESP = [
 ];
 const holder = (f) => S.members.filter((m) => m.role === 'bureau' && m.status === 'active' && m.fonction === f).map((m) => name(m.user_id));
 const presName = () => name((S.members.find((m) => m.role === 'president' && m.status === 'active') || {}).user_id);
+// 5.8.0 · n° 212 : « Sans titulaire, c'est le [Rôle] »
+const defaultRole = (r) => (r === 'licences' ? (holder('Secrétaire').length ? 'Secrétaire' : 'Président') : r === 'rencontres' && holder('Vice-président').length ? 'Président et le Vice-président' : 'Président');
+const noHolder = (r) => `Sans titulaire, c’est le ${defaultRole(r)}`;
 function defaultHolder(r) {
   if (r === 'licences') return holder('Secrétaire')[0] || presName();
   if (r === 'rencontres') return [presName(), holder('Vice-président')[0]].filter(Boolean).join(' et ');
@@ -214,10 +217,10 @@ function quiView() {
   h += RESP.map(([k, l, d]) => {
     if (ROLE_OF[k]) {
       const who = holder(ROLE_OF[k])[0];
-      return `<div class="card" data-role-view="${k}"><b style="font-size:18px">${esc(l)}</b><span class="det">${esc(d)}</span><div class="row static"><span class="g">${esc(who || defaultHolder(k) || 'Personne')}<small>${who ? 'A le rôle « ' + esc(l) + ' »' : 'Par défaut : personne n’a ce rôle'}</small></span></div><button class="btn small" data-act="fonctions">${icon('user', 18)}Modifier dans « Fonctions du bureau »</button></div>`;
+      return `<div class="card" data-role-view="${k}"><b style="font-size:18px">${esc(l)}</b><span class="det">${esc(d)}</span><div class="row static"><span class="g">${esc(who || defaultHolder(k) || 'Personne')}<small>${who ? 'A le rôle « ' + esc(l) + ' »' : esc(noHolder(k))}</small></span></div><button class="btn small" data-act="fonctions">${icon('user', 18)}Modifier dans « Fonctions du bureau »</button></div>`;
     }
     const cur = (S.desig || []).find((x) => x.resp === k);
-    return `<div class="card"><b style="font-size:18px">${esc(l)}</b><span class="det">${esc(d)}</span>${field('ds' + k, cur ? 'Désigné' : 'Par défaut : ' + defaultHolder(k), `<select id="ds${k}" data-desig="${k}"><option value="">${esc('Par défaut · ' + defaultHolder(k))}</option>${ad.map((u) => `<option value="${u}" ${cur?.user_id === u ? 'selected' : ''}>${esc(name(u))}</option>`).join('')}</select>`)}</div>`;
+    return `<div class="card"><b style="font-size:18px">${esc(l)}</b><span class="det">${esc(d)}</span>${field('ds' + k, cur ? 'Désigné' : noHolder(k) + ' (' + defaultHolder(k) + ')', `<select id="ds${k}" data-desig="${k}"><option value="">${esc(noHolder(k) + ' · ' + defaultHolder(k))}</option>${ad.map((u) => `<option value="${u}" ${cur?.user_id === u ? 'selected' : ''}>${esc(name(u))}</option>`).join('')}</select>`)}</div>`;
   }).join('');
   h += `<button class="btn" data-act="fonctions">${icon('user', 20)}Fonctions du bureau (nommer, retirer, accès en plus)</button>` + rightsNote();
   return h;

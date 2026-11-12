@@ -174,8 +174,7 @@ const loading = () => (S.cload ? '<p class="empty">Chargement…</p>' : '');
 
 // ---------- n° 88 · onglet Équipe : plus de carte « Espace coach » en double, un seul bouton vers l'Espace ----------
 export function coachEntry() {
-  if (!canCoachSpace() || !isCoach()) return '';
-  return `<button class="btn" data-act="casq" data-v="coach">${icon('flag', 20)}Ouvrir mon espace coach</button>`;
+  return ''; // 5.8.0 · n° 215 : plus de bouton « Ouvrir mon espace coach » (le bouton de rôle « Coach » suffit)
 }
 // Page « Gestion du club » (bureau) : heures des coachs, exercices à valider, statistiques
 export function coachClubBlock() {

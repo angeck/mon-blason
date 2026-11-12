@@ -81,6 +81,11 @@ html.ouv,html.ouv body{background:#11162E;color:#FFFFFF}
 .hd .tags span{background:#FFFFFF;color:var(--pc-encre);font-weight:700;font-size:14px;padding:6px 12px;border-radius:18px}
 .hdmini{display:none}
 .roundbtn{flex:none;width:44px;height:44px;border-radius:22px;border:0;background:#FFFFFF;color:var(--pc-encre);display:flex;align-items:center;justify-content:center;padding:0;position:relative}
+.roundbtn.roles{width:56px;height:48px;border-radius:16px;flex-direction:column;gap:2px} /* 5.8.0 · n° 219 */
+.hd .band:has([data-act=back]):has(.roundbtn.roles) .logo .wordmark{font-size:clamp(13px,3.9vw,22px)!important} /* place pour le libellé « Mes rôles » */
+.hd .band{gap:8px}
+.roundbtn.roles .lbl{font-size:10px;font-weight:700;line-height:1;white-space:nowrap;letter-spacing:-.01em}
+.hdmini .roundbtn.roles{width:48px;height:40px}.hdmini .roundbtn.roles .lbl{font-size:9px}
 .roundbtn .dot{position:absolute;top:-2px;right:-2px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--pc-jaune);color:var(--pc-encre);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #FFFFFF}
 .ecu{flex:none;display:flex;align-items:center;justify-content:center;font-family:var(--pc-titre);font-weight:800}
 
@@ -162,7 +167,7 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .chev{width:9px;height:9px;border-right:2.5px solid var(--pc-texte-doux);border-top:2.5px solid var(--pc-texte-doux);transform:rotate(45deg);flex:none;margin-right:4px}
 .ev{background:var(--pc-papier);border-radius:22px;padding:14px 16px;box-shadow:var(--pc-ombre-douce);display:flex;flex-direction:column;gap:10px}
 .ev .head{display:flex;align-items:center;gap:14px;background:none;border:0;padding:0;text-align:left;width:100%;color:inherit;min-height:56px}
-.ev.cancel{opacity:.7}
+.ev.cancel .info,.ev.cancel .daybadge{opacity:.7} /* 5.8.0 · n° 214 : l'étiquette « Annulé » garde ses couleurs (charte, clair et sombre) */
 .ev.cancel .t{text-decoration:line-through}
 .ev .t{font-weight:700;font-size:17px;line-height:1.25}
 .ev .s{font-size:15px;color:var(--pc-texte-doux)}
@@ -452,6 +457,15 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .obbar-q, .obbar-steps { display: none; }
 .obbar-now { flex: 1; font-weight: 700; }
 .obbar .btn.ink { flex: none; }
+/* 5.8.0 · n° 208 : bandeau avec le texte de l'étape ; à la fin, « Revenir à la fiche » ; « C'est fait » coché */
+.obbar-now { font-size: 15px; line-height: 1.3; }
+.obbar-hint { font-weight: 400; opacity: .8; }
+.obbar-btns { display: flex; gap: 8px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.obbar .btn.ghost { background: transparent; border-color: var(--pc-encre); color: var(--pc-encre); }
+@media (max-width: 959px) { .obbar.end { flex-direction: column; align-items: stretch; } .obbar.end .obbar-btns { justify-content: stretch; } .obbar.end .obbar-btns .btn { flex: 1; } }
+.obok { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border-radius: var(--pc-rayon-bouton); background: var(--pc-oui-fond); color: var(--pc-oui-texte); font-weight: 700; }
+.obrole { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.obrole select { flex: 1; min-width: 180px; }
 @media (min-width: 960px) {
   .obbar { flex-direction: column; align-items: stretch; padding: 16px; }
   .obbar.side { position: static; width: auto; pointer-events: auto; box-shadow: none; }
@@ -463,7 +477,7 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 }
 .obshot { margin: 8px 0 0; }
 .obshot button { border: 0; padding: 0; background: none; display: block; cursor: zoom-in; }
-.obshot img { width: 120px; height: auto; border-radius: 12px; border: 2px solid var(--pc-trait); display: block; }
+.obshot img { width: 100%; max-width: 420px; height: auto; border-radius: 12px; border: 2px solid var(--pc-trait); display: block; }
 .obshot figcaption { margin-top: 4px; }
 @media (min-width: 960px) { .obshot img { width: 100%; max-width: 760px; cursor: default; } .obshot button { cursor: default; } }
 .obzoom { position: fixed; inset: 0; z-index: 90; background: rgba(17,22,46,.88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; }

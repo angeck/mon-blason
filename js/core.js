@@ -154,10 +154,9 @@ export const FONCTIONS = ['Vice-président', 'Secrétaire', 'Secrétaire adjoint
 // un coach d'une seule équipe garde la casquette « coach », comme avant.
 export function casquettes() {
   const l = [], ct = coachTeams().filter((t) => S.teams.some((x) => x.id === t && !x.deleted_at));
-  const tn = (t) => S.teams.find((x) => x.id === t)?.name || '';
   // n° 113 (3.10.0) : une seule casquette « Coach » ; avec plusieurs équipes, elle ouvre la liste des équipes (niveau 2),
   // avec une seule équipe, l'espace de l'équipe directement (niveau 3)
-  if (ct.length) l.push({ k: 'coach', label: ct.length === 1 ? 'Coach ' + tn(ct[0]) : 'Coach', pill: 'Coach', teams: ct });
+  if (ct.length) l.push({ k: 'coach', label: 'Coach', pill: 'Coach', teams: ct }); // 5.8.0 · n° 211 : le bouton s'appelle « Coach » ; il ouvre l'équipe, ou la liste des équipes
   if (isPresident()) l.push({ k: 'president', label: 'Président', pill: 'Président' });
   active().filter((m) => m.role === 'bureau').forEach((m) => { const f = m.fonction || 'Membre du bureau'; if (!l.some((x) => x.k === 'f:' + f)) l.push({ k: 'f:' + f, label: fonctionLabel(m), pill: f === 'Membre du bureau' ? (m.title || 'Bureau') : f.replace(/ adjoint$/, '').replace('Responsable ', '').replace('Chargé de ', '') }); });
   return l;

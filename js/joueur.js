@@ -19,30 +19,36 @@ export function feeState(a) {
   return +a.fee_paid >= +a.fee_amount ? 'Payée' : +a.fee_paid > 0 ? 'Partielle' : 'À payer';
 }
 const cls = (v) => (['Licencié', 'Payée'].includes(v) ? 'ok' : ['À payer', 'Préinscrit club'].includes(v) ? 'ko' : 'wait');
+// 5.8.0 · n° 213 : des mots clairs pour chaque statut (les valeurs gardées en base ne changent pas)
+// licence : Préinscrit club (rien de demandé à la fédération), Préinscrit fédé (demandée, pas encore validée), Licencié ;
+// cotisation : Payée, Partielle, À payer, Montant à définir (ou « à jour » / « pas à jour » sans les montants) ; certificat
+export const LIC_LABEL = { 'Préinscrit club': 'Licence à demander', 'Préinscrit fédé': 'Licence demandée, en attente', 'Licencié': 'Licence validée' };
+export const FEE_LABEL = { 'Payée': 'Cotisation payée', 'Partielle': 'Cotisation payée en partie', 'À payer': 'Cotisation à payer', 'Montant à définir': 'Tarif pas encore fixé' };
+export const licLabel = (v) => LIC_LABEL[v || 'Préinscrit club'] || v;
 // n° 140 : sur la fiche, chaque pastille mène à sa rubrique (plus bas sur la même fiche) ; on n'y voit que ce que ses droits
 // permettent (la pastille n'existe que si la licence est lisible ; les montants restent réservés à la trésorerie et au président)
 export function statusPills(p, links = false) {
   const a = adminOf(p.id); if (!a) return '';
   const pill = (c, t, k) => (links ? `<button class="pill ${c}" data-act="pljump" data-k="${k}" aria-label="${esc(t)} : aller à la section">${esc(t)}</button>` : `<span class="pill ${c}">${esc(t)}</span>`);
   // 4.4.0 (n° 114) : sans accès aux montants, « cotisation à jour » seulement si le président l'a activé
-  const fee = a.nofee ? (a.fee_ok == null ? '' : pill(a.fee_ok ? 'ok' : 'ko', 'Cotisation ' + (a.fee_ok ? 'à jour' : 'pas à jour'), 'cotis')) : pill(cls(feeState(a)), 'Cotisation : ' + feeState(a).toLowerCase(), 'cotis');
-  return pill(cls(a.licence_state), a.licence_state, 'lic') + fee + (a.health_doc ? '' : pill('ko', 'Certificat manquant', 'certif'));
+  const fee = a.nofee ? (a.fee_ok == null ? '' : pill(a.fee_ok ? 'ok' : 'ko', a.fee_ok ? 'Cotisation à jour' : 'Cotisation en retard', 'cotis')) : pill(cls(feeState(a)), FEE_LABEL[feeState(a)], 'cotis');
+  return pill(cls(a.licence_state || 'Préinscrit club'), licLabel(a.licence_state), 'lic') + fee + (a.health_doc ? '' : pill('ko', 'Certificat à fournir', 'certif'));
 }
 // n° 138 : en tête de la fiche, ce qui reste à régler (trésorerie, secrétariat, licences, président), chaque ligne mène à sa rubrique
 function toSettle(p, a) {
   if (!a || p.from_partner || !(isPresident() || ['tresorerie', 'secretariat', 'licences'].some(hasArea))) return '';
   const l = [], rest = a.nofee || a.fee_amount == null ? null : Math.max(0, +a.fee_amount - (+a.fee_paid || 0));
   if (rest) l.push(['cotis', `Cotisation : ${eur(rest)} à régler`, 'ko']);
-  else if (a.nofee && a.fee_ok === false) l.push(['cotis', 'Cotisation pas à jour', 'ko']);
+  else if (a.nofee && a.fee_ok === false) l.push(['cotis', 'Cotisation en retard', 'ko']);
   else if (!a.nofee && a.fee_amount == null && !+a.fee_paid && (isPresident() || hasArea('tresorerie'))) l.push(['cotis', 'Montant de la cotisation à définir (tarifs du club)', 'wait']);
-  if (a.licence_state !== 'Licencié') l.push(['lic', 'Licence : ' + (a.licence_state || 'Préinscrit club').toLowerCase(), a.licence_state === 'Préinscrit fédé' ? 'wait' : 'ko']);
+  if (a.licence_state !== 'Licencié') l.push(['lic', licLabel(a.licence_state), a.licence_state === 'Préinscrit fédé' ? 'wait' : 'ko']);
   if (!a.health_doc) l.push(['certif', 'Certificat ou questionnaire de santé manquant', 'ko']);
   if (!l.length) return '';
   return `<div class="card warn"><b>À régler</b><div class="list">${l.map(([k, t, c]) => `<button class="row" data-act="pljump" data-k="${k}"><span class="g">${esc(t)}</span><span class="pill ${c}" style="flex:none">Voir</span></button>`).join('')}</div></div>`;
 }
 // Licence (et réduction pour la trésorerie) ; la licence passe par set_licence (4.4.0)
 function licForm(pid, A, disc, D = {}) {
-  return `<form id="padminf" data-id="${pid}" class="card"><div class="kick">${disc ? 'Licence et réduction' : 'Licence'}</div>${field('g1', 'Licence', `<select id="g1" name="licence_state">${LIC.map((x) => `<option ${A.licence_state === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}${field('g2', 'Numéro de licence', `<input id="g2" name="licence_number" value="${esc(A.licence_number || '')}">`)}
+  return `<form id="padminf" data-id="${pid}" class="card"><div class="kick">${disc ? 'Licence et réduction' : 'Licence'}</div>${field('g1', 'Licence', `<select id="g1" name="licence_state">${LIC.map((x) => `<option value="${x}" ${A.licence_state === x ? 'selected' : ''}>${x} · ${LIC_LABEL[x].toLowerCase()}</option>`).join('')}</select>`)}${field('g2', 'Numéro de licence', `<input id="g2" name="licence_number" value="${esc(A.licence_number || '')}">`)}
     <label class="check"><input type="checkbox" name="health_doc" ${A.health_doc ? 'checked' : ''}><span>Certificat ou questionnaire de santé fourni</span></label>
     ${disc ? `<div class="grid2">${field('g7', 'Réduction (€)', `<input id="g7" name="disc" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(D.amount ?? '')}">`)}${field('g8', 'Motif (bureau seulement)', `<input id="g8" name="disc_reason" value="${esc(D.reason || '')}" placeholder="Fratrie, aide de la mairie…">`)}</div><p class="note">Ne pas saisir d’information médicale.</p>` : ''}
     <button class="btn main" type="submit">Enregistrer</button></form><p class="note">${disc ? 'Le montant dû vient de la grille des tarifs du club, moins la réduction. ' : ''}Aucune donnée de santé : seulement « fourni » ou non.</p>`;

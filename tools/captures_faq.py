@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""mypocketclub · 5.7.0 (n° 206) : fabrique les captures de la FAQ et de « Pour bien démarrer ».
+"""mypocketclub · 5.7.0 (n° 206), revu en 5.8.0 (n° 216) : fabrique les captures de la FAQ et de « Pour bien démarrer ».
 
 Pour chaque fiche qui a « Me montrer », l'application refait les étapes (« Y aller ») avec le faux client des tests
 (tests/faux_supabase.js : club de démonstration, aucune donnée réelle), puis photographie l'écran d'arrivée, zone à toucher
 en jaune : img/faq/<fiche>-tel.jpg (téléphone) et img/faq/<fiche>-pc.jpg (ordinateur). La liste des captures réussies est
 écrite dans js/faq_shots.js. Usage : python3 tools/captures_faq.py
+5.8.0 : chaque fiche est photographiée avec le rôle qui la concerne (Trésorier, Secrétaire, Président…) ; la capture
+téléphone est recadrée autour de la zone jaune (lisible en largeur téléphone) ; le rapport dit, pour chaque fiche,
+jusqu'à quelle étape « Y aller » est arrivé (toutes les étapes doivent être atteintes).
 """
 import http.server, os, threading, functools, json
 from playwright.sync_api import sync_playwright
@@ -23,14 +26,34 @@ PREP = """(async()=>{const {S,render}=await import('/js/core.js');
   const c=S.clubs[S.clubId]; if (c) { c.color1='#2F5BFF'; c.color2='#FFC93C'; c.logo=null; }
   render();})()"""
 
+# rôle du compte de test pour chaque famille de fiches (fonction de m1, présidence en plus)
+FONC = {'SE': 'Secrétaire', 'CR': 'Correspondant rencontres', 'DT': 'Directeur technique', 'B1': 'Chargé de communication'}
+def setup(pg, i):
+    f = next((v for k, v in FONC.items() if i.startswith(k)), 'Trésorier')
+    pres = 'true' if i.startswith('PR') else 'false'
+    pg.evaluate("""(async([f,pres])=>{const D=window.__FAKE; D.memberships.find(m=>m.id==='m1').fonction=f;
+      D.memberships=D.memberships.filter(m=>m.id!=='m10'); if(pres) D.memberships.push({id:'m10',club_id:'c-1',user_id:'u-me',role:'president',status:'active'});
+      const c=await import('/js/core.js'); c.S.obShow=null; c.S.view=null; c.S.stack=[]; c.S.tab=0; c.S.casq=null; c.S.ftabs={}; c.S.ptab=null; c.S.lf=null; await c.refresh();})""", [f, pres == 'true'])
+    pg.wait_for_timeout(250)
+
+REPORT = {}
 def shoot(pg, size, suffix, ids):
     ok = []
     pg.set_viewport_size(size)
     for i in ids:
+        setup(pg, i)
         r = pg.evaluate("(async(id)=>{const m=await import('/js/v55.js'); return await m.goFiche(id);})", i)
         pg.wait_for_timeout(700)
+        st = pg.evaluate("(async(id)=>{const m=await import('/js/v55.js'); return m.obProgress(id);})", i)
+        REPORT.setdefault(i, {})[suffix] = st
         if r and pg.locator('.ob-hl').count():
-            pg.screenshot(path=os.path.join(OUT, f'{i}-{suffix}.jpg'), type='jpeg', quality=68)
+            path = os.path.join(OUT, f'{i}-{suffix}.jpg')
+            if suffix == 'tel':   # recadrée autour de la zone jaune, bandeau compris si possible
+                b = pg.locator('.ob-hl').first.bounding_box()
+                y = max(0, min(size['height'] - 560, int(b['y'] + b['height'] / 2 - 280)))
+                pg.screenshot(path=path, type='jpeg', quality=72, clip={'x': 0, 'y': y, 'width': size['width'], 'height': 560})
+            else:
+                pg.screenshot(path=path, type='jpeg', quality=68)
             ok.append(i)
         pg.evaluate("(async()=>{const {S,render}=await import('/js/core.js'); S.obShow=null; S.view=null; S.stack=[]; S.tab=0; render();})()")
         pg.wait_for_timeout(150)
@@ -60,4 +83,8 @@ with open(os.path.join(ROOT, 'js', 'faq_shots.js'), 'w') as f:
     f.write('// Fabriqué par tools/captures_faq.py (5.7.0 · n° 206) : fiches qui ont une capture dans img/faq/\n')
     f.write('export const SHOTS = new Set(' + json.dumps(both) + ');\n')
 print(len(both), 'fiches avec captures :', ' '.join(both))
+for i, r in REPORT.items():
+    t, p = r.get('tel', {}), r.get('pc', {})
+    flag = '' if t.get('reached') and p.get('reached') else '   <-- étapes non atteintes'
+    print(f"{i:4} tél. {t.get('at')}/{t.get('last')}  ordi {p.get('at')}/{p.get('last')}{flag}")
 print('sans capture :', ' '.join(i for i in ids if i not in both))

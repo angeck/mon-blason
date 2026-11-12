@@ -260,7 +260,11 @@ export function agendaTab() {
   let h = '';
   if (isBoard() || coachTeams().length) h += `<div class="btns"><button class="btn main" data-act="evnew">${icon('plus', 20)}Ajouter un rendez-vous</button>${canSel ? `<button class="btn ghost small" data-act="selmode" aria-pressed="${selMode}">${selMode ? 'Terminer' : 'Sélectionner'}</button>` : ''}</div>`;
   h += clubToggle(base) + `<div class="chips">${['Tous', 'Entraînements', 'Matchs', 'Événements', 'Masqués'].map((x) => `<button class="chip" data-act="agf" data-v="${x}" aria-pressed="${f === x}">${x}</button>`).join('')}</div>`;
-  h += fut.length ? byDay(fut, (e) => evCard(e, { answer: true, select: selMode })) : '<p class="empty">Aucun rendez-vous à venir.</p>';
+  // 5.8.0 · n° 209 : triés par date ; les 4 prochaines semaines affichées, le reste d'un coup derrière « Voir plus »
+  const lim = Date.now() + 28 * 864e5, near = fut.filter((e) => new Date(e.starts_at).getTime() < lim), far = fut.filter((e) => new Date(e.starts_at).getTime() >= lim);
+  const card = (e) => evCard(e, { answer: true, select: selMode });
+  h += near.length ? byDay(near, card) : fut.length ? '<p class="empty">Aucun rendez-vous dans les 4 prochaines semaines.</p>' : '<p class="empty">Aucun rendez-vous à venir.</p>';
+  if (far.length) h += `<details class="card" data-more="1"${S.agMore || (selMode && far.some((e) => S.sel.has(e.id))) ? ' open' : ''}><summary>Voir plus (${plural(far.length, 'rendez-vous', 'rendez-vous')} après le ${esc(new Date(lim).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }))})</summary><div class="stack">${byDay(far, card)}</div></details>`;
   const hidOld = isBoard() && !S.me.show_all_club ? past(S.events.filter(hiddenByToggle)).length : 0; // n° 134
   if (selMode && isBoard() && !S.me.show_all_club && S.events.some(hiddenByToggle)) h += `<p class="note">Les rendez-vous des équipes où tu n’as pas de rôle ne sont pas affichés : allume « Tout le club » pour les sélectionner aussi.</p>`;
   if (old.length || hidOld) h += `<details class="card" data-past="1"${selMode && (S.pastOpen || old.some((e) => S.sel.has(e.id))) ? ' open' : ''}><summary>Passés (${old.length}, 30 derniers jours)${hidOld ? ` · ${plural(hidOld, 'autre masqué', 'autres masqués')} par « Tout le club »` : ''}</summary><div class="stack">${old.length ? byDay(old, (e) => evCard(e, { select: selMode })) : ''}${hidOld ? `<p class="note">${plural(hidOld, 'rendez-vous passé', 'rendez-vous passés')} d’équipes où tu n’as pas de rôle : allume « Tout le club » pour ${hidOld > 1 ? 'les' : 'le'} voir et ${hidOld > 1 ? 'les' : 'le'} supprimer.</p>` : ''}</div></details>`;
@@ -536,10 +540,14 @@ Object.assign(ACTIONS, {
   evrfm: (el, d) => { keepForm(); S.form.rfMode = d.v; S.form.rf = S.form.rf || new Set(); render(true); },
   evremind: async (el, d) => { const n = await run(sb.rpc('remind_event', { p_event: d.id })); if (n !== null) { toast(n ? plural(n, 'personne relancée', 'personnes relancées') + ' : un rappel apparaît en haut de leur Accueil.' : 'Tout le monde a déjà répondu.'); await refresh(); } },
   rsvp: async (el, d) => {
-    const R = respOf(d.id), pid = d.p || null, cur = pid ? R.kid(pid) : R.mine;
-    if (await run(sb.rpc('respond_event', { p_event: d.id, p_player: pid, p_answer: cur === d.v ? null : d.v }))) {
-      const rr = await sb.from('event_responses').select('*').eq('event_id', d.id); S.resp = S.resp.filter((x) => x.event_id !== d.id).concat(rr.data || []);
-    }
+    const R = respOf(d.id), pid = d.p || null, cur = pid ? R.kid(pid) : R.mine, next = cur === d.v ? null : d.v;
+    // 5.8.0 · n° 210 : le bouton touché s'allume tout de suite ; retour arrière si l'enregistrement échoue
+    const before = S.resp, mine = (x) => x.event_id === d.id && (pid ? x.player_id === pid : x.user_id === S.me.id && !x.player_id);
+    S.resp = S.resp.filter((x) => !mine(x)).concat(next ? [{ ...(before.find(mine) || {}), event_id: d.id, user_id: S.me.id, player_id: pid, answer: next }] : []);
+    render(true);
+    if (await run(sb.rpc('respond_event', { p_event: d.id, p_player: pid, p_answer: next }))) {
+      const rr = await sb.from('event_responses').select('*').eq('event_id', d.id); if (rr.data) S.resp = S.resp.filter((x) => x.event_id !== d.id).concat(rr.data);
+    } else S.resp = before;
     render(true);
   },
   guests: async (el, d) => { // n° 79
@@ -675,3 +683,5 @@ INPUTS.push((t) => {
   return false;
 });
 export { fmtDate };
+// 5.8.0 · n° 209 : « Voir plus » reste ouvert d'un affichage à l'autre
+document.addEventListener('toggle', (e) => { if (e.target?.dataset?.more) S.agMore = e.target.open; }, true);
