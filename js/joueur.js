@@ -57,6 +57,29 @@ export function feeFor(p) {
 }
 const tel = (n) => String(n || '').replace(/\s/g, '');
 
+// 5.3.0 : un joueur de 15 à 17 ans (compte à lui, sans parent relié) invite un parent par e-mail ; le parent ouvre le lien, crée son compte,
+// et sa demande « parent » part chez le président (lien #parent=…, gardé jusqu'à la connexion)
+const age = (p) => { if (!p.birth_date) return null; const b = new Date(p.birth_date), n = new Date(); let a = n.getFullYear() - b.getFullYear(); if (n < new Date(n.getFullYear(), b.getMonth(), b.getDate())) a--; return a; };
+const inviteBlock = (p) => {
+  const a = age(p); if (p.user_id !== S.me.id || a === null || a < 15 || a > 17 || parentsOf(p.id).length) return '';
+  return `<div class="sec"><h2>Invite un parent</h2></div><form id="pinvf" class="card stack" data-id="${p.id}"><p class="note" style="margin:0">Tu as moins de 18 ans : demande à un parent de rejoindre mypocketclub. Il reçoit un e-mail avec un lien ; le président du club valide ensuite sa demande.</p>${field('pinv1', 'E-mail d’un parent', '<input id="pinv1" name="email" type="email" required autocomplete="off" inputmode="email">')}<button class="btn main" type="submit">Envoyer l’invitation</button>${S.invSent ? '<p class="note" style="margin:0">Invitation envoyée. Tu peux en renvoyer une autre (3 par jour au maximum).</p>' : ''}</form>`;
+};
+const TOKEN_KEY = 'pc_parent_invite';
+export function captureParentToken() {
+  const m = /^#parent=([a-f0-9]{64})$/.exec(location.hash || '');
+  if (!m) return;
+  try { localStorage.setItem(TOKEN_KEY, m[1]); } catch { /* sans stockage, le lien reste dans l'adresse */ }
+  history.replaceState(null, '', location.pathname + location.search);
+}
+export async function acceptParentInvite() {
+  let t = null; try { t = localStorage.getItem(TOKEN_KEY); } catch { /* rien */ }
+  if (!t || !S.me) return;
+  const r = await sb.rpc('accept_parent_invitation', { p_token: t });
+  try { localStorage.removeItem(TOKEN_KEY); } catch { /* rien */ }
+  toast(r?.error ? (r.error.message || 'Invitation impossible') : 'Ta demande est envoyée au président du club. Tu auras accès dès qu’il l’aura validée.');
+}
+// 5.3.0 : le président retire l'accès d'un joueur qui a un compte (ce club seulement) ; la fiche part à la corbeille 30 jours
+const accBtn = (p) => isPresident() && p.user_id && p.user_id !== S.me.id ? `<p class="note">Cette personne a un compte. « Supprimer le compte » retire son accès à ce club seulement (son compte reste valable ailleurs).</p>${delBtn('pacc', p.id, 'Supprimer le compte de ce joueur', 'Confirmer : accès retiré, fiche à la corbeille (30 jours)', isArmed('pacc' + p.id))}` : '';
 export function playerPage(pid) {
   const p = pl(pid); if (!p) return '<p class="empty">Fiche introuvable (à la corbeille ?).</p>';
   // n° 113 : le staff modifie une fiche depuis l'espace de l'équipe (onglet Effectif) ; ouverte depuis l'onglet Équipe, elle est en lecture seule
@@ -92,6 +115,7 @@ export function playerPage(pid) {
   // parents
   h += `<div class="sec"><h2>Parents reliés</h2><span class="det">${par.length}</span></div><div class="card"><div class="list">${par.length ? par.map((u) => { const t = S.phones[u]; return `<div class="row static"><span class="g">${esc(name(u))}<small>${esc(t || 'Téléphone non renseigné')}</small></span>${t && u !== S.me.id ? `<a class="btn small ghost" href="tel:${esc(tel(t))}">${icon('phone', 18)}Appeler</a>` : ''}${isBoard() && u !== S.me.id ? `<button class="btn small ghost" data-act="member" data-id="${u}">Fiche</button>` : ''}</div>`; }).join('') : '<p class="empty">Aucun parent relié.</p>'}</div>${par.length < 2 && !p.user_id ? '<p class="note">Second parent : il rejoint le club avec le rôle « Parent de joueur » et le nom de l’enfant ; à la validation, sa demande est reliée à cette fiche.</p>' : ''}</div>`;
   // autorisations
+  h += inviteBlock(p);
   h += `<div class="sec"><h2>Autorisations</h2></div><div class="card"><div class="list">${CONSENTS.filter(([k]) => !(isMajor(p) && k === 'alone')).map(([k, l]) => {
     if (k === 'transport' && isMajor(p)) l = 'Covoiturage';
     const v = c[k] || {}, sub = k === 'image' && v.conflict ? 'Les parents ne sont pas d’accord : le refus s’applique' + (v.at ? ' · ' + new Date(v.at).toLocaleDateString('fr-FR') : '') : v.at ? (v.ok ? 'Accordé' : 'Retiré') + ' le ' + new Date(v.at).toLocaleDateString('fr-FR') : 'Pas encore renseigné', pill = `<span class="pill ${v.ok ? 'ok' : 'ko'}">${v.ok ? 'Oui' : 'Non'}</span>`;
@@ -105,7 +129,7 @@ export function playerPage(pid) {
   if (A.nofee) {
     h += `<div class="card"><div class="chips">${statusPills(p)}</div>${A.licence_number ? `<div class="det">Licence n° ${esc(A.licence_number)}</div>` : ''}<p class="note" style="margin:0">Les montants de la cotisation sont réservés à la trésorerie et au président.</p></div>`;
     if (canAdminPlayer(p)) h += licForm(pid, A, false);
-    if (canAdminPlayer(p)) h += delBtn('pdel', pid, 'Mettre la fiche à la corbeille', 'Confirmer : la fiche part à la corbeille (30 jours)', isArmed('p' + pid));
+    if (canAdminPlayer(p)) h += delBtn('pdel', pid, 'Mettre la fiche à la corbeille', 'Confirmer : la fiche part à la corbeille (30 jours)', isArmed('p' + pid)) + accBtn(p);
     return h;
   }
   h += `<div class="card"><div class="chips">${statusPills(p)}</div>${A.licence_number ? `<div class="det">Licence n° ${esc(A.licence_number)}</div>` : ''}
@@ -119,7 +143,7 @@ export function playerPage(pid) {
     ${pays.length ? `<button type="button" class="btn danger ${isArmed('unpaid' + pid) ? 'armed' : ''}" data-act="unpaid" data-id="${pid}">${isArmed('unpaid' + pid) ? 'Confirmer : retirer tous les versements' : 'Repasser en « À payer »'}</button>` : ''}</form>
     ${licForm(pid, A, hasArea('tresorerie'), D)}`;
   } else if (board) h += '<p class="note">Cette fiche appartient à quelqu’un de ton niveau ou au-dessus : seul un rang supérieur peut la modifier.</p>';
-  if (canAdminPlayer(p)) h += delBtn('pdel', pid, 'Mettre la fiche à la corbeille', 'Confirmer : la fiche part à la corbeille (30 jours)', isArmed('p' + pid));
+  if (canAdminPlayer(p)) h += delBtn('pdel', pid, 'Mettre la fiche à la corbeille', 'Confirmer : la fiche part à la corbeille (30 jours)', isArmed('p' + pid)) + accBtn(p);
   return h;
 }
 
@@ -149,9 +173,17 @@ Object.assign(ACTIONS, {
   paydel: async (el, d) => { if (!armed('pay' + d.id)) return; if (await run(sb.from('player_payments').delete().eq('id', d.id), 'Versement retiré.')) await refresh(); },
   paid: async (el, d) => { if (!armed('paid' + d.id)) return; if (await run(sb.rpc('mark_paid', { p_player: d.id, p_paid: true }), 'Cotisation payée.')) await refresh(); },
   unpaid: async (el, d) => { if (!armed('unpaid' + d.id)) return; if (await run(sb.rpc('mark_paid', { p_player: d.id, p_paid: false }), 'Cotisation repassée en « À payer ».')) await refresh(); },
+  pacc: async (el, d) => { if (!armed('pacc' + d.id)) return; if (await run(sb.rpc('trash_player_account', { p_player: d.id }), 'Accès retiré. Fiche à la corbeille : restaurable pendant 30 jours (onglet Club), l’accès revient avec.')) { backAfterDelete('player', d.id); await refresh(); } },
   pdel: async (el, d) => { if (!armed('p' + d.id)) return; if (await run(sb.rpc('trash_item', { p_kind: 'player', p_id: d.id }), 'Fiche mise à la corbeille. Restaurable pendant 30 jours (onglet Club).')) { backAfterDelete('player', d.id); await refresh(); } },
 });
 Object.assign(FORMS, {
+  pinvf: async (v, f) => {
+    const id = f.dataset.id, r = await sb.rpc('invite_parent', { p_player: id, p_email: v.email });
+    if (r?.error) return toast(r.error.message || 'Invitation impossible');
+    const m = await sb.functions.invoke('envoyer-email', { body: { parent_invite: { id: r.data } } });
+    if (m?.error) return toast('L’invitation est enregistrée mais l’e-mail n’est pas parti : réessaie plus tard.');
+    S.invSent = true; toast('Invitation envoyée.'); render(true);
+  },
   plf: async (v, f) => {
     if (!v.first_name.trim() || !(v.last_name || '').trim()) return toast('Le prénom et le nom sont obligatoires.');
     const em = ((v.em_first || '').trim() + ' ' + (v.em_last || '').trim()).trim();

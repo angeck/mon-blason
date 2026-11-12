@@ -28,6 +28,7 @@ import './js/v48.js'; // 4.8.0 : guide « Installer et notifications »
 import './js/v52.js'; // 5.2.0 : n° 174 (contact d'équipe), n° 158 (renforts)
 import './js/v51.js'; // 5.1.0 : n° 189 (retour du téléphone), 190 (pastilles des rôles), 191 (demandes), 196 (bienvenue)
 import { unsubToken, unsubScreen, loadDevices } from './js/v410.js'; // 4.10.0 : n° 184 (appareils connus), n° 185 (désinscription)
+import { captureParentToken, acceptParentInvite } from './js/joueur.js'; // 5.3.0 : invitation du parent d'un joueur de 15 à 17 ans
 import { registerDevice, notMeToken, notMeScreen } from './js/v47.js'; // 4.7.0 : n° 147 et 44 // 4.4.0 : n° 114 (bandeau et onglets de chaque fonction, droits, exports, saison)
 
 const TAB_TITLES = ['', 'Agenda', 'Messages', 'Équipe', 'Le club'];
@@ -99,7 +100,7 @@ async function refresh(msg) {
   if (!navigator.onLine) { toast('Pas de réseau : tu vois les dernières données chargées.'); render(true); return; }
   await loadMe();
   if (S.me && S.devFor !== S.me.id) { S.devFor = S.me.id; registerDevice().then(loadDevices); } // n° 147 ; 4.10.0 : la liste des appareils suit : appareil connu ou nouveau (alerte par e-mail)
-  if (!S.joinChecked) { S.joinChecked = true; await openPendingJoin(); }
+  if (!S.joinChecked) { S.joinChecked = true; await openPendingJoin(); await acceptParentInvite(); }
   if (!S.purged) { S.purged = true; sb.rpc('purge_trash').then(() => {}, () => {}); }
   await loadClub();
   restoreDraftScreen(); // 5.2.1 : après un rechargement, retour là où la saisie avait commencé
@@ -259,6 +260,7 @@ window.addEventListener('online', () => { S.online = true; refresh(); });
 try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => render(true)); } catch { /* ancien navigateur */ } // 5.0.0 : thème « Comme mon téléphone »
 window.addEventListener('offline', () => { S.online = false; render(true); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.session && navigator.onLine) { S.bgRefresh = true; refresh(); } });
+captureParentToken(); // 5.3.0 : lien #parent=… de l'e-mail d'invitation, gardé jusqu'à la connexion
 sb.auth.onAuthStateChange(async (ev, session) => {
   if (session) { saveSwitch(session); if (S.uid && S.uid !== session.user.id) resetUser(); S.uid = session.user.id; } else S.uid = null;
   if (ev === 'TOKEN_REFRESHED') { S.session = session; return; }
