@@ -109,7 +109,7 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ ok: false, message: 'Méthode refusée.' }, 405);
   const auth = req.headers.get('Authorization') || '';
-  if (!/^Bearer\s+\S+/.test(auth)) return json({ ok: false, reason: 'droits', message: MSG.droits }, 401);
+  if (!/^Bearer\s+\S+/.test(auth)) return json({ ok: false, reason: 'droits', message: 'Connexion introuvable : reconnecte-toi.' });
   let b: any; try { b = await req.json(); } catch { return json({ ok: false, message: 'Demande illisible.' }, 400); }
   const club = String(b?.club_id || '');
   if (!/^[0-9a-f-]{36}$/i.test(club)) return json({ ok: false, message: 'Club inconnu.' }, 400);
@@ -117,7 +117,7 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   if (!env.apiKey) return json({ ok: false, reason: 'pause', message: MSG.pause });
   // 1. droits et budget, avec la session du coach
   const st = await doFetch(`${env.url}/rest/v1/rpc/ai_state`, { method: 'POST', headers: { apikey: env.anon, Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ p_club: club }) });
-  if (!st.ok) return json({ ok: false, reason: 'droits', message: MSG.droits }, 401);
+  if (!st.ok) { const d = (await st.text()).slice(0, 160); return json({ ok: false, reason: 'base', message: `La base a refusé la vérification (${st.status}). Le script 5.10.0 est-il lancé ?`, detail: d }); }
   const state = await st.json();
   if (!state?.ok) return json({ ok: false, reason: state?.reason || 'pause', message: MSG[state?.reason] || MSG.pause });
   // 2. appel à l'IA
@@ -126,13 +126,14 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   try {
     r = await doFetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(buildRequest(env.model, b)) });
   } catch { return json({ ok: false, reason: 'ia', message: 'L’IA ne répond pas. Réessaie dans un moment.' }); }
-  if (!r.ok) return json({ ok: false, reason: 'ia', message: r.status === 429 || r.status === 529 ? 'L’IA est très demandée. Réessaie dans une minute.' : 'L’IA n’a pas pu préparer le schéma. Réessaie dans un moment.' });
+  if (!r.ok) { const d = (await r.text()).slice(0, 200); return json({ ok: false, reason: 'ia', message: r.status === 429 || r.status === 529 ? 'L’IA est très demandée. Réessaie dans une minute.' : r.status === 401 ? 'La clé de l’IA est refusée (secret ANTHROPIC_API_KEY à vérifier).' : r.status === 400 && /credit/i.test(d) ? 'Le crédit de la Console Claude est épuisé.' : r.status === 404 ? 'Le modèle de l’IA est introuvable (secret AI_MODEL à vérifier).' : `L’IA n’a pas pu préparer le schéma (${r.status}). Réessaie dans un moment.`, detail: d }); }
   const out = await r.json();
   const tin = (out?.usage?.input_tokens || 0) + (out?.usage?.cache_creation_input_tokens || 0) + (out?.usage?.cache_read_input_tokens || 0), tout = out?.usage?.output_tokens || 0;
   const use = (out?.content || []).find((c: any) => c?.type === 'tool_use' && c?.name === 'schema');
   const steps = out?.stop_reason === 'max_tokens' ? null : cleanSteps(use?.input, sport);
   // 3. note de l'appel (le coût compte même si le schéma n'est pas utilisable)
-  await doFetch(`${env.url}/rest/v1/rpc/ai_log_usage`, { method: 'POST', headers: { apikey: env.service, Authorization: 'Bearer ' + env.service, 'Content-Type': 'application/json' },
+  // clé « sb_secret_… » : seulement dans apikey ; ancienne clé service_role (JWT) : aussi en Authorization (comme envoyer-email)
+  await doFetch(`${env.url}/rest/v1/rpc/ai_log_usage`, { method: 'POST', headers: { apikey: env.service, 'Content-Type': 'application/json', ...(env.service.startsWith('eyJ') ? { Authorization: 'Bearer ' + env.service } : {}) },
     body: JSON.stringify({ p_club: club, p_user: state.uid, p_model: env.model, p_in: tin, p_out: tout, p_cost: Number(cost(env.model, tin, tout).toFixed(5)), p_ok: !!steps }) }).catch(() => {});
   if (!steps || steps.frames.length < 2) return json({ ok: false, reason: 'ia', message: 'Le schéma proposé n’était pas utilisable. Réessaie, ou précise la description.' });
   return json({ ok: true, steps, left_today: Math.max((state.left_today || 1) - 1, 0) });
@@ -142,7 +143,7 @@ declare const Deno: any;
 if (typeof Deno !== 'undefined' && Deno.serve) {
   Deno.serve((req: Request) => handle(req, {
     url: Deno.env.get('SUPABASE_URL') || '', anon: Deno.env.get('SUPABASE_ANON_KEY') || '',
-    service: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SECRET_KEY') || '',
+    service: (() => { try { return JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}').default || ''; } catch { return ''; } })() || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
     apiKey: Deno.env.get('ANTHROPIC_API_KEY') || '', model: Deno.env.get('AI_MODEL') || 'claude-sonnet-5-5',
   }));
 }

@@ -194,8 +194,10 @@ Object.assign(ACTIONS, {
     S.aiBusy = true; render(true);
     let r; try { r = await sb.functions.invoke('generer-exercice', { body: { club_id: S.clubId, sport: sportOf(f), title: f.title || '', description: f.description || '', tags: f.tags || [], category: f.category || '', duration: +f.duration_min || 10, level: f.level || '' } }); } catch (err) { r = { error: err }; }
     S.aiBusy = false;
-    const data = r?.data;
-    if (r?.error || !data) { render(true); return toast('L’IA n’est pas disponible pour le moment. Tu peux dessiner le schéma toi-même.'); }
+    let data = r?.data;
+    // une réponse d'erreur de la fonction (ou son absence) : on lit son message, sinon le code, pour savoir où chercher
+    if (r?.error && !data) { try { data = await r.error.context?.json?.(); } catch { /* */ } }
+    if (!data) { render(true); const st = r?.error?.context?.status; return toast(`L’IA n’est pas joignable${st ? ' (' + st + ')' : ''}. La fonction generer-exercice est-elle déployée ? Tu peux dessiner le schéma toi-même.`); }
     if (!data.ok) { render(true); return toast(data.message || 'L’IA n’a pas pu préparer le schéma.'); }
     const st = normalize(data.steps, sportOf(f)); if (!st) { render(true); return toast('Le schéma proposé n’était pas utilisable. Réessaie.'); }
     S.exf.steps = st; S.exf.askschema = false;
