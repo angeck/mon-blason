@@ -242,6 +242,7 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 /* ---------- Ordinateur : onglets en colonne à gauche ---------- */
 @media (min-width:960px){
   #app{max-width:1040px;padding-left:240px}
+  html.notb #app{max-width:800px;padding-left:0} /* 5.12.1 · n° 231 : écran sans onglets = centré (même largeur utile qu'avant : 1040 − 240) */
   .tb{top:0;bottom:0;right:auto;left:max(0px,calc(50% - 520px));width:240px;justify-content:flex-start;align-items:flex-start;padding:24px 16px}
   .tb nav{max-width:none;grid-template-columns:1fr;gap:6px;border-radius:28px;padding:16px 10px}
   .tb button{flex-direction:row;justify-content:flex-start;gap:10px;font-size:16px;padding:0 8px}

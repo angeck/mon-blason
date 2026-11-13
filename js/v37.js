@@ -74,9 +74,10 @@ FORMS.recof = async (v) => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(F.email)) return toast('Adresse e-mail à vérifier.');
   if (!F.knows) return toast('Coche « Je connais cette personne ».');
   if (TURNSTILE_SITEKEY && !S.captcha) return toast('Vérification anti-robot en cours : patiente une seconde, puis réessaie.');
+  const tok = S.captcha || ''; // 5.12.1 · n° 235 : le jeton se lit AVANT de redessiner (render() remonte le widget et remet S.captcha à zéro)
   S.recoBusy = true; render(true);
   try {
-    const { data, error } = await sb.functions.invoke('recommander-club', { body: { first: F.first, club: F.club, email: F.email, knows: true, captcha: S.captcha || '' } });
+    const { data, error } = await sb.functions.invoke('recommander-club', { body: { first: F.first, club: F.club, email: F.email, knows: true, captcha: tok } });
     let why = ''; if (error) { try { why = (await error.context?.json?.())?.erreur || ''; } catch { why = ''; } }
     if (error || !data?.envoye) toast(why || 'Recommandation pas envoyée : réessaie plus tard.');
     else { S.recoDone = true; S.reco = null; }

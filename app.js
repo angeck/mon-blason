@@ -96,6 +96,7 @@ function render(keep) {
   const ouv = html.includes('data-ouv'); document.documentElement.classList.toggle('ouv', ouv); // 5.0.0 : écran d'ouverture sur fond encre
   if (ouv) { const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = '#11162E'; }
   app.innerHTML = switchBar() + html;
+  document.documentElement.classList.toggle('notb', !app.querySelector('.tb')); // 5.12.1 · n° 231 : sans onglets (ouverture, connexion, textes légaux), pas de colonne réservée à gauche
   window.scrollTo(0, y);
   onScroll();
   mountCaptcha();
