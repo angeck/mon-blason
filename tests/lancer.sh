@@ -12,5 +12,6 @@ psql -q -d $DB -f /tmp/vie_de_club.sql 2>/dev/null | sed -n '/RAPPORT/,$p'
 node import.test.mjs
 python3 ecrans.py
 node --experimental-strip-types --no-warnings envoi.test.mjs
+node --experimental-strip-types --no-warnings ia.test.mjs
 node --experimental-strip-types --no-warnings email.test.mjs
 node pdf.test.mjs

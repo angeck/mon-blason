@@ -3,7 +3,7 @@
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_1.sql) ; l'écran n'est qu'un confort.
 import { BRAND } from '../config.js';
 import {
-  S, sb, esc, run, toast, render, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, club, isBoard, isCoach, coachTeams, coachOf,
+  S, sb, esc, run, toast, render, hooks, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, club, isBoard, isCoach, coachTeams, coachOf,
   team, teamName, name, plural, download, norm, fmtShort, onColor, evTeams, store, loadNames, isPresident, hasArea, durOf,
 } from './core.js';
 import { icon, delBtn, field } from './ui.js';
@@ -311,10 +311,11 @@ export function exoPage(id) {
   let h = `<div class="card lift"><div class="chips">${sharePill(e)}<span class="pill blue">${esc(e.category)}</span><span class="pill">${fmtMin(e.duration_min)}</span>${e.level ? `<span class="pill">${esc(e.level)}</span>` : ''}${tooNegative(e) ? '<span class="pill ko">À revoir</span>' : ''}${S.schemaReq?.[e.id] ? '<span class="pill wait">Schéma en préparation</span>' : ''}</div>
   ${(e.tags || []).length ? `<div class="chips">${e.tags.map((t) => `<span class="pill">${esc(t)}</span>`).join('')}</div>` : ''}
   ${e.video_path && S.vurl?.[e.video_path] ? `<video class="vplayer" src="${esc(S.vurl[e.video_path])}" ${e.poster_path && S.vurl[e.poster_path] ? `poster="${esc(S.vurl[e.poster_path])}"` : ''} controls playsinline preload="metadata"></video>` : ''}
-  ${e.diagram?.length ? courtSvg(e.sport === 'Tous les sports' ? club()?.sport : e.sport, e.diagram, false) : ''}
+  ${hooks.exStepsView ? hooks.exStepsView(e) : ''}
+  ${e.diagram?.length && !e.steps?.frames?.length ? courtSvg(e.sport === 'Tous les sports' ? club()?.sport : e.sport, e.diagram, false) : ''}
   ${e.description ? `<div style="white-space:pre-wrap">${esc(e.description)}</div>` : '<p class="note">Pas de description.</p>'}
   <p class="note">${esc(ORIGINS[e.origin])}${e.source ? ' · Source : ' + esc(e.source) : ''}${mine ? ' · par toi' : a ? ' · par ' + esc(a.author) + ' (' + esc(a.club_name) + ')' : ''}</p></div>`;
-  if (mine && !e.video_path && !S.schemaReq?.[e.id]) h += `<button class="btn" data-act="cexschema" data-id="${e.id}">${icon('doc', 20)}Demander le schéma à mypocketclub</button>`;
+  if (mine && !e.video_path && !e.steps?.frames?.length && !S.schemaReq?.[e.id]) h += `<button class="btn" data-act="cexschema" data-id="${e.id}">${icon('doc', 20)}Demander le schéma à mypocketclub</button>`;
   const inPlan = (S.plan?.items || []).some((x) => x.exercise_id === e.id);
   h += `<button class="btn ${inPlan ? 'ghost' : 'main'}" data-act="cadd" data-id="${e.id}">${inPlan ? 'Déjà dans ma séance ✓' : icon('plus', 20) + addLabel()}</button>`;
   if (!mine) h += `<div class="card"><div class="kick">Ton avis</div><div class="pair"><button class="btn yes" data-act="cvote" data-id="${e.id}" data-v="1" aria-pressed="${my === true}">👍 Utile (${e.up_count})</button><button class="btn no" data-act="cvote" data-id="${e.id}" data-v="0" aria-pressed="${my === false}">👎 À revoir (${e.down_count})</button></div></div>`;
@@ -368,10 +369,11 @@ export function exoForm() {
   <div class="field"><span class="lab">Partage</span><div class="chips">${Object.entries(SHARE).map(([k, l]) => `<label class="chip" style="display:flex;align-items:center;gap:6px"><input type="radio" name="sharing" value="${k}" data-exre="1" ${f.sharing === k ? 'checked' : ''}>${l}</label>`).join('')}</div>
   ${f.sharing === 'public' ? '<p class="note">Tous les clubs le verront après validation par le bureau de ton club. Toute modification du contenu repasse par cette validation.</p>' : ''}</div>
   ${f.sharing !== 'me' ? `<label class="check"><input type="checkbox" name="certified" ${f.certified ? 'checked' : ''} required><span>Je certifie avoir le droit de partager ce contenu : il est de moi, ou adapté avec mes mots en citant la source. Pas de copie de livre, de site ou de vidéo.</span></label>` : ''}
-  ${f.video_path ? '' : `<label class="check"><input type="checkbox" name="askschema" ${f.askschema !== false && f.askschema !== '' ? 'checked' : ''}><span>Demander le schéma à mypocketclub : l'exercice est créé tout de suite dans ta banque, le schéma est ajouté quand il est prêt (tu es prévenu).</span></label>`}
+  ${hooks.exAiForm ? hooks.exAiForm(f) : ''}
+  ${f.video_path || (f.steps?.frames?.length) ? '' : `<label class="check"><input type="checkbox" name="askschema" ${f.askschema !== false && f.askschema !== '' ? 'checked' : ''}><span>Demander le schéma à mypocketclub : l'exercice est créé tout de suite dans ta banque, le schéma est ajouté quand il est prêt (tu es prévenu).</span></label>`}
   <button class="btn main" type="submit">${f.id ? 'Enregistrer les changements' : "Enregistrer l'exercice"}</button></form>`;
 }
-function keepEx() { const fm = document.getElementById('exf'); if (!fm) return; const v = Object.fromEntries(new FormData(fm)); Object.assign(S.exf, v); S.exf.certified = !!v.certified; S.exf.askschema = !!v.askschema; }
+export function keepEx() { const fm = document.getElementById('exf'); if (!fm) return; const v = Object.fromEntries(new FormData(fm)); Object.assign(S.exf, v); S.exf.certified = !!v.certified; S.exf.askschema = !!v.askschema; }
 
 // ---------- séance ----------
 function savePlanLocal() { try { store.set('pc_plan_' + S.clubId, JSON.stringify(S.plan)); } catch { /* */ } }
@@ -434,7 +436,7 @@ function printHtml(title, body) {
 }
 function printPlan(p) {
   const e = S.events.find((x) => x.id === p.event_id);
-  printHtml(p.title, `<h1>${esc(p.title)}</h1><p>${[teamName(p.team_id), e ? fmtShort(e.starts_at) : '', fmtMin(planTotal(p))].filter(Boolean).map(esc).join(' · ')}</p>${p.notes ? `<p><b>Notes :</b> ${esc(p.notes)}</p>` : ''}${p.items.map((x, i) => `<div class="ex"><b>${i + 1}. ${esc(x.title)}</b> · ${esc(x.category || '')} · ${fmtMin(x.minutes)}${x.diagram?.length ? courtSvg(x.sport === 'Tous les sports' ? club()?.sport : x.sport, x.diagram, false) : ''}<p style="white-space:pre-wrap">${esc(x.description || '')}</p></div>`).join('')}`);
+  printHtml(p.title, `<h1>${esc(p.title)}</h1><p>${[teamName(p.team_id), e ? fmtShort(e.starts_at) : '', fmtMin(planTotal(p))].filter(Boolean).map(esc).join(' · ')}</p>${p.notes ? `<p><b>Notes :</b> ${esc(p.notes)}</p>` : ''}${p.items.map((x, i) => `<div class="ex"><b>${i + 1}. ${esc(x.title)}</b> · ${esc(x.category || '')} · ${fmtMin(x.minutes)}${x.steps?.frames?.length && hooks.stepsMini ? hooks.stepsMini(x) + (x.steps.frames.map((f, j) => f.c ? `<p>${j + 1}. ${esc(f.c)}</p>` : '').join('')) : x.diagram?.length ? courtSvg(x.sport === 'Tous les sports' ? club()?.sport : x.sport, x.diagram, false) : ''}<p style="white-space:pre-wrap">${esc(x.description || '')}</p></div>`).join('')}`);
 }
 
 // ---------- statistiques ----------
@@ -604,7 +606,7 @@ const exById = (id) => (S.exos || []).find((x) => x.id === id);
 function addToPlan(e) {
   const p = ensurePlan();
   if (p.items.some((x) => x.exercise_id === e.id)) { p.items = p.items.filter((x) => x.exercise_id !== e.id); toast('Retiré de ta séance.'); }
-  else { if (p.items.length >= 30) return toast('30 exercices au plus par séance.'); p.items.push({ exercise_id: e.id, title: e.title, category: e.category, minutes: e.duration_min, sport: e.sport, description: e.description, diagram: e.diagram }); toast(`Ajouté à ta séance (${plural(p.items.length, 'exercice')}, ${fmtMin(planTotal(p))}).`); }
+  else { if (p.items.length >= 30) return toast('30 exercices au plus par séance.'); p.items.push({ exercise_id: e.id, title: e.title, category: e.category, minutes: e.duration_min, sport: e.sport, description: e.description, diagram: e.diagram, steps: e.steps?.frames?.length ? e.steps : undefined }); toast(`Ajouté à ta séance (${plural(p.items.length, 'exercice')}, ${fmtMin(planTotal(p))}).`); }
   savePlanLocal(); render(true);
 }
 Object.assign(ACTIONS, {
@@ -618,8 +620,8 @@ Object.assign(ACTIONS, {
   padd: () => { keepPlan(); S.pk = { tab: 'mine' }; return open({ type: 'expick' }, async () => { if (!exosFresh()) await loadExos(); }); },
   pktab: async (el, d) => { S.pk = { tab: d.v }; render(true); if (!exosFresh()) { await loadExos(); render(true); } },
   pkcreate: () => { ACTIONS.cexnew(); S.exf.pickAdd = true; },
-  cexnew: () => { S.exVid = null; S.exVidRm = false; S.exf = { sport: club()?.sport || 'Basket-ball', category: 'Technique', duration_min: 10, origin: 'perso', sharing: 'me', diagram: [], tags: [], certified: false, askschema: true }; S.dg = { tool: 'a', from: null }; S.view = { type: 'exoform' }; render(); },
-  cexedit: (el, d) => { S.exVid = null; S.exVidRm = false; const e = exById(d.id); S.exf = { ...e, diagram: (e.diagram || []).slice(), tags: (e.tags || []).slice(), askschema: false }; S.dg = { tool: 'a', from: null }; S.view = { type: 'exoform', id: d.id }; render(); },
+  cexnew: () => { S.exVid = null; S.exVidRm = false; S.exf = { sport: club()?.sport || 'Basket-ball', category: 'Technique', duration_min: 10, origin: 'perso', sharing: 'me', diagram: [], tags: [], certified: false, askschema: true, steps: null }; S.dg = { tool: 'a', from: null }; S.view = { type: 'exoform' }; render(); },
+  cexedit: (el, d) => { S.exVid = null; S.exVidRm = false; const e = exById(d.id); S.exf = { ...e, diagram: (e.diagram || []).slice(), tags: (e.tags || []).slice(), askschema: false, steps: e.steps?.frames?.length ? JSON.parse(JSON.stringify(e.steps)) : null, hadSteps: !!e.steps?.frames?.length }; S.dg = { tool: 'a', from: null }; S.view = { type: 'exoform', id: d.id }; render(); },
   dgtool: (el, d) => { keepEx(); S.dg = { tool: d.v, from: null }; render(true); },
   dgundo: () => { keepEx(); S.exf.diagram.pop(); S.dg.from = null; render(true); },
   dgclear: () => { keepEx(); S.exf.diagram = []; S.dg.from = null; render(true); },
@@ -686,17 +688,18 @@ Object.assign(ACTIONS, {
 FORMS.exf = async () => {
   keepEx(); const f = S.exf;
   const row = { title: (f.title || '').trim(), sport: f.sport, category: f.category, duration_min: +f.duration_min || 10, level: (f.level || '').trim(), description: (f.description || '').trim(), tags: [...new Set(f.tags || [])].slice(0, 25), origin: f.origin, source: f.origin === 'perso' ? '' : (f.source || '').trim(), sharing: f.sharing, certified: f.sharing !== 'me' && !!f.certified };
+  if (f.steps?.frames?.length || f.hadSteps) row.steps = f.steps?.frames?.length ? f.steps : {}; // 5.10.0 · n° 161 : schéma animé
   if (f.sharing !== 'me' && !row.certified) return toast('Coche la case sur tes droits pour partager.');
   const r = f.id ? await run(sb.from('exercises').update(row).eq('id', f.id).select().single()) : await run(sb.from('exercises').insert({ ...row, club_id: S.clubId }).select().single());
   if (!r) return;
   S.exVid = null; S.exVidRm = false;
   let asked = false;
-  if (f.askschema && !r.video_path && !(S.schemaReq || {})[r.id]) asked = !!(await run(sb.rpc('request_schema', { p_exercise: r.id })));  // n° 86
+  if (f.askschema && !f.steps?.frames?.length && !r.video_path && !(S.schemaReq || {})[r.id]) asked = !!(await run(sb.rpc('request_schema', { p_exercise: r.id })));  // n° 86
   toast(r.public_state === 'pending' ? 'Enregistré. Le bureau de ton club doit valider le partage à tous les clubs.' : asked ? 'Exercice enregistré. Schéma demandé : tu seras prévenu quand il sera prêt.' : 'Exercice enregistré.');
   S.exf = null; await loadExos(); S.stack = (S.stack || []).filter((v) => v.type !== 'exoform');
   if (f.pickAdd && !f.id) {   // créé depuis le sélecteur de la séance : ajouté directement, retour au sélecteur
     const ex = exById(r.id) || r, pl = ensurePlan();
-    if (!pl.items.some((x) => x.exercise_id === ex.id)) pl.items.push({ exercise_id: ex.id, title: ex.title, category: ex.category, minutes: ex.duration_min, sport: ex.sport, description: ex.description, diagram: ex.diagram });
+    if (!pl.items.some((x) => x.exercise_id === ex.id)) pl.items.push({ exercise_id: ex.id, title: ex.title, category: ex.category, minutes: ex.duration_min, sport: ex.sport, description: ex.description, diagram: ex.diagram, steps: ex.steps?.frames?.length ? ex.steps : undefined });
     savePlanLocal(); toast('Exercice créé et ajouté à ta séance.');
     if (S.stack.length && S.stack[S.stack.length - 1].type === 'expick') S.stack.pop();
     S.pk = S.pk || { tab: 'mine' }; S.view = { type: 'expick' }; render(); return;

@@ -1,11 +1,11 @@
 // mypocketclub · alpha 4.9.0 · n° 175 et n° 180 : mentions légales, « Vos données » (version courte et politique complète),
-// conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.3 du 12 novembre 2026),
+// conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.4 du 13 novembre 2026 : ajout d'Anthropic, n° 161),
 // non relus par un juriste. Vouvoiement. Changer LEGAL.version et LEGAL.date (et CGU_VERSION dans config.js
 // pour les conditions) à chaque modification : une nouvelle version des conditions est présentée à la connexion suivante.
 import { BRAND } from '../config.js';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.3', date: '12 novembre 2026' };
+export const LEGAL = { version: '1.4', date: '13 novembre 2026' };
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -76,7 +76,7 @@ Deux accords sont facultatifs, et vous pouvez les retirer à tout moment dans «
 - Présences : rendues anonymes après une saison. Messages : 2 saisons.
 - Appareils de connexion : effacés après 12 mois sans usage.
 ## Où sont vos données ?
-Dans l'Union européenne (Irlande), chez Supabase. Les e-mails sont envoyés par Resend et les pages sont servies par GitHub, deux sociétés américaines liées par un contrat de protection des données.
+Dans l'Union européenne (Irlande), chez Supabase. Les e-mails sont envoyés par Resend et les pages sont servies par GitHub, deux sociétés américaines liées par un contrat de protection des données. Quand un coach prépare le schéma d'un exercice avec l'IA, le texte de l'exercice est envoyé à Anthropic (États-Unis), jamais un nom ni une donnée de joueur.
 ## Vos droits
 Vous pouvez demander à voir vos données, les corriger, les effacer, en obtenir une copie ou vous opposer à un usage. Écrivez à ${C} : réponse sous un mois. Si la demande concerne les données gérées par votre club, nous la lui transmettons. Vous pouvez aussi saisir la CNIL (cnil.fr).`;
 
@@ -107,6 +107,7 @@ Les données viennent de vous, de votre club (qui peut vous inscrire ou inscrire
 | Utiliser l'image d'un joueur | Votre accord, ou celui des parents pour un mineur |
 | Faire jouer un joueur en renfort dans une autre équipe | L'accord de sa famille (celle d'un mineur, ou lui-même s'il est majeur) |
 | Vous envoyer des e-mails d'information | Votre accord |
+| Préparer le schéma d'un exercice avec l'IA, à la demande d'un coach (seul le texte de l'exercice est envoyé, jamais un nom) | Intérêt légitime du club (outil d'entraînement) |
 | Répondre à vos demandes et respecter nos obligations légales | Obligation légale |
 Vos données ne servent ni à de la publicité, ni à de la revente, ni à établir un profil de vous.
 ## 4. Qui peut voir vos données ?
@@ -153,6 +154,7 @@ Les copies de sauvegarde sont effacées dans les semaines qui suivent. Le motif 
 | Resend | Envoi des e-mails · États-Unis |
 | Cloudflare | Vérification « vous n'êtes pas un robot » (Turnstile) à l'inscription et à la connexion · États-Unis |
 | GitHub | Pages de l'application (aucune donnée de membre) · États-Unis |
+| Anthropic | IA Claude : propose le schéma d'un exercice à la demande d'un coach ; reçoit seulement le titre, la description et les tags de l'exercice, jamais un nom ni une donnée de joueur · États-Unis |
 | OVH | Nom de domaine et boîte de contact · France |
 Les prestataires américains interviennent dans le cadre des garanties prévues par le RGPD pour les transferts hors de l'Union européenne (clauses contractuelles types ou cadre de protection des données entre l'Union européenne et les États-Unis). Cette liste est mise à jour à chaque changement.
 ## 9. Sécurité

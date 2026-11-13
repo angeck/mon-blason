@@ -30,6 +30,8 @@ async function rpc(name, args) {
 async function load(tab) {
   const a = A(); a.err = null;
   if (tab === 'home') a.ov = (await rpc('admin_overview')) || a.ov || null;
+  // 5.10.0 · n° 161 : solde de l'IA (sans message d'erreur si le script 5.10.0 n'est pas encore lancé)
+  if (tab === 'home') { try { const r = await sb.rpc('admin_ai_stats'); a.ai = r.error ? (/function|fonction|schema cache/i.test(r.error.message || '') ? { missing: true } : null) : r.data; } catch { a.ai = null; } }
   if (tab === 'clubs' || tab === 'todo' || tab === 'club') a.clubs = arr(await rpc('admin_club_list')) || a.clubs || [];
   if (tab === 'todo') {
     const [rep, dup, ov] = await Promise.all([rpc('admin_reports'), rpc('duplicates_list'), rpc('admin_overview')]);
@@ -81,8 +83,42 @@ function homeTab() {
     <div class="row static"><span class="g">Montant prévu (clubs payants)</span><b>${euros(n('due_cents'))}</b></div></section>`;
   const purge = `<section class="card" style="flex-direction:row;align-items:center;gap:12px"><span class="g" style="flex:1;display:flex;flex-direction:column"><b>Suppressions automatiques</b><span class="det">${ov.last_purge ? 'Dernier passage le ' + esc(day(ov.last_purge)) : 'Jamais lancées depuis cet écran'}</span></span><button class="btn small ghost" data-act="admtab" data-k="tools">Voir</button></section>`;
   const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-  return `<p class="note">${esc(date.charAt(0).toUpperCase() + date.slice(1))} · ${esc(VERSION)}</p>${todo}${parc}${subs}${purge}${S.clubId ? '' : '<p class="note">Ce compte n’a pas de club : il n’ouvre que l’administration.</p>'}`;
+  return `<p class="note">${esc(date.charAt(0).toUpperCase() + date.slice(1))} · ${esc(VERSION)}</p>${todo}${aiCard()}${parc}${subs}${purge}${S.clubId ? '' : '<p class="note">Ce compte n’a pas de club : il n’ouvre que l’administration.</p>'}`;
 }
+
+// ---------- 5.10.0 · n° 161 : IA des exercices (estimation de l'application ; le chiffre exact est dans la Console Claude) ----------
+const usd = (v, d = 2) => (+v || 0).toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d }) + '\u00a0$';
+const CONSOLE = 'https://platform.claude.com/';
+function aiCard() {
+  const x = A().ai; if (!x) return '';
+  if (x.missing) return '<section class="card"><div class="kick">IA · exercices</div><p class="note">Lance le script MAJ_ALPHA_5_10_0.sql dans Supabase pour suivre le solde.</p></section>';
+  const bal = +x.balance || 0, low = bal <= (+x.alert_usd || 0), avg = +x.count_total ? (+x.spent_total) / (+x.count_total) : 0, open = !!A().aiOpen;
+  let h = `<section class="card ${bal <= 0 || low ? 'warn' : ''}"><div style="display:flex;justify-content:space-between;align-items:baseline"><div class="kick">IA · exercices</div>${x.enabled ? '' : '<span class="pill ko">En pause</span>'}</div>
+  <div class="row static"><span class="g"><b>Solde restant</b><small>crédit acheté ${usd(x.credit)} − dépensé ${usd(x.spent_total)}</small></span><b class="big" style="font-size:26px">${usd(bal)}</b></div>
+  ${bal <= 0 ? '<p role="alert"><b>Solde épuisé : les coachs ne peuvent plus préparer de schéma avec l’IA.</b> Rachète du crédit dans la Console, puis note l’achat ici.</p>' : low ? `<p role="alert"><b>Solde bas (sous ${usd(x.alert_usd)}).</b> Pense à racheter du crédit dans la Console.</p>` : ''}
+  <div class="admnums" style="grid-template-columns:repeat(2,minmax(0,1fr))">${[[usd(x.spent_month), 'ce mois-ci'], [usd(x.spent_total), 'au total'], [String(+x.count_total || 0), 'schémas'], [usd(avg, 3), 'par schéma']].map(([v, l]) => `<div><div class="big" style="font-size:20px">${esc(v)}</div><div class="det">${l}</div></div>`).join('')}</div>
+  ${+x.fails ? `<p class="note">${plural(+x.fails, 'réponse')} de l’IA inutilisable${+x.fails > 1 ? 's' : ''} (coût compté).</p>` : ''}
+  <p class="note">Estimation de l’application. Le chiffre exact est dans la <a href="${CONSOLE}" target="_blank" rel="noopener">Console Claude</a>, avec sa limite de dépense mensuelle.</p>
+  <button class="btn small ghost" data-act="admai">${open ? 'Fermer' : 'Noter un achat · réglages'}</button>`;
+  if (open) {
+    h += `<form id="admaicred" class="card" style="margin-top:8px"><b>Noter un achat de crédit</b><div class="grid2">${field('aiam', 'Montant ($)', '<input id="aiam" name="amount" type="number" min="0.01" max="1000" step="0.01" required inputmode="decimal">')}${field('aino', 'Note (facultatif)', '<input id="aino" name="note" maxlength="200" placeholder="Ex. achat du 13/11">')}</div><button class="btn main small" type="submit">Ajouter au crédit</button></form>
+    <form id="admaiset" class="card"><b>Réglages</b><label class="check"><input type="checkbox" name="enabled" ${x.enabled ? 'checked' : ''}><span>Création avec l’IA ouverte aux coachs</span></label>
+    <div class="grid2">${field('aial', 'Alerte sous ($)', `<input id="aial" name="alert" type="number" min="0" step="0.5" value="${esc(x.alert_usd)}">`)}${field('aicap', 'Budget par club et par saison ($)', `<input id="aicap" name="cap" type="number" min="0" step="0.5" value="${esc(x.club_cap_usd)}">`)}${field('aipd', 'Schémas par jour et par compte', `<input id="aipd" name="per_day" type="number" min="1" max="200" value="${esc(x.per_day)}">`)}</div>
+    <p class="note">Le budget par club vaut pour les clubs en test et gratuits (environ 10 € pour 11 $). Un club payant a 10 % de son abonnement estimé, jamais moins.</p><button class="btn main small" type="submit">Enregistrer les réglages</button></form>`;
+    if ((x.credits || []).length) h += `<div class="kick">Derniers achats</div><div class="list">${x.credits.map((c) => `<div class="row static"><span class="g">${esc(day(c.at))}${c.note ? `<small>${esc(c.note)}</small>` : ''}</span><b>${usd(c.amount)}</b></div>`).join('')}</div>`;
+    if ((x.clubs || []).length) h += `<div class="kick">Clubs cette saison</div><div class="list">${x.clubs.map((c) => `<div class="row static"><span class="g">${esc(c.name)}<small>${plural(+c.n, 'schéma')} · budget ${usd(c.cap)}</small></span><b>${usd(c.spent, 3)}</b></div>`).join('')}</div>`;
+  }
+  return h + '</section>';
+}
+ACTIONS.admai = () => { A().aiOpen = !A().aiOpen; render(true); };
+FORMS.admaicred = async (v) => {
+  const n = +String(v.amount || '').replace(',', '.'); if (!(n > 0 && n <= 1000)) return toast('Montant entre 0,01 et 1 000 $.');
+  if (await run(sb.rpc('admin_ai_credit', { p_amount: n, p_note: (v.note || '').trim() }), `Achat de ${usd(n)} noté.`)) { await load('home'); render(true); }
+};
+FORMS.admaiset = async (v) => {
+  const num = (x) => (x === '' || x == null ? null : +String(x).replace(',', '.'));
+  if (await run(sb.rpc('admin_ai_settings', { p_enabled: !!v.enabled, p_alert: num(v.alert), p_cap: num(v.cap), p_per_day: num(v.per_day) }), 'Réglages de l’IA enregistrés.')) { await load('home'); render(true); }
+};
 
 // ---------- Clubs ----------
 const isTrash = (c) => !!c.deleted_at;

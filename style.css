@@ -496,3 +496,23 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .clubsw{flex:none;width:28px;height:28px;border-radius:14px;border:1.5px solid rgba(255,255,255,.7);background:transparent;color:#FFFFFF;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;position:relative}
 .clubsw::after{content:'';position:absolute;inset:-8px}
 .clubsw:focus-visible{outline:3px solid var(--pc-jaune);outline-offset:2px}
+/* 5.10.0 · n° 161 : schéma animé (maquette des tutos basket) */
+.stsvg{display:block;width:100%;height:auto;background:#F1F3F8;border-radius:14px;user-select:none;-webkit-user-select:none}
+.stsvg .stsel{opacity:0}.stsvg g.on .stsel{opacity:1}
+.stsvg[data-sted] g[data-it]{cursor:grab}
+.stp{display:flex;flex-direction:column;gap:8px}
+.stpbar{display:flex;align-items:center;gap:8px}
+.stbtn{width:44px;height:44px;border-radius:12px;border:1px solid var(--pc-trait);background:var(--pc-papier);color:inherit;font-size:20px;cursor:pointer;flex:none}
+.stpn{margin-left:auto;font-size:13px;opacity:.75}
+.stpc{margin:0;min-height:44px;font-size:15px;line-height:1.45}
+.stmini{max-width:180px}
+.stchips{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.stchip{min-width:40px;height:40px;border-radius:10px;border:1px solid var(--pc-trait);background:var(--pc-papier);color:inherit;font-weight:700;cursor:pointer}
+.stchip[aria-pressed=true]{background:var(--pc-bleu);border-color:var(--pc-bleu);color:#FFFFFF}
+.stchip.add{border-style:dashed;background:transparent}
+.stedit{display:flex;flex-direction:column;gap:10px}
+.stsel-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:44px}
+.stsel-row .det{flex:1;min-width:140px}
+.stlab{display:flex;align-items:center;gap:6px;font-size:13px}.stlab input{width:56px;min-height:40px}
+.dmini .stsvg{width:46px;border-radius:6px}
+@media (min-width:700px){.stp,.stedit .stsvg{max-width:420px}}
