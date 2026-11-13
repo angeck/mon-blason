@@ -207,5 +207,33 @@ check('n° 187 : adresses lues avec la clé du serveur, 40 au plus', (() => { co
 check('n° 187 : noté au journal admin et compté', k.calls.some((c) => c[0].endsWith('/rpc/admin_inactive_warn_note')) && logs(k).some((x) => x.p_kind === 'prevenance_inactif'));
 k = fakeA({ admin: true, rows: rows187 }); r = await F.handle(req({ inactive_warnings: true }), env, k.f);
 check('n° 187 : sans clé du serveur, rien ne part', r.status === 500 && !k.calls.some((c) => c[0].includes('resend')));
+// ---------- 5.11.0 · n° 96 : e-mail au dirigeant d'un club absent ----------
+const TOK96 = 'a'.repeat(64);
+function fakeO({ prep = { outreach: 'o-1', email: 'contact@club.fr', token: TOK96, club: 'Volley Club', city: 'Lardy', first_name: 'Léa', last_name: 'Martin', count: 3, relance: false, source: 'Site du club' }, admin = true, resendOk = true } = {}) {
+  const k = fake({ admin, resendOk }), base = k.f;
+  k.f = async (url, o = {}) => {
+    if (url.endsWith('/rpc/admin_outreach_prepare')) { k.calls.push([url, o]); return prep ? { ok: true, status: 200, json: async () => prep } : { ok: false, status: 400, json: async () => ({ message: 'Cette adresse a refusé tout envoi : on ne lui écrit plus' }) }; }
+    if (url.endsWith('/rpc/mail_log_add') || url.endsWith('/rpc/admin_outreach_failed')) { k.calls.push([url, o]); return { ok: true, status: 200, json: async () => null }; }
+    return base(url, o);
+  };
+  return k;
+}
+k = fakeO(); r = await F.handle(req({ club_outreach: { request: 'cr-1', email: 'contact@club.fr', source: 'Site du club' } }), { ...env, service: 's', appUrl: 'https://mypocketclub.fr/' }, k.f); b = await r.json();
+const om = bodyOf(k, 'api.resend.com/emails');
+check('n° 96 : l’e-mail part du sous-domaine info., réponses sur contact@', r.status === 200 && /info\.mypocketclub\.fr/.test(om.from) && om.reply_to === 'contact@mypocketclub.fr' && JSON.stringify(om.to) === '["contact@club.fr"]');
+check('n° 96 : texte validé (tutoiement, nom du demandeur, nombre, gratuité)', om.subject === 'Un membre de ton club voudrait utiliser mypocketclub' && om.text.includes('Un membre de ton club, Léa Martin, voudrait que Volley Club (Lardy) soit sur mypocketclub. 3 membres') && om.text.includes('jusqu’à la fin de la saison pour tout ton club') && om.text.includes('Réponds simplement'));
+check('n° 96 : lien de désinscription dans le texte et dans l’en-tête List-Unsubscribe', om.text.includes('https://mypocketclub.fr/#desinscription=' + TOK96) && om.headers?.['List-Unsubscribe'] === '<https://mypocketclub.fr/#desinscription=' + TOK96 + '>');
+check('n° 96 : l’e-mail dit d’où vient l’adresse', om.text.includes('nous avons trouvé cette adresse ici : site du club'));
+check('n° 96 : compté comme e-mail d’information', logs(k).some((x) => x.p_kind === 'information' && x.p_ok === true));
+k = fakeO({ admin: false }); r = await F.handle(req({ club_outreach: { request: 'cr-1', email: 'contact@club.fr', source: 'x' } }), env, k.f);
+check('n° 96 : réservé à l’administrateur', r.status === 403 && !k.calls.some((c) => c[0].includes('resend') || c[0].endsWith('/rpc/admin_outreach_prepare')));
+k = fakeO({ prep: null }); r = await F.handle(req({ club_outreach: { request: 'cr-1', email: 'refus@club.fr', source: 'x' } }), env, k.f); b = await r.json();
+check('n° 96 : adresse de la liste noire : rien ne part, raison renvoyée', r.status === 403 && /refusé tout envoi/.test(b.erreur) && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeO({ prep: { outreach: 'o-1', email: 'contact@club.fr', token: TOK96, club: 'C', relance: true } }); r = await F.handle(req({ club_outreach: { request: 'cr-1', relance: true } }), env, k.f);
+const rel = bodyOf(k, 'api.resend.com/emails');
+check('n° 96 : relance : « Relance · » dans l’objet, une seule fois annoncée', rel.subject.startsWith('Relance · ') && rel.text.includes('une seule fois'));
+k = fakeO({ resendOk: false }); r = await F.handle(req({ club_outreach: { request: 'cr-1', email: 'contact@club.fr', source: 'x' } }), env, k.f);
+check('n° 96 : refus de Resend : l’envoi est annulé dans la base (on peut réessayer)', r.status === 502 && k.calls.some((c) => c[0].endsWith('/rpc/admin_outreach_failed')));
+check('n° 96 : HTML : nom du demandeur et du club échappés', !/<script>/.test(F.clubOutreachMail({ first_name: '<script>', club: '<script>' }, 'https://x/#desinscription=ab').html));
 console.log(`\n   ${ok} réussis sur ${ok + ko} tests d'e-mail`);
 if (ko) process.exitCode = 1;

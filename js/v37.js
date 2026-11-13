@@ -49,59 +49,86 @@ function creqScreen() {
   return head + `<main class="bd">${creqForm()}</main>`;
 }
 
-// ---------- n° 96 · page Admin (Gaël) : demandes de clubs et aperçu de l'e-mail au dirigeant ----------
-const SIM = `<div class="card warn" style="transform:none"><b>L’option n’est pas activée : simulation</b><span class="note" style="color:var(--pc-texte-ecran)">Aucun e-mail n’est envoyé, ni au club ni à la personne. Les coordonnées du dirigeant sont à chercher à la main.</span></div>`;
+// ---------- n° 96 · page Admin (Gaël) : demandes de clubs et e-mail au dirigeant ----------
+// 5.11.0 (décision de Gaël du 13 novembre 2026) : la demande d'un membre fait une notification à l'administrateur, qui cherche
+// l'adresse PUBLIÉE du club, note d'où elle vient, puis envoie (deux touches). Une relance au plus, 14 jours après.
+// La base refuse une adresse de la liste noire, un club déjà inscrit ou déjà contacté, et au-delà de 10 e-mails par jour.
 const keyOf = (r) => (String(r.club_name || '') + '|' + String(r.city || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9|]/g, '');
 const sameClub = (r) => (S.creqs || []).filter((x) => keyOf(x) === keyOf(r));
+const outOf = (r) => (S.creqOut || []).find((o) => keyOf(o) === keyOf(r));
+const SOURCES = ['Site du club', 'Annuaire de la fédération', 'Comité ou ligue', 'Réseaux sociaux du club', 'Autre page publique'];
+const RELANCE_DAYS = 14;
+const canRelance = (o) => o && o.status === 'envoye' && o.sent_at && Date.now() - new Date(o.sent_at).getTime() >= RELANCE_DAYS * 864e5;
+function outPill(o) {
+  if (!o || o.status === 'pret') return '';
+  if (o.status === 'refuse') return '<span class="pill ko">Désinscrit : plus aucun envoi</span>';
+  if (o.status === 'echec') return '<span class="pill ko">Échec de l’envoi : réessaie</span>';
+  if (o.status === 'relance') return `<span class="pill">Contacté le ${esc(fmtDay(o.sent_at))} · relancé le ${esc(fmtDay(o.relance_at))}</span>`;
+  return `<span class="pill ok">Contacté le ${esc(fmtDay(o.sent_at))}</span>`;
+}
 function creqsScreen() {
   const head = header({ brand: true, back: true, kicker: 'Administration ' + BRAND.name, title: 'Demandes de clubs' });
   const l = S.creqs;
   if (!S.isAdmin) return head + '<main class="bd"><p class="empty">Réservé à l’administrateur.</p></main>';
   if (!l) return head + '<main class="bd"><p class="empty">Chargement…</p></main>';
   const open = l.filter((r) => r.status === 'new'), done = l.filter((r) => r.status !== 'new');
-  const card = (r) => { const n = sameClub(r).length;
+  const card = (r) => { const n = sameClub(r).length, o = outOf(r), sent = o && ['envoye', 'relance', 'refuse'].includes(o.status);
+    const btn = !sent ? `<button class="btn small main" data-act="creqmail" data-id="${r.id}">${icon('mail', 18)}Contacter le club</button>`
+      : canRelance(o) ? `<button class="btn small" data-act="creqmail" data-id="${r.id}" data-relance="1">${icon('mail', 18)}Relancer (une seule fois)</button>` : '';
     return `<div class="card"><div class="kick">${esc(fmtDay(r.created_at))}${n > 1 ? ` · ${n} demandes pour ce club` : ''}</div><b style="font-size:18px">${esc(r.club_name)}</b><span class="det">${esc([r.city, r.sport].filter(Boolean).join(' · '))}</span>
     <div class="det">Demandé par <b>${esc(r.first_name)} ${esc(r.last_name)}</b> · <a href="mailto:${esc(r.email)}">${esc(r.email)}</a></div>
-    <div class="chips"><span class="pill ${r.age_ok ? 'ok' : 'ko'}">${r.age_ok ? '15 ans ou plus' : 'âge non confirmé'}</span><span class="pill ${r.consent ? 'ok' : 'ko'}">${r.consent ? 'nom transmissible au club' : 'sans accord'}</span>${r.user_id ? '<span class="pill blue">a un compte</span>' : '<span class="pill">visiteur</span>'}</div>
-    <div class="btns"><button class="btn small main" data-act="creqmail" data-id="${r.id}">${icon('mail', 18)}Aperçu de l’e-mail au dirigeant</button>${r.status === 'new' ? `<button class="btn small ghost" data-act="creqdone" data-id="${r.id}">Marquer comme traitée</button>` : `<button class="btn small ghost" data-act="creqreopen" data-id="${r.id}">Remettre à traiter</button>`}</div></div>`; };
-  return head + `<main class="bd">${SIM}<div class="sec"><h2>À traiter</h2><span class="det">${open.length}</span></div>${open.length ? open.map(card).join('') : '<p class="empty">Aucune demande en attente.</p>'}${done.length ? `<details class="card flat"><summary>Traitées (${done.length})</summary>${done.map(card).join('')}</details>` : ''}</main>`;
+    <div class="chips"><span class="pill ${r.age_ok ? 'ok' : 'ko'}">${r.age_ok ? '15 ans ou plus' : 'âge non confirmé'}</span><span class="pill ${r.consent ? 'ok' : 'ko'}">${r.consent ? 'nom transmissible au club' : 'sans accord'}</span>${r.user_id ? '<span class="pill blue">adhérent</span>' : '<span class="pill">visiteur</span>'}${outPill(o)}</div>
+    ${o && o.email ? `<div class="det">Adresse du club : ${esc(o.email)} · source : ${esc(o.source)}${o.source_url ? ` (<a href="${esc(o.source_url)}" target="_blank" rel="noopener">lien</a>)` : ''}</div>` : ''}
+    <div class="btns">${btn}${r.status === 'new' ? `<button class="btn small ghost" data-act="creqdone" data-id="${r.id}">Marquer comme traitée</button>` : `<button class="btn small ghost" data-act="creqreopen" data-id="${r.id}">Remettre à traiter</button>`}</div></div>`; };
+  return head + `<main class="bd"><p class="note">Chaque demande t’envoie une notification. Cherche l’adresse publiée du club (l’adresse générale d’abord), puis envoie : une relance au plus, ${RELANCE_DAYS} jours après.</p><div class="sec"><h2>À traiter</h2><span class="det">${open.length}</span></div>${open.length ? open.map(card).join('') : '<p class="empty">Aucune demande en attente.</p>'}${done.length ? `<details class="card flat"><summary>Traitées (${done.length})</summary>${done.map(card).join('')}</details>` : ''}</main>`;
 }
-// Texte du futur e-mail de démarchage (vouvoiement : texte adressé à un club)
-function mailText(r) {
-  const n = sameClub(r).length;
+// Texte de l'e-mail au dirigeant, validé par Gaël le 13 novembre 2026 (même texte que la fonction serveur, clubOutreachMail)
+function mailText(r, relance = false) {
+  const n = sameClub(r).filter((x) => x.consent).length || 1, last = sameClub(r).filter((x) => x.consent)[0] || r;
   return {
-    subject: `Un membre de votre club souhaite utiliser ${BRAND.name}`,
+    subject: `${relance ? 'Relance · ' : ''}Un membre de ton club voudrait utiliser ${BRAND.name}`,
     body: `Bonjour,
-
-Un membre de votre club, ${r.first_name} ${r.last_name}, souhaite que le club ${r.club_name}${r.city ? ' (' + r.city + ')' : ''} soit ajouté sur ${BRAND.name}.${n > 1 ? `\n${n} membres de votre club ont fait cette demande.` : ''}
+${relance ? '\nJe me permets de te relancer, une seule fois, au sujet de ce message.\n' : ''}
+Un membre de ton club, ${last.first_name} ${last.last_name}, voudrait que ${r.club_name}${r.city ? ' (' + r.city + ')' : ''} soit sur ${BRAND.name}.${n > 1 ? ` ${n} membres de ton club ont fait cette demande.` : ''}
 
 ${BRAND.name} est une application pour les clubs sportifs : l’agenda avec les réponses « Je viens / Je ne viens pas », les convocations, les messages des équipes, les licences et les cotisations, au même endroit, dans la poche de chacun.
 
-Pour en savoir plus ou inscrire votre club : https://mypocketclub.fr
+C’est gratuit pour l’essayer : jusqu’à la fin de la saison pour tout ton club, ou pendant une saison complète pour une seule équipe.
+
+Pour en savoir plus ou inscrire ton club : https://mypocketclub.fr
+Une question ? Réponds simplement à ce message.
 
 Sportivement,
 Gaël Raveneau, ${BRAND.name}
 
 —
-Vous recevez ce message parce qu’un membre de votre club a demandé son arrivée sur ${BRAND.name}. Pour ne plus recevoir de message de notre part : [lien de désinscription, ajouté dans la version réelle].`,
+Tu reçois ce message parce qu’un membre de ton club a demandé son arrivée sur ${BRAND.name} ; nous avons trouvé cette adresse ici : [source choisie]. Tu ne recevras rien d’autre sans ton accord. Pour ne plus rien recevoir : [lien de désinscription personnel].`,
   };
 }
-function creqMailScreen(id) {
-  const r = (S.creqs || []).find((x) => x.id === id);
-  const head = header({ brand: true, back: true, kicker: 'Aperçu · aucun envoi', title: 'E-mail au dirigeant' });
+function creqMailScreen(v) {
+  const r = (S.creqs || []).find((x) => x.id === v.id), relance = !!v.relance;
+  const head = header({ brand: true, back: true, kicker: relance ? 'Relance du club' : 'Contacter le club', title: 'E-mail au dirigeant' });
   if (!r || !S.isAdmin) return head + '<main class="bd"><p class="empty">Demande introuvable.</p></main>';
-  const m = mailText(r);
-  return head + `<main class="bd">${SIM}<div class="card lift" style="transform:none"><div class="det">À : <i>adresse du dirigeant, à trouver à la main</i></div><div class="det">De : ${esc(BRAND.name)} &lt;contact@mypocketclub.fr&gt; (version réelle)</div><div class="det">Objet : <b>${esc(m.subject)}</b></div><hr style="border:0;border-top:1px solid var(--pc-trait);width:100%"><div style="white-space:pre-wrap;font-size:15px">${esc(m.body)}</div></div>
-  <button class="btn" data-act="creqcopy" data-id="${r.id}">${icon('doc', 20)}Copier l’objet et le texte</button><p class="note">Pour l’instant, le démarchage se fait à la main depuis ta messagerie.</p></main>`;
+  const m = mailText(r, relance), o = outOf(r), on = S.creqArm === r.id, kv = S.creqVals || {};
+  const form = relance ? `<form id="creqsend" class="card" data-id="${r.id}" data-relance="1"><div class="det">À : <b>${esc(o?.email || '')}</b> (même adresse que le premier envoi)</div>`
+    : `<form id="creqsend" class="card" data-id="${r.id}">${field('cqem', 'Adresse publiée du club', `<input id="cqem" name="email" type="email" required maxlength="160" placeholder="contact@club.fr" autocomplete="off" value="${esc(kv.email || '')}">`)}
+    <p class="note" style="margin:0">L’adresse générale du club d’abord. Jamais une adresse reçue avec une convocation.</p>
+    ${field('cqsrc', 'D’où vient l’adresse', `<select id="cqsrc" name="source" required><option value="">Choisir…</option>${SOURCES.map((x) => `<option ${kv.source === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`)}
+    ${field('cqurl', 'Lien de la page (facultatif)', `<input id="cqurl" name="url" type="url" maxlength="300" placeholder="https://…" value="${esc(kv.url || '')}">`)}`;
+  return head + `<main class="bd">${form}<button class="btn ${on ? 'danger armed' : 'main'}" type="submit" ${S.creqSending ? 'disabled' : ''}>${S.creqSending ? 'Envoi…' : on ? 'Confirmer : envoyer l’e-mail' : (relance ? 'Relancer le club' : 'Envoyer l’e-mail')}</button><p class="note" style="margin:0">Part de info.mypocketclub.fr ; les réponses arrivent sur contact@. Inscrit au journal admin.</p></form>
+  <div class="card lift" style="transform:none"><div class="det">Objet : <b>${esc(m.subject)}</b></div><hr style="border:0;border-top:1px solid var(--pc-trait);width:100%"><div style="white-space:pre-wrap;font-size:15px">${esc(m.body)}</div></div></main>`;
 }
-async function loadCreqs() { S.creqs = (await run(sb.from('club_requests').select('*').order('created_at', { ascending: false }).limit(300))) || []; S.creqNew = S.creqs.filter((r) => r.status === 'new').length; }
+async function loadCreqs() {
+  S.creqs = (await run(sb.from('club_requests').select('*').order('created_at', { ascending: false }).limit(300))) || []; S.creqNew = S.creqs.filter((r) => r.status === 'new').length;
+  try { const o = await sb.from('club_outreach').select('*').limit(500); S.creqOut = o.error ? [] : o.data || []; } catch { S.creqOut = []; } // 5.11.0 (avant le script : liste vide)
+}
 
 // Écrans ouverts au-dessus de tout (visiteur non connecté compris pour « creq ») : lus par app.js
-export const V37_TOP = { creq: () => creqScreen(), creqs: () => creqsScreen(), creqmail: (v) => creqMailScreen(v.id) };
+export const V37_TOP = { creq: () => creqScreen(), creqs: () => creqsScreen(), creqmail: (v) => creqMailScreen(v) };
 // Carte de l'Accueil pour l'administrateur : demandes de clubs en attente
 export function adminHome() {
   if (!S.isAdmin || !S.creqNew) return '';
-  return `<button class="card pale" data-act="creqs" style="border:0;text-align:left;font:inherit;color:inherit"><span class="kick">Administration ${esc(BRAND.name)}</span><b>${plural(S.creqNew, 'demande de club', 'demandes de clubs')} à traiter</b><span class="det">Simulation : l’option n’est pas activée.</span></button>`;
+  return `<button class="card pale" data-act="creqs" style="border:0;text-align:left;font:inherit;color:inherit"><span class="kick">Administration ${esc(BRAND.name)}</span><b>${plural(S.creqNew, 'demande de club', 'demandes de clubs')} à traiter</b><span class="det">Prises de contact demandées par des membres.</span></button>`;
 }
 export async function loadAdminCounts() {
   if (!S.isAdmin) return;
@@ -112,11 +139,25 @@ export async function loadAdminCounts() {
 Object.assign(ACTIONS, {
   creq: () => { S.creqDone = null; S.creq = S.creq || {}; S.view = { type: 'creq' }; render(); },
   creqs: async () => { S.view = { type: 'creqs' }; S.creqs = null; render(); await loadCreqs(); render(true); },
-  creqmail: (el, d) => { S.view = { type: 'creqmail', id: d.id }; render(); },
+  creqmail: (el, d) => { S.creqArm = null; S.creqVals = null; S.view = { type: 'creqmail', id: d.id, relance: !!d.relance }; render(); },
   creqdone: async (el, d) => { if (await run(sb.rpc('set_club_request', { p_id: d.id, p_status: 'done' }), 'Demande marquée comme traitée.')) { await loadCreqs(); render(true); } },
   creqreopen: async (el, d) => { if (await run(sb.rpc('set_club_request', { p_id: d.id, p_status: 'new' }), 'Demande remise à traiter.')) { await loadCreqs(); render(true); } },
-  creqcopy: async (el, d) => { const r = (S.creqs || []).find((x) => x.id === d.id); if (!r) return; const m = mailText(r), t = 'Objet : ' + m.subject + '\n\n' + m.body; try { await navigator.clipboard.writeText(t); toast('Objet et texte copiés.'); } catch { toast('Copie impossible : sélectionne le texte à la main.'); } },
 });
+// 5.11.0 · n° 96 : envoi par la fonction envoyer-email (deux touches)
+FORMS.creqsend = async (v, f) => {
+  const id = f.dataset.id, relance = !!f.dataset.relance;
+  if (!relance && (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test((v.email || '').trim()) || !v.source)) return toast('Adresse du club et source obligatoires.');
+  S.creqVals = { email: (v.email || '').trim(), source: v.source || '', url: (v.url || '').trim() };   // gardées au second toucher
+  if (S.creqArm !== id) { S.creqArm = id; render(true); return; }
+  S.creqArm = null; S.creqSending = true; render(true);
+  try {
+    const { data, error } = await sb.functions.invoke('envoyer-email', { body: { club_outreach: { request: id, email: (v.email || '').trim(), source: v.source || '', url: (v.url || '').trim(), relance } } });
+    let why = ''; if (error) { try { why = (await error.context?.json?.())?.erreur || ''; } catch { why = ''; } }
+    if (error || !data?.envoye) toast('Pas envoyé' + (why ? ' : ' + why : ' : redéploie la fonction « envoyer-email » (5.11.0).'));
+    else { toast(relance ? 'Relance envoyée.' : 'E-mail envoyé au club.'); S.creqVals = null; S.view = { type: 'creqs' }; }
+  } catch { toast('Envoi impossible.'); }
+  S.creqSending = false; await loadCreqs(); render(true);
+};
 FORMS.creqf = async (v) => {
   const F = { first: (v.first || '').trim(), last: (v.last || '').trim(), email: (v.email || '').trim(), club: (v.club || '').trim(), city: (v.city || '').trim(), sport: v.sport || '' };
   S.creq = { ...F, age: !!v.age, consent: !!v.consent };

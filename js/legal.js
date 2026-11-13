@@ -197,7 +197,7 @@ Si la réponse ne vous satisfait pas, vous pouvez saisir la CNIL : cnil.fr.
 ## 11. Traceurs
 mypocketclub n'utilise aucun traceur publicitaire ni outil de mesure d'audience. L'application enregistre sur votre appareil ce qui est strictement nécessaire : votre connexion, vos réglages et un identifiant d'appareil servant à la sécurité. Ces éléments ne demandent pas de consentement.
 ## 12. Démarchage des clubs
-mypocketclub peut écrire à un club pour se présenter. Il n'utilise pour cela que les adresses publiées par le club ou sa fédération pour le contacter. Chaque message indique d'où vient l'adresse et permet de refuser tout nouvel envoi ; ce refus est définitif. Un club n'est contacté qu'une fois, avec au plus une relance. Les adresses reçues à l'occasion d'une convocation ne servent jamais à cela.
+mypocketclub peut écrire à un club pour se présenter. Il n'utilise pour cela que les adresses publiées par le club ou sa fédération pour le contacter. Il n'écrit que si un membre du club le demande, et le message donne le nom de ce membre (il l'a accepté en faisant sa demande). Chaque message indique d'où vient l'adresse et permet de refuser tout nouvel envoi ; ce refus est définitif. Un club n'est contacté qu'une fois, avec au plus une relance. Les adresses reçues à l'occasion d'une convocation ne servent jamais à cela.
 ## 13. Modification de cette politique
 Toute modification importante vous est signalée dans l'application avant de s'appliquer. La version et la date figurent en tête de cette page.`;
 

@@ -10,11 +10,12 @@
 // Secret à créer dans Supabase → Edge Functions → Secrets (par Gaël, jamais dans le code, le projet ou une conversation) :
 //   RESEND_API_KEY   clé d'accès de Resend (« Sending access », domaine mypocketclub.fr)
 // Facultatifs : MAIL_FROM (par défaut « mypocketclub <notifications@mypocketclub.fr> »), MAIL_REPLY_TO (par défaut contact@mypocketclub.fr),
+// MAIL_INFO_FROM (5.11.0, e-mails d'information comme le n° 96 ; par défaut « mypocketclub <bonjour@info.mypocketclub.fr> », sous-domaine séparé),
 // APP_URL (adresse de l'application pour le lien « Ce n'était pas moi », n° 147 ; par défaut https://angeck.github.io/mon-blason/ ;
 // à passer à https://mypocketclub.fr/ au branchement du domaine, todolist n° 8).
 // SUPABASE_URL, SUPABASE_ANON_KEY et la clé du serveur (SUPABASE_SECRET_KEYS, sinon SUPABASE_SERVICE_ROLE_KEY ; rappels du n° 182, 5.4.0) sont fournis d'office par Supabase. « Verify JWT » reste activé : seule une personne connectée peut appeler.
 
-export type Env = { url: string; anon: string; resendKey: string; from: string; replyTo: string; appUrl?: string; service?: string };
+export type Env = { url: string; anon: string; resendKey: string; from: string; replyTo: string; appUrl?: string; service?: string; infoFrom?: string };
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', ...CORS } });
 export const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const escHtml = (s: string) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
@@ -336,6 +337,47 @@ async function sendInactiveWarnings(env: Env, auth: string, doFetch: typeof fetc
   return json({ envoye: n, echecs: ko, reste: Array.isArray(rows) && rows.length >= 40 });
 }
 
+// ---------- 5.11.0 · n° 96 · e-mail au dirigeant d'un club absent (lot e-mails 2) ----------
+// Envoyé par l'administrateur (double vérification), à l'adresse PUBLIÉE du club qu'il a trouvée, depuis le sous-domaine
+// info.mypocketclub.fr (la réputation de notifications@ reste intacte) ; réponses sur contact@. La base vérifie la liste noire,
+// « un envoi et une relance au plus », la limite du jour, et donne le nom du demandeur et le jeton de désinscription.
+// Texte validé par Gaël le 13 novembre 2026 (claude/17-mails-types.md § 1), en tutoiement.
+export function clubOutreachMail(d: { first_name?: string; last_name?: string; club?: string; city?: string; count?: number; relance?: boolean; source?: string }, link: string) {
+  const who = [d.first_name, d.last_name].map((x) => String(x || '').trim()).filter(Boolean).join(' ') || 'Un membre', club = String(d.club || 'ton club'), city = String(d.city || '').trim(), n = Number(d.count) || 1;
+  const p1 = `Un membre de ton club, ${who}, voudrait que ${club}${city ? ` (${city})` : ''} soit sur mypocketclub.${n > 1 ? ` ${n} membres de ton club ont fait cette demande.` : ''}`;
+  const p2 = 'mypocketclub est une application pour les clubs sportifs : l\u2019agenda avec les réponses « Je viens / Je ne viens pas », les convocations, les messages des équipes, les licences et les cotisations, au même endroit, dans la poche de chacun.';
+  const p3 = 'C\u2019est gratuit pour l\u2019essayer : jusqu\u2019à la fin de la saison pour tout ton club, ou pendant une saison complète pour une seule équipe.';
+  const again = d.relance ? 'Je me permets de te relancer, une seule fois, au sujet de ce message.\n\n' : '';
+  const src = String(d.source || '').replace(/\s*\(.*\)$/, '').trim();
+  const foot = `Tu reçois ce message parce qu\u2019un membre de ton club a demandé son arrivée sur mypocketclub${src ? ` ; nous avons trouvé cette adresse ici : ${src.toLowerCase()}` : ''}. Tu ne recevras rien d\u2019autre sans ton accord. Pour ne plus rien recevoir : `;
+  const text = `Bonjour,\n\n${again}${p1}\n\n${p2}\n\n${p3}\n\nPour en savoir plus ou inscrire ton club : https://mypocketclub.fr\nUne question ? Réponds simplement à ce message.\n\nSportivement,\nGaël Raveneau, mypocketclub\n\n—\n${foot}${link}`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
+<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
+<p>Bonjour,</p>${d.relance ? '<p>Je me permets de te relancer, une seule fois, au sujet de ce message.</p>' : ''}<p>${escHtml(p1)}</p><p>${escHtml(p2)}</p><p><b>${escHtml(p3)}</b></p>
+<p><a href="https://mypocketclub.fr" style="display:inline-block;background:#2F5BFF;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Découvrir mypocketclub</a></p>
+<p>Une question ? Réponds simplement à ce message.</p><p>Sportivement,<br><b>Gaël Raveneau</b>, mypocketclub</p>
+<p style="color:#5A6178;font-size:13px;border-top:1px solid #D8DCEA;padding-top:10px;margin-top:20px">${escHtml(foot)}<a href="${escHtml(link)}" style="color:#5A6178">me désinscrire</a>.</p></div>`;
+  const subject = (d.relance ? 'Relance · ' : '') + 'Un membre de ton club voudrait utiliser mypocketclub';
+  return { subject, text, html };
+}
+async function sendClubOutreach(env: Env, auth: string, doFetch: typeof fetch, c: any) {
+  if (typeof c?.request !== 'string') return json({ erreur: 'demande inconnue' }, 400);
+  const relance = !!c?.relance;
+  const p = await rpc(env, auth, doFetch, 'admin_outreach_prepare', { p_request: c.request, p_email: String(c?.email || '').slice(0, 160), p_source: String(c?.source || '').slice(0, 80), p_url: String(c?.url || '').slice(0, 300), p_relance: relance });
+  const d = p.data || {}, to = String(d.email || ''), tok = String(d.token || '');
+  if (!p.ok || !EMAIL.test(to) || !/^[a-f0-9]{32,80}$/.test(tok)) {
+    const msg = String(d?.message || '');
+    return json({ erreur: msg || 'envoi refusé' }, /Limite/i.test(msg) ? 429 : 403);
+  }
+  const link = (env.appUrl || 'https://angeck.github.io/mon-blason/').replace(/#.*$/, '') + '#desinscription=' + tok;
+  const m = clubOutreachMail(d, link);
+  const s = await resend(env, doFetch, { from: env.infoFrom || 'mypocketclub <bonjour@info.mypocketclub.fr>', to: [to], reply_to: env.replyTo, subject: m.subject, text: m.text, html: m.html,
+    headers: { 'List-Unsubscribe': `<${link}>` } });
+  await logMail(env, doFetch, 'information', null, s.ok);
+  if (!s.ok) { await rpc(env, auth, doFetch, 'admin_outreach_failed', { p_outreach: d.outreach, p_relance: relance }); return json({ erreur: 'Resend a refusé l’envoi', detail: s.detail }, 502); }
+  return json({ envoye: true, relance });
+}
+
 // Qui appelle ? (le jeton de la personne connectée, vérifié par Supabase)
 async function caller(env: Env, auth: string, doFetch: typeof fetch) {
   const h = { apikey: env.anon, Authorization: auth };
@@ -363,6 +405,7 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   if (body?.parent_invite) return sendParentInvite(env, auth, doFetch, body.parent_invite); // 5.3.0
   if (body?.validation_reminders) return sendValidationReminders(env, doFetch); // 5.4.0 · n° 182
   if (body?.attestation) return sendAttestation(env, auth, doFetch, body.attestation); // 5.11.0 · n° 207
+  if (body?.club_outreach) return who.admin ? sendClubOutreach(env, auth, doFetch, body.club_outreach) : json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403); // 5.11.0 · n° 96
   if (body?.inactive_warnings) return who.admin ? sendInactiveWarnings(env, auth, doFetch) : json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403); // 5.11.0 · n° 187
   if (!body?.test) return json({ erreur: 'seul l’e-mail de test, une convocation, une invitation, une attestation ou un rappel peuvent partir' }, 400);
   if (!who.admin) return json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403);
@@ -382,6 +425,6 @@ declare const Deno: any;
 if (typeof Deno !== 'undefined' && Deno.serve) {
   Deno.serve((req: Request) => handle(req, {
     url: Deno.env.get('SUPABASE_URL') || '', anon: Deno.env.get('SUPABASE_ANON_KEY') || '', resendKey: Deno.env.get('RESEND_API_KEY') || '',
-    from: Deno.env.get('MAIL_FROM') || 'mypocketclub <notifications@mypocketclub.fr>', replyTo: Deno.env.get('MAIL_REPLY_TO') || 'contact@mypocketclub.fr', appUrl: Deno.env.get('APP_URL') || 'https://angeck.github.io/mon-blason/', service: (() => { try { return JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}').default || ''; } catch { return ''; } })() || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
+    from: Deno.env.get('MAIL_FROM') || 'mypocketclub <notifications@mypocketclub.fr>', replyTo: Deno.env.get('MAIL_REPLY_TO') || 'contact@mypocketclub.fr', appUrl: Deno.env.get('APP_URL') || 'https://angeck.github.io/mon-blason/', infoFrom: Deno.env.get('MAIL_INFO_FROM') || 'mypocketclub <bonjour@info.mypocketclub.fr>', service: (() => { try { return JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}').default || ''; } catch { return ''; } })() || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
   }).catch((e) => json({ erreur: String((e as Error)?.message || e) }, 500)));
 }

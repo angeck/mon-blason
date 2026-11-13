@@ -12,6 +12,10 @@
 --     n° 207 · l'attestation délivrée peut aussi partir par e-mail au demandeur (choix du trésorier, une seule fois) ;
 --     n° 187 · e-mail de prévenance des comptes inactifs (lancé par l'administrateur, 40 au plus par passage) ;
 --     n° 228 · compteur des e-mails (journal sans adresse ni contenu) et vue dans l'espace admin.
+--   Lot e-mails 2 · n° 96 (décision de Gaël du 13 novembre 2026, 15 h 44) : e-mail au dirigeant d'un club absent.
+--     La demande d'un membre fait une notification à l'administrateur (« prise de contact demandée ») ;
+--     l'administrateur saisit l'adresse PUBLIÉE du club et d'où elle vient, puis envoie (info.mypocketclub.fr) ;
+--     une relance au plus, 14 jours après ; jamais une adresse de la liste noire ; 10 e-mails de ce type par jour au plus.
 -- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
 
 -- ---------------------------------------------------------------------
@@ -271,5 +275,123 @@ begin
 end $$;
 revoke execute on function admin_inactive_warn_note(int) from public, anon;
 grant execute on function admin_inactive_warn_note(int) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 8. N° 96 · e-mail au dirigeant d'un club absent (envoyé par l'administrateur)
+-- ---------------------------------------------------------------------
+-- Un suivi par club demandé (nom et ville) : adresse publiée du club, d'où elle vient, envoi, relance, refus
+create table if not exists club_outreach (
+  id uuid primary key default gen_random_uuid(),
+  club_key text not null unique,
+  club_name text not null,
+  city text not null default '',
+  email text not null check (length(email) between 5 and 160),
+  source text not null check (length(source) between 2 and 80),
+  source_url text not null default '' check (length(source_url) <= 300),
+  sent_at timestamptz,
+  relance_at timestamptz,
+  status text not null default 'pret' check (status in ('pret', 'envoye', 'relance', 'refuse', 'echec')),
+  created_at timestamptz not null default now()
+);
+alter table club_outreach enable row level security;
+drop policy if exists "démarchage : administrateur" on club_outreach;
+create policy "démarchage : administrateur" on club_outreach for select using (is_app_admin());
+
+create or replace function outreach_key(p_club text, p_city text) returns text language sql immutable as $$
+  select norm_name(coalesce(p_club, '')) || '|' || norm_name(coalesce(p_city, ''));
+$$;
+
+-- La fonction envoyer-email la demande au nom de l'administrateur (double vérification) : contrôle, réserve et donne le contenu
+create or replace function admin_outreach_prepare(p_request uuid, p_email text, p_source text, p_url text, p_relance boolean) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r club_requests; k text; o club_outreach; em text := lower(trim(coalesce(p_email, ''))); n int; req record;
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  select * into r from club_requests where id = p_request;
+  if r.id is null then raise exception 'Demande introuvable'; end if;
+  k := outreach_key(r.club_name, r.city);
+  select * into o from club_outreach where club_key = k for update;
+  if coalesce(p_relance, false) then
+    if o.id is null or o.status <> 'envoye' then raise exception 'Relance possible seulement après un premier envoi, et une seule fois'; end if;
+    if o.sent_at > now() - interval '14 days' then raise exception 'Relance possible à partir du %', to_char(o.sent_at + interval '14 days', 'DD/MM/YYYY'); end if;
+    em := o.email;
+  else
+    if o.id is not null and o.status in ('envoye', 'relance', 'refuse') then raise exception 'Ce club a déjà été contacté : une relance au plus'; end if;
+    if em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(em) > 160 then raise exception 'Adresse e-mail du club à vérifier'; end if;
+    if length(trim(coalesce(p_source, ''))) < 2 then raise exception 'Indique d''où vient l''adresse (site du club, fédération…)'; end if;
+  end if;
+  if exists(select 1 from mail_blocklist where email_hash = mail_hash(em)) then
+    if o.id is not null then update club_outreach set status = 'refuse' where id = o.id; end if;
+    raise exception 'Cette adresse a refusé tout envoi : on ne lui écrit plus';
+  end if;
+  if exists(select 1 from clubs c where c.deleted_at is null and outreach_key(c.name, c.city) = k) then raise exception 'Ce club est déjà inscrit sur mypocketclub'; end if;
+  if (select count(*) from mail_log where kind = 'information' and at >= date_trunc('day', now())) >= 10 then raise exception 'Limite du jour atteinte (10 e-mails aux clubs) : réessaie demain'; end if;
+  if mails_today(null) >= 80 then raise exception 'Limite d''e-mails du jour atteinte : réessaie demain'; end if;
+  -- la dernière demande dont l'auteur a accepté que son nom soit transmis ; et le nombre de demandeurs pour ce club
+  select * into req from club_requests x where outreach_key(x.club_name, x.city) = k and x.consent order by x.created_at desc limit 1;
+  select count(distinct lower(x.email)) into n from club_requests x where outreach_key(x.club_name, x.city) = k and x.consent;
+  if coalesce(p_relance, false) then
+    update club_outreach set status = 'relance', relance_at = now() where id = o.id returning * into o;
+  else
+    insert into club_outreach(club_key, club_name, city, email, source, source_url, sent_at, status)
+      values (k, r.club_name, r.city, em, left(trim(p_source), 80), left(trim(coalesce(p_url, '')), 300), now(), 'envoye')
+      on conflict (club_key) do update set email = excluded.email, source = excluded.source, source_url = excluded.source_url, sent_at = now(), status = 'envoye'
+      returning * into o;
+  end if;
+  update club_requests set status = 'done', done_at = now() where outreach_key(club_name, city) = k and status = 'new';
+  perform admin_note(case when coalesce(p_relance, false) then 'club absent relancé par e-mail' else 'club absent contacté par e-mail' end, null,
+    jsonb_build_object('club', r.club_name, 'ville', r.city, 'source', o.source));
+  return jsonb_build_object('outreach', o.id, 'email', em, 'token', mail_info_token(em), 'club', r.club_name, 'city', r.city,
+    'first_name', coalesce(req.first_name, ''), 'last_name', coalesce(req.last_name, ''), 'count', greatest(n, 1), 'relance', coalesce(p_relance, false), 'source', o.source);
+end $$;
+revoke execute on function admin_outreach_prepare(uuid, text, text, text, boolean) from public, anon;
+grant execute on function admin_outreach_prepare(uuid, text, text, text, boolean) to authenticated;
+
+-- Resend a refusé : l'envoi est annulé (on peut réessayer), noté « échec »
+create or replace function admin_outreach_failed(p_outreach uuid, p_relance boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if coalesce(p_relance, false) then update club_outreach set status = 'envoye', relance_at = null where id = p_outreach;
+  else update club_outreach set status = 'echec', sent_at = null where id = p_outreach; end if;
+end $$;
+revoke execute on function admin_outreach_failed(uuid, boolean) from public, anon;
+grant execute on function admin_outreach_failed(uuid, boolean) to authenticated;
+
+-- La demande d'un membre ou d'un visiteur : notification « prise de contact demandée » à l'administrateur (plus de « simulation »)
+create or replace function request_club(p_first text, p_last text, p_email text, p_club text, p_city text, p_sport text, p_age_ok boolean, p_consent boolean)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_ip text := md5(request_ip()); v_email text := lower(trim(coalesce(p_email, '')));
+  v_first text := left(trim(coalesce(p_first, '')), 60); v_last text := left(trim(coalesce(p_last, '')), 60);
+  v_club text := left(trim(coalesce(p_club, '')), 120); v_city text := left(trim(coalesce(p_city, '')), 80); v_sport text := left(trim(coalesce(p_sport, '')), 40);
+  rid uuid; a uuid; who text;
+begin
+  if v_first = '' or v_last = '' then raise exception 'Prénom et nom obligatoires'; end if;
+  if v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(v_email) > 160 then raise exception 'Adresse e-mail à vérifier'; end if;
+  if length(v_club) < 2 then raise exception 'Nom du club obligatoire'; end if;
+  if v_city = '' or v_sport = '' then raise exception 'Ville et sport du club obligatoires'; end if;
+  if not coalesce(p_age_ok, false) then raise exception 'Moins de 15 ans : un parent fait la demande'; end if;
+  if not coalesce(p_consent, false) then raise exception 'L''accord pour transmettre ton nom au club est obligatoire'; end if;
+  if (select count(*) from club_requests where ip_hash = v_ip and created_at > now() - interval '1 day') >= 10
+     or (select count(*) from club_requests where lower(email) = v_email and created_at > now() - interval '1 day') >= 3 then
+    raise exception 'Trop de demandes aujourd''hui. Réessaie demain.';
+  end if;
+  select id into rid from club_requests
+    where lower(email) = v_email and norm_name(club_name) = norm_name(v_club) and norm_name(city) = norm_name(v_city) and created_at > now() - interval '30 days'
+    order by created_at desc limit 1;
+  if rid is not null then return rid; end if;
+  insert into club_requests(first_name, last_name, email, club_name, city, sport, age_ok, consent, user_id, ip_hash)
+    values (v_first, v_last, v_email, v_club, v_city, v_sport, true, true, auth.uid(), v_ip) returning id into rid;
+  who := v_first || ' ' || v_last || case when auth.uid() is not null then ' (adhérent)' else ' (visiteur)' end;
+  for a in select user_id from app_admins loop
+    perform push_enqueue(a, 'Prise de contact demandée : ' || left(v_club, 50),
+      v_club || ' (' || v_city || ', ' || v_sport || ') · demandée par ' || who || '. À toi de contacter le club.',
+      'clubreq', 'clubreq:' || rid::text, './');
+  end loop;
+  return rid;
+end $$;
+revoke execute on function request_club(text, text, text, text, text, text, boolean, boolean) from public;
+grant execute on function request_club(text, text, text, text, text, text, boolean, boolean) to anon, authenticated;
 
 select close_visitor_functions();

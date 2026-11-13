@@ -65,7 +65,7 @@ const D = {
   announcements: [{ id: 'a1', club_id: C, audience: 'club', team_ids: [], people: [], kind: 'annonce', event_id: null, title: 'Gymnase fermé samedi', body: 'Travaux : entraînements déplacés.', created_by: 'u-pres', created_at: at(-1, 12), deleted_at: null }],
   announcement_reads: [], event_missions: [], mission_signups: [], mission_youth_signups: [], board_areas: [],
   exercise_votes: [], exercise_reports: [], training_plans: [], coach_hours: [{ id: 'h0', club_id: C, user_id: 'u-c11', team_id: T11, day: at(-4).slice(0, 10), minutes: 90, kind: 'Entraînement', note: '' }],
-  club_requests: [],
+  club_requests: [], club_outreach: [],
   coach_statements: [{ id: 'st1', club_id: C, user_id: 'u-c11', month: (() => { const d = new Date(); return d.toLocaleDateString('sv-SE').slice(0, 8) + '01'; })(), status: 'submitted', total_minutes: 90 }],
 };
 // Le relevé de Karim porte sur le mois des dernières séances passées (le test ne dépend pas du jour où il tourne)
