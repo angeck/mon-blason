@@ -380,7 +380,8 @@ function backToFiche() {
   S.view = { type: 'obfiche', id: r.id, faq: !!r.faq }; S.stack = r.stack || []; S.noStack = true; render();
 }
 hooks.obBack = () => { if (S.obShow && S.obRet) { backToFiche(); return true; } return false; };
-const inView = (el) => { const r = el.getBoundingClientRect(); return r.top >= 60 && r.bottom <= innerHeight - 140; };
+// 5.9.1 : la zone doit rester au-dessus du bandeau jaune (sa vraie hauteur), sinon il la cache (retour de Gaël sur « Vérifier la liste »)
+const inView = (el) => { const r = el.getBoundingClientRect(), b = showBar && !showBar.classList.contains('side') ? showBar.getBoundingClientRect().top : innerHeight - 140; return r.top >= 60 && r.bottom <= Math.min(b, innerHeight - 140) - 12; };
 function paintShow() {
   clearShow();
   const s = S.obShow; if (!s) return;
@@ -406,9 +407,10 @@ function paintShow() {
   if (s.i > j && L.slice(j + 1).every((e) => e.same)) { s.end = true; showBar.classList.add('end'); showBar.innerHTML = barHtml(f, s.id, s, 0, true); put(); return; }
   let g = j; for (let k = j; k > 0 && L[k].same; k--) if (vis[k - 1]) g = k - 1;
   const cur = s.i >= g && s.i <= j && vis[s.i] ? s.i : g; s.i = cur;
-  const el = vis[cur]; el.classList.add('ob-hl'); if (!inView(el)) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const el = vis[cur]; el.classList.add('ob-hl');
   showBar.innerHTML = barHtml(f, s.id, s, L[cur].s, true);
   put();
+  if (!inView(el)) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
   // au toucher : l'étape suivante (sur le même écran, la prochaine zone présente) ; après la dernière, le bandeau de fin
   const next = () => { if (S.obShow !== s || s.i !== cur) return; let n = cur + 1; while (n <= j && !vis[n] && L[n].same) n++; if (n > L.length - 1) s.end = true; else { s.i = n; s.wait = true; } setTimeout(paintShow, 250); };
   el.addEventListener('click', next, { once: true, capture: true });

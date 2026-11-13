@@ -491,5 +491,8 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .obsim { border: 2px dashed var(--pc-trait); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .obbar-sim { display: block; font-weight: 400; font-size: 13px; margin-top: 4px; }
 /* 5.9.0 · n° 225 : bouton « Changer de club » à côté du nom du club */
-.clubsw{flex:none;width:44px;height:44px;border-radius:22px;border:2px solid rgba(255,255,255,.7);background:transparent;color:#FFFFFF;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.nmrow{display:flex;align-items:center;gap:8px;min-width:0}
+.nmrow b{min-width:0}
+.clubsw{flex:none;width:28px;height:28px;border-radius:14px;border:1.5px solid rgba(255,255,255,.7);background:transparent;color:#FFFFFF;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;position:relative}
+.clubsw::after{content:'';position:absolute;inset:-8px}
 .clubsw:focus-visible{outline:3px solid var(--pc-jaune);outline-offset:2px}

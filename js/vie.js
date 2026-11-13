@@ -420,7 +420,14 @@ async function markRead(id) {
   if (await run(sb.from('announcement_reads').insert({ announcement_id: id, user_id: S.me.id }))) S.annRead.add(id);
 }
 Object.assign(ACTIONS, {
-  clubsw: () => { S.view = { type: 'clubsw' }; render(); }, // 5.9.0 · n° 225
+  // 5.9.1 · n° 225 : le bouton passe directement au club suivant, du plus ancien au plus récent (puis on reboucle)
+  clubsw: async () => {
+    const first = {}; (S.mems || []).filter((m) => m.status === 'active').forEach((m) => { const t = m.created_at || ''; if (!(m.club_id in first) || t < first[m.club_id]) first[m.club_id] = t; });
+    const ids = Object.keys(first).sort((a, b) => (first[a] < first[b] ? -1 : first[a] > first[b] ? 1 : a < b ? -1 : 1));
+    if (ids.length < 2) return;
+    const nx = ids[(ids.indexOf(S.clubId) + 1) % ids.length];
+    await ACTIONS.club(null, { id: nx });
+  },
   // n° 113 : le bouton de rôle ouvre la vue choisie par défaut, sinon le dernier espace utilisé
   espace: async () => { const def = defaultCasq(); if (def) S.casq = resolveCasq(def); S.view = { type: 'espace' }; currentCasq(); render(); if (isCoachCasq(S.casq)) { await ensureExos(); render(true); } },
   casq: async (el, d) => {

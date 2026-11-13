@@ -112,8 +112,8 @@ export function header(o = {}) {
     return `<header class="hd${o.tabs ? ' tabbed' : ''}">${h}${o.casq || ''}${o.tabs || ''}</header>`;
   }
   // 5.9.0 · n° 225 : le bouton « Changer de club » suit le nom du club, pour un compte présent dans plusieurs clubs
-  const sw = inClub && (S.overview || []).some((x) => x.club_id !== S.clubId) ? `<button class="clubsw" data-act="clubsw" aria-label="Changer de club">${icon('swap', 20, 'currentColor', 2.2)}</button>` : '';
-  if (!br && c) h += `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.kicker || o.sub || '')}</span></div>${sw}</div>`;
+  const sw = inClub && (S.overview || []).some((x) => x.club_id !== S.clubId) ? `<button class="clubsw" data-act="clubsw" aria-label="Changer de club">${icon('swap', 16, 'currentColor', 2.2)}</button>` : '';
+  if (!br && c) h += `<div class="top">${crest(c, 44)}<div class="who"><div class="nmrow"><b>${esc(c.name)}</b>${sw}</div><span>${esc(o.kicker || o.sub || '')}</span></div></div>`;
   else if (o.kicker) h += `<div class="kicker">${esc(o.kicker)}</div>`;
   return `<header class="hd${o.tabs ? ' tabbed' : ''}">${h}${o.title ? `<h1>${o.title}</h1>` : ''}${o.under ? `<span class="under">${esc(o.under)}</span>` : ''}${tags}${o.casq || ''}${o.tabs || ''}</header>`;
 }
