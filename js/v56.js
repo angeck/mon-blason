@@ -32,6 +32,8 @@ async function load(tab) {
   if (tab === 'home') a.ov = (await rpc('admin_overview')) || a.ov || null;
   // 5.10.0 · n° 161 : solde de l'IA (sans message d'erreur si le script 5.10.0 n'est pas encore lancé)
   if (tab === 'home') { try { const r = await sb.rpc('admin_ai_stats'); a.ai = r.error ? (/function|fonction|schema cache/i.test(r.error.message || '') ? { missing: true } : null) : r.data; } catch { a.ai = null; } }
+  // 5.11.0 · n° 228 : e-mails du jour et du mois (sans message d'erreur si le script 5.11.0 n'est pas encore lancé)
+  if (tab === 'home') { try { const r = await sb.rpc('admin_mail_stats'); a.mails = r.error ? (/function|fonction|schema cache/i.test(r.error.message || '') ? { missing: true } : null) : r.data; } catch { a.mails = null; } }
   if (tab === 'clubs' || tab === 'todo' || tab === 'club') a.clubs = arr(await rpc('admin_club_list')) || a.clubs || [];
   if (tab === 'todo') {
     const [rep, dup, ov] = await Promise.all([rpc('admin_reports'), rpc('duplicates_list'), rpc('admin_overview')]);
@@ -83,7 +85,7 @@ function homeTab() {
     <div class="row static"><span class="g">Montant prévu (clubs payants)</span><b>${euros(n('due_cents'))}</b></div></section>`;
   const purge = `<section class="card" style="flex-direction:row;align-items:center;gap:12px"><span class="g" style="flex:1;display:flex;flex-direction:column"><b>Suppressions automatiques</b><span class="det">${ov.last_purge ? 'Dernier passage le ' + esc(day(ov.last_purge)) : 'Jamais lancées depuis cet écran'}</span></span><button class="btn small ghost" data-act="admtab" data-k="tools">Voir</button></section>`;
   const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-  return `<p class="note">${esc(date.charAt(0).toUpperCase() + date.slice(1))} · ${esc(VERSION)}</p>${todo}${aiCard()}${parc}${subs}${purge}${S.clubId ? '' : '<p class="note">Ce compte n’a pas de club : il n’ouvre que l’administration.</p>'}`;
+  return `<p class="note">${esc(date.charAt(0).toUpperCase() + date.slice(1))} · ${esc(VERSION)}</p>${todo}${aiCard()}${mailCard()}${parc}${subs}${purge}${S.clubId ? '' : '<p class="note">Ce compte n’a pas de club : il n’ouvre que l’administration.</p>'}`;
 }
 
 // ---------- 5.10.0 · n° 161 : IA des exercices (estimation de l'application ; le chiffre exact est dans la Console Claude) ----------
@@ -119,6 +121,19 @@ FORMS.admaiset = async (v) => {
   const num = (x) => (x === '' || x == null ? null : +String(x).replace(',', '.'));
   if (await run(sb.rpc('admin_ai_settings', { p_enabled: !!v.enabled, p_alert: num(v.alert), p_cap: num(v.cap), p_per_day: num(v.per_day) }), 'Réglages de l’IA enregistrés.')) { await load('home'); render(true); }
 };
+
+// ---------- 5.11.0 · n° 228 : compteur des e-mails (journal sans adresse ni contenu) ----------
+const MAIL_KINDS = { convocation: 'Convocations', attestation: 'Attestations', nouvel_appareil: 'Nouvel appareil', invitation_parent: 'Invitations de parents', rappel_validation: 'Rappels de validation', prevenance_inactif: 'Comptes inactifs prévenus', information: 'E-mails d’information', test: 'E-mails de test' };
+function mailCard() {
+  const x = A().mails; if (!x) return '';
+  if (x.missing) return '<section class="card"><div class="kick">E-mails</div><p class="note">Lance le script MAJ_ALPHA_5_11_0.sql dans Supabase pour compter les e-mails.</p></section>';
+  const d = +x.jour || 0, m = +x.mois || 0, ld = +x.limite_jour || 100, lm = +x.limite_mois || 3000, warn = d >= ld * 0.8 || m >= lm * 0.8;
+  const types = Object.entries(x.types || {}).sort((a, b) => (+b[1].mois || 0) - (+a[1].mois || 0));
+  return `<section class="card ${warn ? 'warn' : ''}"><div class="kick">E-mails envoyés</div>
+  <div class="admnums" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><div class="big">${d}<span class="det"> / ${ld}</span></div><div class="det">aujourd’hui</div></div><div><div class="big">${m}<span class="det"> / ${lm}</span></div><div class="det">ce mois-ci</div></div></div>
+  ${warn ? '<p role="alert"><b>Près de la limite gratuite de Resend.</b> Au-delà, les e-mails ne partent plus jusqu’au lendemain (ou au mois suivant).</p>' : ''}
+  ${types.length ? `<div class="list">${types.map(([k, v]) => `<div class="row static" style="min-height:44px"><span class="g" style="font-weight:400">${esc(MAIL_KINDS[k] || k)}${+v.echecs ? `<small>${plural(+v.echecs, 'échec')}</small>` : ''}</span><b>${+v.jour || 0} · ${+v.mois || 0}</b></div>`).join('')}</div><p class="note">Aujourd’hui · ce mois-ci. Les tentatives refusées comptent aussi.</p>` : '<p class="note">Aucun e-mail ce mois-ci.</p>'}</section>`;
+}
 
 // ---------- Clubs ----------
 const isTrash = (c) => !!c.deleted_at;
@@ -208,8 +223,13 @@ function toolsTab() {
   let h = `<section class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><h3>Suppressions automatiques</h3><span class="det">${last ? esc(day(last.at)) : ''}</span></div>
     <p class="note">Aperçu de ce que le prochain passage fera :</p><div class="list">${pv.map((x) => `<div class="row static" style="min-height:44px"><span class="g" style="font-weight:400">${esc(x.item.charAt(0).toUpperCase() + x.item.slice(1))}</span><b>${+x.n || 0}</b></div>`).join('')}</div>
     <button class="btn ${on ? 'danger armed' : 'main'}" data-act="admpurge">${on ? 'Confirmer : lancer le passage' : 'Lancer le passage'}</button>
-    <p class="note">Deux touches, puis inscrit au journal admin. Les comptes inactifs ne sont ni prévenus ni effacés tant que l’e-mail de prévenance n’existe pas.</p>
+    <p class="note">Deux touches, puis inscrit au journal admin. Un compte inactif part à la corbeille seulement 30 jours après avoir été prévenu par e-mail.</p>
     ${a.lastRun ? `<div class="card pale" style="transform:none"><b>Passage fait</b>${a.lastRun.map((x) => `<span class="det">${esc(x.item)} : ${+x.n || 0}</span>`).join('')}</div>` : ''}</section>`;
+  // 5.11.0 · n° 187 : prévenance des comptes inactifs (40 e-mails au plus par passage)
+  const nw = +((pv.find((x) => /inactifs/.test(x.item)) || {}).n || 0), won = isArmed('admwarn');
+  h += `<section class="card"><h3>Comptes inactifs</h3><p class="note">${nw ? `${plural(nw, 'compte')} sans connexion depuis deux saisons.` : 'Aucun compte à prévenir.'} Chacun reçoit un e-mail : sans connexion sous 30 jours, le passage ci-dessus le met à la corbeille (30 jours), puis l’efface.</p>
+    ${nw ? `<button class="btn ${won ? 'danger armed' : ''}" data-act="admwarn" ${a.warning ? 'disabled' : ''}>${a.warning ? 'Envoi en cours…' : won ? `Confirmer : prévenir ${Math.min(nw, 40)} compte${Math.min(nw, 40) > 1 ? 's' : ''}` : 'Prévenir par e-mail'}</button><p class="note">40 au plus par passage (limite de Resend : 100 e-mails par jour). Inscrit au journal admin.</p>` : ''}
+    ${a.warnDone ? `<div class="card pale" style="transform:none"><b>${plural(a.warnDone.envoye, 'e-mail parti', 'e-mails partis')}</b>${a.warnDone.echecs ? `<span class="det">${plural(a.warnDone.echecs, 'échec')}</span>` : ''}${a.warnDone.reste ? '<span class="det">Il en reste : relance demain.</span>' : ''}</div>` : ''}</section>`;
   h += `<div class="sec"><h2>E-mails</h2></div>${mailTestBlock()}`;
   h += `<div class="sec"><h2>Administrateurs</h2></div><div class="card">${adminsButton()}</div>`;
   h += `<div class="sec"><h2>Journal admin</h2><span class="det">40 dernières lignes</span></div><section class="card"><div class="list">${(a.log || []).map((x) => `<div class="row static" style="min-height:44px"><span class="g" style="font-weight:400"><b>${esc(x.action)}</b><small>${esc(new Date(x.at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }))} · ${esc(x.admin_name || '')}${x.club_name ? ' · ' + esc(x.club_name) : ''}</small></span></div>`).join('') || '<p class="empty">Rien pour l’instant.</p>'}</div></section>`;
@@ -279,6 +299,16 @@ Object.assign(ACTIONS, {
   },
   admdupm: async (el, d) => { if (!armed('admdup' + d.id)) return; if (await run(sb.rpc('decide_duplicate', { p_id: d.id, p_merge: true }), 'Exercices fusionnés.')) { await load('todo'); render(true); } },
   admdupn: async (el, d) => { if (await run(sb.rpc('decide_duplicate', { p_id: d.id, p_merge: false }), 'Noté : ce n’est pas un doublon.')) { await load('todo'); render(true); } },
+  admwarn: async () => {
+    if (!armed('admwarn')) return;
+    const a = A(); a.warning = true; render(true);
+    try {
+      const { data, error } = await sb.functions.invoke('envoyer-email', { body: { inactive_warnings: true } });
+      if (error) toast('Envoi impossible : redéploie la fonction « envoyer-email » (5.11.0).');
+      else { a.warnDone = { envoye: +data?.envoye || 0, echecs: +data?.echecs || 0, reste: !!data?.reste }; toast('Comptes prévenus.'); }
+    } catch { toast('Envoi impossible.'); }
+    a.warning = false; await load('tools'); render(true);
+  },
   admpurge: async () => {
     if (!armed('admpurge')) return;
     const r = await run(sb.rpc('admin_purge_run'), 'Passage fait.');

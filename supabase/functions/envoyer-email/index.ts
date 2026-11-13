@@ -1,5 +1,6 @@
 // mypocketclub · alpha 3.8.0 (3.9.0 : n° 109, expéditeur des convocations ; 4.2.0 : n° 112, envoi des convocations ;
-// 4.3.0 : n° 124, chaque e-mail réservé dans la base avant de partir ; n° 127, « cette semaine » ; n° 129, copie au choix)
+// 4.3.0 : n° 124, chaque e-mail réservé dans la base avant de partir ; n° 127, « cette semaine » ; n° 129, copie au choix ;
+// 5.11.0 : n° 228, chaque e-mail compté (type, club, réussite) ; n° 207, attestation envoyée au demandeur ; n° 187, comptes inactifs prévenus)
 // N° 107 · fonction d’envoi des e-mails (Supabase → Edge Functions)
 // Nom de la fonction : envoyer-email
 // Deux envois possibles : l'e-mail de test (administrateur, à sa propre adresse, réponses vers contact@) et les convocations
@@ -110,6 +111,19 @@ async function rpc(env: Env, auth: string, doFetch: typeof fetch, name: string, 
   const b = await r.json().catch(() => null);
   return { ok: r.ok, data: b };
 }
+// 5.11.0 · n° 228 : chaque e-mail parti (ou refusé) est compté dans la base, avec la clé du serveur : type, club, réussite.
+// Jamais l'adresse ni le contenu. Sans clé du serveur, rien n'est compté (l'envoi n'est pas bloqué).
+const svcHeaders = (service: string) => ({ apikey: service, 'Content-Type': 'application/json', ...(service.startsWith('eyJ') ? { Authorization: 'Bearer ' + service } : {}) });
+export async function logMail(env: Env, doFetch: typeof fetch, kind: string, club: string | null, ok: boolean) {
+  if (!env.service) return;
+  try { await doFetch(env.url + '/rest/v1/rpc/mail_log_add', { method: 'POST', headers: svcHeaders(env.service), body: JSON.stringify({ p_kind: kind, p_club: club, p_ok: ok }) }); } catch { /* le compteur ne bloque jamais un envoi */ }
+}
+async function resend(env: Env, doFetch: typeof fetch, mail: Record<string, unknown>) {
+  const r = await doFetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + env.resendKey, 'Content-Type': 'application/json' }, body: JSON.stringify(mail) });
+  const out = await r.json().catch(() => ({}));
+  return { ok: r.ok, detail: r.ok ? '' : String(out?.message || r.status).slice(0, 200), id: out?.id || null };
+}
+
 async function sendConvocation(env: Env, auth: string, doFetch: typeof fetch, who: { email: string }, c: any, now: Date) {
   const step = c?.step === 'C' ? 'C' : c?.step === 'P' ? 'P' : '', to = c?.to || {}, version = Math.max(1, Number(c?.version) || 1);
   if (!step || typeof c?.event_id !== 'string') return json({ erreur: 'convocation incomplète' }, 400);
@@ -178,6 +192,7 @@ async function sendNewDevice(env: Env, auth: string, doFetch: typeof fetch, who:
     method: 'POST', headers: { Authorization: 'Bearer ' + env.resendKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from: env.from, to: [who.email], reply_to: env.replyTo, subject: m.subject, text: m.text, html: m.html }),
   });
+  await logMail(env, doFetch, 'nouvel_appareil', null, r.ok);
   if (!r.ok) return json({ erreur: 'Resend a refusé l’envoi' }, 502);
   return json({ envoye: true });
 }
@@ -216,6 +231,7 @@ async function sendParentInvite(env: Env, auth: string, doFetch: typeof fetch, p
     method: 'POST', headers: { Authorization: 'Bearer ' + env.resendKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from: env.from, to: [to], reply_to: env.replyTo, subject: m.subject, text: m.text, html: m.html }),
   });
+  await logMail(env, doFetch, 'invitation_parent', null, r.ok);
   if (!r.ok) return json({ erreur: 'Resend a refusé l’envoi' }, 502);
   return json({ envoye: true });
 }
@@ -251,9 +267,73 @@ async function sendValidationReminders(env: Env, doFetch: typeof fetch) {
       method: 'POST', headers: { Authorization: 'Bearer ' + env.resendKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from: env.from, to: [to], reply_to: env.replyTo, subject: m.subject, text: m.text, html: m.html }),
     });
+    await logMail(env, doFetch, 'rappel_validation', null, s.ok);
     if (s.ok) n++;
   }
   return json({ envoye: n });
+}
+
+// ---------- 5.11.0 · n° 207 · attestation délivrée envoyée au demandeur (choix du trésorier) ----------
+// La base vérifie le droit (président ou trésorerie), qu'elle est délivrée, pas encore envoyée, et les limites du jour ;
+// elle donne l'adresse du demandeur (jamais lue par l'application) et le PDF déjà enregistré. E-mail de service, sans désinscription.
+export function attestationMail(first: string, player: string, club: string, season: string) {
+  const hello = first ? `Bonjour ${first},` : 'Bonjour,';
+  const text = `${hello}\n\nLe club ${club} t'a délivré l'attestation de paiement de ${player || 'ton enfant'} pour la saison ${season}. Elle est jointe en PDF.\n\nTu la retrouves aussi dans mypocketclub : Mon compte › « Attestation de paiement ».\n\nmypocketclub · https://mypocketclub.fr`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
+<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
+<p>${escHtml(hello)}</p><p>Le club <b>${escHtml(club)}</b> t'a délivré l'attestation de paiement de <b>${escHtml(player || 'ton enfant')}</b> pour la saison ${escHtml(season)}. Elle est jointe en PDF.</p>
+<p style="color:#5A6178;font-size:14px">Tu la retrouves aussi dans mypocketclub : Mon compte › « Attestation de paiement ».</p>
+<p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
+  return { subject: `${club} · attestation de paiement ${season}`.replace(/[\r\n]/g, ' ').slice(0, 120), text, html };
+}
+async function sendAttestation(env: Env, auth: string, doFetch: typeof fetch, a: any) {
+  if (typeof a?.id !== 'string') return json({ erreur: 'attestation inconnue' }, 400);
+  const t = await rpc(env, auth, doFetch, 'attestation_mail_take', { p_id: a.id });
+  const d = t.data || {}, to = String(d.email || ''), pdf = String(d.pdf || '');
+  if (!t.ok || !EMAIL.test(to) || !pdf.startsWith('JVBERi0')) {
+    const msg = String(d?.message || '');
+    return json({ erreur: msg || 'attestation pas encore délivrée, déjà envoyée, ou droit insuffisant' }, /Limite/i.test(msg) ? 429 : 403);
+  }
+  const m = attestationMail(String(d.first_name || '').slice(0, 40), String(d.player || '').slice(0, 40), String(d.club || 'Ton club').slice(0, 80), String(d.season || ''));
+  const file = `Attestation-paiement-${String(d.player || 'joueur').replace(/[^\p{L}\p{N}]+/gu, '-')}-${String(d.season || '')}.pdf`;
+  const s = await resend(env, doFetch, { from: env.from, to: [to], reply_to: env.replyTo, subject: m.subject, text: m.text, html: m.html, attachments: [{ filename: file, content: pdf }] });
+  await logMail(env, doFetch, 'attestation', typeof d.club_id === 'string' ? d.club_id : null, s.ok);
+  if (!s.ok) return json({ erreur: 'Resend a refusé l’envoi', detail: s.detail }, 502);
+  return json({ envoye: true });
+}
+
+// ---------- 5.11.0 · n° 187 · prévenance des comptes inactifs (lancée par l'administrateur, double vérification) ----------
+// Les adresses ne sont lues qu'ici, avec la clé du serveur ; 40 au plus par passage (limite de Resend : 100 par jour).
+// E-mail de service (il concerne le compte), sans lien de désinscription. Sans connexion avant la date, le passage
+// « Suppressions automatiques » de l'Entretien met le compte à la corbeille (30 jours), puis l'efface.
+export function inactiveMail(first: string, until: Date, appUrl: string) {
+  const d = until.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long' });
+  const hello = first ? `Bonjour ${first},` : 'Bonjour,';
+  const link = (appUrl || 'https://mypocketclub.fr/').replace(/#.*$/, '');
+  const text = `${hello}\n\nTon compte mypocketclub n'a pas été utilisé depuis plus d'un an. Pour protéger tes données, il sera mis à la corbeille le ${d}, puis effacé 30 jours plus tard.\n\nTu veux le garder ? Connecte-toi simplement avant cette date :\n${link}\n\nTu n'en as plus besoin ? Tu n'as rien à faire.\n\nmypocketclub · https://mypocketclub.fr`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
+<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
+<p>${escHtml(hello)}</p><p>Ton compte mypocketclub n'a pas été utilisé depuis plus d'un an. Pour protéger tes données, il sera mis à la corbeille <b>le ${escHtml(d)}</b>, puis effacé 30 jours plus tard.</p>
+<p><a href="${escHtml(link)}" style="display:inline-block;background:#2F5BFF;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Garder mon compte</a></p>
+<p style="color:#5A6178;font-size:14px">Il suffit de te connecter avant cette date. Tu n'en as plus besoin ? Tu n'as rien à faire.</p>
+<p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
+  return { subject: 'mypocketclub · ton compte va être supprimé', text, html };
+}
+async function sendInactiveWarnings(env: Env, auth: string, doFetch: typeof fetch) {
+  if (!env.service) return json({ erreur: 'clé du serveur absente' }, 500);
+  const r = await doFetch(env.url + '/rest/v1/rpc/inactive_warnings_take', { method: 'POST', headers: svcHeaders(env.service), body: JSON.stringify({ p_limit: 40 }) });
+  const rows = r.ok ? await r.json().catch(() => []) : [];
+  let n = 0, ko = 0;
+  for (const x of Array.isArray(rows) ? rows.slice(0, 40) : []) {
+    const to = String(x?.email || '');
+    if (!EMAIL.test(to)) continue;
+    const m = inactiveMail(String(x?.first_name || '').slice(0, 40), new Date(String(x?.until || '') + 'T12:00:00Z'), env.appUrl || '');
+    const s = await resend(env, doFetch, { from: env.from, to: [to], reply_to: env.replyTo, subject: m.subject, text: m.text, html: m.html });
+    await logMail(env, doFetch, 'prevenance_inactif', null, s.ok);
+    if (s.ok) n++; else ko++;
+  }
+  await rpc(env, auth, doFetch, 'admin_inactive_warn_note', { p_sent: n });
+  return json({ envoye: n, echecs: ko, reste: Array.isArray(rows) && rows.length >= 40 });
 }
 
 // Qui appelle ? (le jeton de la personne connectée, vérifié par Supabase)
@@ -282,7 +362,9 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   if (body?.new_device) return sendNewDevice(env, auth, doFetch, who, body.new_device, now); // n° 147
   if (body?.parent_invite) return sendParentInvite(env, auth, doFetch, body.parent_invite); // 5.3.0
   if (body?.validation_reminders) return sendValidationReminders(env, doFetch); // 5.4.0 · n° 182
-  if (!body?.test) return json({ erreur: 'seul l’e-mail de test, une convocation, une invitation ou un rappel peuvent partir' }, 400);
+  if (body?.attestation) return sendAttestation(env, auth, doFetch, body.attestation); // 5.11.0 · n° 207
+  if (body?.inactive_warnings) return who.admin ? sendInactiveWarnings(env, auth, doFetch) : json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403); // 5.11.0 · n° 187
+  if (!body?.test) return json({ erreur: 'seul l’e-mail de test, une convocation, une invitation, une attestation ou un rappel peuvent partir' }, 400);
   if (!who.admin) return json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403);
   const m = testMail(who.name, now);
   const r = await doFetch('https://api.resend.com/emails', {
@@ -290,6 +372,7 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
     body: JSON.stringify({ from: env.from, to: [who.email], reply_to: env.replyTo, subject: m.subject, text: m.text, html: m.html }),
   });
   const out = await r.json().catch(() => ({}));
+  await logMail(env, doFetch, 'test', null, r.ok);
   if (!r.ok) return json({ erreur: 'Resend a refusé l’envoi', detail: String(out?.message || r.status).slice(0, 200) }, 502);
   return json({ envoye: true, to: who.email, id: out?.id || null });
 }

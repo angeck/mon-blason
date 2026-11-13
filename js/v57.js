@@ -97,6 +97,7 @@ function formPage(v) {
     <div class="kick">Signature et cachet</div>
     <div class="btns" style="align-items:center">${S.mySig ? `<img src="${esc(S.mySig)}" alt="Ma signature" style="max-height:56px;background:#fff;border-radius:6px">` : '<span class="note">Pas encore de signature.</span>'}<label class="btn small ghost">${S.mySig ? 'Changer ma signature' : 'Ajouter ma signature (image)'}<input type="file" accept="image/*" data-attsig="1" hidden></label></div>
     <p class="note" style="margin:0">${s.stamp ? 'Le cachet du club sera posé à côté.' : 'Pas de cachet : le président peut l’ajouter dans ses réglages.'} Ta signature reste dans ton compte : personne d’autre ne la voit.</p>
+    ${req ? `<fieldset class="field" style="border:0;padding:0;margin:0"><legend class="kick" style="padding:0">Le demandeur la reçoit</legend><label class="check"><input type="radio" name="via" value="app" checked><span>Dans mypocketclub (Mon compte, avec une notification)</span></label><label class="check"><input type="radio" name="via" value="email"><span>Dans mypocketclub et par e-mail, PDF joint</span></label></fieldset>` : ''}
     <div class="btns"><button class="btn ${req ? 'ghost' : 'main'}" type="button" data-act="attmake" data-mode="dl">${icon('down', 20)}Télécharger le PDF</button>${req ? `<button class="btn main" type="button" data-act="attmake" data-mode="send">${icon('check', 20)}Délivrer au demandeur</button>` : ''}</div>
     <p class="note" style="margin:0">Chaque attestation est inscrite au journal, avec le nom du demandeur.</p></form>`;
   if (req) h += `<form id="attnof" class="card flat" data-req="${esc(req.id)}">${field('atno', 'Ou refuser, avec un motif court', '<input id="atno" name="why" maxlength="200" required placeholder="Ex. : cotisation pas encore réglée en entier">')}<button class="btn ghost" type="submit">Refuser la demande</button></form>`;
@@ -155,7 +156,19 @@ ACTIONS.attmake = async (el, d) => {
   const r = await run(sb.rpc('attestation_data', { p_player: f.dataset.id, p_requester: who, p_legal_id: v.legal || '' })); if (!r) return;
   const bytes = await attestationPdf2(r, club());
   if (mode === 'send' && f.dataset.req) {
-    if (await run(sb.rpc('deliver_attestation', { p_id: f.dataset.req, p_pdf: bytesB64(bytes) }), 'Attestation délivrée : le demandeur est prévenu.')) { await loadV57(); const b = (S.stack || []).pop() || null; S.view = b; S.noStack = true; render(); }
+    const byMail = v.via === 'email', rid = f.dataset.req;
+    if (await run(sb.rpc('deliver_attestation', { p_id: rid, p_pdf: bytesB64(bytes) }), byMail ? '' : 'Attestation délivrée : le demandeur est prévenu.')) {
+      // 5.11.0 · n° 207 : au choix du trésorier, aussi par e-mail (l'adresse du demandeur est lue par la base, jamais par l'application)
+      if (byMail) {
+        let msg = 'Attestation délivrée et envoyée par e-mail au demandeur.';
+        try {
+          const { data, error } = await sb.functions.invoke('envoyer-email', { body: { attestation: { id: rid } } });
+          if (error || !data?.envoye) msg = 'Attestation délivrée : le demandeur la trouve dans Mon compte. L’e-mail n’est pas parti' + (await mailErr(error)) + '.';
+        } catch { msg = 'Attestation délivrée : le demandeur la trouve dans Mon compte. L’e-mail n’est pas parti.'; }
+        toast(msg);
+      }
+      await loadV57(); const b = (S.stack || []).pop() || null; S.view = b; S.noStack = true; render();
+    }
     return;
   }
   download(new Blob([bytes], { type: 'application/pdf' }), `Attestation-paiement-${(p ? pname(p) : 'joueur').replace(/[^\p{L}\p{N}]+/gu, '-')}-${r.season}.pdf`);
@@ -164,6 +177,12 @@ ACTIONS.attmake = async (el, d) => {
 FORMS.attnof = async (v, f) => {
   if (await run(sb.rpc('refuse_attestation', { p_id: f.dataset.req, p_reason: v.why || '' }), 'Demande refusée : le demandeur voit le motif.')) { await loadV57(); const b = (S.stack || []).pop() || null; S.view = b; S.noStack = true; render(); }
 };
+
+// Raison lisible d'un refus de la fonction envoyer-email (limite du jour, fonction pas redéployée…)
+async function mailErr(error) {
+  try { const b = await error?.context?.json?.(); if (b?.erreur) return ' (' + String(b.erreur).replace(/\.$/, '') + ')'; } catch { /* corps illisible */ }
+  return error ? ' (fonction « envoyer-email » à redéployer ?)' : '';
+}
 
 // ---------- n° 207 · demandes reçues (trésorerie, président) ----------
 export async function loadV57() {

@@ -236,7 +236,7 @@ function exCard(e, pick) {
   const inPlan = (S.plan?.items || []).some((x) => x.exercise_id === e.id), a = S.exAuthors?.[e.id];
   const sub = [e.category, fmtMin(e.duration_min), e.sport === 'Tous les sports' ? 'Tous sports' : e.sport, e.level, a ? a.author + (a.club_name !== club()?.name ? ' · ' + a.club_name : '') : ''].filter(Boolean).join(' · ');
   return `<div class="ev"><button class="head" data-act="cexo" data-id="${e.id}">${thumb(e)}<span class="info"><span class="t">${esc(e.title)}</span><span class="s">${esc(sub)}</span><span class="chips" style="gap:6px;margin-top:4px">${sharePill(e)}${e.up_count || e.down_count ? `<span class="pill">👍 ${e.up_count} · 👎 ${e.down_count}</span>` : ''}${tooNegative(e) ? '<span class="pill ko">À revoir</span>' : ''}</span></span></button>
-  <button class="btn small ${inPlan ? 'ghost' : 'main'}" data-act="cadd" data-id="${e.id}" aria-pressed="${inPlan}">${inPlan ? (pick ? 'Ajouté ✓' : 'Dans ma séance ✓') : icon('plus', 18) + (pick ? 'Ajouter' : addLabel())}</button></div>`;
+  ${canCoachSpace() ? `<button class="btn small ${inPlan ? 'ghost' : 'main'}" data-act="cadd" data-id="${e.id}" aria-pressed="${inPlan}">${inPlan ? (pick ? 'Ajouté ✓' : 'Dans ma séance ✓') : icon('plus', 18) + (pick ? 'Ajouter' : addLabel())}</button>` : ''}</div>`;
 }
 function filters(list) {
   const f = S.cf || (S.cf = { cat: '', age: '', q: '' });
@@ -269,11 +269,14 @@ function boardTodo() {
   return h;
 }
 export function exosPage() {
-  const tab = S.ctab || 'mine';
-  let h = `<div class="chips">${[['mine', 'Ma banque'], ['club', 'Club'], ['libre', 'Libre'], ['tout', 'Tout'], ['seance', `Séance en préparation${S.plan?.items?.length ? ' (' + S.plan.items.length + ')' : ''}`]].map(([k, l]) => `<button class="chip" data-act="ctab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
+  // 5.11.0 · n° 227 : la banque est ouverte à tous les profils connectés (menu de gauche sur ordinateur) ;
+  // un compte qui n'est ni coach ni au bureau ne voit que « Club » et « Libre », sans séance ni nouvel exercice
+  const staff = canCoachSpace(), tab = staff ? (S.ctab || 'mine') : (['club', 'libre'].includes(S.ctab) ? S.ctab : 'libre');
+  const tabs = staff ? [['mine', 'Ma banque'], ['club', 'Club'], ['libre', 'Libre'], ['tout', 'Tout'], ['seance', `Séance en préparation${S.plan?.items?.length ? ' (' + S.plan.items.length + ')' : ''}`]] : [['libre', 'Tous les clubs'], ['club', 'Exercices du club']];
+  let h = `<div class="chips">${tabs.map(([k, l]) => `<button class="chip" data-act="ctab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
   if (tab === 'seance') return h + planEditor();
   if (!S.exos) return h + loading();
-  h += `<button class="btn main" data-act="cexnew">${icon('plus', 20)}Nouvel exercice</button>` + dupListBlock();
+  if (staff) h += `<button class="btn main" data-act="cexnew">${icon('plus', 20)}Nouvel exercice</button>` + dupListBlock();
   let list = S.exos.filter((e) => !e.deleted_at);
   if (tab === 'mine') { list = list.filter((e) => e.created_by === S.me.id); if (list.length) h += `<label class="btn ghost">Ajouter des vidéos en lot<input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" multiple data-exbulk="1" hidden></label><p class="note">Nomme chaque fichier comme l'exercice (ex. « Relais en dribble.mp4 ») : il ira sur le bon exercice.</p>`; }
   else if (tab === 'club') { h += boardTodo(); list = byTab(list, 'club'); }
@@ -590,7 +593,7 @@ async function hoursXlsx() {
 
 // ---------- titres des écrans (lus par app.js) ----------
 export const COACH_VIEWS = {
-  exos: () => ['Coach', 'Exercices', exosPage],
+  exos: () => [S.bank || !canCoachSpace() ? 'Banque d’exercices' : 'Coach', 'Exercices', exosPage], // n° 227
   exo: (v) => ['Exercice', esc((S.exos || []).find((x) => x.id === v.id)?.title || 'Exercice'), () => exoPage(v.id)],
   exoform: () => ['Exercices', S.exf?.id ? 'Modifier l’exercice' : 'Nouvel exercice', exoForm],
   expick: () => ['Séance en préparation', 'Ajouter un exercice', pickPage],

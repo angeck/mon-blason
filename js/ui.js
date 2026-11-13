@@ -138,7 +138,7 @@ export function tabBar() {
   return `<div class="tb"><nav aria-label="Onglets">${TABS.map(([t, ic], i) => {
     const cur = i === S.tab && !S.view, n = (counts[t] || 0) > (seen[t] || 0) ? counts[t] : 0;
     return `<button data-act="tab" data-i="${i}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${icon(ic, 24, 'currentColor', cur ? 2.2 : 2)}</span><span>${t}</span>${n ? `<span class="n" aria-label="${n} ${t === 'Messages' ? 'non lus' : 'à répondre'}">${n > 99 ? '99+' : n}</span>` : ''}</button>`;
-  }).join('')}</nav>${rolesNav()}</div>`;
+  }).join('')}</nav>${rolesNav()}${hooks.bankNav ? hooks.bankNav() : ''}</div>`; // n° 227 : banque d'exercices sous « Mes rôles » (ordinateur)
 }
 // N° 104 · ordinateur : sous les onglets (consulter et répondre), un bloc « Mes rôles » (agir), un bouton par casquette ;
 // il remplace le bouton aux quatre carrés et la rangée « Tes casquettes » (cachés sur grand écran par style.css).

@@ -1,11 +1,12 @@
 // mypocketclub · alpha 4.9.0 · n° 175 et n° 180 : mentions légales, « Vos données » (version courte et politique complète),
-// conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.4 du 13 novembre 2026 : ajout d'Anthropic, n° 161),
+// conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.5 du 13 novembre 2026 : n° 229, toutes les données gardées ;
+// n° 230, coordonnées par fonction ; lot e-mails 1 ; conditions 1.3 : gratuité),
 // non relus par un juriste. Vouvoiement. Changer LEGAL.version et LEGAL.date (et CGU_VERSION dans config.js
 // pour les conditions) à chaque modification : une nouvelle version des conditions est présentée à la connexion suivante.
 import { BRAND } from '../config.js';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.4', date: '13 novembre 2026' };
+export const LEGAL = { version: '1.5', date: '13 novembre 2026' };
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -54,27 +55,31 @@ const SHORT = `
 ## Quelles données ?
 - Votre compte : nom, prénom, e-mail, téléphone si vous le donnez, mot de passe (chiffré), appareils utilisés pour vous connecter.
 - Votre place dans le club : rôle, équipe, lien entre un parent et son enfant.
-- La vie du club : réponses aux rendez-vous, présences, messages et groupes, missions de bénévole.
-- Licence et cotisation, visibles du bureau seulement : état de la licence, cotisation, remise éventuelle.
+- La fiche d'un joueur : nom, prénom, date de naissance, équipe ; e-mail et téléphone d'un parent et contact d'urgence si le club les note ; autorisations (rentrer seul, soins d'urgence, covoiturage) ; réponse de chaque parent sur le droit à l'image.
+- La vie du club : réponses aux rendez-vous, présences (avec l'heure d'arrivée), messages et groupes, missions de bénévole, heures des coachs.
+- Licence et cotisation, visibles du bureau seulement : état de la licence, cotisation, remise éventuelle, versements notés, attestations de paiement.
+- Vos réglages : équipes suivies, notifications sur chaque appareil, avancée du guide « Pour bien démarrer ».
 - Renforts et ententes : le fait qu'un joueur renforce une autre équipe de son club (avec l'accord de sa famille), et, pour une équipe en entente, le club d'origine du joueur.
 - Jamais d'information médicale. Merci de ne pas en écrire dans l'application.
 ## Pour quoi faire ?
 Organiser la vie du club : agenda, présences, convocations, messages, cotisations. Rien d'autre : pas de publicité, pas de revente, pas de profilage.
 ## Qui voit quoi ?
 - Les autres joueurs et parents voient les joueurs sous la forme « Prénom I. », sans coordonnées ni photo.
-- Les coachs et le contact d'équipe voient le nom et les coordonnées utiles des joueurs de leurs équipes ; le bureau voit ce dont il a besoin pour gérer le club.
+- Les coachs et le contact d'équipe voient le nom et les coordonnées utiles des joueurs de leurs équipes.
+- Les coordonnées des familles ne sont visibles, pour tout le club, que du président, du secrétariat, de la trésorerie, du directeur technique, du contact licences et du contact rencontres. Les autres membres du bureau ne les voient pas.
 - Une personne non connectée ne voit que la liste des clubs.
 ## Enfants et adolescents
 - Avant 15 ans, un enfant n'a pas de compte : c'est son parent qui gère tout depuis le sien.
 - De 15 à 17 ans, le joueur peut avoir son compte ; nous demandons l'e-mail d'un parent pour l'inviter.
 - Un adulte ne peut pas échanger en privé avec un mineur : hors des groupes d'équipe, un parent du mineur est toujours dans la conversation.
 ## Ce que vous choisissez
-Deux accords sont facultatifs, et vous pouvez les retirer à tout moment dans « Mon compte » : le droit à l'image, et les e-mails d'information. Les e-mails nécessaires au service (convocation, sécurité du compte, changement d'un rendez-vous) sont toujours envoyés.
+Deux accords sont facultatifs, et vous pouvez les retirer à tout moment dans « Mon compte » : le droit à l'image, et les e-mails d'information. Une désinscription par le lien d'un e-mail est définitive : nous gardons seulement une empreinte de l'adresse, pour ne plus y écrire. Les e-mails nécessaires au service (convocation, sécurité du compte, changement d'un rendez-vous, attestation demandée, avertissement avant la suppression d'un compte) sont toujours envoyés.
 ## Combien de temps ?
 - Votre fiche dans un club : 2 saisons après votre départ, puis elle est effacée.
 - Votre compte : sans connexion pendant 2 saisons (une saison va du 1er juillet au 30 juin), vous êtes prévenu par e-mail, puis le compte passe 30 jours en corbeille avant d'être effacé. Si vous le supprimez vous-même : 30 jours de corbeille, puis effacement.
 - Présences : rendues anonymes après une saison. Messages : 2 saisons.
 - Appareils de connexion : effacés après 12 mois sans usage.
+- Attestations de paiement : jusqu'à la fin de la saison.
 ## Où sont vos données ?
 Dans l'Union européenne (Irlande), chez Supabase. Les e-mails sont envoyés par Resend et les pages sont servies par GitHub, deux sociétés américaines liées par un contrat de protection des données. Quand un coach prépare le schéma d'un exercice avec l'IA, le texte de l'exercice est envoyé à Anthropic (États-Unis), jamais un nom ni une donnée de joueur.
 ## Vos droits
@@ -89,12 +94,19 @@ mypocketclub est une application qui aide les clubs sportifs à s'organiser. Deu
 Contact pour toute question : ${C}.
 ## 2. Quelles données sont traitées ?
 - **Compte** : nom, prénom, adresse e-mail, téléphone si vous le donnez, mot de passe (conservé chiffré), date d'acceptation des conditions et version acceptée.
-- **Sécurité** : appareils utilisés pour vous connecter (identifiant et nom de l'appareil), dates de connexion, journal des actions sensibles.
+- **Sécurité** : appareils utilisés pour vous connecter (identifiant et nom de l'appareil), dates de connexion, journal des actions du club (qui a exporté, délivré une attestation, changé une fonction…). Pour limiter les abus, l'adresse IP d'une recherche de club ou d'une demande d'ajout n'est gardée que sous forme d'empreinte (jamais en clair).
 - **Place dans le club** : club, rôle, fonction au bureau, équipe, lien entre un parent et son enfant, contact d'équipe.
+- **Fiche d'un joueur** : nom, prénom, date de naissance, équipe ; e-mail et téléphone d'un parent et contact d'urgence, quand le club les note ; autorisations notées par la famille ou le club (rentrer seul, soins d'urgence, covoiturage) ; réponse de chaque parent sur le droit à l'image.
+- **Réglages** : équipes suivies, réglages de l'application, abonnement aux notifications sur chaque appareil, avancée du guide « Pour bien démarrer ».
 - **Signalements** : un message signalé garde la trace de la personne qui l'a signalé et de la date.
-- **Vie du club** : rendez-vous et réponses, présences, convocations, messages et groupes d'échange, sondages, missions de bénévole, heures des entraîneurs.
-- **Licence et cotisation**, visibles du bureau seulement : état de la licence, cotisation, remise éventuelle.
-- **Renforts et ententes** : le fait qu'un joueur renforce une autre équipe de son club, avec la réponse de sa famille ; pour une équipe en entente, le club d'origine du joueur.
+- **Vie du club** : rendez-vous et réponses, présences (avec l'heure d'arrivée notée à l'appel), convocations, messages et groupes d'échange, sondages, missions de bénévole.
+- **Entraîneurs** : heures, taux horaire et montants, visibles du président et de la trésorerie.
+- **Licence et cotisation**, visibles du bureau seulement : état de la licence, cotisation, remise éventuelle, versements notés.
+- **Attestations de paiement** : demande (nom du demandeur), attestation délivrée en PDF, signature en image de la personne qui la délivre (gardée avec son compte) ; coordonnées, numéro SIRET ou RNA et cachet du club, réglés par le président.
+- **Renforts et ententes** : le fait qu'un joueur renforce une autre équipe de son club, avec la réponse de sa famille ; pour une équipe en entente, le club d'origine du joueur et le contact du club partenaire.
+- **Abonnement du club** : nombre de joueurs, statut et montant, visibles du président du club et de mypocketclub.
+- **Exercices préparés avec l'IA** : date, club, compte et coût de chaque demande, pour suivre la dépense ; jamais le texte de l'exercice.
+- **E-mails envoyés** : type, club, date et réussite de chaque envoi, pour respecter les limites d'envoi ; jamais l'adresse ni le contenu. Une adresse qui s'est désinscrite est gardée sous forme d'empreinte, pour ne plus jamais y écrire.
 - **Accords** : droit à l'image et e-mails d'information, avec leur date.
 - **Contenus que vous créez** : exercices, séances, annonces, fichiers joints.
 mypocketclub ne demande **aucune donnée de santé**. Seul le fait qu'un certificat a été fourni, oui ou non, peut être noté par le club. Merci de ne pas écrire d'information médicale dans l'application.
@@ -116,11 +128,12 @@ Vos données ne servent ni à de la publicité, ni à de la revente, ni à étab
 - **Le contact d'équipe**, un adulte choisi pour une équipe (coach, joueur majeur ou membre du bureau), voit les coordonnées des familles et des joueurs de cette équipe seulement. Son droit s'arrête dès qu'il n'a plus le rôle qui le justifiait.
 - **Le profil « Aide coach »**, que peut avoir un jeune de 15 à 17 ans choisi par un entraîneur ou le président, ne donne aucun droit de plus : il permet de voir l'effectif de l'équipe, sans coordonnées. Il s'arrête à 18 ans.
 - **Le bureau du club** voit ce dont il a besoin pour gérer le club. La cotisation, la remise et la licence ne sont visibles que du bureau.
+- **Les coordonnées des familles** (e-mail, téléphone, contact d'urgence) ne sont visibles, pour tout le club, que du président, du secrétariat, de la trésorerie, du directeur technique (sauf si le président les lui masque), du contact licences et du contact rencontres. Le vice-président, la communication, le sponsoring, les événements et les autres fonctions ne les voient pas.
 - **Le président du club** voit les messages signalés dans les groupes du club, avec leur auteur ; il peut aussi retirer l'accès d'un joueur à son club.
 - **Le contact du club** choisit lui-même si son e-mail ou son téléphone est affiché aux personnes connectées.
 - **Une personne non connectée** ne voit que la liste des clubs.
 - **Un organisme qui finance un club** (mairie, comité) ne voit que des chiffres : jamais de nom.
-- **mypocketclub** n'accède aux données d'un club que pour l'assistance, la sécurité ou la correction d'un problème.
+- **mypocketclub** n'accède aux données d'un club que pour l'assistance, la sécurité ou la correction d'un problème. Il ne lit un message signalé que si le président le lui transmet, et ce message seul.
 Le club peut exporter la liste de ses membres. Ce fichier est alors sous sa responsabilité.
 ## 5. Enfants et adolescents
 - **Avant 15 ans**, un enfant n'a pas de compte. Son parent gère sa participation depuis son propre compte.
@@ -132,8 +145,8 @@ Le club peut exporter la liste de ses membres. Ce fichier est alors sous sa resp
 ## 6. Ce que vous pouvez choisir
 Deux accords sont facultatifs, jamais cochés d'avance, et modifiables à tout moment dans « Mon compte » :
 - le **droit à l'image** ;
-- les **e-mails d'information** (rappels, nouveautés, relances), qui contiennent aussi un lien de désinscription.
-Les e-mails nécessaires au service sont toujours envoyés : convocation, changement d'un rendez-vous, sécurité du compte, invitation d'un parent.
+- les **e-mails d'information** (rappels, nouveautés, relances), qui contiennent aussi un lien de désinscription. Une désinscription par ce lien est définitive ; vous pouvez revenir sur ce choix vous-même dans « Mon compte ».
+Les e-mails nécessaires au service sont toujours envoyés : convocation, changement d'un rendez-vous, sécurité du compte, invitation d'un parent, attestation de paiement demandée (si le club choisit de l'envoyer aussi par e-mail), avertissement avant la suppression d'un compte inactif.
 ## 7. Combien de temps les données sont-elles gardées ?
 | Fiche dans un club | 2 saisons après votre départ, visible du bureau seulement, puis effacée |
 | Compte | Tant que vous l'utilisez ; sans connexion pendant 2 saisons : e-mail d'avertissement, puis 30 jours de corbeille, puis effacement |
@@ -144,7 +157,15 @@ Les e-mails nécessaires au service sont toujours envoyés : convocation, change
 | Messages et groupes | 2 saisons |
 | Appareils de connexion | Effacés après 12 mois sans usage |
 | Renfort | Jusqu'à la fin de la saison, ou jusqu'à son retrait |
-| Journal des actions sensibles | 1 an |
+| Journal des actions du club | Tant que le club existe (une limite d'un an est prévue) |
+| Copie du profil après la suppression d'un compte | 30 jours (le temps de la corbeille) |
+| Demande et attestation de paiement | Jusqu'à la fin de la saison |
+| Signature en image | Tant que la personne la garde dans son compte |
+| Abonnement aux notifications | Tant que l'appareil l'utilise |
+| Suivi des demandes faites à l'IA | Tant que le club existe (il sert au budget de chaque saison) |
+| Journal des e-mails envoyés | 13 mois |
+| Empreinte d'une adresse désinscrite | Tant que le service existe, pour ne plus y écrire |
+| Empreinte d'adresse IP | Environ 1 heure (recherche de club) ; avec la demande d'ajout d'un club, tant qu'elle est gardée |
 | Club supprimé | 90 jours de corbeille, données non consultées, puis effacement |
 | Adresse saisie pour inviter une personne (par exemple un parent) | Le lien d'invitation vaut 14 jours ; l'adresse est effacée après 30 jours |
 | Demande de conversation avec un mineur (qui la fait, le parent sollicité, sa réponse) | Effacée 30 jours après la réponse ou l'annulation |
@@ -176,7 +197,7 @@ Si la réponse ne vous satisfait pas, vous pouvez saisir la CNIL : cnil.fr.
 ## 11. Traceurs
 mypocketclub n'utilise aucun traceur publicitaire ni outil de mesure d'audience. L'application enregistre sur votre appareil ce qui est strictement nécessaire : votre connexion, vos réglages et un identifiant d'appareil servant à la sécurité. Ces éléments ne demandent pas de consentement.
 ## 12. Démarchage des clubs
-mypocketclub peut écrire à un club pour se présenter. Il n'utilise pour cela que les adresses publiées par le club ou sa fédération pour le contacter. Chaque message indique d'où vient l'adresse et permet de refuser tout nouvel envoi. Les adresses reçues à l'occasion d'une convocation ne servent jamais à cela.
+mypocketclub peut écrire à un club pour se présenter. Il n'utilise pour cela que les adresses publiées par le club ou sa fédération pour le contacter. Chaque message indique d'où vient l'adresse et permet de refuser tout nouvel envoi ; ce refus est définitif. Un club n'est contacté qu'une fois, avec au plus une relance. Les adresses reçues à l'occasion d'une convocation ne servent jamais à cela.
 ## 13. Modification de cette politique
 Toute modification importante vous est signalée dans l'application avant de s'appliquer. La version et la date figurent en tête de cette page.`;
 
@@ -236,7 +257,7 @@ Rien dans ces conditions ne limite les droits que la loi vous reconnaît.
 ## 12. Propriété intellectuelle
 L'application, son nom, son logo, ses textes et son code appartiennent à leur éditeur. Tous droits réservés. Vous disposez d'un droit personnel d'utiliser l'application, sans pouvoir la copier, la revendre ni en réutiliser le contenu en dehors de la vie de votre club.
 ## 13. Offres payantes
-L'application est gratuite pendant le test. Si une offre payante est proposée plus tard, elle fera l'objet de conditions séparées, acceptées par le club ou par la personne concernée. Un soutien versé à un club par l'application ne sera jamais un don ouvrant droit à un reçu fiscal.
+L'application est gratuite pendant le test. Si une offre payante est proposée plus tard, elle fera l'objet de conditions séparées, acceptées par le club ou par la personne concernée. Deux gratuités sont prévues : un club qui s'inscrit est gratuit jusqu'à la fin de la saison en cours (une saison va du 1er juillet au 30 juin) ; une équipe est gratuite pendant une saison complète, de sa date de début à la même date l'année suivante (par exemple de décembre à décembre). Un soutien versé à un club par l'application ne sera jamais un don ouvrant droit à un reçu fiscal.
 ## 14. Modification des conditions
 Ces conditions peuvent évoluer. Une modification importante vous est présentée à votre connexion suivante, et votre accord vous est redemandé. La version et la date figurent en tête de cette page.
 ## 15. Droit applicable et contact

@@ -284,7 +284,7 @@ export function clubGoneScreen() {
 // ---------- n° 115 · paiement en ligne : bientôt ----------
 export function payFamilySoon(p) {
   if (!p || !(myKids().some((k) => k.id === p.id) || mySelf().some((k) => k.id === p.id))) return '';
-  // n° 114 (décision du 5 novembre 2026) : le bouton reste « bientôt », mais chaque toucher est compté pour mesurer l'intérêt
+  // n° 114 : le bouton reste « bientôt » ; depuis la 5.11.0 (n° 229, transparence), les touchers ne sont plus comptés
   return `<button class="btn ghost" data-act="paytap" aria-disabled="true" style="opacity:.6">${icon('doc', 20)}Payer ma cotisation · Bientôt disponible</button>`;
 }
 export const payTreasurerSoon = () => `<div class="card pale" style="flex-direction:row;align-items:center;gap:12px"><span class="g" style="flex:1"><b>Paiement en ligne</b><br><span class="det">Bientôt disponible. L’argent ira directement sur le compte du club.</span></span><span class="pill">Bientôt</span></div>`;
@@ -305,8 +305,7 @@ Object.assign(ACTIONS, {
     if (tab === 'effectif') { S.view = { type: 'team', id: tid }; render(); return; }
     S.view = { type: 'tspace', id: tid, tab }; render();
   },
-  paytap: async () => { await sb.rpc('tap_feature', { p_feature: 'payer', p_club: S.clubId }); toast('Le paiement en ligne arrive bientôt. Merci, ton intérêt est noté.'); },
-  tapcounts: async () => { const r = await run(sb.rpc('feature_tap_counts')); if (!r) return; const p = (Array.isArray(r) ? r : []).find((x) => x.feature === 'payer'); toast(p ? `« Payer » : ${p.people} personne${p.people > 1 ? 's' : ''}, ${p.clubs} club${p.clubs > 1 ? 's' : ''} (dernier toucher le ${new Date(p.last_day + 'T12:00').toLocaleDateString('fr-FR')}).` : '« Payer » : aucun toucher pour l’instant.'); },
+  paytap: () => toast('Le paiement en ligne arrive bientôt. En attendant, règle ta cotisation directement auprès du club.'),
   casqdef: (el, d) => { store.set(defKey(), d.v); S.defAsk = null; toast('C’est noté : cet espace s’ouvrira par défaut.'); render(true); },
   casqdefno: () => { S.defAsk = null; render(true); },
   ptab: (el, d) => { S.ptab = d.v; if (d.v === 'journal') S.journal = undefined; if (S.view?.type !== 'espace' || S.casq !== 'president') { S.casq = 'president'; S.view = { type: 'espace' }; } render(true); },

@@ -170,5 +170,42 @@ k = fakeR({ rows: [{ club: 'C', valid_by: '2026-11-20T10:00:00Z', email: 'pas un
 check('n° 182 : adresse invalide : rien ne part', b.envoye === 0 && !k.calls.some((c) => c[0].includes('resend')));
 k = fakeR(); r = await F.handle(req({ validation_reminders: true }, ''), { ...env, service: 'x' }, k.f);
 check('n° 182 : il faut être connecté pour déclencher l’envoi', r.status === 401);
+// ---------- 5.11.0 · n° 228 : compteur ; n° 207 : attestation ; n° 187 : comptes inactifs ----------
+const logs = (k) => k.calls.filter((c) => c[0].endsWith('/rpc/mail_log_add')).map((c) => JSON.parse(c[1].body));
+k = fakeR(); r = await F.handle(req({ validation_reminders: true }), { ...env, service: 'cle-serveur' }, k.f);
+check('n° 228 : le rappel est compté (type, réussite), sans adresse', logs(k).length === 1 && logs(k)[0].p_kind === 'rappel_validation' && logs(k)[0].p_ok === true && !JSON.stringify(logs(k)).includes('@'));
+check('n° 228 : compté avec la clé du serveur', k.calls.find((c) => c[0].endsWith('/rpc/mail_log_add'))?.[1].headers.apikey === 'cle-serveur');
+k = fake(); r = await F.handle(req({ test: true }), { ...env, service: 'cle-serveur' }, k.f);
+check('n° 228 : l’e-mail de test est compté', logs(k).length === 1 && logs(k)[0].p_kind === 'test');
+function fakeA({ take = { email: 'parent@exemple.fr', first_name: 'Ana', player: 'Léo', club: 'Club Test', club_id: 'c-1', season: '2026-2027', pdf: 'JVBERi0xLjQKJ' }, admin = false, rows = [] } = {}) {
+  const k = fake({ admin }), base = k.f;
+  k.f = async (url, o = {}) => {
+    if (url.endsWith('/rpc/attestation_mail_take')) { k.calls.push([url, o]); return take ? { ok: true, status: 200, json: async () => take } : { ok: false, status: 400, json: async () => ({ message: 'Attestation déjà envoyée par e-mail' }) }; }
+    if (url.endsWith('/rpc/inactive_warnings_take')) { k.calls.push([url, o]); return { ok: true, status: 200, json: async () => rows }; }
+    if (url.endsWith('/rpc/mail_log_add') || url.endsWith('/rpc/admin_inactive_warn_note')) { k.calls.push([url, o]); return { ok: true, status: 200, json: async () => null }; }
+    return base(url, o);
+  };
+  return k;
+}
+k = fakeA(); r = await F.handle(req({ attestation: { id: 'att-1' } }), { ...env, service: 's' }, k.f); b = await r.json();
+const at = bodyOf(k, 'api.resend.com/emails');
+check('n° 207 : l’attestation part à l’adresse donnée par la base, PDF joint', r.status === 200 && JSON.stringify(at.to) === '["parent@exemple.fr"]' && at.attachments?.[0]?.content === 'JVBERi0xLjQKJ' && /\.pdf$/.test(at.attachments[0].filename));
+check('n° 207 : prénom, joueur, club et saison dans l’e-mail ; pas de désinscription (service)', at.text.includes('Ana') && at.text.includes('Léo') && at.text.includes('Club Test') && at.text.includes('2026-2027') && !/désinscri/i.test(at.text));
+check('n° 207 : compté avec son club', logs(k)[0]?.p_kind === 'attestation' && logs(k)[0]?.p_club === 'c-1');
+k = fakeA({ take: null }); r = await F.handle(req({ attestation: { id: 'att-1' } }), env, k.f);
+check('n° 207 : déjà envoyée ou pas le droit : rien ne part', r.status === 403 && !k.calls.some((c) => c[0].includes('resend')));
+k = fakeA({ take: { email: 'parent@exemple.fr', pdf: 'pas un pdf' } }); r = await F.handle(req({ attestation: { id: 'att-1' } }), env, k.f);
+check('n° 207 : PDF illisible : rien ne part', r.status === 403 && !k.calls.some((c) => c[0].includes('resend')));
+check('n° 207 : HTML : noms échappés', !/<script>/.test(F.attestationMail('<script>', '<script>', '<script>', '2026').html));
+const rows187 = [{ email: 'vieux@exemple.fr', first_name: 'Marc', until: '2026-12-13' }, { email: 'pas une adresse', first_name: 'X', until: '2026-12-13' }];
+k = fakeA({ admin: false, rows: rows187 }); r = await F.handle(req({ inactive_warnings: true }), { ...env, service: 's' }, k.f);
+check('n° 187 : réservé à l’administrateur', r.status === 403 && !k.calls.some((c) => c[0].includes('resend') || c[0].endsWith('/rpc/inactive_warnings_take')));
+k = fakeA({ admin: true, rows: rows187 }); r = await F.handle(req({ inactive_warnings: true }), { ...env, service: 's', appUrl: 'https://mypocketclub.fr/' }, k.f); b = await r.json();
+const iw = bodyOf(k, 'api.resend.com/emails');
+check('n° 187 : un e-mail par compte valide, date de la corbeille et lien pour garder le compte', b.envoye === 1 && JSON.stringify(iw.to) === '["vieux@exemple.fr"]' && iw.text.includes('13 décembre 2026') && iw.text.includes('https://mypocketclub.fr/') && iw.text.includes('Marc'));
+check('n° 187 : adresses lues avec la clé du serveur, 40 au plus', (() => { const c = k.calls.find((x) => x[0].endsWith('/rpc/inactive_warnings_take')); return c && c[1].headers.apikey === 's' && JSON.parse(c[1].body).p_limit === 40; })());
+check('n° 187 : noté au journal admin et compté', k.calls.some((c) => c[0].endsWith('/rpc/admin_inactive_warn_note')) && logs(k).some((x) => x.p_kind === 'prevenance_inactif'));
+k = fakeA({ admin: true, rows: rows187 }); r = await F.handle(req({ inactive_warnings: true }), env, k.f);
+check('n° 187 : sans clé du serveur, rien ne part', r.status === 500 && !k.calls.some((c) => c[0].includes('resend')));
 console.log(`\n   ${ok} réussis sur ${ok + ko} tests d'e-mail`);
 if (ko) process.exitCode = 1;

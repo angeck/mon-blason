@@ -254,6 +254,8 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
   .tb nav.roles button[aria-current="page"]{color:var(--pc-action-texte)}
   .tb nav.roles button[aria-current="page"] .ic{background:var(--pc-action)}
   .tb nav.roles button[aria-current="page"]{background:var(--pc-action);border-radius:16px}
+  /* 5.11.0 · n° 227 : banque d'exercices sous « Mes rôles », sous-entrées en retrait */
+  .tb nav.bank button.sub{padding-left:56px;font-size:15px;min-height:40px;font-weight:600}
   .hd .band [data-act=espace],.casq,.casqhint{display:none!important}
   .bd{padding-bottom:60px}
   .compose{bottom:0}

@@ -28,6 +28,7 @@ import './js/v48.js'; // 4.8.0 : guide « Installer et notifications »
 import './js/v52.js'; // 5.2.0 : n° 174 (contact d'équipe), n° 158 (renforts)
 import { loadV57 } from './js/v57.js'; // 5.7.0 : n° 204 et 207 (attestations de paiement)
 import './js/v510.js'; // 5.10.0 : n° 161 exercices avec l'IA (schéma animé, éditeur au doigt)
+import './js/v511.js'; // 5.11.0 : n° 227 banque d'exercices dans le menu de gauche (ordinateur)
 import './js/v56.js'; // 5.6.0 : n° 202 compte administrateur (espace admin, double vérification)
 import './js/v55.js'; // 5.5.0 : onboarding « Pour bien démarrer », FAQ (Aide), n° 164 justificatif d'adhésion
 import { validationReminders } from './js/v54.js'; // 5.4.0 : n° 201 (conversation avec un mineur), n° 84 (rattacher), transfert d'une convocation, n° 182
