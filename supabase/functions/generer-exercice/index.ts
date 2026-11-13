@@ -1,4 +1,4 @@
-// mypocketclub · alpha 5.10.0 · n° 161 · fonction Edge « generer-exercice » (Supabase → Edge Functions)
+// mypocketclub · alpha 5.10.2 · n° 161 · fonction Edge « generer-exercice » (Supabase → Edge Functions)
 // Le coach décrit son exercice ; l'IA (Claude, d'Anthropic) propose un schéma animé, étape par étape, que le coach modifie ensuite.
 // Ce que l'IA reçoit : le sport, la catégorie, la durée, le niveau, le titre, la description et les tags. Jamais un nom ni une donnée de joueur.
 // Contrôles avant l'appel : ai_state(club) dans la base, avec la session du coach (droits, IA en pause, solde, budget du club, plafond du jour).
@@ -126,7 +126,7 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   try {
     r = await doFetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(buildRequest(env.model, b)) });
   } catch { return json({ ok: false, reason: 'ia', message: 'L’IA ne répond pas. Réessaie dans un moment.' }); }
-  if (!r.ok) { const d = (await r.text()).slice(0, 200); return json({ ok: false, reason: 'ia', message: r.status === 429 || r.status === 529 ? 'L’IA est très demandée. Réessaie dans une minute.' : r.status === 401 ? 'La clé de l’IA est refusée (secret ANTHROPIC_API_KEY à vérifier).' : r.status === 400 && /credit/i.test(d) ? 'Le crédit de la Console Claude est épuisé.' : r.status === 404 ? 'Le modèle de l’IA est introuvable (secret AI_MODEL à vérifier).' : `L’IA n’a pas pu préparer le schéma (${r.status}). Réessaie dans un moment.`, detail: d }); }
+  if (!r.ok) { const raw = await r.text(); const d = raw.slice(0, 400); let why = ''; try { why = String(JSON.parse(raw)?.error?.message || '').slice(0, 160); } catch { /* */ } return json({ ok: false, reason: 'ia', message: r.status === 429 || r.status === 529 ? 'L’IA est très demandée. Réessaie dans une minute.' : r.status === 401 ? 'La clé de l’IA est refusée (secret ANTHROPIC_API_KEY à vérifier).' : r.status === 400 && /credit/i.test(d) ? 'Le crédit de la Console Claude est épuisé.' : r.status === 404 ? 'Le modèle de l’IA est introuvable (secret AI_MODEL à vérifier).' : `L’IA n’a pas pu préparer le schéma (${r.status}${why ? ' : ' + why : ''}). Réessaie dans un moment.`, detail: d }); }
   const out = await r.json();
   const tin = (out?.usage?.input_tokens || 0) + (out?.usage?.cache_creation_input_tokens || 0) + (out?.usage?.cache_read_input_tokens || 0), tout = out?.usage?.output_tokens || 0;
   const use = (out?.content || []).find((c: any) => c?.type === 'tool_use' && c?.name === 'schema');
