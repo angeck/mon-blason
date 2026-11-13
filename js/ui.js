@@ -65,7 +65,7 @@ export function crest(c, size = 44, bg) {
 }
 
 // ---------- Thème : en-tête mypocketclub, ou aux couleurs du club si le président l'a activé ----------
-export function brandMode() { return !S.session || !S.me || !S.clubId || !isActive() || S.onb !== null || ['account', 'legal', 'cgu', 'creq', 'creqs', 'creqmail'].includes(S.view?.type); }
+export function brandMode() { return !S.session || !S.me || !S.clubId || !isActive() || S.onb !== null || ['account', 'legal', 'cgu', 'creq', 'creqs', 'creqmail', 'reco'].includes(S.view?.type); }
 // 5.0.0 · n° 168 : thème clair, sombre, ou celui du téléphone (choix gardé sur l'appareil et dans le compte)
 export const THEMES = [['auto', 'Comme mon téléphone'], ['clair', 'Clair'], ['sombre', 'Sombre']];
 export const themeChoice = () => { const v = store.get('pc_theme'); return THEMES.some((t) => t[0] === v) ? v : 'auto'; };

@@ -14,4 +14,5 @@ python3 ecrans.py
 node --experimental-strip-types --no-warnings envoi.test.mjs
 node --experimental-strip-types --no-warnings ia.test.mjs
 node --experimental-strip-types --no-warnings email.test.mjs
+node --experimental-strip-types --no-warnings recommandation.test.mjs
 node pdf.test.mjs

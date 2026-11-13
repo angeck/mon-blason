@@ -3,7 +3,7 @@
 // n° 96 : « Mon club n'est pas dans la liste » : demande d'ajout d'un club (version test, sans e-mail), page Admin de Gaël,
 // aperçu du futur e-mail de démarchage au dirigeant (rien n'est envoyé tant que l'option n'est pas activée).
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_7_0.sql) ; l'écran n'est qu'un confort.
-import { BRAND } from '../config.js';
+import { BRAND, TURNSTILE_SITEKEY } from '../config.js';
 import { S, sb, esc, run, toast, render, ACTIONS, FORMS, INPUTS, plural, fmtDay } from './core.js';
 import { header, crest, icon, field } from './ui.js';
 
@@ -40,14 +40,53 @@ function creqForm() {
   <p class="note" style="margin:0">La ville et le sport permettent de distinguer deux clubs qui portent le même nom.</p>
   <label class="check"><input type="checkbox" name="age" ${F.age ? 'checked' : ''}><span><b>J’ai 15 ans ou plus</b><br><span class="det">Moins de 15 ans : demande à un parent de faire la demande.</span></span></label>
   <label class="check"><input type="checkbox" name="consent" ${F.consent ? 'checked' : ''}><span><b>J’accepte que mon nom soit transmis au club</b><br><span class="det">Obligatoire : le club saura qu’un de ses membres a fait la demande. Ton e-mail sert seulement à te prévenir quand ton club arrive sur ${esc(BRAND.name)}.</span></span></label>
-  <div class="card pale" style="transform:none"><b>Version de test</b><span class="note" style="color:var(--pc-texte-ecran)">Ta demande est enregistrée, mais rien n’est encore envoyé au club ni à toi par e-mail.</span></div>
+  <p class="note" style="margin:0">Nous écrivons ensuite au club, à son adresse publiée (site du club, fédération), en donnant ton nom.</p>
   <button class="btn main" type="submit">Envoyer ma demande</button></form>`;
 }
 function creqScreen() {
   const head = header({ brand: true, back: true, kicker: 'Recherche des clubs', title: S.creqDone ? 'Merci !' : 'Mon club n’est pas dans la liste' });
-  if (S.creqDone) return head + `<main class="bd"><div class="card lift"><b style="font-size:18px">Ta demande pour « ${esc(S.creqDone)} » est bien enregistrée.</b><p class="note" style="margin:0">Nous allons prendre contact avec le club. Tu seras prévenu quand il arrivera sur ${esc(BRAND.name)}.</p></div><button class="btn main" data-act="back">Revenir à la recherche</button></main>`;
+  if (S.creqDone) return head + `<main class="bd"><div class="card lift"><b style="font-size:18px">Ta demande pour « ${esc(S.creqDone)} » est bien enregistrée.</b><p class="note" style="margin:0">Nous allons prendre contact avec le club. Tu seras prévenu quand il arrivera sur ${esc(BRAND.name)}.</p></div><button class="btn main" data-act="back">Revenir à la recherche</button><button class="btn ghost" data-act="reco">Tu connais un dirigeant du club ? Recommande-lui ${esc(BRAND.name)}</button></main>`;
   return head + `<main class="bd">${creqForm()}</main>`;
 }
+
+// ---------- 5.12.0 · n° 162 (façon 2) · recommander mypocketclub au dirigeant de son club, sans compte ----------
+// La fonction « recommander-club » vérifie l'anti-robots (Turnstile), puis la base : une recommandation par adresse pour toujours,
+// 3 par visiteur et par jour, 20 en tout ; jamais une adresse qui s'est désinscrite, d'un compte ou déjà démarchée.
+// Rien n'est gardé de la saisie : seulement l'empreinte de l'adresse (pour ne jamais écrire deux fois).
+function recoScreen() {
+  const head = header({ brand: true, back: true, kicker: 'Recommander ' + BRAND.name, title: S.recoDone ? 'C’est parti !' : 'Recommande-le à ton club' });
+  if (S.recoDone) return head + `<main class="bd"><div class="card lift"><b style="font-size:18px">Recommandation envoyée.</b><p class="note" style="margin:0">Le dirigeant reçoit un seul e-mail, avec ton prénom. Il peut refuser tout autre envoi en un clic.</p></div><button class="btn main" data-act="back">Revenir</button></main>`;
+  const F = S.reco || {}, me = S.me || {}, v = (k, d) => esc(F[k] ?? d ?? '');
+  return head + `<main class="bd"><form id="recof" class="card lift">
+  <p class="note" style="margin:0">Ton club n’utilise pas encore ${esc(BRAND.name)} ? Donne l’adresse e-mail d’un dirigeant que tu connais (président, secrétaire, coach) : nous lui envoyons <b>un seul e-mail</b> de présentation, avec ton prénom.</p>
+  ${field('rcf', 'Ton prénom', `<input id="rcf" name="first" required maxlength="40" autocomplete="given-name" value="${v('first', me.first_name)}">`)}
+  ${field('rcc', 'Nom de ton club', `<input id="rcc" name="club" required maxlength="80" value="${v('club', S.creqDone)}">`)}
+  ${field('rce', 'E-mail du dirigeant', `<input id="rce" name="email" type="email" required maxlength="160" autocomplete="off" value="${v('email')}">`)}
+  <label class="check"><input type="checkbox" name="knows" ${F.knows ? 'checked' : ''}><span><b>Je connais cette personne</b><br><span class="det">et je lui fais cette recommandation en mon nom. Une adresse ne reçoit qu’une recommandation, jamais deux.</span></span></label>
+  ${TURNSTILE_SITEKEY ? '<div id="ts" class="ts"></div>' : ''}
+  <button class="btn main" type="submit" ${S.recoBusy ? 'disabled' : ''}>${S.recoBusy ? 'Envoi…' : 'Envoyer la recommandation'}</button>
+  <p class="note" style="margin:0">L’e-mail part de info.mypocketclub.fr. Nous ne gardons pas l’adresse : seulement une empreinte, pour ne jamais lui écrire deux fois.</p></form></main>`;
+}
+FORMS.recof = async (v) => {
+  const F = { first: (v.first || '').trim(), club: (v.club || '').trim(), email: (v.email || '').trim(), knows: !!v.knows };
+  S.reco = F;
+  if (!F.first || !F.club || !F.email) return toast('Remplis les trois champs, s’il te plaît.');
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(F.email)) return toast('Adresse e-mail à vérifier.');
+  if (!F.knows) return toast('Coche « Je connais cette personne ».');
+  if (TURNSTILE_SITEKEY && !S.captcha) return toast('Vérification anti-robot en cours : patiente une seconde, puis réessaie.');
+  S.recoBusy = true; render(true);
+  try {
+    const { data, error } = await sb.functions.invoke('recommander-club', { body: { first: F.first, club: F.club, email: F.email, knows: true, captcha: S.captcha || '' } });
+    let why = ''; if (error) { try { why = (await error.context?.json?.())?.erreur || ''; } catch { why = ''; } }
+    if (error || !data?.envoye) toast(why || 'Recommandation pas envoyée : réessaie plus tard.');
+    else { S.recoDone = true; S.reco = null; }
+  } catch { toast('Recommandation pas envoyée : réessaie plus tard.'); }
+  S.captcha = null; S.recoBusy = false; render(true);
+};
+INPUTS.push((t) => {
+  const f = t.closest && t.closest('#recof'); if (!f || !t.name) return false;
+  S.reco = S.reco || {}; S.reco[t.name] = t.type === 'checkbox' ? t.checked : t.value; return true;
+});
 
 // ---------- n° 96 · page Admin (Gaël) : demandes de clubs et e-mail au dirigeant ----------
 // 5.11.0 (décision de Gaël du 13 novembre 2026) : la demande d'un membre fait une notification à l'administrateur, qui cherche
@@ -124,7 +163,7 @@ async function loadCreqs() {
 }
 
 // Écrans ouverts au-dessus de tout (visiteur non connecté compris pour « creq ») : lus par app.js
-export const V37_TOP = { creq: () => creqScreen(), creqs: () => creqsScreen(), creqmail: (v) => creqMailScreen(v) };
+export const V37_TOP = { creq: () => creqScreen(), creqs: () => creqsScreen(), creqmail: (v) => creqMailScreen(v), reco: () => recoScreen() };
 // Carte de l'Accueil pour l'administrateur : demandes de clubs en attente
 export function adminHome() {
   if (!S.isAdmin || !S.creqNew) return '';
@@ -138,6 +177,7 @@ export async function loadAdminCounts() {
 
 Object.assign(ACTIONS, {
   creq: () => { S.creqDone = null; S.creq = S.creq || {}; S.view = { type: 'creq' }; render(); },
+  reco: () => { S.recoDone = false; S.reco = S.reco || {}; S.view = { type: 'reco' }; render(); }, // 5.12.0 · n° 162
   creqs: async () => { S.view = { type: 'creqs' }; S.creqs = null; render(); await loadCreqs(); render(true); },
   creqmail: (el, d) => { S.creqArm = null; S.creqVals = null; S.view = { type: 'creqmail', id: d.id, relance: !!d.relance }; render(); },
   creqdone: async (el, d) => { if (await run(sb.rpc('set_club_request', { p_id: d.id, p_status: 'done' }), 'Demande marquée comme traitée.')) { await loadCreqs(); render(true); } },

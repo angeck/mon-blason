@@ -51,7 +51,7 @@ check('n° 109 : réponses vers le correspondant, sinon contact@', env9.reply_to
 // N° 112 · convocation envoyée au contact du club reçu (PDF joint, réponses et copie à la personne qui envoie)
 const CD = { club: { name: 'Boissy Basket 91' }, from: '2026-11-14', to: '2026-11-15', sender: { name: 'Rémi Rencontres', email: 'remi@exemple.fr' },
   events: [{ id: 'e1', type: 'Match', title: 'Match', starts_at: '2026-11-14T14:00:00Z', place: 'Gymnase Jean-Moulin, 1 rue X', opponents: 'Étampes BC', cancelled: false, team: reines }] };
-function fakeC({ data = true, reserve = 'ok', resendOk = true, resendThrows = false } = {}) {
+function fakeC({ data = true, reserve = 'ok', resendOk = true, resendThrows = false, ps = null } = {}) {
   const calls = [];
   const f = async (url, o = {}) => {
     calls.push([url, o]);
@@ -62,6 +62,7 @@ function fakeC({ data = true, reserve = 'ok', resendOk = true, resendThrows = fa
     if (url.endsWith('/rpc/convocation_data')) return data ? res(200, CD) : res(400, { message: 'réservé' });
     if (url.endsWith('/rpc/convocation_reserve')) return reserve === 'ok' ? res(200, 'envoi-1') : reserve === 'limite' ? res(400, { message: 'Limite d\'envois du jour atteinte : réessaie demain' }) : res(400, { message: 'Envoi réservé aux comptes validés par mypocketclub' });
     if (url.endsWith('/rpc/convocation_finish')) return res(200, null);
+    if (url.endsWith('/rpc/convocation_ps')) return ps === null ? res(404, {}) : res(200, ps); // 5.12.0 · n° 162
     if (url === 'https://api.resend.com/emails') { if (resendThrows) throw new Error('réseau coupé'); return resendOk ? res(200, { id: 'em_2' }) : res(422, { message: 'adresse refusée' }); }
     return res(404, {});
   };
@@ -235,5 +236,15 @@ check('n° 96 : relance : « Relance · » dans l’objet, une seule fois annonc
 k = fakeO({ resendOk: false }); r = await F.handle(req({ club_outreach: { request: 'cr-1', email: 'contact@club.fr', source: 'x' } }), env, k.f);
 check('n° 96 : refus de Resend : l’envoi est annulé dans la base (on peut réessayer)', r.status === 502 && k.calls.some((c) => c[0].endsWith('/rpc/admin_outreach_failed')));
 check('n° 96 : HTML : nom du demandeur et du club échappés', !/<script>/.test(F.clubOutreachMail({ first_name: '<script>', club: '<script>' }, 'https://x/#desinscription=ab').html));
+// 5.12.0 · n° 162 (façon 1) : P.-S. seulement si la base le dit (club reçu absent de mypocketclub)
+check('n° 162 : sans réponse de la base, pas de P.-S.', !cm.text.includes('P.-S.') && !cm.html.includes('P.-S.'));
+k = fakeC({ ps: true }); r = await F.handle(req(conv()), env, k.f, new Date('2026-11-10T09:00:00Z'));
+const pm = bodyOf(k, 'api.resend.com/emails');
+check('n° 162 : club reçu absent : P.-S. en tutoiement, avec le lien du site', r.status === 200 && pm.text.includes('P.-S. Nous utilisons mypocketclub') && pm.text.includes('Si ça te dit de l’essayer, c’est gratuit : https://mypocketclub.fr') && /P\.-S\.[^<]*<a href="https:\/\/mypocketclub\.fr"/.test(pm.html));
+check('n° 162 : le P.-S. vient avant la signature « Envoyé avec mypocketclub »', pm.text.indexOf('P.-S.') < pm.text.indexOf('Envoyé avec mypocketclub'));
+check('n° 162 : la base reçoit l’envoi réservé et l’adresse saisie', bodyOf(k, '/rpc/convocation_ps')?.p_send === 'envoi-1' && bodyOf(k, '/rpc/convocation_ps')?.p_email === 'jean@club.fr');
+k = fakeC({ ps: false }); await F.handle(req(conv()), env, k.f);
+check('n° 162 : club déjà inscrit (réponse « non ») : pas de P.-S.', !bodyOf(k, 'api.resend.com/emails').text.includes('P.-S.'));
+check('n° 162 : e-mail de service : pas de lien de désinscription', !pm.text.includes('desinscription') && !pm.headers);
 console.log(`\n   ${ok} réussis sur ${ok + ko} tests d'e-mail`);
 if (ko) process.exitCode = 1;

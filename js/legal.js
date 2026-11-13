@@ -1,12 +1,13 @@
 // mypocketclub · alpha 4.9.0 · n° 175 et n° 180 : mentions légales, « Vos données » (version courte et politique complète),
 // conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.5 du 13 novembre 2026 : n° 229, toutes les données gardées ;
-// n° 230, coordonnées par fonction ; lot e-mails 1 ; conditions 1.3 : gratuité),
+// n° 230, coordonnées par fonction ; lot e-mails 1 ; conditions 1.3 : gratuité ; 1.6 du 13 novembre 2026 : n° 162, recommandations,
+// n° 187, journal des actions à 1 an ; conditions inchangées),
 // non relus par un juriste. Vouvoiement. Changer LEGAL.version et LEGAL.date (et CGU_VERSION dans config.js
 // pour les conditions) à chaque modification : une nouvelle version des conditions est présentée à la connexion suivante.
 import { BRAND } from '../config.js';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.5', date: '13 novembre 2026' };
+export const LEGAL = { version: '1.6', date: '13 novembre 2026' };
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -94,7 +95,7 @@ mypocketclub est une application qui aide les clubs sportifs à s'organiser. Deu
 Contact pour toute question : ${C}.
 ## 2. Quelles données sont traitées ?
 - **Compte** : nom, prénom, adresse e-mail, téléphone si vous le donnez, mot de passe (conservé chiffré), date d'acceptation des conditions et version acceptée.
-- **Sécurité** : appareils utilisés pour vous connecter (identifiant et nom de l'appareil), dates de connexion, journal des actions du club (qui a exporté, délivré une attestation, changé une fonction…). Pour limiter les abus, l'adresse IP d'une recherche de club ou d'une demande d'ajout n'est gardée que sous forme d'empreinte (jamais en clair).
+- **Sécurité** : appareils utilisés pour vous connecter (identifiant et nom de l'appareil), dates de connexion, journal des actions du club (qui a exporté, délivré une attestation, changé une fonction…). Pour limiter les abus, l'adresse IP d'une recherche de club, d'une demande d'ajout ou d'une recommandation n'est gardée que sous forme d'empreinte (jamais en clair).
 - **Place dans le club** : club, rôle, fonction au bureau, équipe, lien entre un parent et son enfant, contact d'équipe.
 - **Fiche d'un joueur** : nom, prénom, date de naissance, équipe ; e-mail et téléphone d'un parent et contact d'urgence, quand le club les note ; autorisations notées par la famille ou le club (rentrer seul, soins d'urgence, covoiturage) ; réponse de chaque parent sur le droit à l'image.
 - **Réglages** : équipes suivies, réglages de l'application, abonnement aux notifications sur chaque appareil, avancée du guide « Pour bien démarrer ».
@@ -107,6 +108,7 @@ Contact pour toute question : ${C}.
 - **Abonnement du club** : nombre de joueurs, statut et montant, visibles du président du club et de mypocketclub.
 - **Exercices préparés avec l'IA** : date, club, compte et coût de chaque demande, pour suivre la dépense ; jamais le texte de l'exercice.
 - **E-mails envoyés** : type, club, date et réussite de chaque envoi, pour respecter les limites d'envoi ; jamais l'adresse ni le contenu. Une adresse qui s'est désinscrite est gardée sous forme d'empreinte, pour ne plus jamais y écrire.
+- **Recommandations** : quand une personne recommande mypocketclub à un dirigeant de son club, nous gardons seulement l'empreinte de l'adresse du dirigeant (pour ne jamais lui écrire deux fois), jamais l'adresse, ni le prénom ou le club saisis.
 - **Accords** : droit à l'image et e-mails d'information, avec leur date.
 - **Contenus que vous créez** : exercices, séances, annonces, fichiers joints.
 mypocketclub ne demande **aucune donnée de santé**. Seul le fait qu'un certificat a été fourni, oui ou non, peut être noté par le club. Merci de ne pas écrire d'information médicale dans l'application.
@@ -157,7 +159,7 @@ Les e-mails nécessaires au service sont toujours envoyés : convocation, change
 | Messages et groupes | 2 saisons |
 | Appareils de connexion | Effacés après 12 mois sans usage |
 | Renfort | Jusqu'à la fin de la saison, ou jusqu'à son retrait |
-| Journal des actions du club | Tant que le club existe (une limite d'un an est prévue) |
+| Journal des actions du club | 1 an |
 | Copie du profil après la suppression d'un compte | 30 jours (le temps de la corbeille) |
 | Demande et attestation de paiement | Jusqu'à la fin de la saison |
 | Signature en image | Tant que la personne la garde dans son compte |
@@ -165,7 +167,8 @@ Les e-mails nécessaires au service sont toujours envoyés : convocation, change
 | Suivi des demandes faites à l'IA | Tant que le club existe (il sert au budget de chaque saison) |
 | Journal des e-mails envoyés | 13 mois |
 | Empreinte d'une adresse désinscrite | Tant que le service existe, pour ne plus y écrire |
-| Empreinte d'adresse IP | Environ 1 heure (recherche de club) ; avec la demande d'ajout d'un club, tant qu'elle est gardée |
+| Empreinte d'une adresse recommandée | Tant que le service existe, pour ne jamais lui écrire deux fois |
+| Empreinte d'adresse IP | Environ 1 heure (recherche de club) ; 2 jours (recommandation) ; avec la demande d'ajout d'un club, tant qu'elle est gardée |
 | Club supprimé | 90 jours de corbeille, données non consultées, puis effacement |
 | Adresse saisie pour inviter une personne (par exemple un parent) | Le lien d'invitation vaut 14 jours ; l'adresse est effacée après 30 jours |
 | Demande de conversation avec un mineur (qui la fait, le parent sollicité, sa réponse) | Effacée 30 jours après la réponse ou l'annulation |
@@ -173,7 +176,7 @@ Les copies de sauvegarde sont effacées dans les semaines qui suivent. Le motif 
 ## 8. Où sont les données, et qui nous aide ?
 | Supabase | Base de données, comptes, fichiers · Irlande (Union européenne) |
 | Resend | Envoi des e-mails · États-Unis |
-| Cloudflare | Vérification « vous n'êtes pas un robot » (Turnstile) à l'inscription et à la connexion · États-Unis |
+| Cloudflare | Vérification « vous n'êtes pas un robot » (Turnstile) à l'inscription, à la connexion et pour une recommandation · États-Unis |
 | GitHub | Pages de l'application (aucune donnée de membre) · États-Unis |
 | Anthropic | IA Claude : propose le schéma d'un exercice à la demande d'un coach ; reçoit seulement le titre, la description et les tags de l'exercice, jamais un nom ni une donnée de joueur · États-Unis |
 | OVH | Nom de domaine et boîte de contact · France |
@@ -198,6 +201,9 @@ Si la réponse ne vous satisfait pas, vous pouvez saisir la CNIL : cnil.fr.
 mypocketclub n'utilise aucun traceur publicitaire ni outil de mesure d'audience. L'application enregistre sur votre appareil ce qui est strictement nécessaire : votre connexion, vos réglages et un identifiant d'appareil servant à la sécurité. Ces éléments ne demandent pas de consentement.
 ## 12. Démarchage des clubs
 mypocketclub peut écrire à un club pour se présenter. Il n'utilise pour cela que les adresses publiées par le club ou sa fédération pour le contacter. Il n'écrit que si un membre du club le demande, et le message donne le nom de ce membre (il l'a accepté en faisant sa demande). Chaque message indique d'où vient l'adresse et permet de refuser tout nouvel envoi ; ce refus est définitif. Un club n'est contacté qu'une fois, avec au plus une relance. Les adresses reçues à l'occasion d'une convocation ne servent jamais à cela.
+Deux autres façons de faire connaître mypocketclub existent :
+- **La recommandation.** Une personne peut saisir l'adresse e-mail d'un dirigeant de son club qu'elle connaît. Un seul e-mail part, avec son prénom ; il permet de refuser tout nouvel envoi. Une adresse ne reçoit jamais deux recommandations, ni une recommandation si elle s'est désinscrite ou si elle a déjà un compte.
+- **La convocation.** Quand un club envoie une convocation par e-mail à un club qui n'utilise pas mypocketclub, une courte mention de mypocketclub figure en bas du message. L'adresse du destinataire n'est pas gardée.
 ## 13. Modification de cette politique
 Toute modification importante vous est signalée dans l'application avant de s'appliquer. La version et la date figurent en tête de cette page.`;
 

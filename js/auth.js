@@ -96,6 +96,7 @@ export function publicHome() {
   <div class="btns"><button class="btn main" data-act="auth" data-v="login">Se connecter</button></div>
   <button class="btn link jaune" data-act="auth" data-v="signup">Je n'ai pas encore de compte</button>
   ${searchBlock('results')}
+  <button class="btn link" data-act="reco" style="align-self:center">Recommander ${esc(BRAND.name)} à mon club</button>
   ${legalFoot()}<p class="note" style="text-align:center">${esc(BRAND.name)} ${esc(VERSION)} · version de test</p><p class="note" style="text-align:center">Contact : <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a> · Site : <a href="${esc(BRAND.siteUrl)}" target="_blank" rel="noopener">${esc(BRAND.site)}</a></p></main></div>`;
 }
 export function publicClubScreen(id) {

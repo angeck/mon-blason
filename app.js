@@ -68,7 +68,7 @@ function render(keep) {
   const vt = S.view?.type;
   if (notMeToken()) html = notMeScreen(); // n° 147 : lien « Ce n'était pas moi » de l'e-mail, connecté ou non
   else if (unsubToken()) html = unsubScreen(); // n° 185 : lien de désinscription des e-mails d'information, connecté ou non
-  else if (!S.session) html = vt === 'legal' ? legalScreen() : vt === 'auth' ? authScreen() : vt === 'pclub' ? publicClubScreen(S.view.id) : vt === 'creq' ? V37_TOP.creq(S.view) : publicHome(); // n° 96 : demande d'ajout d'un club, aussi sans compte
+  else if (!S.session) html = vt === 'legal' ? legalScreen() : vt === 'auth' ? authScreen() : vt === 'pclub' ? publicClubScreen(S.view.id) : vt === 'creq' || vt === 'reco' ? V37_TOP[vt](S.view) : publicHome(); // n° 96 : demande d'ajout d'un club, aussi sans compte
   else if (S.recovery) html = recoveryScreen();
   else if (!S.me) html = `<div class="splash bigsplash" data-ouv="1">${wordmark(Math.min(92, Math.round(innerWidth * 0.145)), null, true)}</div>`; // n° 90 ; 5.0.0 : fond encre, comme l'écran d'ouverture
   else if (vt === 'legal') html = legalScreen();

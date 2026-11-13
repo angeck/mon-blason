@@ -238,14 +238,20 @@ function exCard(e, pick) {
   return `<div class="ev"><button class="head" data-act="cexo" data-id="${e.id}">${thumb(e)}<span class="info"><span class="t">${esc(e.title)}</span><span class="s">${esc(sub)}</span><span class="chips" style="gap:6px;margin-top:4px">${sharePill(e)}${e.up_count || e.down_count ? `<span class="pill">👍 ${e.up_count} · 👎 ${e.down_count}</span>` : ''}${tooNegative(e) ? '<span class="pill ko">À revoir</span>' : ''}</span></span></button>
   ${canCoachSpace() ? `<button class="btn small ${inPlan ? 'ghost' : 'main'}" data-act="cadd" data-id="${e.id}" aria-pressed="${inPlan}">${inPlan ? (pick ? 'Ajouté ✓' : 'Dans ma séance ✓') : icon('plus', 18) + (pick ? 'Ajouter' : addLabel())}</button>` : ''}</div>`;
 }
+// 5.12.0 · n° 227 : filtres durée (tranches) et matériel (tags « Matériel » de l'exercice, ceux du sport du club)
+export const DURS = [['', 'Toutes les durées'], ['10', '10 min ou moins'], ['20', '11 à 20 min'], ['21', 'Plus de 20 min']];
+export const durOk = (m, d) => { m = +m || 0; return !d || (d === '10' ? m <= 10 : d === '20' ? m > 10 && m <= 20 : m > 20); };
 function filters(list) {
   const f = S.cf || (S.cf = { cat: '', age: '', q: '' });
   // n° 144 : seulement les exercices du sport du club (et « Tous les sports ») ; plus de choix d'un autre sport
   // filtre par âge (9 novembre 2026) : d'après les tags « Âge » de l'exercice
-  const out = list.filter((e) => forClubSport(e) && (!f.cat || e.category === f.cat) && (!f.age || (e.tags || []).includes(f.age)) && (!f.q || norm(e.title + ' ' + e.description).includes(norm(f.q))));
+  const mats = tagsFor(club()?.sport)['Matériel'] || [];
+  const out = list.filter((e) => forClubSport(e) && (!f.cat || e.category === f.cat) && (!f.age || (e.tags || []).includes(f.age)) && durOk(e.duration_min, f.dur) && (!f.mat || (e.tags || []).includes(f.mat)) && (!f.q || norm(e.title + ' ' + e.description).includes(norm(f.q))));
   const h = `<div class="field"><label for="cfq">Rechercher</label><input id="cfq" type="search" data-cfq="1" value="${esc(f.q)}" placeholder="Nom ou mot de la description"></div>
   <div class="chips">${['', ...CATS].map((c) => `<button class="chip" data-act="cfcat" data-v="${c}" aria-pressed="${f.cat === c}">${c || 'Toutes'}</button>`).join('')}</div>
-  <div class="chips" aria-label="Âge">${['', ...AGES].map((a) => `<button class="chip" data-act="cfage" data-v="${a}" aria-pressed="${(f.age || '') === a}">${a || 'Tous les âges'}</button>`).join('')}</div>`;
+  <div class="chips" aria-label="Âge">${['', ...AGES].map((a) => `<button class="chip" data-act="cfage" data-v="${a}" aria-pressed="${(f.age || '') === a}">${a || 'Tous les âges'}</button>`).join('')}</div>
+  <div class="grid2"><div class="field"><label for="cfdur">Durée</label><select id="cfdur" data-cfsel="dur">${DURS.map(([v, l]) => `<option value="${v}" ${(f.dur || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+  <div class="field"><label for="cfmat">Matériel</label><select id="cfmat" data-cfsel="mat"><option value="">Tout le matériel</option>${mats.map((m) => `<option ${f.mat === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></div></div>`;
   return [h, out];
 }
 // n° 159 : « Tout » = Ma banque + Club + Libre (sans doublon)
@@ -730,6 +736,7 @@ INPUTS.push((t) => {
   return false;
 });
 CHANGES.push(async (t) => {
+  if (t.dataset.cfsel) { S.cf = S.cf || {}; S.cf[t.dataset.cfsel] = t.value; render(true); return true; } // 5.12.0 · n° 227 : durée, matériel
   if (t.dataset.exre) { keepEx(); render(true); return true; }
   if (t.dataset.exvid) { const fl = t.files?.[0]; if (fl) { if (fl.size > VMAX) return toast('Vidéo trop lourde : 50 Mo maximum.'), true; keepEx(); S.exVid = fl; S.exVidRm = false; render(true); } return true; }
   if (t.dataset.exbulk) { if (t.files?.length) await bulkVideos(t.files); return true; }

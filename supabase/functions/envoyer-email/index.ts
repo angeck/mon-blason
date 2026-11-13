@@ -1,6 +1,7 @@
 // mypocketclub · alpha 3.8.0 (3.9.0 : n° 109, expéditeur des convocations ; 4.2.0 : n° 112, envoi des convocations ;
 // 4.3.0 : n° 124, chaque e-mail réservé dans la base avant de partir ; n° 127, « cette semaine » ; n° 129, copie au choix ;
-// 5.11.0 : n° 228, chaque e-mail compté (type, club, réussite) ; n° 207, attestation envoyée au demandeur ; n° 187, comptes inactifs prévenus)
+// 5.11.0 : n° 228, chaque e-mail compté (type, club, réussite) ; n° 207, attestation envoyée au demandeur ; n° 187, comptes inactifs prévenus ;
+// 5.12.0 : n° 124, plus de validation pour envoyer ; n° 162, P.-S. « on utilise mypocketclub » quand le club reçu n'est pas inscrit)
 // N° 107 · fonction d’envoi des e-mails (Supabase → Edge Functions)
 // Nom de la fonction : envoyer-email
 // Deux envois possibles : l'e-mail de test (administrateur, à sa propre adresse, réponses vers contact@) et les convocations
@@ -50,8 +51,8 @@ export function convocationEnvelope(env: Env, clubName: string, teams: Array<{ c
 }
 
 // ---------- n° 112 · convocation envoyée au contact d'un club reçu ----------
-// N° 124 (4.3.0) : la base vérifie que la personne a la rubrique Événements, qu'elle est validée (président validé par
-// l'administrateur, ou fonction donnée par un président validé) et la limite du jour, puis RÉSERVE l'envoi (convocation_reserve),
+// N° 124 (4.3.0, revu en 5.12.0 : plus de validation demandée) : la base vérifie que la personne a l'accès Événements
+// et la limite du jour, puis RÉSERVE l'envoi (convocation_reserve),
 // en une seule opération. Resend n'est appelé que si la réservation a réussi ; ensuite la base note « envoyé » ou « échec »
 // (convocation_finish). Toutes les tentatives comptent dans la limite (20 par club, 80 en tout par jour).
 // Réponses vers la personne qui envoie, copie à cette personne si elle la demande (n° 129) ; le PDF arrive déjà fabriqué par l'application.
@@ -79,7 +80,11 @@ export function whenPhrase(from: string, to: string, now = new Date()) {
   const day = weekend(from, from);
   return mondayOf(from) === mondayOf(parisDay(now)) ? `cette semaine, le ${day}` : `le ${day}`;
 }
-export function convocationMail(d: any, step: string, version: number, to: { civ?: string; last?: string }, now = new Date()) {
+// 5.12.0 · n° 162 (façon 1, décisions de Gaël du 13 novembre 2026) : seulement si le club reçu n'est pas sur mypocketclub (la base
+// le dit : convocation_ps), une phrase en bas, en tutoiement. E-mail de service : pas de lien de désinscription ; une adresse
+// de la liste noire ne la reçoit jamais. Texte proposé par Claude, à confirmer par Gaël (claude/17-mails-types.md).
+export const CONV_PS = 'P.-S. Nous utilisons mypocketclub pour nos convocations, nos agendas et nos licences : c\u2019est simple et ça change la vie d\u2019un club. Si ça te dit de l\u2019essayer, c\u2019est gratuit : https://mypocketclub.fr';
+export function convocationMail(d: any, step: string, version: number, to: { civ?: string; last?: string }, now = new Date(), ps = false) {
   const pre = step === 'P', club = String(d?.club?.name || ''), live = (d?.events || []) as any[];
   const teams = live.filter((x) => !x.cancelled).map((x) => x.team);
   const kind = pre ? 'Pré-convocation' : 'Convocation', upd = version > 1;
@@ -92,11 +97,11 @@ export function convocationMail(d: any, step: string, version: number, to: { civ
   const who = String(d?.sender?.name || '').trim(), when = whenPhrase(String(d?.from || ''), String(d?.to || d?.from || ''), now);
   const intro = pre ? `${club} vous confirme les rencontres suivantes à domicile, ${when}. Le gymnase et les horaires suivront dans la convocation définitive.`
     : `${club} aura le plaisir de vous accueillir ${when}, aux dates et lieux suivants.`;
-  const text = `${hello}\n\n${upd ? 'Mise à jour : ce document remplace la version précédente.\n\n' : ''}${intro}\n\n${lines.map((l) => '- ' + l).join('\n')}\n\nLe document est joint en PDF.\n\nSportivement,\n${who}${who ? ', ' : ''}${club}\n\n--\nEnvoyé avec mypocketclub · https://mypocketclub.fr`;
+  const text = `${hello}\n\n${upd ? 'Mise à jour : ce document remplace la version précédente.\n\n' : ''}${intro}\n\n${lines.map((l) => '- ' + l).join('\n')}\n\nLe document est joint en PDF.\n\nSportivement,\n${who}${who ? ', ' : ''}${club}${ps ? '\n\n' + CONV_PS : ''}\n\n--\nEnvoyé avec mypocketclub · https://mypocketclub.fr`;
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:600px">
 <p>${escHtml(hello)}</p>${upd ? '<p style="background:#FFF4D6;padding:8px 12px;border-radius:6px"><b>Mise à jour :</b> ce document remplace la version précédente.</p>' : ''}<p>${escHtml(intro)}</p>
 <ul>${lines.map((l) => `<li>${escHtml(l)}</li>`).join('')}</ul><p>Le document est joint en PDF.</p>
-<p>Sportivement,<br><b>${escHtml(who)}</b>${who ? ', ' : ''}${escHtml(club)}</p>
+<p>Sportivement,<br><b>${escHtml(who)}</b>${who ? ', ' : ''}${escHtml(club)}</p>${ps ? `<p style="font-size:15px">${escHtml(CONV_PS.replace(/ https:\/\/mypocketclub\.fr$/, ' '))}<a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p>` : ''}
 <p style="color:#5A6178;font-size:13px;border-top:1px solid #D8DCEA;padding-top:10px;margin-top:20px">Envoyé avec <span style="display:inline-block;background:#FFC93C;border-radius:4px;padding:0 4px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b> · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
   return { subject, text, html };
 }
@@ -147,7 +152,8 @@ async function sendConvocation(env: Env, auth: string, doFetch: typeof fetch, wh
   }
   const sender = String(d.sender?.email || who.email || '');
   const envl = convocationEnvelope(env, d.club.name, (d.events || []).filter((x: any) => !x.cancelled).map((x: any) => x.team), sender);
-  const m = convocationMail(d, step, version, to, now);
+  const ps = await rpc(env, auth, doFetch, 'convocation_ps', { p_send: sid, p_email: String(to.email) });   // n° 162 : sans réponse claire, pas de P.-S.
+  const m = convocationMail(d, step, version, to, now, ps.ok && ps.data === true);
   const filename = String(c?.filename || 'Convocation.pdf').replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 80);
   const copy = c?.copy !== false && EMAIL.test(sender);   // n° 129 : « M'envoyer une copie », cochée par défaut
   let ok = false, detail = '';
