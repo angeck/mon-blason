@@ -25,7 +25,7 @@ check('schéma reçu, remis en forme (élément inconnu retiré)', r.ok && r.ste
 check('positions gardées dans le terrain', r.steps.frames[1].p.b[0] === 352 && r.steps.frames[1].p.b[1] === 8);
 check('un élément absent d’une étape garde sa position', r.steps.frames[1].p.a1[0] === 180 && r.steps.frames[1].p.a1[1] === 260);
 const sent = JSON.parse(x.calls.find((c) => c[0].includes('anthropic'))[1].body);
-check('modèle Sonnet 5.5, outil « schema » imposé', sent.model === 'claude-sonnet-5-5' && sent.tool_choice.name === 'schema');
+check('modèle Sonnet 5.5, outil « schema » proposé (choix auto, « tool » refusé par ce modèle)', sent.model === 'claude-sonnet-5-5' && sent.tool_choice.type === 'auto' && sent.tools[0].name === 'schema');
 check('l’IA reçoit le texte et les tags, pas l’identifiant du club ni du compte', sent.messages[0].content.includes('Passe, U11') && !JSON.stringify(sent).includes(CLUB) && !JSON.stringify(sent).includes('u1'));
 check('la clé de l’IA ne part que vers Anthropic', x.calls.filter((c) => JSON.stringify(c[1].headers || {}).includes('cle-de-test')).every((c) => c[0].includes('anthropic.com')));
 const log = JSON.parse(x.calls.find((c) => c[0].endsWith('/rpc/ai_log_usage'))[1].body);

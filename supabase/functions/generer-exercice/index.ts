@@ -79,7 +79,7 @@ ${COURT[sport]}
 Garde le même « id » d'une étape à l'autre : l'application anime les déplacements entre deux étapes. Le ballon suit les passes et reste collé (à 8 près) au joueur qui l'a.
 Positions réalistes, dans le terrain, sans deux joueurs au même endroit. Si la description est floue, fais la version la plus simple et la plus courante de l'exercice.
 ${EXAMPLE[sport]}
-Réponds uniquement avec l'outil « schema ».`;
+Réponds uniquement en appelant l’outil « schema », sans aucun texte.`;
   const lines = [`Sport : ${sport}`, b.category && `Catégorie : ${txt(b.category, 40)}`, b.duration && `Durée : ${clampN(b.duration, 1, 120)} min`, b.level && `Niveau : ${txt(b.level, 40)}`,
     b.title && `Titre : ${txt(b.title, 80)}`, Array.isArray(b.tags) && b.tags.length && `Tags : ${b.tags.slice(0, 25).map((t: unknown) => txt(t, 40)).join(', ')}`,
     `Description du coach :\n${String(b.description || '').slice(0, 2000)}`].filter(Boolean);
@@ -90,7 +90,7 @@ Réponds uniquement avec l'outil « schema ».`;
       items: { type: 'array', maxItems: MAXI, items: { type: 'object', properties: { id: { type: 'string' }, k: { type: 'string', enum: KINDS }, n: { type: 'string' } }, required: ['id', 'k', 'n'] } },
       frames: { type: 'array', minItems: 2, maxItems: MAXF, items: { type: 'object', properties: { c: { type: 'string' }, p: { type: 'array', items: pt } }, required: ['c', 'p'] } },
     }, required: ['items', 'frames'] } }],
-    tool_choice: { type: 'tool', name: 'schema' },
+    tool_choice: { type: 'auto' }, // ce modèle refuse « tool » et « any » (erreur 400 constatée le 13 novembre 2026) : le texte demande l'outil « schema », la réponse est contrôlée ensuite
     messages: [{ role: 'user', content: lines.join('\n') }],
   };
 }
