@@ -27,6 +27,7 @@ function roleRequest() {
 export function accountScreen() {
   const clubs = Object.values(S.clubs), c = club(), me = S.me;
   let h = header({ back: !!S.clubId || S.isAdmin || S.adminAcct, kicker: 'Mon compte', title: esc(me.full_name || 'Mon compte'), brand: true }) + '<main class="bd">';
+  if (S.convRet) h += `<div class="card yellow" style="transform:none"><b>Tu complètes les coordonnées du contact de la convocation.</b><div class="btns" style="margin-top:8px"><button type="button" class="btn main small" data-act="convback">Revenir à la convocation</button></div></div>`; // 5.13.0 · n° 234
   if (c) h += `<button class="btn main" data-act="rqgo">${icon('plus', 20)}Demander un autre rôle dans ${esc(c.name)}</button>`;
   if (hooks.helpAccount) h += hooks.helpAccount(); // 5.5.0 : Aide (FAQ et « Pour bien démarrer »)
   if (hooks.attestAccount) h += hooks.attestAccount(); // 5.7.0 · n° 207 : demander une attestation de paiement

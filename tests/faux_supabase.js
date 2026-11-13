@@ -154,7 +154,7 @@ const RPC = {
   submit_coach_month: ({ p_month }) => { D.coach_statements.push({ id: uid(), club_id: C, user_id: ME, month: p_month, status: 'submitted', total_minutes: 90 }); return null; },
   decide_coach_month: ({ p_statement, p_ok, p_comment }) => { const s = D.coach_statements.find((x) => x.id === p_statement); s.status = p_ok ? 'validated' : 'refused'; s.comment = p_comment; s.decided_by = ME; s.decided_at = new Date().toISOString(); return null; },
   convocation_data: ({ p_event }) => { const e = D.events.find((x) => x.id === p_event); const d = new Date(e.starts_at).toLocaleDateString('sv-SE');
-    return { club: { id: C, name: 'BC Testville', city: 'Testville', sport: 'Basket-ball', color1: '#C2410C', color2: '#FFD400', logo: null }, from: d, to: d, correspondent: null,
+    return { club: { id: C, name: 'BC Testville', city: 'Testville', sport: 'Basket-ball', color1: '#C2410C', color2: '#FFD400', logo: null }, from: d, to: d, correspondent: window.__CORR !== undefined ? window.__CORR : { name: 'Rémi Contact', phone: '0600000009', email: 'remi@exemple.invalid' }, // 5.13.0 · n° 234 : contact complet par défaut
       events: [{ id: e.id, type: e.type, title: e.title, starts_at: e.starts_at, place: e.place, opponents: e.opponents, cancelled: false, team: { name: 'U11', category: 'U11' }, coach: { name: 'Karim Coach', phone: '0600000001', email: 'karim@exemple.invalid' } },
         { id: 'x9', type: 'Plateau', title: 'Plateau U9', starts_at: e.starts_at, place: '', opponents: 'Étampes', cancelled: false, team: { name: 'U9', category: 'U9' }, coach: null }] }; },
   my_areas: () => window.__AREAS || ['communication', 'evenements', 'secretariat', 'technique', 'tresorerie'],

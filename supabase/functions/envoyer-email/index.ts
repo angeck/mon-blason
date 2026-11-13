@@ -349,8 +349,8 @@ async function sendInactiveWarnings(env: Env, auth: string, doFetch: typeof fetc
 // « un envoi et une relance au plus », la limite du jour, et donne le nom du demandeur et le jeton de désinscription.
 // Texte validé par Gaël le 13 novembre 2026 (claude/17-mails-types.md § 1), en tutoiement.
 export function clubOutreachMail(d: { first_name?: string; last_name?: string; club?: string; city?: string; count?: number; relance?: boolean; source?: string }, link: string) {
-  const who = [d.first_name, d.last_name].map((x) => String(x || '').trim()).filter(Boolean).join(' ') || 'Un membre', club = String(d.club || 'ton club'), city = String(d.city || '').trim(), n = Number(d.count) || 1;
-  const p1 = `Un membre de ton club, ${who}, voudrait que ${club}${city ? ` (${city})` : ''} soit sur mypocketclub.${n > 1 ? ` ${n} membres de ton club ont fait cette demande.` : ''}`;
+  const who = [d.first_name, d.last_name].map((x) => String(x || '').trim()).filter(Boolean).join(' '), club = String(d.club || 'ton club'), city = String(d.city || '').trim(), n = Number(d.count) || 1;
+  const p1 = `Un membre de ton club${who ? ', ' + who + ',' : ''} voudrait que ${club}${city ? ` (${city})` : ''} soit sur mypocketclub.${n > 1 ? ` ${n} membres de ton club ont fait cette demande.` : ''}`;
   const p2 = 'mypocketclub est une application pour les clubs sportifs : l\u2019agenda avec les réponses « Je viens / Je ne viens pas », les convocations, les messages des équipes, les licences et les cotisations, au même endroit, dans la poche de chacun.';
   const p3 = 'C\u2019est gratuit pour l\u2019essayer : jusqu\u2019à la fin de la saison pour tout ton club, ou pendant une saison complète pour une seule équipe.';
   const again = d.relance ? 'Je me permets de te relancer, une seule fois, au sujet de ce message.\n\n' : '';

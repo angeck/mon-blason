@@ -3332,6 +3332,32 @@ ok("n° 187 · le passage « Suppressions automatiques » efface le journal de p
 w("select count(*) from purge_expired(true);")  # dernière section : le passage peut s'appliquer
 ok("n° 187 · … et garde celui de moins d'un an", "not exists(select 1 from action_log where action = 'test 187') and exists(select 1 from action_log where action = 'test 187 récent')")
 
+# ---------- 5.13.0 · n° 236 (un seul chemin « recommander mon club », demande anonyme possible) ----------
+section("5.13.0 · n° 236")
+w("reset role;")
+w("\\i ../supabase/alpha_5_13_0.sql")
+w("\\i ../supabase/alpha_5_13_0.sql")  # relancée deux fois
+w("delete from club_requests where ip_hash = md5(request_ip()) and created_at > now() - interval '1 day';")  # la limite par visiteur repart à zéro
+w("set role anon;")
+works("n° 236 · demande anonyme d'un visiteur (sans prénom, nom ni e-mail)", "select request_club('', '', '', 'Volley Anonyme', 'Exempleville', 'Volley-ball', true, false)")
+w("reset role;")
+ok("n° 236 · … rien n'est gardé sur la personne", "exists(select 1 from club_requests where club_name = 'Volley Anonyme' and first_name = '' and last_name = '' and email = '' and not consent and user_id is null)")
+ok("n° 236 · … l'administrateur est notifié, demande anonyme", "exists(select 1 from push_queue q where q.title like 'Prise de contact demandée%' and q.body like '%Volley Anonyme%' and q.body like '%anonyme%')")
+w("set role anon;")
+works("n° 236 · même demande anonyme refaite : pas de doublon", "select request_club('', '', '', 'Volley Anonyme', 'Exempleville', 'Volley-ball', true, false)")
+w("reset role;")
+ok("n° 236 · … une seule ligne", "(select count(*) from club_requests where club_name = 'Volley Anonyme') = 1")
+w("set role anon;")
+works("n° 236 · prénom et nom donnés mais pas d'accord : rien de gardé", "select request_club('Zoé', 'Secret', 'zoe@exemple.invalid', 'Basket Discret', 'Exempleville', 'Basket-ball', true, false)")
+fails("n° 236 · coordonnées données : e-mail vérifié", "select request_club('Zoé', 'Nom', 'pas-une-adresse', 'Basket Autre', 'Exempleville', 'Basket-ball', true, true)")
+fails("n° 236 · coordonnées données : nom obligatoire", "select request_club('Zoé', '', 'zoe2@exemple.invalid', 'Basket Autre', 'Exempleville', 'Basket-ball', true, true)")
+fails("n° 236 · moins de 15 ans : toujours refusé", "select request_club('', '', '', 'Basket Jeune', 'Exempleville', 'Basket-ball', false, false)")
+fails("n° 236 · ville et sport toujours obligatoires", "select request_club('', '', '', 'Basket Sans Ville', '', '', true, false)")
+works("n° 236 · avec coordonnées : comme avant", "select request_club('Zoé', 'Nom', 'zoe3@exemple.invalid', 'Basket Connu', 'Exempleville', 'Basket-ball', true, true)")
+w("reset role;")
+ok("n° 236 · … nom gardé avec l'accord", "exists(select 1 from club_requests where club_name = 'Basket Connu' and first_name = 'Zoé' and consent)")
+ok("n° 236 · … sans accord, l'e-mail saisi n'est pas gardé", "exists(select 1 from club_requests where club_name = 'Basket Discret' and email = '' and first_name = '')")
+
 # ---------- rapport ----------
 w("\\echo ''")
 w("\\echo '========== RAPPORT =========='")

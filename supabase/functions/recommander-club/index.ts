@@ -50,7 +50,7 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   let body: any = {}; try { body = await req.json(); } catch { /* corps vide */ }
   const email = String(body?.email || '').trim().toLowerCase().slice(0, 160), first = clean(body?.first, 40), club = clean(body?.club, 80), token = String(body?.captcha || '');
   if (!EMAIL.test(email)) return json({ erreur: 'Adresse e-mail à vérifier.' }, 400);
-  if (!first || !club) return json({ erreur: 'Indique ton prénom et le nom du club.' }, 400);
+  if (!club) return json({ erreur: 'Indique le nom du club.' }, 400); // 5.13.0 · n° 236 : le prénom de la personne est facultatif
   if (!body?.knows) return json({ erreur: 'Coche « Je connais cette personne ».' }, 400);
   if (!token) return json({ erreur: 'Vérification anti-robot manquante : réessaie.' }, 400);
   const ip = req.headers.get('cf-connecting-ip') || (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || '';

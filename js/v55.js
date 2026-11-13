@@ -142,6 +142,13 @@ export const FICHES = {
     role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('preparer'), 0], ['main.bd [data-act=cplan]', 1], ['#planf', 2, 'z'], ['#planf [type=submit]', 2, 'z+s', 'Enregistrer la séance']] },
   C7: { q: 'Coach : relancer, renforts, aide coach, heures, annuler', faq: true, who: () => has('coach'), why: 'Les autres gestes du coach.',
     steps: ['Relancer ceux qui n’ont pas répondu : page du rendez-vous, cadre « Relance ».', 'Renforts : « Effectif », « Renforts », « Proposer un joueur » ; dans un rendez-vous, « Équipe seule », « Avec tous les renforts » ou « Renforts choisis ».', 'Aide coach : « Effectif », cadre « Aide coach » (joueur de 15 à 17 ans).', 'Mes heures : dans l’espace coach. Annuler ou supprimer : page du rendez-vous.'] },
+  // 5.13.0 : questions ajoutées (schéma animé n° 161, banque d'exercices n° 227, recommandation n° 236)
+  C8: { q: 'Comment préparer le schéma animé d’un exercice avec l’IA ?', faq: true, who: () => has('coach'), why: 'Un schéma qui bouge vaut mieux qu’un long texte.',
+    steps: ['Exercices › « Nouvel exercice » : écris le nom, la description (sans nom de joueur) et les tags.', '« Préparer le schéma avec l’IA » : un compteur montre les secondes (20 à 40 en général) ; reste sur la page.', 'L’éditeur s’ouvre : glisse les joueurs, corrige le texte de chaque étape, « Aperçu animé », puis « Terminé » et « Enregistrer l’exercice ».', 'Dans la liste, la vignette de l’exercice montre le schéma en mouvement (au survol sur ordinateur, quand elle est à l’écran sur téléphone).'] },
+  C9: { q: 'Où trouver les exercices des autres clubs ?', faq: true, who: () => has('coach'), why: 'Ne pas repartir de zéro.',
+    steps: ['Sur ordinateur : « Mes rôles » › « Banque d’exercices » (tous les clubs, ton club, les tiens).', 'Filtre par catégorie, âge, durée et matériel ; les filtres se combinent.', '« Ajouter » met l’exercice dans ta séance en préparation.'] },
+  K9: { q: 'Comment faire venir mon club sur mypocketclub ?', faq: true, why: 'Plus il y a de membres, plus l’application est utile.',
+    steps: ['Sur l’écran d’ouverture (sans être connecté) : « Recommander mypocketclub à mon club ».', 'Tu as l’e-mail d’un contact du club : il reçoit un seul e-mail de présentation, tout de suite.', 'Tu n’as pas d’e-mail : décris le club (nom, ville, sport) ; nous cherchons son adresse publiée et nous lui écrivons.', 'Tu choisis de donner ton nom ou de rester anonyme.'] },
   M1: { q: 'Comment écrire à un joueur mineur ?', faq: true, who: () => !onlySupporter(), why: 'Un adulte n’échange avec un mineur qu’avec un de ses parents.',
     steps: ['Crée le groupe avec le joueur : l’écran « Ajouter un parent » s’ouvre.', 'Choisis un parent inscrit, ou saisis l’e-mail d’un parent (jamais demandé à l’enfant).', 'La conversation s’ouvre quand le parent accepte (onglet Messages, « Demandes de conversation »). Refus ou 14 jours sans réponse : annulée.'] },
   F1: { q: 'Comment transférer une convocation reçue ?', faq: true, who: () => isBoard() || (S.tcontacts || []).some((c) => c.user_id === S.me.id), why: 'Faire suivre un match reçu d’un autre club à des personnes du club.',
@@ -294,8 +301,8 @@ V310_VIEWS.obfiche = (v) => ({ head: header({ back: true, kicker: v.faq || FICHE
 // ---------- FAQ (Mon compte › Aide) ----------
 // 5.8.0 · n° 218 : questions rangées par profil, recherche en direct (sans redessiner la page)
 const FAQ_GROUPS = [
-  ['Pour tout le monde', ['T1', 'T2', 'T3', 'T4', 'T5', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8', 'M1']], ['Mes rôles', ['R1', 'R2', 'R4']],
-  ['Joueur', ['J1', 'J2', 'P4']], ['Parent', ['P1', 'P2', 'P3', 'P4']], ['Supporteur', ['S1', 'S2', 'S3']], ['Coach', ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7']],
+  ['Pour tout le monde', ['T1', 'T2', 'T3', 'T4', 'T5', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8', 'K9', 'M1']], ['Mes rôles', ['R1', 'R2', 'R4']],
+  ['Joueur', ['J1', 'J2', 'P4']], ['Parent', ['P1', 'P2', 'P3', 'P4']], ['Supporteur', ['S1', 'S2', 'S3']], ['Coach', ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']],
   ['Président', ['PR1', 'PR2', 'PR3', 'PR4', 'PR5']], ['Trésorier', ['TR1', 'TR2', 'TR3', 'TR4']], ['Secrétaire et licences', ['SE1', 'SE2', 'SE3']],
   ['Contact rencontres', ['CR1', 'CR2', 'CR3', 'F1']], ['Directeur technique', ['DT1']], ['Autres fonctions du bureau', ['B1']],
 ];

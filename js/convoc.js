@@ -58,18 +58,25 @@ export function mailSender(d) {
 }
 const competition = (x) => (x.type === 'Match' ? 'Match' : x.type);
 
-// Ce qui manque avant l'envoi (la génération n'est jamais bloquée, sauf l'étape 2 sans gymnase)
+// 5.13.0 · n° 234 : le nom, le prénom et l'e-mail du contact sont obligatoires (PDF et e-mail bloqués tant qu'il en manque un)
+export function contactMissing(d) {
+  const k = d.correspondent, m = [];
+  if (!k) return ['le contact rencontres : le président le choisit dans Espace › Président › Fonctions'];
+  if (String(k.name || '').trim().split(/\s+/).filter(Boolean).length < 2) m.push('le nom et le prénom du contact (Mon compte › Mon profil)');
+  if (!String(k.email || '').trim()) m.push('l’e-mail du contact : il le montre dans Mon compte › « Mes coordonnées de contact » (case « Mon adresse e-mail »)');
+  return m;
+}
+// Ce qui manque avant l'envoi (le contact complet et, à l'étape 2, le gymnase bloquent le PDF et l'envoi ; le reste n'est qu'un avertissement)
 export function missing(d, step) {
   const m = [], live = d.events.filter((x) => !x.cancelled);
   if (!d.club.logo) m.push('le logo du club (onglet Club → Blason)');
-  if (!d.correspondent) m.push('le contact rencontres : le président le choisit dans Espace › Président › Fonctions');
-  else if (!d.correspondent.phone && !d.correspondent.email) m.push('les coordonnées du contact : il les confirme dans Mon compte (téléphone, e-mail)');
+  m.push(...contactMissing(d));
   live.filter((x) => !x.coach).forEach((x) => m.push(`le coach de ${catOf(x)}`));
   live.filter((x) => !x.opponents).forEach((x) => m.push(`le club reçu pour ${catOf(x)} (champ Adversaire du rendez-vous)`));
   if (step === 'C') live.filter((x) => !x.place).forEach((x) => m.push(`le gymnase de ${catOf(x)} (champ Lieu du rendez-vous)`));
   return m;
 }
-export const blocking = (d, step) => step === 'C' && d.events.some((x) => !x.cancelled && !x.place);
+export const blocking = (d, step) => (step === 'C' && d.events.some((x) => !x.cancelled && !x.place)) || contactMissing(d).length > 0;
 
 // Le document A4 (HTML imprimé en PDF par le téléphone ou l'ordinateur)
 export function convocHtml(d, step, now = new Date(), o = {}) {
@@ -129,7 +136,8 @@ function convocScreen() {
   <b style="font-family:var(--pc-titre);font-size:22px">${step === 'P' ? 'Étape 1 sur 2 · sans gymnase ni horaire' : 'Étape 2 sur 2 · gymnase, date et heure'}</b>
   <div class="det">${esc(periodOf(d.from, d.to).label)} · ${d.events.length} rencontre${d.events.length > 1 ? 's' : ''} à domicile · réf. ${esc(reference(d.club.name, d.from, step))}</div></div>`;
   h += `<div class="card"><div class="list">${d.events.map((x) => `<div class="row static"><span class="g">${esc(catOf(x))} · ${esc(x.opponents || 'club reçu à préciser')}<small>${esc(dayLong(paris(x.starts_at)))} à ${hhmm(x.starts_at)}${x.place ? ' · ' + esc(x.place) : ''}${x.coach ? ' · coach ' + esc(x.coach.name) : ''}</small></span>${x.cancelled ? '<span class="pill ko">Annulée</span>' : ''}</div>`).join('') || '<p class="empty">Aucune rencontre à domicile ce week-end.</p>'}</div></div>`;
-  if (miss.length) h += `<div class="card warn"><b>${block ? 'À compléter avant la convocation :' : 'À compléter avant l’envoi (le document reste possible) :'}</b><ul style="margin:6px 0 0 18px;padding:0">${miss.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>`;
+  const cm = contactMissing(d);
+  if (miss.length) h += `<div class="card warn"><b>${block ? 'À compléter avant l’envoi et le PDF :' : 'À compléter avant l’envoi (le document reste possible) :'}</b><ul style="margin:6px 0 0 18px;padding:0">${miss.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>${d.correspondent && cm.length ? `<div class="btns" style="margin-top:10px"><button type="button" class="btn small main" data-act="convfill">Aller les compléter</button></div><p class="note">Le contact complète ses coordonnées dans Mon compte, puis revient ici avec le bouton « Revenir à la convocation ».</p>` : ''}</div>`; // 5.13.0 · n° 234
   // N° 109, 112 : chercher le club reçu (envoi dans mypocketclub), sinon e-mail avec le PDF joint ; suivi des envois du week-end
   h += sendCard(d, step);
   return h;
@@ -137,6 +145,7 @@ function convocScreen() {
 VIE_VIEWS.convoc = () => ({ head: header({ back: true, kicker: 'Convocation', title: S.convoc?.step === 'P' ? 'Pré-convocation' : 'Convocation' }), body: convocScreen() });
 
 export async function openConvoc(eid, step) {
+  S.convRet = null;
   S.convoc = { eid, step: step || 'P', data: null }; S.view = { type: 'convoc', id: eid }; render();
   const d = await run(sb.rpc('convocation_data', { p_event: eid }));
   if (!d) { S.view = { type: 'event', id: eid }; render(); return; }
@@ -144,6 +153,9 @@ export async function openConvoc(eid, step) {
 }
 Object.assign(ACTIONS, {
   convoc: (el, d) => openConvoc(d.id, d.v),
+  // 5.13.0 · n° 234 : aller compléter les coordonnées du contact (Mon compte), puis revenir à la convocation en cours
+  convfill: () => { const v = S.convoc; if (!v) return; S.convRet = { eid: v.eid, step: v.step }; S.view = { type: 'account' }; render(); setTimeout(() => document.getElementById('contactf')?.scrollIntoView({ block: 'start' }), 60); },
+  convback: () => { const r = S.convRet; S.convRet = null; if (!r) return; S.stack = (S.stack || []).filter((x) => x.type !== 'convoc'); S.noStack = true; return openConvoc(r.eid, r.step); },
   convstep: async (el, d) => { S.convoc.step = d.v; S.convoc.version = 0; if (S.convoc.send) S.convoc.send.confirm = false; render(true); await loadSends(S.convoc.eid); render(true); },
   convpdf: () => {
     const v = S.convoc; if (!v?.data || blocking(v.data, v.step)) return;

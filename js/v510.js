@@ -93,13 +93,40 @@ function setFrame(key, i) {
   return true;
 }
 function stop(key) { clearInterval(TIMERS[key]); delete TIMERS[key]; const b = document.querySelector(`[data-stp="${key}"] [data-act=stplay]`); if (b) b.textContent = 'Lecture'; }
+// 5.13.0 · n° 233 : vignette de la liste des exercices = le schéma animé, en boucle (au survol sur ordinateur, à l'écran sur téléphone ; le déclenchement est dans coach.js).
+// Sans mouvement réduit demandé : sinon la vignette reste fixe (étape 1).
+const STH = {}, STIM = new WeakMap(), noMotion = matchMedia('(prefers-reduced-motion: reduce)');
+hooks.stepsThumb = (e) => {
+  if (!hasSteps(e?.steps)) return '';
+  const st = normalize(e.steps, sportOf(e)); if (!st) return '';
+  const key = 'th' + e.id; STH[key] = st;
+  return `<span class="vthumb sthumb" data-sth="${esc(key)}">${stepsSvg(st, 0, { anim: true, label: 'Schéma de l’exercice ' + (e.title || '') })}</span>`;
+};
+const thFrame = (t, i) => {
+  const st = STH[t.dataset.sth]; if (!st) return;
+  const f = st.frames[i]; t.querySelectorAll('g[data-it]').forEach((g) => { const q = f.p[g.dataset.it]; if (q) g.style.transform = `translate(${q[0]}px,${q[1]}px)`; });
+};
+hooks.sthPlay = (t) => {
+  const st = STH[t.dataset.sth]; if (!st || st.frames.length < 2 || noMotion.matches || STIM.has(t)) return;
+  let i = 0;
+  const id = setInterval(() => { if (!t.isConnected) return hooks.sthStop(t); i = (i + 1) % st.frames.length; thFrame(t, i); }, 1100);
+  STIM.set(t, id);
+};
+hooks.sthStop = (t) => { const id = STIM.get(t); if (id) { clearInterval(id); STIM.delete(t); } if (t.isConnected) thFrame(t, 0); };
 hooks.exStepsView = (e) => (hasSteps(e?.steps) ? player(normalize(e.steps, sportOf(e)), 'ex' + e.id) : '');
 
+// 5.13.0 · n° 232 : compteur de secondes pendant que l'IA prépare le schéma (mis à jour sans redessiner la page)
+const aiSecs = () => Math.max(0, Math.floor((Date.now() - (S.aiT0 || Date.now())) / 1000));
+let aiTick = 0;
+const aiTick1 = () => { if (!S.aiBusy) { clearInterval(aiTick); aiTick = 0; return; } const el = document.getElementById('aitime'); if (el) el.textContent = aiSecs() + ' s'; };
+const aiTimerStart = () => { S.aiT0 = Date.now(); clearInterval(aiTick); aiTick = setInterval(aiTick1, 1000); };
+const aiTimerStop = () => { clearInterval(aiTick); aiTick = 0; S.aiT0 = 0; };
 // ---------- formulaire de l'exercice : bloc « Schéma animé » ----------
 hooks.exAiForm = (f) => {
   const st = f.steps && hasSteps(f.steps) ? f.steps : null;
   let h = '<div class="field stform"><span class="lab">Schéma animé</span>';
-  if (S.aiBusy) h += '<div class="card" role="status"><b>L’IA prépare le schéma…</b><p class="note">Cela prend 20 à 40 secondes. Reste sur cette page.</p></div>';
+  if (S.aiBusy && !aiTick) { S.aiT0 = S.aiT0 || Date.now(); aiTick = setInterval(aiTick1, 1000); } // le compteur tourne dès que l'écran le montre
+  if (S.aiBusy) h += `<div class="card" role="status"><b>L’IA prépare le schéma…</b> <span class="aitime" id="aitime" aria-hidden="true">${aiSecs()} s</span><p class="note">Cela prend 20 à 40 secondes. Reste sur cette page.</p></div>`; // 5.13.0 · n° 232 : compteur de secondes
   else if (st) {
     h += `<div class="stmini">${stepsSvg(st, 0, { all: true })}</div><p class="note">${st.frames.length} étapes · ${st.items.length} éléments. Tu peux tout modifier.</p>
     <div class="btns"><button type="button" class="btn main small" data-act="stedit">Modifier le schéma</button><button type="button" class="btn ghost small" data-act="stai">${isArmed('stai') ? 'Touche encore : le schéma actuel sera remplacé' : 'Refaire avec l’IA'}</button><button type="button" class="btn ghost small" data-act="strm">${isArmed('strm') ? 'Touche encore pour retirer' : 'Retirer le schéma'}</button></div>`;
@@ -191,9 +218,9 @@ Object.assign(ACTIONS, {
     keepEx(); const f = S.exf; if (!f) return;
     if (hasSteps(f.steps) && !armed('stai')) return;
     if ((f.description || '').trim().length < 20 && (f.title || '').trim().length < 4) return toast('Écris d’abord le nom et la description de l’exercice : l’IA s’en sert.');
-    S.aiBusy = true; render(true);
+    S.aiBusy = true; aiTimerStart(); render(true);
     let r; try { r = await sb.functions.invoke('generer-exercice', { body: { club_id: S.clubId, sport: sportOf(f), title: f.title || '', description: f.description || '', tags: f.tags || [], category: f.category || '', duration: +f.duration_min || 10, level: f.level || '' } }); } catch (err) { r = { error: err }; }
-    S.aiBusy = false;
+    S.aiBusy = false; aiTimerStop();
     let data = r?.data;
     // une réponse d'erreur de la fonction (ou son absence) : on lit son message, sinon le code, pour savoir où chercher
     if (r?.error && !data) { try { data = await r.error.context?.json?.(); } catch { /* */ } }

@@ -1,13 +1,13 @@
 // mypocketclub · alpha 4.9.0 · n° 175 et n° 180 : mentions légales, « Vos données » (version courte et politique complète),
 // conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.5 du 13 novembre 2026 : n° 229, toutes les données gardées ;
 // n° 230, coordonnées par fonction ; lot e-mails 1 ; conditions 1.3 : gratuité ; 1.6 du 13 novembre 2026 : n° 162, recommandations,
-// n° 187, journal des actions à 1 an ; conditions inchangées),
+// n° 187, journal des actions à 1 an ; 1.7 (5.13.0) : n° 236, un seul chemin « recommander mon club », coordonnées facultatives ; conditions inchangées),
 // non relus par un juriste. Vouvoiement. Changer LEGAL.version et LEGAL.date (et CGU_VERSION dans config.js
 // pour les conditions) à chaque modification : une nouvelle version des conditions est présentée à la connexion suivante.
 import { BRAND } from '../config.js';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.6', date: '13 novembre 2026' };
+export const LEGAL = { version: '1.7', date: '13 novembre 2026' };
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -200,9 +200,9 @@ Si la réponse ne vous satisfait pas, vous pouvez saisir la CNIL : cnil.fr.
 ## 11. Traceurs
 mypocketclub n'utilise aucun traceur publicitaire ni outil de mesure d'audience. L'application enregistre sur votre appareil ce qui est strictement nécessaire : votre connexion, vos réglages et un identifiant d'appareil servant à la sécurité. Ces éléments ne demandent pas de consentement.
 ## 12. Démarchage des clubs
-mypocketclub peut écrire à un club pour se présenter. Il n'utilise pour cela que les adresses publiées par le club ou sa fédération pour le contacter. Il n'écrit que si un membre du club le demande, et le message donne le nom de ce membre (il l'a accepté en faisant sa demande). Chaque message indique d'où vient l'adresse et permet de refuser tout nouvel envoi ; ce refus est définitif. Un club n'est contacté qu'une fois, avec au plus une relance. Les adresses reçues à l'occasion d'une convocation ne servent jamais à cela.
+mypocketclub peut écrire à un club pour se présenter. Il n'utilise pour cela que les adresses publiées par le club ou sa fédération pour le contacter. Il n'écrit que si une personne le demande (« Recommander mon club », quand elle n'a pas l'adresse d'un contact du club). Elle choisit de donner ses coordonnées ou de rester anonyme : si elle les donne, le message indique son nom et son e-mail sert seulement à la prévenir quand le club arrive ; sinon, le message dit seulement qu'un membre du club l'a demandé et rien n'est gardé sur elle. Chaque message indique d'où vient l'adresse et permet de refuser tout nouvel envoi ; ce refus est définitif. Un club n'est contacté qu'une fois, avec au plus une relance. Les adresses reçues à l'occasion d'une convocation ne servent jamais à cela.
 Deux autres façons de faire connaître mypocketclub existent :
-- **La recommandation.** Une personne peut saisir l'adresse e-mail d'un dirigeant de son club qu'elle connaît. Un seul e-mail part, avec son prénom ; il permet de refuser tout nouvel envoi. Une adresse ne reçoit jamais deux recommandations, ni une recommandation si elle s'est désinscrite ou si elle a déjà un compte.
+- **La recommandation.** Une personne peut saisir l'adresse e-mail d'un contact de son club qu'elle connaît. Un seul e-mail part, avec son prénom si elle choisit de le donner ; il permet de refuser tout nouvel envoi. Une adresse ne reçoit jamais deux recommandations, ni une recommandation si elle s'est désinscrite ou si elle a déjà un compte.
 - **La convocation.** Quand un club envoie une convocation par e-mail à un club qui n'utilise pas mypocketclub, une courte mention de mypocketclub figure en bas du message. L'adresse du destinataire n'est pas gardée.
 ## 13. Modification de cette politique
 Toute modification importante vous est signalée dans l'application avant de s'appliquer. La version et la date figurent en tête de cette page.`;

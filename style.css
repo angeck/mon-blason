@@ -519,3 +519,7 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .stlab{display:flex;align-items:center;gap:6px;font-size:13px}.stlab input{width:56px;min-height:40px}
 .dmini .stsvg{width:46px;border-radius:6px}
 @media (min-width:700px){.stp,.stedit .stsvg{max-width:420px}}
+
+/* 5.13.0 · n° 233 : vignette = schéma animé ; n° 232 : compteur de l'IA */
+.vthumb.sthumb{background:#F1F3F8}.vthumb.sthumb .stsvg{width:100%;height:100%;border-radius:0;pointer-events:none}
+.aitime{font-variant-numeric:tabular-nums;color:var(--pc-texte-doux);font-weight:700;margin-left:6px}

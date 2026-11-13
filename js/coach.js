@@ -71,6 +71,8 @@ function thumb(e) {
   const p = e.poster_path && S.vurl?.[e.poster_path], v = e.video_path && S.vurl?.[e.video_path];
   if (v) return `<span class="vthumb"><video src="${esc(v)}#t=1" ${p ? `poster="${esc(p)}" preload="none"` : 'preload="metadata"'} muted loop playsinline></video><span class="vplay" aria-hidden="true">▶</span></span>`;
   if (p) return `<span class="vthumb"><img src="${esc(p)}" alt="" loading="lazy"></span>`;
+  const sh = hooks.stepsThumb && hooks.stepsThumb(e); // 5.13.0 · n° 233 : sans vidéo, le schéma animé sert de vignette (en boucle)
+  if (sh) return sh;
   return '<span class="vthumb none"><small>Pas de vidéo</small></span>';
 }
 async function makePoster(file) {
@@ -748,8 +750,15 @@ CHANGES.push(async (t) => {
 // Vignettes vidéo : sur ordinateur, lecture au survol de la souris ou quand la ligne a le focus (clavier) ;
 // sur téléphone (pas de survol), lecture de la vignette la plus proche du milieu de l'écran pendant le défilement.
 const canHover = matchMedia('(hover: hover) and (pointer: fine)');
-const vPlay = (t) => { const v = t?.querySelector('video'); if (v && v.paused) { t.classList.add('on'); v.play().catch(() => {}); } };
-const vStop = (t) => { const v = t?.querySelector('video'); if (v && !v.paused) { v.pause(); t.classList.remove('on'); } };
+// 5.13.0 · n° 233 : même mécanique pour une vignette de schéma animé (`.vthumb[data-sth]`, boucle gérée par hooks.sthPlay / sthStop dans v510.js)
+const vPlay = (t) => {
+  if (t?.dataset?.sth) { if (!t.classList.contains('on')) { t.classList.add('on'); hooks.sthPlay?.(t); } return; }
+  const v = t?.querySelector('video'); if (v && v.paused) { t.classList.add('on'); v.play().catch(() => {}); }
+};
+const vStop = (t) => {
+  if (t?.dataset?.sth) { if (t.classList.contains('on')) { t.classList.remove('on'); hooks.sthStop?.(t); } return; }
+  const v = t?.querySelector('video'); if (v && !v.paused) { v.pause(); t.classList.remove('on'); }
+};
 const thumbOf = (el) => el?.closest?.('.vthumb') || el?.closest?.('.head')?.querySelector('.vthumb');
 document.addEventListener('mouseover', (ev) => { if (canHover.matches) vPlay(ev.target.closest?.('.vthumb')); });
 document.addEventListener('mouseout', (ev) => { const t = ev.target.closest?.('.vthumb'); if (t && !t.contains(ev.relatedTarget) && document.activeElement?.querySelector?.('.vthumb') !== t) vStop(t); });
@@ -758,7 +767,7 @@ document.addEventListener('focusout', (ev) => { const t = thumbOf(ev.target); if
 let vRaf = 0;
 function centerPlay() {
   vRaf = 0; if (canHover.matches) return;
-  const ts = [...document.querySelectorAll('.vthumb')].filter((t) => t.querySelector('video')), mid = innerHeight / 2;
+  const ts = [...document.querySelectorAll('.vthumb')].filter((t) => t.querySelector('video') || t.dataset.sth), mid = innerHeight / 2;
   let best = null, bd = Infinity;
   for (const t of ts) { const r = t.getBoundingClientRect(); if (r.bottom < 0 || r.top > innerHeight) continue; const d = Math.abs((r.top + r.bottom) / 2 - mid); if (d < bd) { bd = d; best = t; } }
   ts.forEach((t) => t !== best && vStop(t)); vPlay(best);
