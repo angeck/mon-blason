@@ -70,13 +70,13 @@ export const FICHES = {
   T3: { q: 'Comment dire si je viens ?', line: 'Répondre à un rendez-vous', who: () => realRole(),
     why: 'Le coach sait qui vient ; ta réponse remplit l’appel.',
     steps: ['Sur l’Accueil, la carte jaune « À répondre » ; sinon l’onglet Agenda (la pastille compte les réponses à donner).', 'Touche « Je viens » ou « Je ne viens pas » (pour un enfant : « Léo vient » ; pour un événement : « Je participe »).', 'Tu peux changer ta réponse en touchant l’autre bouton.'],
-    show: [[TAB(1), 0], ['.pair', 1, 'z']], auto: () => S.resp.some((r) => r.user_id === S.me.id) },
+    show: [[TAB(1), 0], ['.pair', 1, 'zs', 'Je viens']], auto: () => S.resp.some((r) => r.user_id === S.me.id) },
   T4: { q: 'Comment lire et écrire dans un groupe ?', line: 'Lire le groupe de ton équipe', who: () => !onlySupporter(),
     why: 'Échanger avec l’équipe et le coach sans donner son numéro. Un mineur n’est jamais dans un groupe libre avec un adulte sans son parent ; « Signaler » sur un message gênant.',
-    steps: ['Onglet Messages (la pastille compte les messages non lus).', 'Touche le groupe.', 'Écris en bas et envoie.'], show: [[TAB(2), 0], ['[data-act=group]', 1], ['#msgf', 2, 'z']], visit: (v) => v?.type === 'group' },
+    steps: ['Onglet Messages (la pastille compte les messages non lus).', 'Touche le groupe.', 'Écris en bas et envoie.'], show: [[TAB(2), 0], ['[data-act=group]', 1, '', 'Groupe de l’équipe'], ['#msgf', 2, 'zs', 'Écrire un message']], visit: (v) => v?.type === 'group' },
   T5: { q: 'Comment changer de club ou en rejoindre un autre ?', faq: true,
     why: 'Un même compte peut être dans plusieurs clubs.',
-    steps: ['Rejoindre : la loupe en haut (« Chercher un club »), le nom du club, sa ville ou son code postal, puis « Chercher ».', 'Touche le club, puis « Rejoindre ce club », et choisis ton profil (supporteur : accès immédiat).', 'Changer : sur l’Accueil, bloc « Changer de club » ; ou Mon compte › « Mes clubs et profils ».'] },
+    steps: ['Rejoindre : la loupe en haut (« Chercher un club »), le nom du club, sa ville ou son code postal, puis « Chercher ».', 'Touche le club, puis « Rejoindre ce club », et choisis ton profil (supporteur : accès immédiat).', 'Changer : le bouton aux deux flèches, à côté du nom du club en haut de l’écran (il n’apparaît qu’avec plusieurs clubs) ; ou Mon compte › « Mes clubs et profils ».'] },
   K1: { q: 'Comment compléter mon profil ?', line: 'Compléter ton profil',
     why: 'Ton pseudo s’affiche dans les groupes ; ton téléphone est visible de l’encadrement et des familles concernées.',
     steps: ['Mon compte (silhouette en haut à droite).', '« Mon profil » : prénom, nom, pseudo, téléphone (l’e-mail ne se change pas ici).', '« Enregistrer mon profil ».'],
@@ -95,7 +95,7 @@ export const FICHES = {
   K8: { q: 'Comment récupérer ou supprimer mes données ?', faq: true, why: 'Tes données t’appartiennent.', steps: ['Mon compte › « Mes données » : « Télécharger mes données » (un fichier).', '« Supprimer mon compte » (deux touches) : tu es retiré tout de suite des clubs ; 30 jours pour annuler en te reconnectant.'] },
   R1: { q: 'À quoi sert « Mes rôles » ?', line: 'Ouvrir ton espace (« Mes rôles »)', who: () => has('coach') || has('bureau') || has('president'),
     why: 'Les onglets du bas servent à consulter ; « Mes rôles » sert à agir : appel, séances, demandes, fonctions, réglages. Les pastilles jaunes sur « Mes rôles » comptent ce qui attend dans tes rôles.',
-    steps: ['Touche « Mes rôles » en haut de l’écran (sur ordinateur : le bloc « Mes rôles » à gauche).', 'Avec plusieurs rôles, une rangée « Mes rôles » apparaît dans le bloc bleu : touche le rôle voulu.', 'En bas de l’espace d’un rôle, tu peux choisir de l’ouvrir directement.'],
+    steps: ['Touche les quatre carrés « Mes rôles » en haut de l’écran (sur ordinateur : le bloc « Mes rôles » à gauche).', 'Avec plusieurs rôles, une rangée « Mes rôles » apparaît dans le bloc bleu : touche le rôle voulu.', 'En bas de l’espace d’un rôle, tu peux choisir de l’ouvrir directement.'],
     role: RK.any, show: [[ROLE(RK.any), 0], ['.hd .casq, .tb nav.roles', 1, 'z+']], visit: (v) => v?.type === 'espace' },
   R2: { q: 'Que veulent dire les pastilles jaunes ?', faq: true, why: 'Elles comptent ce qui t’attend.', steps: ['Sur un onglet : ce qui te concerne toi (Agenda : réponses à donner ; Messages : non lus). Elle s’efface quand tu ouvres l’onglet.', 'Sur « Mes rôles » et sur chaque rôle : demandes à valider, exercices, heures à vérifier.'] },
   R4: { q: 'Comment choisir ce que les membres voient de moi ?', line: 'Choisir ce que les membres voient de toi', who: () => has('bureau') || has('president'),
@@ -105,41 +105,41 @@ export const FICHES = {
   J1: { q: 'Où voir mon équipe ?', line: 'Voir ton équipe et ton coach', who: () => has('joueur'), why: 'Ta fiche, les prochains rendez-vous, les joueurs, les coachs et le contact de l’équipe.', steps: ['Onglet Équipe.', 'Avec plusieurs équipes, des boutons en haut pour passer de l’une à l’autre.'], show: [[TAB(3), 0]], visit: (v, t) => !v && t === 3 },
   J2: { q: 'Comment vérifier ma fiche ?', line: 'Vérifier ta fiche', who: () => has('joueur'), why: 'Le club doit pouvoir te joindre en cas d’urgence.',
     steps: ['Onglet Équipe, « Moi », touche ta ligne.', 'Contact d’urgence, licence et cotisation (ce que le club a noté).', '« Enregistrer » si tu changes quelque chose.'],
-    show: [[TAB(3), 0], ['[data-act=player]', 0], ['#plf', 1, 'z'], ['#plf [type=submit]', 2, '+']] },
+    show: [[TAB(3), 0], ['[data-act=player]', 0, '', 'Ta fiche'], ['#plf', 1, 'z', 'Contact d’urgence, licence, cotisation'], ['#plf [type=submit]', 2, '+s', 'Enregistrer']] },
   P1: { q: 'Où est la fiche de mon enfant ?', line: () => `Vérifier la fiche de ${myKids()[0]?.first_name || 'ton enfant'}`, who: () => has('parent'),
     why: 'Le club doit pouvoir te joindre et savoir ce que tu autorises.',
     steps: ['Onglet Équipe : « Mon enfant » (ou « Mes enfants ») est en haut.', 'Touche sa ligne.', 'Vérifie le contact d’urgence et les autorisations : droit à l’image, rentre seul, soins d’urgence, covoiturage.', '« Enregistrer ». Le refus d’un parent pour l’image l’emporte.'],
-    show: [[TAB(3), 0], ['[data-act=player]', 1], ['#plf', 2, 'z'], ['#plf [type=submit]', 3, '+']] },
+    show: [[TAB(3), 0], ['[data-act=player]', 1, '', 'La fiche de ton enfant'], ['#plf', 2, 'z', 'Contact d’urgence et autorisations'], ['#plf [type=submit]', 3, '+s', 'Enregistrer']] },
   P2: { q: 'Où voir la licence et la cotisation de mon enfant ?', faq: true, who: () => has('parent'), why: 'Savoir ce qui est dû et réglé.', steps: ['Fiche de l’enfant, cadre « Licence et cotisation » : état de la licence, ce qui est dû, réglé, reste.'] },
   P3: { q: 'J’ai plusieurs enfants, ou l’autre parent veut répondre', faq: true, who: () => has('parent'), why: 'Chacun répond pour lui.', steps: ['Une réponse par personne de la famille. La réponse d’un enfant vaut pour ses deux parents.'] },
   P4: { q: 'On me demande mon enfant en renfort', faq: true, who: () => has('parent') || has('joueur'), why: 'Une autre équipe du club a besoin de lui.', steps: ['Une carte apparaît sur l’Accueil : « Accepter » ou « Refuser ». Un « non » de la famille l’emporte.', 'L’enfant garde son équipe et ne voit que les rendez-vous où le coach l’invite.'] },
   S1: { q: 'Comment suivre une équipe ?', line: 'Suivre une équipe', who: () => has('supporteur'), why: 'Voir ses matchs dans ton agenda.',
     steps: ['Onglet Club, cadre « Équipes ».', 'Touche l’équipe.', '« Suivre cette équipe » (« Ne plus suivre » pour arrêter).'],
-    show: [[TAB(4), 0], ['[data-act=team]', 1], ['[data-act=follow]', 2, '+']], auto: () => S.follows.length > 0 },
+    show: [[TAB(4), 0], ['[data-act=team]', 1, '', 'Une équipe du club'], ['[data-act=follow]', 2, '+s', 'Suivre cette équipe']], auto: () => S.follows.length > 0 },
   S2: { q: 'Où voir les rendez-vous du club ?', line: 'Voir l’agenda du club', who: () => has('supporteur'), why: 'Les rendez-vous ouverts à tous et ceux des équipes suivies. Pas de réponse à donner.', steps: ['Onglet Agenda.'], show: [[TAB(1), 0]], visit: (v, t) => !v && t === 1 },
   S3: { q: 'Où lire les annonces ?', line: 'Lire les annonces', who: () => has('supporteur'), why: 'Les nouvelles du club.', steps: ['Onglet Messages, section « Annonces » (et sur l’Accueil).'], show: [[TAB(2), 0]] },
   C1: { q: 'Comment valider joueurs et parents ?', line: 'Valider les joueurs et les parents', who: () => has('coach'), why: 'Tant que tu n’as pas validé, la famille ne voit rien de l’équipe.',
     steps: ['« Mes rôles » › Coach (avec plusieurs équipes, touche l’équipe).', 'Onglet « Effectif » : cadre « Demandes à valider ».', 'Pour un parent, choisis la fiche de l’enfant si on te la demande.', '« Valider » ou « Refuser ».'],
-    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('effectif'), 1], ['[data-act=mok]', 3, 'z']],
+    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('effectif'), 1], ['[data-act=mok]', 3, 'zs', 'Valider']],
     auto: () => S.members.some((m) => m.status === 'active' && m.role !== 'coach' && coachTids().includes(m.team_id)) && !toValidate().some((m) => coachTids().includes(m.team_id)) },
   C2: { q: 'Comment ajouter mes joueurs ?', line: 'Ajouter tes joueurs', who: () => has('coach'), why: 'Les familles retrouvent leur enfant et répondent pour lui.',
     steps: ['« Mes rôles » › Coach, onglet « Effectif ».', '« Ajouter des joueurs » (équipe [équipe]).', 'Colle une liste, choisis un fichier Excel ou prends une photo, puis « Vérifier la liste ».', 'Vérifie les lignes, puis « Valider l’import ».'],
-    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('effectif'), 0], ['[data-act=import]', 1], ['#imt', 2, 'z'], ['[data-act=impcheck]', 2, '+'], ['[data-act=impok]', 3, 'z']],
+    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('effectif'), 0], ['[data-act=import]', 1], ['#imt', 2, 'z'], ['[data-act=impcheck]', 2, '+'], ['[data-act=impok]', 3, 'zs', 'Valider l’import']],
     auto: () => coachTids().some((t) => playersOfTeam(t).length > 0) },
   C3: { q: 'Comment créer les entraînements de la saison ?', line: 'Créer les entraînements', who: () => has('coach'), why: 'Une fois pour toute la saison : les familles reçoivent chaque séance.',
     steps: ['« Mes rôles » › Coach, onglet « Planifier ».', '« Nouveau rendez-vous ».', 'Type « Entraînement », « Date et heure », lieu.', 'Coche « Répéter chaque semaine (même jour, même heure) », remplis « Répéter jusqu’au », puis « Enregistrer ».'],
-    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('planifier'), 0], ['main.bd [data-act=evnew]', 1], ['#ed', 2, 'z'], ['#el', 2, 'z+'], ['#evf label.check:has([data-evrep])', 3, 'z+'], ['#evf [type=submit]', 3, 'z+']],
+    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('planifier'), 0], ['main.bd [data-act=evnew]', 1], ['#ed', 2, 'z'], ['#el', 2, 'z+'], ['#evf label.check:has([data-evrep])', 3, 'z+'], ['#evf [type=submit]', 3, 'z+s', 'Enregistrer']],
     auto: () => myEventIds().size > 0 },
   C4: { q: 'Comment faire l’appel ?', line: 'Faire l’appel', who: () => has('coach'), why: 'Une séance sans appel ne compte pas dans les statistiques.',
     steps: ['Le jour J, en haut de l’Accueil (« Aujourd’hui ») : « Faire l’appel » ; sinon « Mes rôles » › Coach, onglet « Pointer ».', 'L’appel est déjà rempli avec les réponses : touche un joueur pour corriger.', '« Les annoncés présents sont là » si tous sont venus.', '« Terminer l’appel » : les non pointés passent absents.'],
-    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('pointer'), 0], ['.tiles9', 1, 'z'], ['[data-act=appall]', 2, 'z+'], ['[data-act=appsave]', 3, 'z+']],
+    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('pointer'), 0], ['.tiles9', 1, 'z', 'L’appel : Léa, Tom, Inès…'], ['[data-act=appall]', 2, 'z+s', 'Les annoncés présents sont là'], ['[data-act=appsave]', 3, 'z+s', 'Terminer l’appel']],
     auto: () => S.att.some((a) => { const e = S.events.find((x) => x.id === a.event_id); return e && (e.team_ids || []).some(coachOf); }) },
   C5: { q: 'Comment choisir un contact d’équipe ?', line: 'Choisir un contact d’équipe', who: () => has('coach'), why: 'Un adulte qui peut créer et annuler les rendez-vous de l’équipe et voir les coordonnées des familles.',
     steps: ['« Mes rôles » › Coach, onglet « Effectif » : cadre « Contact de l’équipe ».', '« Choisir un adulte ».', '« Nommer contact ».'],
-    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('effectif'), 0], ['#tcu', 1, 'z'], ['#tcf [type=submit]', 2, 'z+']], auto: () => (S.tcontacts || []).some((c) => coachOf(c.team_id)) },
+    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('effectif'), 0], ['#tcu', 1, 'z', 'Choisir un adulte'], ['#tcf [type=submit]', 2, 'z+s', 'Nommer contact']], auto: () => (S.tcontacts || []).some((c) => coachOf(c.team_id)) },
   C6: { q: 'Comment préparer une séance ?', line: 'Préparer une séance', who: () => has('coach'), why: 'Arriver avec les exercices prêts.',
     steps: ['« Mes rôles » › Coach, onglet « Préparer ».', 'Touche une séance « À préparer », ou « Composer une séance ».', 'Ajoute des exercices (« Ajouter un exercice » pour un nouveau), puis enregistre.'],
-    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('preparer'), 0], ['main.bd [data-act=cplan]', 1], ['#planf', 2, 'z']] },
+    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('preparer'), 0], ['main.bd [data-act=cplan]', 1], ['#planf', 2, 'z'], ['#planf [type=submit]', 2, 'z+s', 'Enregistrer la séance']] },
   C7: { q: 'Coach : relancer, renforts, aide coach, heures, annuler', faq: true, who: () => has('coach'), why: 'Les autres gestes du coach.',
     steps: ['Relancer ceux qui n’ont pas répondu : page du rendez-vous, cadre « Relance ».', 'Renforts : « Effectif », « Renforts », « Proposer un joueur » ; dans un rendez-vous, « Équipe seule », « Avec tous les renforts » ou « Renforts choisis ».', 'Aide coach : « Effectif », cadre « Aide coach » (joueur de 15 à 17 ans).', 'Mes heures : dans l’espace coach. Annuler ou supprimer : page du rendez-vous.'] },
   M1: { q: 'Comment écrire à un joueur mineur ?', faq: true, who: () => !onlySupporter(), why: 'Un adulte n’échange avec un mineur qu’avec un de ses parents.',
@@ -156,46 +156,46 @@ export const FICHES = {
     role: RK.dt, show: [[ROLE(RK.dt), 0], [FTAB('equipes'), 1], [FTAB('exos'), 2, '+'], [FTAB('ententes'), 3, '+']] },
   TR1: { q: 'Comment fixer les tarifs ?', line: 'Fixer les tarifs de la saison', who: () => fnHas('Trésorier', 'Trésorier adjoint'), why: 'Le montant dû par chaque joueur se calcule tout seul (tarif de son équipe ou de sa catégorie, moins sa réduction).',
     steps: ['« Mes rôles » › Trésorier, onglet « Tarifs ».', '« Pour » : une catégorie, ou une équipe.', '« Montant (€) » et, si tu veux, « dont part fédération (€) ».', '« Ajouter ce tarif ». Plus vite : colle une grille ou choisis un fichier, puis « Vérifier ».'],
-    role: RK.tres, show: [[ROLE(RK.tres), 0], [FTAB('tarifs'), 0], ['#ffc', 1, 'z'], ['#ffa', 2, 'z+'], ['#feef [type=submit]', 3, 'z+']], auto: () => S.fees.length > 0 },
+    role: RK.tres, show: [[ROLE(RK.tres), 0], [FTAB('tarifs'), 0], ['#ffc', 1, 'z'], ['#ffa', 2, 'z+'], ['#feef [type=submit]', 3, 'z+s', 'Ajouter ce tarif']], auto: () => S.fees.length > 0 },
   TR2: { q: 'Comment noter un versement ?', line: 'Noter un versement', who: () => fnHas('Trésorier', 'Trésorier adjoint'), why: 'La fiche du joueur passe à « Cotisation payée » et la famille le voit.',
     steps: ['« Mes rôles » › Trésorier, onglet « Cotisations », filtre « Reste à payer ».', 'Touche le joueur.', 'Cadre « Ajouter un versement » : montant, moyen.', '« Ajouter le versement ». L’attestation pour un comité d’entreprise se fait ensuite sur la même fiche.'],
-    role: RK.tres, show: [[ROLE(RK.tres), 0], [FTAB('cotis'), 0], ['[data-act=lf][data-v="Reste à payer"]', 0, '+'], ['details[open] [data-act=player]', 1], ['#pa1', 2, 'z'], ['#payf [type=submit]', 3, 'z+']], auto: () => S.payments.length > 0 },
+    role: RK.tres, show: [[ROLE(RK.tres), 0], [FTAB('cotis'), 0], ['[data-act=lf][data-v="Reste à payer"]', 0, '+'], ['details[open] [data-act=player]', 1, '', 'Léa Exemple · reste 120 €'], ['#pa1', 2, 'z', 'Montant : 120 € · moyen : chèque'], ['#payf [type=submit]', 3, 'z+s', 'Ajouter le versement']], auto: () => S.payments.length > 0 },
   TR3: { q: 'Comment relancer les cotisations ?', line: 'Relancer les cotisations non réglées', who: () => fnHas('Trésorier', 'Trésorier adjoint'), why: 'Un rappel dans l’application à chaque famille qui doit encore.',
     steps: ['« Mes rôles » › Trésorier, onglet « Cotisations ».', '« Relancer toutes les cotisations non réglées », puis « Confirmer ». Une famille déjà relancée cette semaine est sautée.'],
-    role: RK.tres, show: [[ROLE(RK.tres), 0], [FTAB('cotis'), 0], ['[data-act=feeremall]', 1, 'z']] },
+    role: RK.tres, show: [[ROLE(RK.tres), 0], [FTAB('cotis'), 0], ['[data-act=feeremall]', 1, 'zs', 'Relancer toutes les cotisations non réglées']] },
   TR4: { q: 'Trésorerie : export, heures des coachs, attestation', faq: true, who: () => isPresident() || hasArea('tresorerie'), why: 'Les autres gestes de la trésorerie.',
     steps: ['Exporter : « Cotisations », « Exporter la liste des cotisations (Excel) ».', 'Heures des coachs : « Vérification des heures », puis « Relevés, taux et montants ».', 'Attestation pour un comité d’entreprise : fiche du joueur, cadre « Licence et cotisation ». Seulement pour les versements notés.'] },
   SE1: { q: 'Comment valider les demandes ?', line: 'Valider les demandes', who: () => fnHas('Secrétaire', 'Secrétaire adjoint'), why: 'Tu valides joueurs, parents et supporteurs de toutes les équipes, et les coachs ; le bureau, c’est le président.',
     steps: ['« Mes rôles » › Secrétaire : les demandes sont en haut de l’« Aperçu ».', '« Valider » ou « Refuser ».'],
-    role: RK.sec, show: [[ROLE(RK.sec), 0], [FTAB('ap_secretariat'), 0], ['[data-act=mok]', 1, 'z']], auto: () => !toValidate().length && S.members.length > 3 },
+    role: RK.sec, show: [[ROLE(RK.sec), 0], [FTAB('ap_secretariat'), 0], ['[data-act=mok]', 1, 'zs', 'Valider']], auto: () => !toValidate().length && S.members.length > 3 },
   SE2: { q: 'Comment importer la liste des licenciés ?', line: 'Importer la liste des joueurs', who: () => fnHas('Secrétaire', 'Secrétaire adjoint'), why: 'Toute la saison d’un coup, sans tout taper.',
     steps: ['« Mes rôles » › Secrétaire, onglet « Import / export ».', '« Ajouter des joueurs » : choisis l’équipe.', 'Colle une liste ou choisis un fichier Excel ou CSV (le plus fiable), puis « Vérifier la liste ».', 'Retire les lignes fausses, puis « Valider l’import ».'],
-    role: RK.sec, show: [[ROLE(RK.sec), 0], [FTAB('impexp'), 0], ['[data-act=import]', 1], ['#imt', 2, 'z'], ['[data-act=impcheck]', 2, '+'], ['[data-act=impok]', 3, 'z']], auto: () => S.players.length > 0 },
+    role: RK.sec, show: [[ROLE(RK.sec), 0], [FTAB('impexp'), 0], ['[data-act=import]', 1], ['#imt', 2, 'z'], ['[data-act=impcheck]', 2, '+'], ['[data-act=impok]', 3, 'zs', 'Valider l’import']], auto: () => S.players.length > 0 },
   SE3: { q: 'Comment suivre les licences ?', line: 'Mettre les licences à jour', who: () => fnHas('Secrétaire', 'Secrétaire adjoint') || fnHas('Correspondant licences'), why: 'Savoir qui est vraiment licencié et assuré.',
     steps: ['« Mes rôles » › ta fonction, onglet « Licences ».', 'Filtre « Licence à finir » (ou « Certificat manquant »), puis touche un joueur.', 'Licence, numéro, « Certificat ou questionnaire de santé fourni » (oui ou non, jamais le document).', '« Enregistrer ». Sans date de naissance, le joueur est traité comme mineur.'],
-    role: RK.seclic, show: [[ROLE(RK.seclic), 0], [FTAB('licences', 'lic'), 0], ['[data-act=lf][data-v="Licence à finir"]', 1, '+'], ['details[open] [data-act=player]', 1], ['#padminf', 2, 'z'], ['#padminf [type=submit]', 3, 'z+']] },
+    role: RK.seclic, show: [[ROLE(RK.seclic), 0], [FTAB('licences', 'lic'), 0], ['[data-act=lf][data-v="Licence à finir"]', 1, '+'], ['details[open] [data-act=player]', 1, '', 'Léa Exemple · licence à finir'], ['#padminf', 2, 'z', 'Licence, numéro, certificat fourni'], ['#padminf [type=submit]', 3, 'z+s', 'Enregistrer']] },
   CR1: { q: 'Comment compléter les matchs ?', line: 'Ajouter les gymnases des matchs', who: () => fnHas('Correspondant rencontres'), why: 'Une convocation sans gymnase ne peut pas partir.',
     steps: ['« Mes rôles » › Contact rencontres, onglet « Rencontres » : les matchs des 60 prochains jours.', 'Touche une rencontre, puis « Modifier ».', '« Lieu », puis « Enregistrer les changements ».'],
-    role: RK.ren, show: [[ROLE(RK.ren), 0], [FTAB('renc'), 0], ['main.bd button.row[data-act=event]', 1], ['[data-act=evedit]', 1], ['#el', 2, 'z'], ['#evf [type=submit]', 2, 'z+']] },
+    role: RK.ren, show: [[ROLE(RK.ren), 0], [FTAB('renc'), 0], ['main.bd button.row[data-act=event]', 1, '', 'Match · samedi 14 h'], ['[data-act=evedit]', 1, '', 'Modifier'], ['#el', 2, 'z', 'Lieu : gymnase'], ['#evf [type=submit]', 2, 'z+s', 'Enregistrer les changements']] },
   CR2: { q: 'Comment convoquer les clubs reçus ?', line: 'Envoyer une convocation', who: () => fnHas('Correspondant rencontres'), why: 'Un seul document pour toutes les rencontres à domicile du week-end : d’abord la pré-convocation, puis la convocation.',
     steps: ['« Mes rôles » › Contact rencontres, onglet « Convocations », « Matchs à domicile à convoquer » : touche une rencontre.', 'Cadre « Convocation des clubs reçus » : « Pré-convocation » ou « Convocation ».', 'Choisis les destinataires (club trouvé dans mypocketclub, sinon une adresse e-mail).', '« Envoyer à tous », puis « Confirmer l’envoi ». Sinon : « Imprimer ou enregistrer le PDF ».'],
-    role: RK.ren, show: [[ROLE(RK.ren), 0], [FTAB('convoc'), 0], ['[data-blk=aconvoquer] button.row[data-act=event]', 0], ['[data-act=convoc]', 1], ['main.bd [data-act=convstep]', 1, 'z'], ['[data-dest]', 2, 'z'], ['[data-act=cvsend], [data-act=cvall]', 3, 'z+']] },
+    role: RK.ren, show: [[ROLE(RK.ren), 0], [FTAB('convoc'), 0], ['[data-blk=aconvoquer] button.row[data-act=event]', 0, '', 'Match à domicile · samedi 14 h'], ['[data-act=convoc]', 1, '', 'Convocation des clubs reçus'], ['main.bd [data-act=convstep]', 1, 'z', 'Pré-convocation · Convocation'], ['[data-dest]', 2, 'z', 'Club reçu : contact@club-exemple.fr'], ['[data-act=cvsend], [data-act=cvall]', 3, 'z+s', 'Envoyer à tous']] },
   CR3: { q: 'Comment trouver des bénévoles ?', line: 'Remplir les missions de bénévoles', who: () => fnHas('Correspondant rencontres'), why: 'Table de marque, arbitrage, buvette : chacun choisit ses missions depuis l’Accueil.',
     steps: ['« Mes rôles » › Contact rencontres, onglet « Bénévoles ».', '« Missions par défaut du club » : écris les missions, puis « Enregistrer ».', '« Places à pourvoir » : « Ajouter les missions par défaut » sur une rencontre.', '« Relancer » s’il manque du monde.'],
-    role: RK.ren, show: [[ROLE(RK.ren), 0], [FTAB('benev'), 0], ['[data-act=dmsave]', 1, 'z'], ['[data-act=mdef]', 2, 'z+'], ['[data-act=mremopen]', 3, 'z+']] },
+    role: RK.ren, show: [[ROLE(RK.ren), 0], [FTAB('benev'), 0], ['[data-act=dmsave]', 1, 'zs', 'Enregistrer'], ['[data-act=mdef]', 2, 'z+s', 'Ajouter les missions par défaut'], ['[data-act=mremopen]', 3, 'z+s', 'Relancer']] },
   PR1: { q: 'Président : comment valider les demandes ?', line: 'Valider les demandes', who: () => isPresident(), why: 'Toi seul valides les membres du bureau.',
     steps: ['« Mes rôles » › Président, onglet « Demandes ».', '« Valider » ou « Refuser ».'],
-    role: RK.pres, show: [[ROLE(RK.pres), 0], [PTAB('demandes'), 0], ['[data-act=mok]', 1, 'z']], auto: () => !toValidate().length && S.members.length > 3 },
+    role: RK.pres, show: [[ROLE(RK.pres), 0], [PTAB('demandes'), 0], ['[data-act=mok]', 1, 'zs', 'Valider']], auto: () => !toValidate().length && S.members.length > 3 },
   PR2: { q: 'Comment donner les fonctions du bureau ?', line: 'Donner les fonctions du bureau', who: () => isPresident(), why: 'Une personne par fonction : chacune reçoit les accès qui vont avec.',
     steps: ['« Mes rôles » › Président, onglet « Fonctions du bureau », puis « Fonctions du bureau (nommer, retirer, accès en plus) ».', 'Cadre « Nommer quelqu’un » : le membre, puis la fonction.', '« Nommer ». Rôle « Autre » possible : nom libre, accès choisis parmi les cinq (jamais l’accès Président).'],
-    role: RK.pres, show: [[ROLE(RK.pres), 0], [PTAB('qui'), 0], ['main.bd [data-act=fonctions]', 0], ['#nomf', 1, 'z'], ['#nomf [type=submit]', 2, 'z+']],
+    role: RK.pres, show: [[ROLE(RK.pres), 0], [PTAB('qui'), 0], ['main.bd [data-act=fonctions]', 0], ['#nomf', 1, 'z'], ['#nomf [type=submit]', 2, 'z+s', 'Nommer']],
     auto: () => S.members.some((m) => m.status === 'active' && m.role === 'bureau' && m.user_id !== S.me.id) },
   PR3: { q: 'Comment créer les équipes ?', line: 'Créer les équipes', who: () => isPresident(), why: 'Les familles et les coachs choisissent leur équipe en rejoignant le club.',
     steps: ['« Mes rôles » › Président, onglet « Vue d’ensemble ».', '« Ajouter une équipe ».', 'Le nom, la catégorie et le créneau, puis « Créer l’équipe ».'],
-    role: RK.pres, show: [[ROLE(RK.pres), 0], [PTAB('ensemble'), 0], ['[data-act=tcreateopen]', 1], ['details[data-tcreate][open] form', 2, 'z']], auto: () => S.teams.length > 0 },
+    role: RK.pres, show: [[ROLE(RK.pres), 0], [PTAB('ensemble'), 0], ['[data-act=tcreateopen]', 1], ['details[data-tcreate][open] form', 2, 'z'], ['details[data-tcreate][open] form [type=submit]', 2, 'z+s', 'Créer l’équipe']], auto: () => S.teams.length > 0 },
   PR4: { q: 'Comment régler le club ?', line: 'Régler le club', who: () => isPresident(), why: 'Logo, couleurs, recherche des clubs, droits de chacun, saison.',
     steps: ['« Mes rôles » › Président, onglet « Réglages ».', '« Apparaître dans la recherche des clubs », logo et couleurs, droits, saison.'],
-    role: RK.pres, show: [[ROLE(RK.pres), 0], [PTAB('reglages'), 0], ['label.switch:has([data-clubset=public_listed])', 1, 'z']] },
+    role: RK.pres, show: [[ROLE(RK.pres), 0], [PTAB('reglages'), 0], ['label.switch:has([data-clubset=public_listed])', 1, 'zs']] },
   PR5: { q: 'Président : abonnement, présidence, journal, suppression', faq: true, who: () => isPresident(), why: 'Les gestes rares du président.',
     steps: ['Ce que le club paiera : « Réglages », cadre « Ton club chez mypocketclub ».', 'Transférer la présidence ou supprimer le club : « Réglages », « Zone sensible ».', 'Le journal : onglet « Journal » (qui a fait quoi).', 'Supprimer le compte d’un joueur : sa fiche (30 jours à la corbeille).'] },
 };
@@ -204,7 +204,9 @@ const isDone = (id, d = doneSet()) => d.has(id) || !!FICHES[id]?.auto?.();
 // 5.8.0 · n° 208 d : « [équipe] » et « [club] » remplacés par les vrais noms
 const sub = (s) => s.replace(/\[équipe\]/g, () => (coachTids()[0] ? teamName(coachTids()[0]) : 'de ton choix')).replace(/\[club\]/g, () => S.clubs?.[S.clubId]?.name || 'ton club');
 const stepsOf = (f) => f.steps.map(sub);
-const showOf = (f) => (f.show || []).map(([sel, s, o = '']) => ({ sel, s, z: o.includes('z'), same: o.includes('+') }));
+// 5.9.0 · n° 222-223 : « s » = l'action est simulée pendant « Me montrer » (rien n'est enregistré) ;
+// ex = libellé de l'exemple affiché quand la zone n'existe pas encore (pas de demande, pas de match…)
+const showOf = (f) => (f.show || []).map(([sel, s, o = '', ex = '']) => ({ sel, s, z: o.includes('z'), same: o.includes('+'), sim: o.includes('s'), ex }));
 const selOf = (e) => (typeof e.sel === 'function' ? e.sel() : e.sel);
 // « Me montrer » n'a de sens que si le compte a le rôle de la fiche
 const canShow = (f) => !!f.show && (!f.role || !!keyOf(f.role));
@@ -320,16 +322,64 @@ hooks.helpAccount = () => `<button class="btn ghost" data-act="faq">${icon('msg'
 let showBar = null;
 // premier élément visible qui correspond (sur ordinateur, les quatre carrés sont cachés : c'est le bloc « Mes rôles »)
 const seen = (sel) => { if (!sel) return null; try { return [...document.querySelectorAll(sel)].find((x) => x.offsetParent !== null || x.getClientRects().length) || null; } catch { return null; } };
-function clearShow() { document.querySelectorAll('.ob-hl').forEach((x) => x.classList.remove('ob-hl')); if (showBar) { showBar.remove(); showBar = null; } }
+function clearShow() { document.querySelectorAll('.ob-hl').forEach((x) => x.classList.remove('ob-hl')); document.querySelectorAll('.obsimbox').forEach((x) => x.remove()); if (showBar) { showBar.remove(); showBar = null; } }
 // 5.8.0 · n° 208 j : « Étape 1 sur 2 · » suivi du texte de l'étape ; n° 208 a : à la fin, le bandeau reste avec « Revenir à la fiche »
 function barHtml(f, id, st, cur, found) {
   const steps = stepsOf(f), n = steps.length;
   let head;
   if (st.end) head = isDone(id) ? 'C’est fait. Bravo !' : 'Tu as vu toutes les étapes. Reviens à la fiche et touche « C’est fait » quand c’est fini.';
   else head = `Étape ${cur + 1} sur ${n} · ${esc(steps[cur])}${found ? '' : ' <span class="obbar-hint">(ouvre cet écran)</span>'}`;
+  // n° 223 : la personne sait que ses touches ne changent rien
+  if (!st.end && showOf(f).some((e) => e.sim || e.ex)) head += '<small class="obbar-sim">Exemple : rien n’est enregistré pendant « Me montrer ».</small>';
   const back = st.end || f.line ? `<button data-act="obfiche" data-id="${id}" class="btn small ink">Revenir à la fiche</button>` : '';
   return `<div class="obbar-q">${esc(f.q)}</div><b class="obbar-now">${head}</b><ol class="obbar-steps">${steps.map((t, k) => `<li class="${!st.end && k === cur ? 'on' : st.end || k < cur ? 'done' : ''}">${esc(t)}</li>`).join('')}</ol><div class="obbar-btns">${st.end ? back : ''}<button data-act="obstop" class="btn small ${st.end ? 'ghost' : 'ink'}">${st.end ? 'Fermer' : 'Arrêter'}</button></div>`;
 }
+// ---------- 5.9.0 · n° 222-223 : exemples et actions simulées pendant « Me montrer » ----------
+const viewKey = () => JSON.stringify([S.tab, S.view?.type || '', S.view?.id || '', S.view?.tab || '', S.casq || '', S.ptab || '', (S.ftabs || {})[S.casq] || '']);
+// une carte « Exemple » à la place d'une zone absente ; rien n'est enregistré, elle disparaît à l'écran suivant
+function simEl(f, L, k, on) {
+  let box = document.querySelector('.obsimbox');
+  if (!box) { box = document.createElement('div'); box.className = 'obsimbox'; (document.querySelector('main.bd') || document.body).prepend(box); }
+  const c = document.createElement('div'); c.className = 'card obsim'; c.dataset.obsim = k;
+  c.innerHTML = `<span class="kick">Exemple · rien n’est enregistré</span><p class="note" style="margin:0">${esc(stepsOf(f)[L[k].s] || '')}</p><button type="button" class="btn small ${on ? 'main' : 'ghost'}">${esc(L[k].ex)}</button>`;
+  box.appendChild(c); return c.querySelector('button');
+}
+// liste d'exemple (noms inventés) pour l'import : jamais importée
+const EX_LIST = 'Prénom;Nom;Né le\nLéa;EXEMPLE;12/03/2016\nTom;EXEMPLE;05/09/2016\nInès;EXEMPLE;21/01/2017';
+function fillImport() { const I = S.imp; if (!I || I.rows || I.map || (I.text || '').trim()) return; I.text = EX_LIST; I.ob = true; const t = document.getElementById('imt'); if (t) t.value = EX_LIST; }
+const dropImp = () => { if (S.imp?.ob) S.imp = null; };
+const block = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
+// les touches qui changeraient quelque chose sont arrêtées ici, avant l'application (phase de capture)
+function simGuard(e) {
+  const t = e.target; if (!t?.closest) return;
+  if (e.type === 'click' && !S.obShow && S.imp?.ob && t.closest('[data-act=impok]')) { block(e); toast('Cette liste est un exemple : rien n’est enregistré.'); return; }
+  const s = S.obShow; if (!s) return;
+  const f = FICHES[s.id]; if (!f) return; const L = showOf(f);
+  if (e.type === 'click' && t.matches('#imf, #imo')) { block(e); fillImport(); render(true); toast('Exemple : une liste est chargée. Touche « Vérifier la liste ».'); return; }
+  const ph = t.closest('[data-obsim]');
+  let k = ph ? +ph.dataset.obsim : -1;
+  // un champ à remplir n'est pas arrêté : seuls les boutons, cases et envois le sont
+  const act = e.type === 'submit' || t.closest('button, [data-act], label, input[type=checkbox], input[type=radio], input[type=submit]');
+  if (k < 0 && act) for (let x = 0; x < L.length; x++) {
+    if (!L[x].sim) continue; const q = selOf(L[x]); if (!q) continue;
+    let hit = false; try { hit = e.type === 'submit' ? t.matches(q) || !!t.querySelector(q) : !!t.closest(q); } catch { /* sélecteur non pris en charge */ }
+    if (hit) { k = x; break; }
+  }
+  if (k < 0) { if (e.type === 'click' && t.closest('[data-act=impcheck]')) fillImport(); return; }
+  block(e);
+  toast('Exemple : rien n’est enregistré pendant « Me montrer ».');
+  if (s.end) return;
+  if (k >= L.length - 1) s.end = true; else { s.i = k + 1; s.wait = true; }
+  setTimeout(paintShow, 0);
+}
+document.addEventListener('click', simGuard, true);
+document.addEventListener('submit', simGuard, true);
+// ---------- 5.9.0 · n° 221 : le retour (flèche ou téléphone) pendant « Me montrer » ramène à la fiche ----------
+function backToFiche() {
+  const r = S.obRet; S.obShow = null; clearShow(); dropImp(); S.obRet = null;
+  S.view = { type: 'obfiche', id: r.id, faq: !!r.faq }; S.stack = r.stack || []; S.noStack = true; render();
+}
+hooks.obBack = () => { if (S.obShow && S.obRet) { backToFiche(); return true; } return false; };
 const inView = (el) => { const r = el.getBoundingClientRect(); return r.top >= 60 && r.bottom <= innerHeight - 140; };
 function paintShow() {
   clearShow();
@@ -343,7 +393,14 @@ function paintShow() {
   if (s.end) { showBar.innerHTML = barHtml(f, s.id, s, 0, true); put(); return; }
   // l'étape la plus avancée visible ; sur un même écran (« + »), on avance au toucher
   const vis = L.map((e) => seen(selOf(e)));
+  // n° 222 : l'écran attendu est ouvert, mais la zone n'y est pas (aucune demande, aucun match…) : un exemple à sa place
+  const key = viewKey();
+  if (s.wait) { s.key = key; s.wait = false; }
+  if (!s.sim || s.sim.key !== key) s.sim = { key, ks: [] };
+  s.sim.ks.forEach((k) => { if (!vis[k]) vis[k] = simEl(f, L, k, false); });
   let j = -1; for (let k = L.length - 1; k >= 0; k--) if (vis[k]) { j = k; break; }
+  if (s.key === key && s.i === j + 1 && s.i < L.length && !vis[s.i] && L[s.i].ex) { s.sim.ks.push(s.i); vis[s.i] = simEl(f, L, s.i, true); j = s.i; }
+  if (L[Math.min(s.i, L.length - 1)].sel === '#imt' && vis[s.i]) fillImport();
   if (j < 0) { showBar.innerHTML = barHtml(f, s.id, s, L[Math.min(s.i, L.length - 1)].s, false); put(); return; }
   // les étapes restantes, sur ce même écran, n'y sont pas (rien à relancer, par exemple) : c'est la fin
   if (s.i > j && L.slice(j + 1).every((e) => e.same)) { s.end = true; showBar.classList.add('end'); showBar.innerHTML = barHtml(f, s.id, s, 0, true); put(); return; }
@@ -353,7 +410,7 @@ function paintShow() {
   showBar.innerHTML = barHtml(f, s.id, s, L[cur].s, true);
   put();
   // au toucher : l'étape suivante (sur le même écran, la prochaine zone présente) ; après la dernière, le bandeau de fin
-  const next = () => { if (S.obShow !== s || s.i !== cur) return; let n = cur + 1; while (n <= j && !vis[n] && L[n].same) n++; if (n > L.length - 1) s.end = true; else s.i = n; setTimeout(paintShow, 250); };
+  const next = () => { if (S.obShow !== s || s.i !== cur) return; let n = cur + 1; while (n <= j && !vis[n] && L[n].same) n++; if (n > L.length - 1) s.end = true; else { s.i = n; s.wait = true; } setTimeout(paintShow, 250); };
   el.addEventListener('click', next, { once: true, capture: true });
   if (L[cur].z) el.addEventListener('focusin', next, { once: true });
 }
@@ -373,7 +430,7 @@ export async function goFiche(id) {
     clicked.add(el); el.click(); await tick(); await tick();
   }
   let at = 0; for (let x = last; x >= 0; x--) if (seen(selOf(L[x]))) { at = x; break; }
-  S.obShow = { id, i: at }; paintShow();
+  S.obShow = { id, i: at, wait: true }; paintShow();
   return !!document.querySelector('.ob-hl');
 }
 hooks.obAfter = () => {
@@ -386,7 +443,7 @@ hooks.obAfter = () => {
 };
 
 Object.assign(ACTIONS, {
-  obfiche: (el, d) => { S.obShow = null; clearShow(); S.view = { type: 'obfiche', id: d.id, faq: d.faq === '1' }; render(); },
+  obfiche: (el, d) => { if (S.obRet && S.obRet.id === d.id && S.obShow) return backToFiche(); S.obShow = null; clearShow(); dropImp(); S.obRet = null; S.view = { type: 'obfiche', id: d.id, faq: d.faq === '1' }; render(); },
   obmore: (el, d) => { S.obMore = { ...(S.obMore || {}), [d.v]: true }; render(true); },
   obdone: (el, d) => { S.obShow = null; clearShow(); saveMeta({ done: [...doneSet(), d.id] }); toast('C’est noté.'); const v = (S.stack || []).pop() || null; S.view = v; S.noStack = true; render(); },
   obundo: (el, d) => { S.obShow = null; clearShow(); const s = doneSet(); s.delete(d.id); saveMeta({ done: [...s] }); render(true); },
@@ -395,10 +452,10 @@ Object.assign(ACTIONS, {
   obroleundo: () => { if (!S.obUndo) return; saveMeta({ done: S.obUndo.prev }); S.obUndo = null; render(true); },
   obhide: () => { saveMeta({ hidden: true }); toast('Masqué. Tu le retrouves dans Mon compte › Aide.'); render(true); },
   obshowcard: () => { saveMeta({ hidden: false }); S.view = null; S.stack = []; S.tab = 0; render(); },
-  obshow: (el, d) => { S.obShow = { id: d.id, i: 0 }; S.view = null; S.stack = []; S.tab = 0; S.noStack = true; render(); },
-  obstop: () => { S.obShow = null; clearShow(); },
+  obshow: (el, d) => { S.obRet = { id: d.id, faq: S.view?.faq, stack: [...(S.stack || [])] }; S.obShow = { id: d.id, i: 0 }; S.view = null; S.stack = []; S.tab = 0; S.noStack = true; render(); },
+  obstop: () => { S.obShow = null; S.obRet = null; clearShow(); if (S.imp?.ob) { S.imp = null; render(true); } },
   faq: () => { S.obShow = null; clearShow(); S.faqQ = ''; S.view = { type: 'faq' }; render(); },
-  obgo: async (el, d) => { if (!(await goFiche(d.id))) toast('Cet écran n’est pas accessible avec tes rôles actuels.'); },
+  obgo: async (el, d) => { S.obRet = { id: d.id, faq: S.view?.faq, stack: [...(S.stack || [])] }; if (!(await goFiche(d.id))) toast('Cet écran n’est pas accessible avec tes rôles actuels.'); },
   obzoom: (el, d) => {
     if (innerWidth >= 960) return;
     const z = document.createElement('div'); z.className = 'obzoom'; z.setAttribute('role', 'dialog'); z.setAttribute('aria-label', 'Capture agrandie');

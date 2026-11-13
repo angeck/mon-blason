@@ -107,13 +107,15 @@ ACTIONS.welcomeok = () => { const s = new Set(seenList()); active().forEach((m) 
 let guard = false, ignore = false;
 hooks.afterRender = () => {
   try {
-    if (S.view && S.session && !guard) { history.pushState({ mpc: 1 }, ''); guard = true; }
-    else if (!S.view && guard) { guard = false; ignore = true; history.back(); }
+    // 5.9.0 · n° 221 : pendant « Me montrer », même sur un onglet, le retour revient à la fiche (au lieu de quitter)
+    const open = S.view || S.obShow;
+    if (open && S.session && !guard) { history.pushState({ mpc: 1 }, ''); guard = true; }
+    else if (!open && guard) { guard = false; ignore = true; history.back(); }
   } catch { /* navigateur sans historique */ }
 };
 addEventListener('popstate', () => {
   if (ignore) { ignore = false; return; }
   if (!guard) return;
   guard = false;
-  if (S.view && ACTIONS.back) ACTIONS.back();
+  if ((S.view || S.obShow) && ACTIONS.back) ACTIONS.back();
 });

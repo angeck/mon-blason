@@ -6,7 +6,7 @@
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_8_0.sql) ; l'écran n'est qu'un confort.
 import { BRAND } from '../config.js';
 import {
-  S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, INPUTS, CHANGES, BCATS, GENRES, SEASON, hasArea, isPresident, team, norm, loadJs, plural,
+  S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, INPUTS, CHANGES, catsFor, club, GENRES, SEASON, hasArea, isPresident, team, norm, loadJs, plural,
 } from './core.js';
 import { icon, field } from './ui.js';
 import { teamForm, autoName, loadXlsx } from './equipe.js';
@@ -64,7 +64,7 @@ export function teamImportPage() {
   let h = `<div class="card lift"><div class="kick">Vérification · ${plural(I.rows.length, 'équipe')}</div><p class="note">Les cases en orange sont à vérifier ou à compléter. Les équipes créées restent en mode fantôme (invisibles des familles).</p>`;
   I.rows.forEach((r, i) => {
     const dz = teamDoubts(r), cls = (k) => (dz.has(k) ? 'doubt' : '');
-    h += `<div class="card flat" style="${r.exists || r.skip ? 'opacity:.6' : ''}"><div class="grid2">${field(`ti${i}c`, 'Catégorie', `<select id="ti${i}c" data-timp="${i}" data-k="category" class="${cls('category')}">${opt(BCATS, r.category)}</select>`)}${field(`ti${i}g`, 'Genre', `<select id="ti${i}g" data-timp="${i}" data-k="gender" class="${cls('gender')}">${opt(GENRES, r.gender)}</select>`)}</div>
+    h += `<div class="card flat" style="${r.exists || r.skip ? 'opacity:.6' : ''}"><div class="grid2">${field(`ti${i}c`, 'Catégorie', `<select id="ti${i}c" data-timp="${i}" data-k="category" class="${cls('category')}">${opt(catsFor(club()?.sport), r.category)}</select>`)}${field(`ti${i}g`, 'Genre', `<select id="ti${i}g" data-timp="${i}" data-k="gender" class="${cls('gender')}">${opt(GENRES, r.gender)}</select>`)}</div>
     ${field(`ti${i}n`, "Nom de l'équipe", `<input id="ti${i}n" data-timp="${i}" data-k="name" value="${esc(r.name)}" maxlength="60">`)}
     ${field(`ti${i}s`, 'Créneaux et gymnase', `<input id="ti${i}s" data-timp="${i}" data-k="slots" value="${esc(r.slots)}" class="${cls('slots')}" placeholder="Ex. Mercredi 14 h – 15 h 30, gymnase Jean-Moulin">`)}
     ${r.exists ? `<span class="pill ko">Déjà dans le club : « ${esc(r.exists)} » · ne sera pas créée</span>` : r.skip ? '<span class="pill">Ne sera pas créée</span>' : ''}

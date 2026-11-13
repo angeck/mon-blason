@@ -3112,6 +3112,22 @@ w("reset role;")
 ok("n° 207 · … dans la base aussi", "not exists(select 1 from attestation_requests)")
 ok("5.7.0 · nouvelles fonctions fermées au visiteur", "not has_function_privilege('anon', 'request_attestation(uuid)', 'execute') and not has_function_privilege('anon', 'attestation_pdf(uuid)', 'execute') and not has_function_privilege('anon', 'attestation_data(uuid, text, text)', 'execute') and not has_function_privilege('anon', 'set_my_signature(text)', 'execute') and not has_function_privilege('authenticated', 'can_request_attestation(uuid)', 'execute')")
 
+# ---------- 5.9.0 · n° 226 : catégories du basket (U17 → U18, U20 → U21) ----------
+section("5.9.0 · n° 226 catégories")
+w("reset role;")
+w(f"insert into teams(club_id, name, category, gender) values ({C1}, 'U20 F', 'U20', 'Féminine'), ({C1}, 'Les Lions', 'U17', 'Masculine');")
+w(f"insert into fee_grid(club_id, season, category, amount) values ({C1}, '2026-2027', 'U17', 150), ({C1}, '2026-2027', 'U20', 170);")
+AS('pres')  # l'auteur d'un exercice doit être coach ou au bureau
+w("insert into exercises(club_id, title, tags) select club_id, 'Exo U17 test', '{U15,U17}' from teams where name = 'Les Lions' limit 1;")
+w("\\i ../supabase/alpha_5_9_0.sql")
+w("\\i ../supabase/alpha_5_9_0.sql")  # relancée deux fois
+ok("n° 226 · plus aucune équipe en U17 ni en U20", "not exists(select 1 from teams where category in ('U17', 'U20'))")
+ok("n° 226 · l'équipe « U17 » devient « U18 » (nom automatique aussi)", f"exists(select 1 from teams where club_id = {C1} and name = 'U18' and category = 'U18')")
+ok("n° 226 · « U20 F » devient « U21 F »", f"exists(select 1 from teams where club_id = {C1} and name = 'U21 F' and category = 'U21')")
+ok("n° 226 · un nom choisi par le club ne change pas", f"exists(select 1 from teams where club_id = {C1} and name = 'Les Lions' and category = 'U18')")
+ok("n° 226 · les tarifs suivent la catégorie", f"exists(select 1 from fee_grid where club_id = {C1} and category = 'U18' and amount = 150) and exists(select 1 from fee_grid where club_id = {C1} and category = 'U21')")
+ok("n° 226 · le tag d'âge des exercices passe à U18", "exists(select 1 from exercises where title = 'Exo U17 test' and tags = '{U15,U18}')")
+
 # ---------- rapport ----------
 w("\\echo ''")
 w("\\echo '========== RAPPORT =========='")

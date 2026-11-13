@@ -1,6 +1,6 @@
 // mypocketclub · onglet Équipe, fiche d'équipe, ajout et import de joueurs (n° 7, 8, 26).
 import {
-  hooks, S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, BCATS, GENRES, SEASON, NEXT_SEASON, XLSX_URL, seasonAfter,
+  hooks, S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, catsFor, club, GENRES, SEASON, NEXT_SEASON, XLSX_URL, seasonAfter,
   active, isBoard, isPresident, coachOf, team, teamName, myTeamIds, myPlayers, playersOfTeam, pname, adminOf, toValidate, niceFirst, niceLast, norm,
   loadJs, plural, fmtShort, evTeams, follows, mySelf, myKids, pl,
 } from './core.js';
@@ -118,7 +118,7 @@ export function teamTab() {
 // ---------- fiche d'équipe ----------
 export function teamForm(t, id) {
   const cat = t.category || '', gen = t.gender || '';
-  return `<form id="${id}" data-id="${t.id || ''}" class="stack"><div class="grid2">${field(id + 'c', 'Catégorie', `<select id="${id}c" name="category" data-teamauto="1"><option value="">—</option>${BCATS.map((x) => `<option ${cat === x ? 'selected' : ''}>${x}</option>`).join('')}${cat && !BCATS.includes(cat) ? `<option selected>${esc(cat)}</option>` : ''}</select>`)}${field(id + 'g', 'Genre', `<select id="${id}g" name="gender" data-teamauto="1"><option value="">—</option>${GENRES.map((x) => `<option ${gen === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}</div>
+  return `<form id="${id}" data-id="${t.id || ''}" class="stack"><div class="grid2">${field(id + 'c', 'Catégorie', `<select id="${id}c" name="category" data-teamauto="1"><option value="">—</option>${catsFor(club()?.sport).map((x) => `<option ${cat === x ? 'selected' : ''}>${x}</option>`).join('')}${cat && !catsFor(club()?.sport).includes(cat) ? `<option selected>${esc(cat)}</option>` : ''}</select>`)}${field(id + 'g', 'Genre', `<select id="${id}g" name="gender" data-teamauto="1"><option value="">—</option>${GENRES.map((x) => `<option ${gen === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}</div>
   ${field(id + 'n', "Nom de l'équipe (proposé d'après la catégorie)", `<input id="${id}n" name="name" value="${esc(t.name || '')}" maxlength="60" placeholder="Ex. U13 F, Reines" data-teamname="1" ${t.id ? 'data-manual="1"' : ''}>`)}
   ${field(id + 's', 'Créneaux et gymnase', `<input id="${id}s" name="slots" value="${esc(t.slots || '')}" placeholder="Ex. Mercredi 14 h – 15 h 30, gymnase Jean-Moulin">`)}
   <button class="btn main" type="submit">${t.id ? 'Enregistrer' : "Créer l'équipe"}</button></form>`;

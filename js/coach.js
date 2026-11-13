@@ -19,7 +19,7 @@ export const TAGS = {
   'Tactique': ['Attaque placée', 'Contre-attaque', 'Défense individuelle', 'Défense de zone', 'Surnombre', 'Transition'],
   'Physique': ['Vitesse', 'Endurance', 'Coordination', 'Équilibre', 'Réaction', 'Gainage'],
   'Jeu': ['Opposition', 'Jeu réduit', 'Coopération', 'Ludique', 'Relais', 'Concours'],
-  'Âge': ['U7', 'U9', 'U11', 'U13', 'U15', 'U17', 'Adultes'],
+  'Âge': ['U7', 'U9', 'U11', 'U13', 'U15', 'U18', 'Adultes'], // 5.9.0 · n° 226 : U17 devient U18
   'Effectif': ['Seul', 'Par 2', 'Petits groupes', 'Toute l’équipe'],
   'Matériel': ['Sans matériel', 'Plots', 'Cerceaux', 'Chasubles', 'Un ballon chacun', 'Panier', 'Filet'],
 };

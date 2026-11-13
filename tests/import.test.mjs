@@ -68,6 +68,11 @@ eq('date Excel', smartParse([['Prénom', 'Nom', 'Naissance'], ['Lou', 'Petit', '
   eq('équipes : ligne sans catégorie ni nom ignorée, total ignoré', parseTeams('mercredi 14h\nTotal 3 équipes').length, 0);
   eq('équipes : cases douteuses (genre et créneau manquants)', [...teamDoubts(parseTeams('Loisirs')[0])].sort(), ['gender', 'slots']);
   eq('équipes : catégorie inconnue douteuse', teamDoubts({ name: 'Élite', category: 'Élite', gender: 'Mixte', slots: 'Lundi 20 h' }).has('category'), true);
+  // 5.9.0 · n° 226 : U17 devient U18, U20 devient U21 ; catégories du volley
+  eq('n° 226 : « U17 M » lu en U18', parseTeams('U17 M')[0].category, 'U18');
+  eq('n° 226 : « U20 F » lu en U21', parseTeams('U20 F')[0].category, 'U21');
+  eq('n° 226 : volley « M15 F » reconnu', parseTeams('M15 F')[0].category, 'M15');
+  eq('n° 226 : volley « Masters » reconnu', parseTeams('Masters mixte')[0].category, 'Masters');
   console.log(`${ok} réussis, ${ko} échecs (avec les tests des équipes, n° 102)`);
 }
 process.exit(ko ? 1 : 0);

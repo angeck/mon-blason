@@ -41,6 +41,7 @@ const P = {
   flag: '<path d="M6 21V4"/><path d="M6 4h11l-2.5 4L17 12H6"/>',
   crown: '<path d="M4 18h16M5 18L3.5 8l5 4L12 5l3.5 7 5-4L19 18"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>', // n° 98 : directeur technique (ex-directeur sportif, n° 114)
+  swap: '<path d="M7 7h12l-3.5-3.5M17 17H5l3.5 3.5"/>', // 5.9.0 · n° 225 : changer de club
   share: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>',
 };
 export const icon = (n, size = 22, stroke = 'currentColor', w = 2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ''}</svg>`;
@@ -90,8 +91,8 @@ export const backBtn = () => `<button class="roundbtn" data-act="back" aria-labe
 // N° 27 : même en-tête partout. Bande du haut : (retour) · logo C · Mon compte, alignés ; dessous le club ; dessous le titre.
 // Picto « Espace » (charte du 31 octobre) : quatre carrés aux symboles des rôles ; seulement pour qui a une fonction
 const ESPACE_SVG = '<svg width="30" height="30" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="12.5" height="12.5" rx="4" fill="#FFC93C"/><path d="M5 11.5V3.8l5 1.8-5 1.8" stroke="#11162E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><rect x="14.5" y="1" width="12.5" height="12.5" rx="4" fill="#C9F5E4"/><circle cx="20.75" cy="7.25" r="3" stroke="#0B5C43" stroke-width="1.5" fill="none"/><path d="M20.75 5.9v2.7" stroke="#0B5C43" stroke-width="1.5" stroke-linecap="round" fill="none"/><rect x="1" y="14.5" width="12.5" height="12.5" rx="4" fill="#DCE4FF"/><circle cx="7.25" cy="18.8" r="1.8" stroke="#2F5BFF" stroke-width="1.5" fill="none"/><path d="M4 24.5c0-2 1.4-3 3.25-3s3.25 1 3.25 3" stroke="#2F5BFF" stroke-width="1.5" stroke-linecap="round" fill="none"/><rect x="14.5" y="14.5" width="12.5" height="12.5" rx="4" fill="#11162E"/><path d="M20.75 16.6l3.2 1.2v2.8c0 1.9-1.3 3.2-3.2 3.8-1.9-.6-3.2-1.9-3.2-3.8v-2.8z" stroke="#FFFFFF" stroke-width="1.5" stroke-linejoin="round" fill="none"/></svg>';
-// 5.8.0 · n° 219 : libellé « Mes rôles » sous l'icône (téléphone) ; 5.1.0 : « Mes rôles » (n° 194, même nom que sur ordinateur) ; pastille = ce qui attend dans tous mes rôles (n° 190)
-export const espaceBtn = () => { const n = hooks.rolesTotal ? hooks.rolesTotal() : 0; return `<button class="roundbtn roles" data-act="espace" aria-label="Mes rôles${n ? ' · ' + n + ' à traiter' : ''}">${ESPACE_SVG.replace(/width="30" height="30"/, 'width="22" height="22"')}<span class="lbl" aria-hidden="true">Mes rôles</span>${n ? `<span class="dot" aria-hidden="true">${n > 99 ? '99+' : n}</span>` : ''}</button>`; };
+// 5.9.0 · n° 224 : l'icône seule (le libellé de la 5.8.0 est retiré, le nom reste lu par les lecteurs d'écran) ; 5.1.0 : « Mes rôles » (n° 194, même nom que sur ordinateur) ; pastille = ce qui attend dans tous mes rôles (n° 190)
+export const espaceBtn = () => { const n = hooks.rolesTotal ? hooks.rolesTotal() : 0; return `<button class="roundbtn roles" data-act="espace" aria-label="Mes rôles${n ? ' · ' + n + ' à traiter' : ''}">${ESPACE_SVG.replace(/width="30" height="30"/, 'width="24" height="24"')}${n ? `<span class="dot" aria-hidden="true">${n > 99 ? '99+' : n}</span>` : ''}</button>`; };
 export const searchBtn = () => `<button class="roundbtn" data-act="csearch" aria-label="Chercher un club">${icon('search', 22, '#11162E', 2.2)}</button>`;
 // opts : { title, kicker, sub, back, tags[], brand, role }
 // N° 27 : même en-tête partout. Bande du haut : (retour) · logo C · loupe (n° 56) · Espace · Mon compte ;
@@ -110,7 +111,9 @@ export function header(o = {}) {
     h += `<div class="top">${c ? crest(c, 44) : ''}<div class="who sp"><b>${o.title || ''}</b>${o.under ? `<span>${esc(o.under)}</span>` : ''}</div></div>`;
     return `<header class="hd${o.tabs ? ' tabbed' : ''}">${h}${o.casq || ''}${o.tabs || ''}</header>`;
   }
-  if (!br && c) h += `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.kicker || o.sub || '')}</span></div></div>`;
+  // 5.9.0 · n° 225 : le bouton « Changer de club » suit le nom du club, pour un compte présent dans plusieurs clubs
+  const sw = inClub && (S.overview || []).some((x) => x.club_id !== S.clubId) ? `<button class="clubsw" data-act="clubsw" aria-label="Changer de club">${icon('swap', 20, 'currentColor', 2.2)}</button>` : '';
+  if (!br && c) h += `<div class="top">${crest(c, 44)}<div class="who"><b>${esc(c.name)}</b><span>${esc(o.kicker || o.sub || '')}</span></div>${sw}</div>`;
   else if (o.kicker) h += `<div class="kicker">${esc(o.kicker)}</div>`;
   return `<header class="hd${o.tabs ? ' tabbed' : ''}">${h}${o.title ? `<h1>${o.title}</h1>` : ''}${o.under ? `<span class="under">${esc(o.under)}</span>` : ''}${tags}${o.casq || ''}${o.tabs || ''}</header>`;
 }

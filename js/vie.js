@@ -388,16 +388,20 @@ function searchView() {
   const b = `<div class="sec"><h2>Mes clubs</h2></div><div class="card"><div class="list">${mine.map((c) => `<div class="row static">${crest(c, 36, '#FFFFFF')}<span class="g">${esc(c.name)}<small>${esc([c.city, c.sport].filter(Boolean).join(' · '))}</small></span>${c.id === S.clubId ? '<span class="pill ok">Ouvert</span>' : `<button class="btn small main" style="flex:none" data-act="club" data-id="${c.id}">Ouvrir</button>`}</div>`).join('') || '<p class="empty">Aucun club.</p>'}</div></div>` + searchBlock();
   return { head: header({ back: true, kicker: 'Recherche', title: 'Chercher un club' }), body: b };
 }
-export function otherClubsHome() {
+// 5.9.0 · n° 225 : le bloc « Changer de club » quitte l'Accueil ; il s'ouvre par le bouton à côté du nom du club (en-tête),
+// et reste dans Mon compte (« Mes clubs et profils »)
+export function otherClubsHome() { return ''; }
+function otherClubsList() {
   // n° 150 (Gaël, 9 novembre 2026) : seulement si le compte est actif dans au moins deux clubs (supporteur compris) ;
   // logo et nom du club, rien d'autre (plus d'entraînements ni d'annonces)
   const l = (S.overview || []).filter((x) => x.club_id !== S.clubId);
-  if (!l.length) return '';
-  return `<div class="sec"><h2>Changer de club</h2></div><div class="card"><div class="list">${l.map((c) => `<button class="row" data-act="club" data-id="${c.club_id}">${crest({ ...c, id: c.club_id }, 36, '#FFFFFF')}<span class="g">${esc(c.name)}</span><span class="pill blue">Ouvrir</span></button>`).join('')}</div></div>`;
+  if (!l.length) return '<p class="empty">Tu n’es que dans ce club.</p>';
+  return `<div class="card"><div class="list">${l.map((c) => `<button class="row" data-act="club" data-id="${c.club_id}">${crest({ ...c, id: c.club_id }, 36, '#FFFFFF')}<span class="g">${esc(c.name)}</span><span class="pill blue">Ouvrir</span></button>`).join('')}</div></div><p class="note">Pour rejoindre un autre club : la loupe en haut. Tous tes clubs et profils sont aussi dans Mon compte.</p>`;
 }
 
 // ---------- écrans (lus par app.js) ----------
 export const VIE_VIEWS = {
+  clubsw: () => ({ head: header({ back: true, kicker: 'Mes clubs', title: 'Changer de club' }), body: otherClubsList() }), // 5.9.0 · n° 225
   espace: () => espaceView(), rub: (v) => rubView(v.id), annonces: () => annoncesView(), annonce: (v) => annonceView(v.id), annform: () => annFormView(),
   fonctions: () => fonctionsView(), journal: () => journalView(), csearch: () => searchView(),
   timport: () => { currentCasq(); return { head: header({ back: true, kicker: roleKicker('Équipes'), title: 'Importer des équipes', casq: casqTabs() }), body: teamImportPage() }; }, // n° 102
@@ -416,6 +420,7 @@ async function markRead(id) {
   if (await run(sb.from('announcement_reads').insert({ announcement_id: id, user_id: S.me.id }))) S.annRead.add(id);
 }
 Object.assign(ACTIONS, {
+  clubsw: () => { S.view = { type: 'clubsw' }; render(); }, // 5.9.0 · n° 225
   // n° 113 : le bouton de rôle ouvre la vue choisie par défaut, sinon le dernier espace utilisé
   espace: async () => { const def = defaultCasq(); if (def) S.casq = resolveCasq(def); S.view = { type: 'espace' }; currentCasq(); render(); if (isCoachCasq(S.casq)) { await ensureExos(); render(true); } },
   casq: async (el, d) => {

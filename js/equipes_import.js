@@ -2,7 +2,10 @@
 // Reconnaît : en-tête n'importe où dans les 10 premières lignes (équipe, catégorie, genre, gymnase, jour, heure, créneau), ou lignes libres
 // (« U11 F ; Mercredi 14 h – 15 h 30 ; gymnase Jean-Moulin »). Une ligne par équipe ou par créneau : les lignes d'une même équipe sont regroupées.
 // Aucune donnée n'est envoyée ici, aucun nom de personne n'est attendu. Fichier sans dépendance (testé par tests/import.test.mjs).
-export const CATS = ['U7 (baby)', 'U9', 'U11', 'U13', 'U15', 'U17', 'U18', 'U20', 'U21', 'Seniors', 'Loisirs', 'Vétérans']; // = BCATS de core.js
+// 5.9.0 · n° 226 : mêmes listes que BCATS et VCATS de core.js (recopiées : ce fichier reste sans dépendance)
+const BCATS = ['U7 (baby)', 'U9', 'U11', 'U13', 'U15', 'U18', 'U21', 'Seniors', 'Loisirs', 'Vétérans'];
+const VCATS = ['M7', 'M9', 'M11', 'M13', 'M15', 'M18', 'M21', 'Seniors', 'Masters'];
+export const CATS = [...BCATS, ...VCATS.filter((c) => !BCATS.includes(c))];
 // Nom proposé d'après la catégorie et le genre (même règle que autoName de equipe.js, n° 28)
 export const autoName = (cat, gen) => ((cat || '').replace(' (baby)', '') + (gen === 'Féminine' ? ' F' : gen === 'Masculine' ? ' M' : '')).trim();
 const strip = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -22,7 +25,11 @@ const RX_GYM = /\b(gymnase|salle|complexe|halle|stade|terrain|dojo|palais des sp
 export function teamCategory(t) {
   const s = strip(t);
   let m = s.match(/\bu\s?-?\s?(\d{1,2})\b/) || s.match(/\bu(\d{1,2})[fm]\b/) || s.match(/(?:^|\s)-\s?(\d{1,2})\s?ans\b/) || s.match(/\bmoins de (\d{1,2}) ans\b/);
-  if (m) { const c = 'U' + +m[1]; return c === 'U7' ? 'U7 (baby)' : c; }
+  if (m) { const c = 'U' + +m[1]; return c === 'U7' ? 'U7 (baby)' : c === 'U17' ? 'U18' : c === 'U20' ? 'U21' : c; } // n° 226 : U17 → U18, U20 → U21
+  // 5.9.0 · n° 226 : volley « M15 », « M 18 »
+  m = s.match(/\bm\s?-?\s?(\d{1,2})\b/) || s.match(/\bm(\d{1,2})[fm]\b/);
+  if (m && VCATS.includes('M' + +m[1])) return 'M' + +m[1];
+  if (/\bmaster/.test(s)) return 'Masters';
   if (/\bbaby\b/.test(s)) return 'U7 (baby)';
   if (/\bsenior/.test(s)) return 'Seniors';
   if (/\bloisir/.test(s)) return 'Loisirs';

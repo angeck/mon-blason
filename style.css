@@ -80,12 +80,9 @@ html.ouv,html.ouv body{background:#11162E;color:#FFFFFF}
 .hd .tags{display:flex;gap:8px;flex-wrap:wrap}
 .hd .tags span{background:#FFFFFF;color:var(--pc-encre);font-weight:700;font-size:14px;padding:6px 12px;border-radius:18px}
 .hdmini{display:none}
+/* 5.9.0 · n° 224 : « Mes rôles » redevient l'icône seule (libellé retiré) */
 .roundbtn{flex:none;width:44px;height:44px;border-radius:22px;border:0;background:#FFFFFF;color:var(--pc-encre);display:flex;align-items:center;justify-content:center;padding:0;position:relative}
-.roundbtn.roles{width:56px;height:48px;border-radius:16px;flex-direction:column;gap:2px} /* 5.8.0 · n° 219 */
-.hd .band:has([data-act=back]):has(.roundbtn.roles) .logo .wordmark{font-size:clamp(13px,3.9vw,22px)!important} /* place pour le libellé « Mes rôles » */
 .hd .band{gap:8px}
-.roundbtn.roles .lbl{font-size:10px;font-weight:700;line-height:1;white-space:nowrap;letter-spacing:-.01em}
-.hdmini .roundbtn.roles{width:48px;height:40px}.hdmini .roundbtn.roles .lbl{font-size:9px}
 .roundbtn .dot{position:absolute;top:-2px;right:-2px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--pc-jaune);color:var(--pc-encre);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #FFFFFF}
 .ecu{flex:none;display:flex;align-items:center;justify-content:center;font-family:var(--pc-titre);font-weight:800}
 
@@ -489,3 +486,10 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .admnums .big{font-size:28px}
 .admquote{margin:0;padding:10px 14px;border-left:4px solid var(--pc-jaune);background:var(--pc-bleu-pale);border-radius:0 12px 12px 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .admsecret{display:block;padding:10px 12px;border-radius:12px;background:var(--pc-bleu-pale);font-size:16px;letter-spacing:.08em;overflow-wrap:anywhere;user-select:all}
+/* 5.9.0 · n° 222-223 : pendant « Me montrer », un exemple à la place d'une zone absente ; rien n'est enregistré */
+.obsimbox { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.obsim { border: 2px dashed var(--pc-trait); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.obbar-sim { display: block; font-weight: 400; font-size: 13px; margin-top: 4px; }
+/* 5.9.0 · n° 225 : bouton « Changer de club » à côté du nom du club */
+.clubsw{flex:none;width:44px;height:44px;border-radius:22px;border:2px solid rgba(255,255,255,.7);background:transparent;color:#FFFFFF;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.clubsw:focus-visible{outline:3px solid var(--pc-jaune);outline-offset:2px}

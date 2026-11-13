@@ -174,7 +174,7 @@ Object.assign(ACTIONS, {
   refresh: () => refresh(true),
   tab: (el, d) => { seeTab(+d.i); S.tab = +d.i; S.view = null; S.stack = []; S.sel = null; S.tmpLogo = undefined; render(); },
   // n° 101 : le bouton Retour retrouve la position de défilement de l'écran d'avant
-  back: () => { const v = (S.stack || []).pop() || null, y = v?._y || 0; if (v) delete v._y; S.view = v; S.form = null; S.tmpLogo = undefined; render(); if (y) requestAnimationFrame(() => window.scrollTo(0, y)); },
+  back: () => { if (hooks.obBack?.()) return; /* 5.9.0 · n° 221 : pendant « Me montrer », retour à la fiche */ const v = (S.stack || []).pop() || null, y = v?._y || 0; if (v) delete v._y; S.view = v; S.form = null; S.tmpLogo = undefined; render(); if (y) requestAnimationFrame(() => window.scrollTo(0, y)); },
 });
 // ---------- jour de la semaine sous les champs date (5.2.1) ----------
 // Le calendrier du téléphone ne dit pas quel jour on a présélectionné : on l'écrit sous le champ (« Samedi 21 novembre 2026 »), à jour à chaque choix.

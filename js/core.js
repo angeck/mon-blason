@@ -30,7 +30,10 @@ export const roleLabel = (m) => (m.role === 'bureau' ? 'Bureau · ' + fonctionLa
 export const JOIN_ROLES = ['supporteur', 'parent', 'joueur', 'coach', 'bureau'];
 export const SPORTS = ['Basket-ball', 'Volley-ball'];
 export const TEAM_TYPES = ['Entraînement', 'Match', 'Plateau', 'Tournoi'];
-export const BCATS = ['U7 (baby)', 'U9', 'U11', 'U13', 'U15', 'U17', 'U18', 'U20', 'U21', 'Seniors', 'Loisirs', 'Vétérans'];
+// 5.9.0 · n° 226 (Gaël, 13 novembre 2026) : catégories FFBB 2026-2027 (plus de U17 ni de U20) ; le volley a les siennes (FFVolley)
+export const BCATS = ['U7 (baby)', 'U9', 'U11', 'U13', 'U15', 'U18', 'U21', 'Seniors', 'Loisirs', 'Vétérans'];
+export const VCATS = ['M7', 'M9', 'M11', 'M13', 'M15', 'M18', 'M21', 'Seniors', 'Masters'];
+export const catsFor = (sport) => (/volley/i.test(sport || '') ? VCATS : BCATS);
 export const GENRES = ['Féminine', 'Masculine', 'Mixte'];
 // 5.4.0 : la saison se calcule d'après la date (1er juillet au 30 juin) : « 2026-2027 », puis « 2027-2028 », etc.
 export const seasonOf = (d = new Date()) => { const y = d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1; return `${y}-${y + 1}`; };
