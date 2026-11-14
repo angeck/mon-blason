@@ -34,8 +34,8 @@ export async function loadV310() {
 
 // ---------- n° 113 · contexte « espace de l'équipe » ----------
 // Pages qui gardent le bandeau de l'équipe quand on y arrive depuis l'espace de l'équipe (S.tsp = identifiant de l'équipe)
-const TEAM_CTX = { tspace: '', appel: 'Pointer', event: 'Planifier', evform: 'Planifier', team: 'Effectif', player: 'Effectif', import: 'Effectif', stats: 'Stats', plans: 'Préparer', exos: 'Préparer', exo: 'Préparer', exoform: 'Préparer', expick: 'Préparer' };
-const TAB_LABEL = { pointer: 'Pointer', planifier: 'Planifier', preparer: 'Préparer', stats: 'Stats', effectif: 'Effectif' };
+const TEAM_CTX = { tspace: '', appel: 'Pointer', event: 'Planifier', evform: 'Planifier', team: 'Effectif', player: 'Effectif', import: 'Effectif', stats: 'Stats', plans: 'Carnet du coach', exos: 'Carnet du coach', exo: 'Carnet du coach', exoform: 'Carnet du coach', expick: 'Carnet du coach', tactics: 'Carnet du coach', tac: 'Carnet du coach' };
+const TAB_LABEL = { pointer: 'Pointer', planifier: 'Planifier', preparer: 'Carnet du coach', stats: 'Stats', effectif: 'Effectif' };
 function inCtx(v) {
   if (!S.tsp || !v || !(v.type in TEAM_CTX)) return false;
   if (v.type === 'tspace') return v.id === S.tsp;
@@ -66,6 +66,7 @@ function planifierBody(tid) {
   return h;
 }
 function preparerBody(tid) {
+  if (hooks.carnetBody) return hooks.carnetBody(tid); // 5.15.0 · n° 242 et 243 : carnet du coach (Exercices / Tactiques) ; les séances passent dans l'entraînement
   const soon = Date.now() + 14 * 864e5;
   const evs = upcoming(S.events.filter((e) => !e.cancelled && evTeams(e).includes(tid) && ROLL.includes(e.type) && new Date(e.starts_at) < soon)).slice(0, 6);
   let h = `<div class="chips"><button class="chip" aria-pressed="true">Séances de l’équipe</button><button class="chip" data-act="cplans">Mes séances</button><button class="chip" data-act="cexos" data-tab="mine">Exercices</button></div>`;

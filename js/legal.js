@@ -7,7 +7,7 @@
 import { BRAND } from '../config.js';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.7', date: '13 novembre 2026' };
+export const LEGAL = { version: '1.8', date: '14 novembre 2026' };
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -110,7 +110,7 @@ Contact pour toute question : ${C}.
 - **E-mails envoyés** : type, club, date et réussite de chaque envoi, pour respecter les limites d'envoi ; jamais l'adresse ni le contenu. Une adresse qui s'est désinscrite est gardée sous forme d'empreinte, pour ne plus jamais y écrire.
 - **Recommandations** : quand une personne recommande mypocketclub à un dirigeant de son club, nous gardons seulement l'empreinte de l'adresse du dirigeant (pour ne jamais lui écrire deux fois), jamais l'adresse, ni le prénom ou le club saisis.
 - **Accords** : droit à l'image et e-mails d'information, avec leur date.
-- **Contenus que vous créez** : exercices, séances, annonces, fichiers joints.
+- **Contenus que vous créez** : exercices, séances, tactiques (schémas de placement des coachs), annonces, fichiers joints.
 mypocketclub ne demande **aucune donnée de santé**. Seul le fait qu'un certificat a été fourni, oui ou non, peut être noté par le club. Merci de ne pas écrire d'information médicale dans l'application.
 Les données viennent de vous, de votre club (qui peut vous inscrire ou inscrire votre enfant) ou, pour un enfant, de son parent.
 ## 3. Pourquoi, et sur quelle base ?
@@ -131,6 +131,7 @@ Vos données ne servent ni à de la publicité, ni à de la revente, ni à étab
 - **Le profil « Aide coach »**, que peut avoir un jeune de 15 à 17 ans choisi par un entraîneur ou le président, ne donne aucun droit de plus : il permet de voir l'effectif de l'équipe, sans coordonnées. Il s'arrête à 18 ans.
 - **Le bureau du club** voit ce dont il a besoin pour gérer le club. La cotisation, la remise et la licence ne sont visibles que du bureau.
 - **Les coordonnées des familles** (e-mail, téléphone, contact d'urgence) ne sont visibles, pour tout le club, que du président, du secrétariat, de la trésorerie, du directeur technique (sauf si le président les lui masque), du contact licences et du contact rencontres. Le vice-président, la communication, le sponsoring, les événements et les autres fonctions ne les voient pas.
+- **Dans Messages**, chacun ne peut inviter dans un groupe que les personnes avec qui il a un lien : le bureau (tout le monde peut lui écrire), les coachs et les membres de son équipe ou de celle de son enfant, les autres coachs s'il est coach ; le bureau peut écrire à tout le club. Les noms apparaissent sous la forme « Prénom N. », sauf pour le bureau et le coach de l'équipe.
 - **Le président du club** voit les messages signalés dans les groupes du club, avec leur auteur ; il peut aussi retirer l'accès d'un joueur à son club.
 - **Le contact du club** choisit lui-même si son e-mail ou son téléphone est affiché aux personnes connectées.
 - **Une personne non connectée** ne voit que la liste des clubs.

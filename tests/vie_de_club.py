@@ -3358,6 +3358,41 @@ w("reset role;")
 ok("n° 236 · … nom gardé avec l'accord", "exists(select 1 from club_requests where club_name = 'Basket Connu' and first_name = 'Zoé' and consent)")
 ok("n° 236 · … sans accord, l'e-mail saisi n'est pas gardé", "exists(select 1 from club_requests where club_name = 'Basket Discret' and email = '' and first_name = '')")
 
+# ---------- 5.15.0 · n° 238 (qui peut écrire à qui) et n° 242 (tactiques) ----------
+section("5.15.0 · n° 238 et 242")
+w("reset role;")
+w("\\i ../supabase/alpha_5_15_0.sql")
+w("\\i ../supabase/alpha_5_15_0.sql")  # relancée deux fois
+w("set role authenticated;")
+_fx = next(fi for fi, fam in enumerate(families) if all(k[3] != 'U9' for k in fam) and all(k[3] != 'U9' for f2 in families for k in f2 if f2 is fam))   # une famille dont l'enfant n'est pas en U9
+_tx = families[_fx][0][3]
+CP = lambda k: f"exists(select 1 from contact_people({C1}) x where x.user_id = '{people[k][0]}')"
+AS('cU9'); ok("n° 238 · un coach voit les autres coachs", CP(f"c{_tx}"))
+AS('cU9'); ok("n° 238 · un coach voit le président", CP('pres'))
+AS('cU9'); ok("n° 238 · un coach voit le bureau", CP('b3'))
+AS('cU9'); ok("n° 238 · un coach voit les familles de son équipe", CP('p186'))
+AS('cU15'); ok("n° 238 · un coach ne voit pas une famille d'une autre équipe", "not " + CP(f"pa{_fx}"))
+AS(f"pa{_fx}"); ok("n° 238 · un parent voit le coach de l'équipe de son enfant", CP(f"c{_tx}"))
+AS(f"pa{_fx}"); ok("n° 238 · un parent écrit au bureau", CP('b1') + " and " + CP('pres'))
+AS(f"pa{_fx}"); ok("n° 238 · un parent ne voit pas le coach d'une autre équipe", "not " + CP('cU15'))
+AS(f"pa{_fx}"); ok("n° 238 · un parent ne voit pas une famille d'une autre équipe", "not " + CP('p186'))
+AS('b1'); ok("n° 238 · le bureau voit tout le club", CP('p186') + " and " + CP(f"pa{_fx}"))
+AS('p186'); MKG('g238a'); fails("n° 238 · la base refuse d'inviter une personne sans lien", MEM('g238a', f"auth.uid(), {P('c' + _tx)}"))
+AS('p186'); MKG('g238b'); works("n° 238 · inviter le président : accepté", MEM('g238b', f"auth.uid(), {P('pres')}"))
+AS('cU9'); MKG('g238c'); works("n° 238 · un coach invite un autre coach", MEM('g238c', f"auth.uid(), {P('c' + _tx)}"))
+w("reset role;")
+ok("n° 238 · fonctions fermées au visiteur", "not has_function_privilege('anon', 'contact_people(uuid)', 'execute') and not has_function_privilege('anon', 'contact_ids(uuid)', 'execute')")
+w("set role authenticated;")
+TJ = q('{"v":1,"sport":"Basket-ball","items":[{"id":"a1","k":"a","n":"1"}],"frames":[{"c":"","p":{"a1":[100,100]}}]}')
+AS('cU9'); works("n° 242 · un coach enregistre une tactique", f"insert into tactics(club_id, title, steps) values ({C1}, 'Remise en jeu', {TJ}::jsonb)")
+AS('p186'); fails("n° 242 · un parent ne crée pas de tactique", f"insert into tactics(club_id, title, steps) values ({C1}, 'Non', {TJ}::jsonb)")
+AS(f"c{_tx}"); ok("n° 242 · une tactique « pour moi » reste privée", "not exists(select 1 from tactics where title = 'Remise en jeu')")
+AS('cU9'); works("n° 242 · partagée au club", "update tactics set sharing = 'club' where title = 'Remise en jeu'")
+AS(f"c{_tx}"); ok("n° 242 · … alors les coachs du club la voient", "exists(select 1 from tactics where title = 'Remise en jeu')")
+AS(f"c{_tx}"); works("n° 242 · un autre coach ne la modifie pas (rien ne change)", "update tactics set title = 'Piratée' where title = 'Remise en jeu'")
+w("reset role;")
+ok("n° 242 · … le titre est intact", "exists(select 1 from tactics where title = 'Remise en jeu')")
+
 # ---------- rapport ----------
 w("\\echo ''")
 w("\\echo '========== RAPPORT =========='")

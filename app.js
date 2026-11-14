@@ -30,6 +30,7 @@ import { loadV57 } from './js/v57.js'; // 5.7.0 : n° 204 et 207 (attestations d
 import './js/v510.js'; // 5.10.0 : n° 161 exercices avec l'IA (schéma animé, éditeur au doigt)
 import './js/v511.js'; // 5.11.0 : n° 227 banque d'exercices dans le menu de gauche (ordinateur)
 import './js/v56.js'; // 5.6.0 : n° 202 compte administrateur (espace admin, double vérification)
+import './js/v515.js'; // 5.15.0 : n° 239, 242, 243, 246
 import './js/v55.js'; // 5.5.0 : onboarding « Pour bien démarrer », FAQ (Aide), n° 164 justificatif d'adhésion
 import { validationReminders } from './js/v54.js'; // 5.4.0 : n° 201 (conversation avec un mineur), n° 84 (rattacher), transfert d'une convocation, n° 182
 import './js/v51.js'; // 5.1.0 : n° 189 (retour du téléphone), 190 (pastilles des rôles), 191 (demandes), 196 (bienvenue)
@@ -104,6 +105,7 @@ function render(keep) {
   applyDraft(); // 5.2.1 : la saisie en cours revient après un redessin (retour de l'arrière-plan, temps réel)
   dateHints();
   if (hooks.afterRender) hooks.afterRender(); // n° 189 : historique du téléphone (js/v51.js)
+  if (hooks.after515) hooks.after515(); // 5.15.0 : jaune sur la demande à traiter (n° 239), sous-onglets du rôle dans le bandeau (n° 246)
   if (hooks.obAfter) hooks.obAfter(); // 5.5.0 : « Me montrer » et coches à la visite (js/v55.js)
 }
 async function refresh(msg) {

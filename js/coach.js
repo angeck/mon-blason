@@ -67,7 +67,7 @@ async function loadVideoUrls() {
   if (!paths.length) return;
   try { const r = await sb.storage.from(VB).createSignedUrls(paths, 3600); (r.data || []).forEach((x) => { if (x.signedUrl) S.vurl[x.path] = x.signedUrl; }); } catch { /* vidéos indisponibles : la liste reste utilisable */ }
 }
-function thumb(e) {
+export function thumb(e) {
   const p = e.poster_path && S.vurl?.[e.poster_path], v = e.video_path && S.vurl?.[e.video_path];
   if (v) return `<span class="vthumb"><video src="${esc(v)}#t=1" ${p ? `poster="${esc(p)}" preload="none"` : 'preload="metadata"'} muted loop playsinline></video><span class="vplay" aria-hidden="true">▶</span></span>`;
   if (p) return `<span class="vthumb"><img src="${esc(p)}" alt="" loading="lazy"></span>`;

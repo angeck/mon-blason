@@ -38,18 +38,32 @@ export function messagesTab() {
   return h + '<p class="note">Les groupes remplacent WhatsApp : covoiturage, organisation, sondages. Seuls les membres invités les voient.</p>';
 }
 
+// 5.15.0 · n° 238 : équipes auxquelles on est lié (son profil d'équipe, sa fiche, la fiche de son enfant)
+const myTeams = () => new Set([...S.mems.filter((m) => m.club_id === S.clubId && m.status === 'active' && m.team_id).map((m) => m.team_id),
+  ...(S.players || []).filter((p) => !p.deleted_at && p.team_id && (p.user_id === S.me.id || parentsOf(p.id).includes(S.me.id))).map((p) => p.team_id)]);
+async function loadContacts() {
+  const { data, error } = await sb.rpc('contact_people', { p_club: S.clubId });
+  if (error || !Array.isArray(data)) {   // base pas encore à jour (script 5.15.0) : on garde l'ancienne liste
+    S.contacts = [...new Map(S.members.filter((m) => m.status === 'active' && m.user_id !== S.me.id).map((m) => [m.user_id, m])).values()];
+  } else {
+    S.contacts = data;
+    S.contacts.forEach((x) => { if (!S.names[x.user_id]) S.names[x.user_id] = (x.first_name + ' ' + (x.last_name || '')).trim(); });
+  }
+  if (S.view?.type === 'gform') render(true);
+}
 export function groupForm() {
   if (!S.form) S.form = S.grqForm?.prev || { name: '', sel: new Set(), q: '' };   // 5.4.0 : retour depuis « Ajouter un parent »
   const f = S.form;
-  const people = [...new Map(S.members.filter((m) => m.status === 'active' && m.user_id !== S.me.id).map((m) => [m.user_id, m])).values()]
-    .concat(S.pparents.filter((x) => x.user_id !== S.me.id).map((x) => ({ user_id: x.user_id, role: 'parent' })))
-    .reduce((a, m) => (a.some((y) => y.user_id === m.user_id) ? a : a.concat(m)), []).sort((a, b) => name(a.user_id).localeCompare(name(b.user_id), 'fr'));
+  // 5.15.0 · n° 238 : la liste vient de la base (contact_people) : les personnes avec qui on a un lien ; la base le revérifie à l'invitation
+  if (S.contacts === undefined) { S.contacts = null; loadContacts(); }
+  const people = (S.contacts || []).slice().sort((a, b) => name(a.user_id).localeCompare(name(b.user_id), 'fr'));
+  const teams = isBoard() ? S.teams : S.teams.filter((t) => myTeams().has(t.id));
   const q = norm(f.q), shown = people.filter((m) => !q || norm(name(m.user_id)).includes(q));
   return `<div class="card lift">
   ${field('gn', 'Nom du groupe', `<input id="gn" data-f="name" value="${esc(f.name || '')}" maxlength="80" placeholder="Ex. U9 · Parents et coachs">`)}
-  <div class="kick">Ajouter d'un coup</div><div class="chips">${S.teams.map((t) => `<button class="chip" data-act="gteam" data-id="${t.id}">${esc(t.name)}</button>`).join('')}<button class="chip" data-act="gstaff">Président, bureau et coachs</button></div>
+  <div class="kick">Ajouter d'un coup</div><div class="chips">${teams.map((t) => `<button class="chip" data-act="gteam" data-id="${t.id}">${esc(t.name)}</button>`).join('')}<button class="chip" data-act="gstaff">${isBoard() || S.contacts?.some((m) => m.role === 'coach' && !myTeams().has(m.team_id)) ? 'Président, bureau et coachs' : 'Président, bureau et coachs de mon équipe'}</button></div>
   ${field('gq', `Membres invités (${f.sel.size})`, `<input id="gq" type="search" data-gq="1" value="${esc(f.q || '')}" placeholder="Rechercher un nom">`)}
-  <div class="card flat" style="max-height:360px;overflow:auto;gap:0">${shown.length ? shown.map((m) => `<label class="check" style="padding:6px 0"><input type="checkbox" data-gsel="${m.user_id}" ${f.sel.has(m.user_id) ? 'checked' : ''}><span>${esc(name(m.user_id))} <span class="det">· ${ROLES[m.role] || ''}${m.team_id ? ' ' + esc(teamName(m.team_id)) : ''}</span></span></label>`).join('') : '<p class="empty">Aucun autre membre pour le moment.</p>'}</div>
+  <div class="card flat" style="max-height:360px;overflow:auto;gap:0">${S.contacts === null ? '<p class="det">Chargement…</p>' : shown.length ? shown.map((m) => `<label class="check" style="padding:6px 0"><input type="checkbox" data-gsel="${m.user_id}" ${f.sel.has(m.user_id) ? 'checked' : ''}><span>${esc(name(m.user_id))} <span class="det">· ${ROLES[m.role] || ''}${m.team_id ? ' ' + esc(teamName(m.team_id)) : ''}</span></span></label>`).join('') : '<p class="empty">Aucun autre membre pour le moment.</p>'}</div>
   <button class="btn main" data-act="gcreate">Créer le groupe</button></div>`;
 }
 
@@ -112,14 +126,15 @@ export async function openGroup(id) {
 }
 
 Object.assign(ACTIONS, {
-  gnew: () => { S.form = { name: '', sel: new Set(), q: '' }; S.view = { type: 'gform' }; render(); },
+  gnew: () => { S.form = { name: '', sel: new Set(), q: '' }; S.contacts = undefined; S.view = { type: 'gform' }; render(); },
   gteam: (el, d) => {
     S.form.team = S.form.team === undefined || S.form.team === d.id ? d.id : null;   // n° 186 : une seule équipe = groupe d'équipe
     S.members.filter((m) => m.status === 'active' && m.team_id === d.id && m.user_id !== S.me.id).forEach((m) => S.form.sel.add(m.user_id));
+    (S.contacts || []).filter((m) => m.team_id === d.id).forEach((m) => S.form.sel.add(m.user_id)); // 5.15.0 · n° 238
     playersOfTeam(d.id).forEach((p) => { if (p.user_id && p.user_id !== S.me.id) S.form.sel.add(p.user_id); parentsOf(p.id).filter((u) => u !== S.me.id).forEach((u) => S.form.sel.add(u)); });
     render(true);
   },
-  gstaff: () => { S.members.filter((m) => m.status === 'active' && ['president', 'bureau', 'coach'].includes(m.role) && m.user_id !== S.me.id).forEach((m) => S.form.sel.add(m.user_id)); render(true); },
+  gstaff: () => { (S.contacts || []).filter((m) => ['president', 'bureau', 'coach'].includes(m.role)).forEach((m) => S.form.sel.add(m.user_id)); render(true); },
   gcreate: async () => {
     const nm = (S.form.name || '').trim(); if (!nm) return toast('Donne un nom au groupe.');
     // n° 186 : groupe d'équipe seulement si tout le monde en est (la base re-vérifie) ; sinon groupe libre

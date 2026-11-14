@@ -240,7 +240,7 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 #toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);z-index:20;max-width:92vw;background:var(--pc-aplat);color:var(--pc-aplat-texte);padding:12px 20px;border-radius:24px;font-weight:700;box-shadow:var(--pc-ombre)}
 
 /* ---------- Ordinateur : onglets en colonne à gauche ---------- */
-@media (min-width:960px){
+@media (min-width:600px){ /* 5.15.0 · n° 246 : bandeau à gauche dès la tablette (600 px), comme sur ordinateur */
   #app{max-width:1040px;padding-left:240px}
   html.notb #app{max-width:800px;padding-left:0} /* 5.12.1 · n° 231 : écran sans onglets = centré (même largeur utile qu'avant : 1040 − 240) */
   .tb{top:0;bottom:0;right:auto;left:max(0px,calc(50% - 520px));width:240px;justify-content:flex-start;align-items:flex-start;padding:24px 16px}
@@ -354,7 +354,7 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .rollcount .big{font-size:64px;color:var(--pc-action);line-height:.95}.rollcount .big small{font-size:30px;color:var(--pc-texte-doux)}
 .rollcount .rclab{font-weight:700;font-size:18px}.rollcount .det{flex:1 1 100%}
 .tiles9{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-@media (min-width:960px){.tiles9{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}}
+@media (min-width:600px){.tiles9{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}}
 .tile9{position:relative;min-height:96px;border-radius:20px;padding:26px 8px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:2px solid transparent;font:inherit;color:var(--pc-texte-ecran);background:var(--pc-papier)}
 .tile9 b{font:800 20px/1.05 var(--pc-titre);overflow-wrap:anywhere}
 .tile9 small{font-size:12px;font-weight:700;font-variant:small-caps;text-transform:lowercase;letter-spacing:.04em;overflow-wrap:anywhere}
@@ -386,7 +386,7 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .blkbar{display:flex;align-items:center;gap:8px;background:var(--pc-bleu-pale);border-radius:16px;padding:4px 4px 4px 14px}
 .blkbar b{flex:1;font-size:15px}.blkbar button{width:48px;height:48px;border-radius:14px;border:2px solid var(--pc-trait);background:var(--pc-papier);font-size:18px;font-weight:800}
 .blkbar button:disabled{opacity:.35}
-@media (min-width:960px){.rollfoot{bottom:16px}}
+@media (min-width:600px){.rollfoot{bottom:16px}}
 
 .tagrow{display:flex;flex-direction:column;gap:4px;margin:6px 0}
 /* n° 156 · jour J : rendez-vous du jour en tête de l'Accueil */
@@ -526,3 +526,92 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 /* 5.13.0 · n° 233 : vignette = schéma animé ; n° 232 : compteur de l'IA */
 .vthumb.sthumb{background:#F1F3F8}.vthumb.sthumb .stsvg{width:100%;height:100%;border-radius:0;pointer-events:none}
 .aitime{font-variant-numeric:tabular-nums;color:var(--pc-texte-doux);font-weight:700;margin-left:6px}
+
+/* ===== 5.15.0 ===== */
+/* n° 241 : la capture d'exemple à la largeur du texte, alignée avec lui */
+.obshot img{max-width:100%}
+.card .obshot{margin-left:0;margin-right:0}
+/* n° 239 : la demande à traiter en jaune, jusqu'à la validation ou au retour */
+.todo-hl{outline:3px solid var(--pc-jaune)!important;outline-offset:2px;background:var(--pc-attente-fond)!important;color:var(--pc-attente-texte);border-radius:16px}
+.row.todo-hl{padding-left:10px;padding-right:10px}
+/* n° 246 : « Mes rôles » en menu déroulant ; seul le sous-onglet en cours est encadré de jaune */
+@media (min-width:600px){
+  .tb nav.roles [data-act=casq]{position:relative;padding-right:28px}
+  .tb nav.roles [data-act=casq]::after{content:"▾";position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--pc-texte-doux)}
+  .tb nav.roles [data-act=casq].ropen::after{content:"▴";color:var(--pc-action)}
+  .tb .rsub button.todo-hl{outline:none!important;background:none!important;color:inherit}
+  .tb .rsub button.todo-hl::after{content:"";width:10px;height:10px;border-radius:5px;background:var(--pc-jaune);margin-left:auto;flex:none}
+  .tb nav.roles button[aria-current="page"],.tb nav.roles button.ropen{background:var(--pc-bleu-pale);color:var(--pc-action);border-radius:16px}
+  .tb nav.roles button[aria-current="page"] .ic,.tb nav.roles button.ropen .ic{background:none}
+  .tb .rsub{display:flex;flex-direction:column;gap:4px;margin:2px 0 8px 18px;padding-left:10px;border-left:2px solid var(--pc-trait)}
+  .tb .rsub button{flex-direction:row;justify-content:flex-start;min-height:42px;padding:0 12px;font-size:15px;font-weight:600;color:var(--pc-texte-ecran);border-radius:14px;border:3px solid transparent;background:none;text-align:left}
+  .tb .rsub button[aria-current="page"]{border-color:var(--pc-jaune);background:var(--pc-attente-fond);color:var(--pc-encre);font-weight:700}
+  html.rsubon nav.ttabs{display:none}
+  .tb{width:240px}
+}
+@media (min-width:600px) and (max-width:959px){
+  #app{padding-left:220px}
+  .tb{width:220px;padding:20px 10px}
+}
+/* n° 240 : onboarding en panneau, le site flouté et assombri derrière ; il suit le thème (--pc-fond, --pc-papier) */
+.obov{position:fixed;inset:0;z-index:80;display:flex;align-items:flex-end;justify-content:center}
+.obback{position:absolute;inset:0;background:rgba(17,22,46,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.obpanel{position:relative;width:100%;max-width:640px;background:var(--pc-papier);color:var(--pc-texte-ecran);border-radius:28px 28px 0 0;box-shadow:0 -10px 40px rgba(17,22,46,.3);padding:12px 20px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px;animation:obup .35s ease}
+.obpanel.open{background:var(--pc-fond);max-height:calc(100dvh - 56px);overflow:auto}
+@keyframes obup{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.obpanel{animation:none}}
+.obgrip{width:44px;height:5px;border-radius:3px;background:var(--pc-trait);margin:0 auto 4px}
+.obkick{align-self:flex-start;background:var(--pc-jaune);color:var(--pc-encre);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.obpanel h2{font-family:var(--pc-titre);font-weight:800;font-size:26px;line-height:1.15;margin:0}
+.obpanel.mini p{margin:0;font-size:16px;line-height:1.45;color:var(--pc-texte-doux)}
+.obpanel .linkbtn{align-self:center}
+.obph{display:flex;align-items:center;gap:10px}
+.obred{width:48px;height:48px;border-radius:24px;border:2px solid var(--pc-trait);background:var(--pc-papier);color:var(--pc-texte-ecran);font-size:20px;flex:none}
+.obprog{height:8px;border-radius:4px;background:var(--pc-trait);overflow:hidden}.obprog span{display:block;height:8px;background:var(--pc-action);border-radius:4px}
+.obrubs{display:flex;flex-direction:column;gap:10px}
+.obrub{background:var(--pc-papier);border:2px solid var(--pc-trait);border-radius:24px;overflow:hidden}
+.obrub.open{border-color:var(--pc-action)}
+.obrh{width:100%;min-height:60px;display:flex;align-items:center;gap:12px;padding:0 16px;background:none;border:0;color:inherit;font:inherit;text-align:left}
+.obrk{flex:none;min-width:34px;height:34px;border-radius:17px;background:var(--pc-bleu-pale);color:var(--pc-action);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;padding:0 6px}
+.obrk.ok{background:var(--pc-oui-texte);color:#fff;font-size:16px}
+.obrt{flex:1;font-family:var(--pc-titre);font-weight:800;font-size:18px}
+.obchev{color:var(--pc-texte-doux)}
+.obrb{padding:0 12px 12px}
+.obpill{position:fixed;right:16px;bottom:calc(96px + env(safe-area-inset-bottom));z-index:7;background:var(--pc-jaune);color:var(--pc-encre);border:0;border-radius:24px;min-height:48px;padding:0 18px;font-weight:700;font-size:15px;box-shadow:0 8px 22px rgba(17,22,46,.2)}
+html:has(.obov) body{overflow:hidden}
+@media (min-width:600px){
+  .obpanel{max-width:760px}
+  .obpill{bottom:24px}
+}
+@media (min-width:1200px){
+  .obpanel.open{max-width:1040px}
+  .obpanel.open .obrubs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);align-items:start}
+  .obpanel.open .obrubs .obrub.open{grid-column:2;grid-row:1 / span 20}
+  .obpanel.open .obrubs .obrub:not(.open){grid-column:1}
+}
+/* n° 242 et 243 : carnet du coach */
+.carnet{display:flex;flex-direction:column;gap:18px}
+.cblk{display:flex;flex-direction:column;gap:12px}
+.ctiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.ctile{display:flex;flex-direction:column;align-items:stretch;background:var(--pc-papier);border:0;border-radius:20px;box-shadow:var(--pc-ombre);overflow:hidden;padding:0;text-align:left;color:inherit;font:inherit;min-height:150px}
+.ctile .cthumb{display:flex;align-items:center;justify-content:center;height:110px;background:var(--pc-bleu-pale);overflow:hidden}
+.ctile .cthumb svg{width:100%;height:100%}
+.ctile .cthumb .vthumb{width:100%;height:110px;border-radius:0}
+.ctile .ct{font-weight:700;font-size:15px;line-height:1.25;padding:10px 12px 0}
+.ctile .cs{font-size:13px;color:var(--pc-texte-doux);padding:2px 12px 12px}
+.ctile.add{border:2px dashed var(--pc-trait);box-shadow:none;background:none;align-items:center;justify-content:center;color:var(--pc-action);gap:6px}
+.ctile.add .ct{padding:0}
+.terrainbtn{display:flex;align-items:center;gap:14px;background:var(--pc-encre);color:#fff;border:0;border-radius:24px;padding:14px 16px;text-align:left;font:inherit;min-height:64px}
+.terrainbtn .tbic{width:48px;height:48px;border-radius:14px;background:var(--pc-jaune);display:flex;align-items:center;justify-content:center;flex:none}
+.terrainbtn b{display:block;font-family:var(--pc-titre);font-size:18px}.terrainbtn small{display:block;opacity:.8;font-size:13px;margin-top:2px}
+.tacbtn{background:var(--pc-jaune)!important;color:var(--pc-encre)!important;border:0}
+.ctiles.wide{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+@media (min-width:600px){
+  .carnet{flex-direction:row;align-items:flex-start;gap:20px}
+  .carnet .cblk{flex:1;min-width:0;background:var(--pc-papier);border-radius:24px;box-shadow:var(--pc-ombre);padding:16px}
+  .ctile{box-shadow:none;border:2px solid var(--pc-trait)}
+}
+@media (min-width:1200px){.carnet .cblk:first-child{flex:1.4}.carnet .cblk:first-child .ctiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+/* terrain en grand : sur téléphone, le paysage est conseillé */
+html.tacfull .stedit svg,html.tacfull .tacbig svg{max-height:calc(100dvh - 260px);width:100%}
+@media (orientation:landscape) and (max-height:500px){html.tacfull .hd{display:none}html.tacfull .stedit svg,html.tacfull .tacbig svg{max-height:calc(100dvh - 40px)}}

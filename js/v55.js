@@ -139,8 +139,11 @@ export const FICHES = {
     steps: ['« Mes rôles » › Coach, onglet « Effectif » : cadre « Contact de l’équipe ».', '« Choisir un adulte ».', '« Nommer contact ».'],
     role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('effectif'), 0], ['#tcu', 1, 'z', 'Choisir un adulte'], ['#tcf [type=submit]', 2, 'z+s', 'Nommer contact']], auto: () => (S.tcontacts || []).some((c) => coachOf(c.team_id)) },
   C6: { q: 'Comment préparer une séance ?', line: 'Préparer une séance', who: () => has('coach'), why: 'Arriver avec les exercices prêts.',
-    steps: ['« Mes rôles » › Coach, onglet « Préparer ».', 'Touche une séance « À préparer », ou « Composer une séance ».', 'Ajoute des exercices (« Ajouter un exercice » pour un nouveau), puis enregistre.'],
-    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('preparer'), 0], ['main.bd [data-act=cplan]', 1], ['#planf', 2, 'z'], ['#planf [type=submit]', 2, 'z+s', 'Enregistrer la séance']] },
+    steps: ['« Mes rôles » › Coach, onglet « Planifier ».', 'Ouvre l’entraînement, puis « Gérer la séance ».', 'Ajoute des exercices (depuis ton carnet du coach ou un nouveau), puis enregistre.'],
+    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('planifier'), 0], ['main.bd .ev', 1, '', 'Un entraînement']] },
+  C10: { q: 'Comment montrer une tactique à mes joueurs ?', line: 'Créer une tactique', who: () => has('coach'), why: 'Montrer un placement ou une combinaison (une remise en jeu, par exemple) sans dessiner sur une tablette, avant ou pendant le match.',
+    steps: ['« Mes rôles » › Coach, onglet « Carnet du coach », partie « Tactiques ».', '« Nouvelle tactique » : donne-lui un nom (« Remise en jeu »), glisse les joueurs et le ballon, ajoute des étapes.', 'Pendant un match : ouvre le match, puis « Tactique » ; dessine en direct ou montre une tactique enregistrée.'],
+    role: RK.coach, show: [[ROLE(RK.coach), 0], [HUB, 0], [TS('preparer'), 0], ['main.bd [data-act=tacnew]', 1]] },
   C7: { q: 'Coach : relancer, renforts, aide coach, heures, annuler', faq: true, who: () => has('coach'), why: 'Les autres gestes du coach.',
     steps: ['Relancer ceux qui n’ont pas répondu : page du rendez-vous, cadre « Relance ».', 'Renforts : « Effectif », « Renforts », « Proposer un joueur » ; dans un rendez-vous, « Équipe seule », « Avec tous les renforts » ou « Renforts choisis ».', 'Aide coach : « Effectif », cadre « Aide coach » (joueur de 15 à 17 ans).', 'Mes heures : dans l’espace coach. Annuler ou supprimer : page du rendez-vous.'] },
   // 5.13.0 : questions ajoutées (schéma animé n° 161, banque d'exercices n° 227, recommandation n° 236)
@@ -238,7 +241,7 @@ const canShow = (f) => !!f.show && (!f.role || !!keyOf(f.role));
 // ---------- les blocs de l'encart ----------
 // 5.8.0 · n° 208 i : le président voit l'onboarding de chaque rôle (menu), compté dans sa progression
 const ROLE_MENU = [
-  ['coach', 'Coach', ['C1', 'C2', 'C3', 'C4', 'C5', 'C6']], ['tres', 'Trésorier', ['TR1', 'TR2', 'TR3']], ['sec', 'Secrétaire', ['SE1', 'SE2', 'SE3']],
+  ['coach', 'Coach', ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C10']], ['tres', 'Trésorier', ['TR1', 'TR2', 'TR3']], ['sec', 'Secrétaire', ['SE1', 'SE2', 'SE3']],
   ['ren', 'Contact rencontres', ['CR1', 'CR2', 'CR3']], ['dt', 'Directeur technique', ['DT1']], ['vp', 'Vice-président', ['VP1']], ['com', 'Communication', ['COM1']], ['evt', 'Événements', ['EV1']], ['joueur', 'Joueur', ['J1', 'J2']], ['parent', 'Parent', ['P1']], ['sup', 'Supporteur', ['S1', 'S2', 'S3']],
 ];
 const RANK = { president: 0, bureau: 1, coach: 2, joueur: 3, parent: 4, supporteur: 5 };
@@ -257,7 +260,7 @@ function blocks() {
     const k = m.role + (m.role === 'bureau' ? ':' + (m.fonction || '') : ''); if (seen.has(k)) continue; seen.add(k);
     const f = m.fonction || '';
     if (m.role === 'president') add(k, 'Président', ['R1', 'PR1', 'PR2', 'PR3', 'PR4', 'R4'], m);
-    else if (m.role === 'coach') add(k, 'Coach' + (coachTids().length === 1 ? ' · ' + teamName(coachTids()[0]) : ''), ['R1', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6'], m);
+    else if (m.role === 'coach') add(k, 'Coach' + (coachTids().length === 1 ? ' · ' + teamName(coachTids()[0]) : ''), ['R1', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C10'], m);
     else if (m.role === 'bureau') {
       const ids = /^Trésorier/.test(f) ? ['TR1', 'TR2', 'TR3'] : /^Secrétaire/.test(f) ? ['SE1', 'SE2', 'SE3'] : f === 'Correspondant rencontres' ? ['CR1', 'CR2', 'CR3'] : f === 'Correspondant licences' ? ['SE3'] : f === 'Directeur technique' ? ['DT1'] : f === 'Vice-président' ? ['VP1'] : f === 'Chargé de communication' ? ['COM1'] : f === 'Responsable événements' ? ['EV1'] : ['B1'];
       add(k, f === 'Correspondant rencontres' ? 'Contact rencontres' : f === 'Correspondant licences' ? 'Contact licences' : f || 'Membre du bureau', ['R1', 'R4', ...ids], m);
@@ -291,13 +294,46 @@ function menuBlock(b, d) {
   ${all ? '<span class="obok">✓ C’est fait</span>' : `<button class="btn small ghost" data-act="obroledone" data-v="${g.k}">C’est fait</button>`}${undo}</div>
   <div class="list">${l.map((id) => line(id, d)).join('')}</div>${g.ids.length > 5 && !more ? `<button class="linkbtn" data-act="obmore" data-v="menu:${g.k}">${g.ids.length === 6 ? 'Voir la dernière ligne' : `Voir les ${g.ids.length - 5} autres`}</button>` : ''}</div>`;
 }
+// 5.15.0 · n° 240 : l'onboarding devient un panneau qui monte du bas, le site flouté derrière (remplace l'encart de l'Accueil).
+// Petit d'abord (« Bienvenue », « De nouvelles missions »), puis « C'est parti » l'agrandit : rubriques repliables,
+// « Mon compte » en tête, puis une rubrique par rôle ; une rubrique terminée se replie seule avec « Fait ».
+function panelBlocks() {
+  const bl = blocks(), tel = bl.find((b) => b.key === 'tel'), moi = bl.find((b) => b.key === 'moi');
+  const compte = [...(tel ? tel.ids : []), ...(moi ? moi.ids : [])];
+  const rest = bl.filter((b) => b.key !== 'tel' && b.key !== 'moi');
+  return [...(compte.length ? [{ key: 'compte', title: 'Mon compte', ids: compte }] : []), ...rest];
+}
+function rubrique(b, d, open) {
+  const all = b.ids.every((id) => isDone(id, d)), n = b.ids.filter((id) => isDone(id, d)).length;
+  const lead = all ? `<span class="obrk ok" aria-hidden="true">✓</span>` : `<span class="obrk" aria-hidden="true">${n}/${b.ids.length}</span>`;
+  const head = `<button class="obrh" data-act="obrub" data-k="${esc(b.key)}" aria-expanded="${open}">${lead}<span class="obrt">${esc(b.title)}${b.isNew ? ' <span class="pill wait">Nouveau</span>' : ''}</span>${all ? '<span class="pill ok">Fait</span>' : ''}<span class="obchev" aria-hidden="true">${open ? '▴' : '▾'}</span></button>`;
+  if (!open) return `<div class="obrub${all ? ' done' : ''}">${head}</div>`;
+  const body = b.menu ? menuBlock(b, d) : `<div class="list">${b.ids.map((id) => line(id, d)).join('')}</div>`;
+  return `<div class="obrub open">${head}<div class="obrb">${body}</div></div>`;
+}
 hooks.obHome = () => {
   if (!obActive()) return '';
-  const d = doneSet(), bl = blocks(), all = bl.flatMap((b) => b.ids), n = all.filter((id) => isDone(id, d)).length;
-  return `<div class="card lift obcard" data-ob="1"><div style="display:flex;align-items:baseline;gap:8px"><span class="kick" style="flex:1">Pour bien démarrer</span><span class="det">${n} sur ${all.length}</span></div>
-  ${bl.map((b) => { if (b.menu) return menuBlock(b, d); const more = (S.obMore || {})[b.key], l = more ? b.ids : b.ids.slice(0, 5);
-    return `<div class="obblk"><b>${esc(b.title)}${b.isNew ? ' <span class="pill wait">Nouveau</span>' : ''}</b><div class="list">${l.map((id) => line(id, d)).join('')}</div>${b.ids.length > 5 && !more ? `<button class="linkbtn" data-act="obmore" data-v="${b.key}">${b.ids.length === 6 ? 'Voir la dernière ligne' : `Voir les ${b.ids.length - 5} autres`}</button>` : ''}</div>`; }).join('')}
-  <div class="btns"><button class="btn small ghost" data-act="obhide">Masquer</button></div><p class="note" style="margin:0">Tu le retrouves dans Mon compte › Aide.</p></div>`;
+  if (S.obShow) return '<span data-ob="1" hidden></span>'; // pendant « Me montrer », le panneau s'efface
+  const d = doneSet(), bl = panelBlocks(), all = bl.flatMap((b) => b.ids), n = all.filter((id) => isDone(id, d)).length;
+  const st = S.obPanel || (window.__OBCLOSED ? 'closed' : 'mini'); // __OBCLOSED : tests d'écran seulement
+  if (st === 'closed') return `<button class="obpill" data-act="obpanel" data-v="open">Pour bien démarrer · ${n} sur ${all.length}</button><span data-ob="1" hidden></span>`;
+  if (st === 'mini') {
+    const isNew = n > 0 && bl.some((b) => b.isNew);
+    const [k, t, p] = isNew ? ['Nouveau rôle', 'De nouvelles missions t’ont été attribuées', 'Un petit tuto t’explique par où commencer dans ton nouveau rôle.']
+      : n === 0 ? ['Première connexion', 'Bienvenue sur mypocketclub', 'C’est ta première connexion. Voici un petit tour, en quelques minutes, pour bien démarrer dans ton club.']
+      : ['Pour bien démarrer', 'Reprends où tu t’étais arrêté', `${n} sur ${all.length} faits. Il reste quelques étapes.`];
+    return `<div class="obov" data-ob="1"><div class="obback" data-act="obpanel" data-v="closed"></div><section class="obpanel mini" role="dialog" aria-modal="true" aria-labelledby="obpt"><span class="obgrip" aria-hidden="true"></span>
+    <span class="obkick">${k}</span><h2 id="obpt">${t}</h2><p>${p}</p><div class="btns"><button class="btn main" data-act="obpanel" data-v="open">${isNew ? 'Voir le tuto' : 'C’est parti'}</button><button class="btn ghost" data-act="obpanel" data-v="closed">Plus tard</button></div>
+    <button class="linkbtn" data-act="obhide">Ne plus afficher</button></section></div>`;
+  }
+  const want = S.obOpen, firstTodo = bl.find((b) => !b.ids.every((id) => isDone(id, d)))?.key;
+  const openKey = want !== undefined ? want : firstTodo;
+  const rubs = bl.map((b) => rubrique(b, d, b.key === openKey));
+  const pct = all.length ? Math.round((100 * n) / all.length) : 100;
+  return `<div class="obov" data-ob="1"><div class="obback" data-act="obpanel" data-v="closed"></div><section class="obpanel open" role="dialog" aria-modal="true" aria-labelledby="obpt"><span class="obgrip" aria-hidden="true"></span>
+  <div class="obph"><div style="flex:1"><h2 id="obpt">Pour bien démarrer</h2><span class="det">${n} sur ${all.length} faits</span></div><button class="linkbtn" data-act="obhide">Ne plus afficher</button><button class="obred" data-act="obpanel" data-v="closed" aria-label="Réduire le panneau">▾</button></div>
+  <div class="obprog" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
+  <div class="obrubs">${rubs.join('')}</div><p class="note" style="margin:0">Tu le retrouves dans Mon compte › Aide.</p></section></div>`;
 };
 
 // ---------- la fiche ----------
@@ -306,7 +342,7 @@ hooks.obHome = () => {
 function fichePage(id, faq) {
   const f = FICHES[id]; if (!f) return '<p class="empty">Fiche introuvable.</p>';
   const ok = isDone(id), manual = doneSet().has(id) && !f.auto?.(), extra = txt(f.extra) || '', show = canShow(f);
-  const shot = SHOTS.has(id) ? `<figure class="obshot"><button type="button" data-act="obzoom" data-id="${id}" aria-label="Agrandir la capture"><picture><source media="(min-width:960px)" srcset="img/faq/${id}-pc.jpg"><img src="img/faq/${id}-tel.jpg" alt="Capture de l’écran : ${esc(f.q)}" loading="lazy"></picture></button><figcaption class="note">L’écran, zone à toucher en jaune</figcaption></figure>` : '';
+  const shot = SHOTS.has(id) ? `<figure class="obshot"><button type="button" data-act="obzoom" data-id="${id}" aria-label="Agrandir la capture"><picture><source media="(min-width:600px)" srcset="img/faq/${id}-pc.jpg"><img src="img/faq/${id}-tel.jpg" alt="Capture de l’écran : ${esc(f.q)}" loading="lazy"></picture></button><figcaption class="note">L’écran, zone à toucher en jaune</figcaption></figure>` : '';
   const done = !f.line ? '' : ok ? `<span class="obok" role="status">✓ C’est fait</span>${manual ? `<button class="linkbtn" data-act="obundo" data-id="${id}">Annuler</button>` : ''}` : `<button class="btn ${show ? 'ghost' : 'main'}" data-act="obdone" data-id="${id}">C’est fait</button>`;
   const noRole = f.show && !show ? '<p class="note">« Me montrer » sert à la personne qui a ce rôle : tu ne l’as pas dans ce club.</p>' : '';
   return `<div class="card lift"><div class="kick">À quoi ça sert</div><p style="margin:0">${esc(f.why)}</p></div>
@@ -319,7 +355,7 @@ V310_VIEWS.obfiche = (v) => ({ head: header({ back: true, kicker: v.faq || FICHE
 // 5.8.0 · n° 218 : questions rangées par profil, recherche en direct (sans redessiner la page)
 const FAQ_GROUPS = [
   ['Pour tout le monde', ['T1', 'T2', 'T3', 'T4', 'T5', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8', 'K9', 'M1']], ['Mes rôles', ['R1', 'R2', 'R4']],
-  ['Joueur', ['J1', 'J2', 'P4']], ['Parent', ['P1', 'P2', 'P3', 'P4']], ['Supporteur', ['S1', 'S2', 'S3']], ['Coach', ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']],
+  ['Joueur', ['J1', 'J2', 'P4']], ['Parent', ['P1', 'P2', 'P3', 'P4']], ['Supporteur', ['S1', 'S2', 'S3']], ['Coach', ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10']],
   ['Président', ['PR1', 'PR2', 'PR3', 'PR4', 'PR5']], ['Trésorier', ['TR1', 'TR2', 'TR3', 'TR4']], ['Secrétaire et licences', ['SE1', 'SE2', 'SE3']],
   ['Contact rencontres', ['CR1', 'CR2', 'CR3', 'F1']], ['Directeur technique', ['DT1']], ['Vice-président', ['VP1']], ['Communication', ['COM1']], ['Événements', ['EV1']], ['Autres fonctions du bureau', ['B1']],
 ];
@@ -519,8 +555,10 @@ Object.assign(ACTIONS, {
   // n° 208 i : « C'est fait » sur un rôle du menu valide toutes ses lignes ; « Annuler » rétablit la liste d'avant
   obroledone: (el, d) => { const g = ROLE_MENU.find(([k]) => k === d.v); if (!g) return; const prev = [...doneSet()]; S.obUndo = { k: d.v, prev }; saveMeta({ done: [...new Set([...prev, ...g[2].filter((id) => !isDone(id))])] }); toast(`Lignes « ${g[1]} » cochées.`); render(true); },
   obroleundo: () => { if (!S.obUndo) return; saveMeta({ done: S.obUndo.prev }); S.obUndo = null; render(true); },
-  obhide: () => { saveMeta({ hidden: true }); toast('Masqué. Tu le retrouves dans Mon compte › Aide.'); render(true); },
-  obshowcard: () => { saveMeta({ hidden: false }); S.view = null; S.stack = []; S.tab = 0; render(); },
+  obpanel: (el, d) => { S.obPanel = d.v; if (d.v === 'open') S.obOpen = undefined; render(true); },
+  obrub: (el, d) => { S.obOpen = el.getAttribute('aria-expanded') === 'true' ? null : d.k; render(true); },
+  obhide: () => { S.obPanel = null; saveMeta({ hidden: true }); toast('Masqué. Tu le retrouves dans Mon compte › Aide.'); render(true); },
+  obshowcard: () => { S.obPanel = 'open'; saveMeta({ hidden: false }); S.view = null; S.stack = []; S.tab = 0; render(); },
   obshow: (el, d) => { S.obRet = { id: d.id, faq: S.view?.faq, stack: [...(S.stack || [])] }; S.obShow = { id: d.id, i: 0 }; S.view = null; S.stack = []; S.tab = 0; S.noStack = true; render(); },
   obstop: () => { S.obShow = null; S.obRet = null; clearShow(); if (S.imp?.ob) { S.imp = null; render(true); } },
   faq: () => { S.obShow = null; clearShow(); S.faqQ = ''; S.view = { type: 'faq' }; render(); },

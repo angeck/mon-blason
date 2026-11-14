@@ -394,6 +394,7 @@ export function eventPage(id) {
   h += missionsBlock(e);
   const plans = (S.evPlans || []).filter((p) => p.event_id === id);
   if (plans.length) h += `<div class="card pale"><div class="kick">Séance prévue</div>${plans.map((p) => `<button class="row" data-act="pview" data-id="${p.id}"><span class="g">${esc(p.title)}<small>${plural(p.items.length, 'exercice')} · ${p.items.reduce((a, x) => a + (+x.minutes || 0), 0)} min · imprimer ou PDF</small></span></button>`).join('')}</div>`;
+  if (hooks.evCoachTools) h += hooks.evCoachTools(e); // 5.15.0 · n° 243 : dans un entraînement, la séance et les tactiques ; dans un match, les tactiques
   if (man) {
     if (isTeamType(e) && !e.cancelled && !coachOnly(e) && canCallRoll(e)) h += `<button class="btn main" data-act="appel" data-id="${id}">Faire l'appel</button>`;
     h += `<div class="btns"><button class="btn ghost" data-act="evedit" data-id="${id}">Modifier</button><button class="btn ghost" data-act="evcancel" data-id="${id}">${e.cancelled ? 'Rétablir' : 'Annuler le rendez-vous'}</button></div>`;
@@ -449,7 +450,7 @@ export function teamBand(tid, cur, fallback = '') {
   ${teamTabs(tid, cur)}</div>`;
 }
 // N° 116 : les cinq onglets de l'équipe, placés au bas du bloc bleu de l'en-tête dans l'espace de l'équipe
-const TEAM_TABS = [['Pointer', 'pointer'], ['Planifier', 'planifier'], ['Préparer', 'preparer'], ['Stats', 'stats'], ['Effectif', 'effectif']];
+const TEAM_TABS = [['Pointer', 'pointer'], ['Planifier', 'planifier'], ['Carnet du coach', 'preparer'], ['Stats', 'stats'], ['Effectif', 'effectif']];
 export function teamTabs(tid, cur) {
   return `<nav class="ttabs" aria-label="Équipe">${TEAM_TABS.map(([l, k]) => `<button data-act="tsgo" data-id="${esc(tid || '')}" data-tab="${k}" ${l === cur ? 'aria-current="page"' : ''}>${l}</button>`).join('')}</nav>`;
 }
