@@ -601,7 +601,7 @@ async function hoursXlsx() {
 
 // ---------- titres des écrans (lus par app.js) ----------
 export const COACH_VIEWS = {
-  exos: () => [S.bank || !canCoachSpace() ? 'Banque d’exercices' : 'Coach', 'Exercices', exosPage], // n° 227
+  exos: () => [S.bank || !canCoachSpace() ? 'Carnet du coach' : 'Coach', 'Exercices', exosPage], // n° 227
   exo: (v) => ['Exercice', esc((S.exos || []).find((x) => x.id === v.id)?.title || 'Exercice'), () => exoPage(v.id)],
   exoform: () => ['Exercices', S.exf?.id ? 'Modifier l’exercice' : 'Nouvel exercice', exoForm],
   expick: () => ['Séance en préparation', 'Ajouter un exercice', pickPage],

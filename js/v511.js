@@ -6,20 +6,22 @@ import { S, hooks, ACTIONS, esc, isBoard, isCoach } from './core.js';
 import { icon } from './ui.js';
 
 const staff = () => isBoard() || isCoach();
-const SUBS = () => [['libre', 'Tous les clubs'], ['club', 'Exercices du club'], ...(staff() ? [['mine', 'Mes exercices'], ['plans', 'Mes séances'], ['new', 'Nouvel exercice']] : [])];
+// 5.15.1 · n° 247 : le bloc devient « Carnet du coach » (coachs et bureau seulement) : exercices, tactiques, séances
+const SUBS = () => [['libre', 'Exercices · tous les clubs'], ['club', 'Exercices du club'], ['mine', 'Mes exercices'], ['tac', 'Tactiques'], ['plans', 'Mes séances'], ['new', 'Nouvel exercice']];
 
 // Entrée allumée : l'écran ouvert depuis la banque
 function current() {
   const t = S.view?.type;
   if (t === 'exos') return S.ctab === 'seance' ? '' : (staff() ? S.ctab || 'mine' : ['club', 'libre'].includes(S.ctab) ? S.ctab : 'libre');
   if (t === 'plans') return 'plans';
+  if (['tactics', 'tac', 'tacshow', 'terrain'].includes(t)) return 'tac';
   if (t === 'exoform' && !S.exf?.id) return 'new';
   return '';
 }
 hooks.bankNav = () => {
-  if (!S.clubId || !S.me) return '';
+  if (!S.clubId || !S.me || !staff()) return '';
   const cur = S.bank ? current() : '';
-  return `<nav class="roles bank" aria-label="Banque d’exercices"><button data-act="bank" data-v="tous"><span class="ic">${icon('doc', 22)}</span><span>Banque d’exercices</span></button>${SUBS().map(([k, l]) =>
+  return `<nav class="roles bank" aria-label="Carnet du coach"><button data-act="bank" data-v="tous"><span class="ic">${icon('doc', 22)}</span><span>Carnet du coach</span></button>${SUBS().map(([k, l]) =>
     `<button class="sub" data-act="bank" data-v="${k}" ${cur === k ? 'aria-current="page"' : ''}><span>${esc(l)}</span></button>`).join('')}</nav>`;
 };
 
@@ -31,6 +33,7 @@ ACTIONS.bank = (el, d) => {
   S.stack = [];
   if (v === 'plans' && staff()) { S.bank = true; return cplans0(el, d); }
   if (v === 'new' && staff()) { S.bank = true; return cexnew0(el, d); }
+  if (v === 'tac' && staff()) { S.bank = true; return ACTIONS.tactics(el, d); }
   S.bank = true;
   return cexos0(el, { tab: ['libre', 'club', 'mine'].includes(v) ? v : 'libre' });
 };

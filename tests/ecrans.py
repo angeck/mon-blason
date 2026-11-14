@@ -797,9 +797,9 @@ with sync_playwright() as p:
     shot('11-ordinateur')
     check('ordinateur : onglets en colonne', pg.evaluate("document.querySelector('.tb nav').getBoundingClientRect().width < 300"))
     # 5.11.0 · n° 227 : banque d'exercices dans le menu de gauche
-    check('5.11.0 · n° 227 · ordinateur : « Banque d’exercices » sous « Mes rôles », avec ses sous-entrées', pg.locator('.tb nav.bank').is_visible() and all(pg.locator(f'.tb nav.bank [data-act=bank][data-v={k}]').count() == 1 for k in ['libre', 'club', 'mine', 'plans', 'new']) and pg.evaluate("(() => { const r = document.querySelector('.tb nav.roles:not(.bank)'), b = document.querySelector('.tb nav.bank'); return !r || r.getBoundingClientRect().top < b.getBoundingClientRect().top })()"))
+    check('5.11.0 · n° 227 · ordinateur : « Carnet du coach » sous « Mes rôles », avec ses sous-entrées', pg.locator('.tb nav.bank').is_visible() and all(pg.locator(f'.tb nav.bank [data-act=bank][data-v={k}]').count() == 1 for k in ['libre', 'club', 'mine', 'plans', 'new']) and pg.evaluate("(() => { const r = document.querySelector('.tb nav.roles:not(.bank)'), b = document.querySelector('.tb nav.bank'); return !r || r.getBoundingClientRect().top < b.getBoundingClientRect().top })()"))
     pg.click('.tb nav.bank [data-act=bank][data-v=tous]'); pg.wait_for_timeout(500)
-    check('5.11.0 · n° 227 · l’entrée ouvre tous les exercices publics (« Libre »), titre « Banque d’exercices »', 'banque d’exercices' in pg.inner_text('header').lower() and pg.locator('[data-act=ctab][data-v=libre][aria-pressed=true]').count() == 1 and pg.locator('.tb nav.bank [data-act=bank][data-v=libre][aria-current=page]').count() == 1)
+    check('5.11.0 · n° 227 · l’entrée ouvre tous les exercices publics (« Libre »), titre « Carnet du coach »', 'carnet du coach' in pg.inner_text('header').lower() and pg.locator('[data-act=ctab][data-v=libre][aria-pressed=true]').count() == 1 and pg.locator('.tb nav.bank [data-act=bank][data-v=libre][aria-current=page]').count() == 1)
     pg.click('.tb nav.bank [data-act=bank][data-v=mine]'); pg.wait_for_timeout(400)
     check('5.11.0 · n° 227 · « Mes exercices » ouvre « Ma banque » et s’allume', pg.locator('[data-act=ctab][data-v=mine][aria-pressed=true]').count() == 1 and pg.locator('.tb nav.bank [data-act=bank][data-v=mine][aria-current=page]').count() == 1)
     pg.click('.tb nav.bank [data-act=bank][data-v=new]'); pg.wait_for_timeout(400)
@@ -1527,7 +1527,7 @@ with sync_playwright() as p:
     check('accueil public : recherche, se connecter, lien « Je n’ai pas encore de compte »', 'Chercher un club' in t2() and 'Se connecter' in t2() and 'Je n’ai pas encore de compte' in t2().replace("'", '’'))
     # 5.0.0 · n° 197 : écran d'ouverture de l'identité
     check('n° 197 · slogan de l’identité', 'Tout ton club dans ta poche' in t2())
-    check('n° 197 · pied : mentions légales, version, contact et site', all(x in t2() for x in ['Mentions légales', 'Vos données', 'Conditions', 'alpha 5.15.0 · version de test', 'contact@', 'Site :']))
+    check('n° 197 · pied : mentions légales, version, contact et site', all(x in t2() for x in ['Mentions légales', 'Vos données', 'Conditions', 'alpha 5.15.1 · version de test', 'contact@', 'Site :']))
     check('n° 197 · fond encre et logo « club » bleu clair', pg2.evaluate("getComputedStyle(document.documentElement).backgroundColor") == 'rgb(17, 22, 46)' and pg2.evaluate("getComputedStyle(document.querySelector('.ouvert .wordmark .club')).color") == 'rgb(107, 139, 255)')
     check('n° 197 · la recherche est visible sans défiler sur 360 × 640', (pg2.set_viewport_size({'width': 360, 'height': 640}) or True) and pg2.evaluate("document.querySelector('#psf button[type=submit]').getBoundingClientRect().bottom") <= 640)
     shot2 = lambda n: OUT and pg2.screenshot(path=os.path.join(OUT, n + '.png'))

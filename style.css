@@ -615,3 +615,6 @@ html:has(.obov) body{overflow:hidden}
 /* terrain en grand : sur téléphone, le paysage est conseillé */
 html.tacfull .stedit svg,html.tacfull .tacbig svg{max-height:calc(100dvh - 260px);width:100%}
 @media (orientation:landscape) and (max-height:500px){html.tacfull .hd{display:none}html.tacfull .stedit svg,html.tacfull .tacbig svg{max-height:calc(100dvh - 40px)}}
+
+/* 5.15.1 · n° 247 : bloc « Carnet du coach » du bandeau : l'entrée en cours encadrée de jaune, comme les sous-onglets d'un rôle */
+@media (min-width:600px){.tb nav.bank button.sub[aria-current="page"]{border:3px solid var(--pc-jaune);background:var(--pc-attente-fond);color:var(--pc-encre);border-radius:14px}}

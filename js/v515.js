@@ -126,7 +126,7 @@ function tacticsPage() {
   const tac = tacticsNow(); if (tac === null) return '<p class="det">Chargement…</p>';
   const mine = tac.filter((t) => t.created_by === S.me.id), club_ = tac.filter((t) => t.created_by !== S.me.id);
   let h = `<div class="btns"><button class="btn main" data-act="tacnew">${icon('plus', 20)}Nouvelle tactique</button><button class="btn ghost" data-act="terrain">Ouvrir le terrain</button></div>`;
-  h += `<div class="sec"><h2>Mes tactiques</h2></div><div class="ctiles wide">${mine.length ? mine.map((t) => tacTile(t)).join('') : '<p class="empty">Pas encore de tactique. Exemple : « Remise en jeu ».</p>'}</div>`;
+  h += `<div class="sec"><h2>Mes tactiques</h2></div>${mine.length ? `<div class="ctiles wide">${mine.map((t) => tacTile(t)).join('')}</div>` : '<p class="empty">Pas encore de tactique. Exemple : « Remise en jeu ».</p>'}`;
   if (club_.length) h += `<div class="sec"><h2>Partagées par le club</h2></div><div class="ctiles wide">${club_.map((t) => tacTile(t, 'tacshow')).join('')}</div>`;
   return h;
 }
