@@ -50,7 +50,8 @@ hooks.todayOnHome = true; // la carte « Faire l'appel » du coach (v36) est rem
 function todayHome(l) {
   if (!l.length) return '';
   return `<div class="sec"><h2>Aujourd’hui</h2></div><div class="today">${l.map((e) => evCard(e, { answer: true })
-    + (ROLLT.includes(e.type) && !e.cancelled && canCallRoll(e) ? `<button class="btn ${S.att.some((x) => x.event_id === e.id) ? 'ghost' : 'main'}" data-act="appel" data-id="${e.id}">${S.att.some((x) => x.event_id === e.id) ? 'Voir l’appel' : 'Faire l’appel'}</button>` : '')).join('')}</div>`;
+    + (ROLLT.includes(e.type) && !e.cancelled && canCallRoll(e) ? `<button class="btn ${S.att.some((x) => x.event_id === e.id) ? 'ghost' : 'main'}" data-act="appel" data-id="${e.id}">${S.att.some((x) => x.event_id === e.id) ? 'Voir l’appel' : 'Faire l’appel'}</button>` : '')
+    + (canCallRoll(e) && hooks.dayTools ? `<div class="btns">${hooks.dayTools(e)}</div>` : '')).join('')}</div>`; // n° 252 : séance et tactiques le jour J
 }
 // N° 122 · encart jaune : une seule carte qui liste toutes mes fonctions du moment (dont celles reçues par défaut),
 // tant que je n'ai pas confirmé ce que je montre ; « Confirmer » ouvre Mon compte à cet endroit

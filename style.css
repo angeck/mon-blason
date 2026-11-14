@@ -621,3 +621,13 @@ html.tacfull .stedit svg,html.tacfull .tacbig svg{max-height:calc(100dvh - 260px
 /* 5.15.2 : sur tablette et ordinateur, le bandeau de « Me montrer » reste en bas, à droite de la colonne de gauche (onglets et rôles libres) */
 @media (min-width:600px){.obbar:not(.side){left:calc(max(0px, 50% - 520px) + 252px);right:max(12px, calc(50% - 508px));bottom:16px}}
 @media (min-width:600px) and (max-width:959px){.obbar:not(.side){left:232px}}
+
+/* 5.16.0 · n° 252 : bandeau « Aujourd'hui » de l'espace Coach ; entrées du carnet dans la colonne de gauche */
+.tday{background:var(--pc-attente-fond);border:3px solid var(--pc-jaune);border-radius:22px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.tday .kick{color:var(--pc-texte-ecran)}
+.tday .tdt{font-family:var(--pc-titre);font-size:19px;color:var(--pc-texte-ecran)}
+.tday .btns{margin-top:6px;flex-wrap:wrap}
+@media (min-width:600px){
+  .tb .rsub .rsub2{display:flex;flex-direction:column;gap:2px;margin:0 0 4px 16px;padding-left:8px;border-left:2px solid var(--pc-trait)}
+  .tb .rsub .rsub2 button{min-height:38px;font-size:14px;font-weight:500}
+}

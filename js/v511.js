@@ -19,7 +19,7 @@ function current() {
   return '';
 }
 hooks.bankNav = () => {
-  if (!S.clubId || !S.me || !staff()) return '';
+  if (!S.clubId || !S.me || !staff() || (hooks.hideBank && hooks.hideBank())) return '';
   const cur = S.bank ? current() : '';
   return `<nav class="roles bank" aria-label="Carnet du coach"><button data-act="bank" data-v="tous"><span class="ic">${icon('doc', 22)}</span><span>Carnet du coach</span></button>${SUBS().map(([k, l]) =>
     `<button class="sub" data-act="bank" data-v="${k}" ${cur === k ? 'aria-current="page"' : ''}><span>${esc(l)}</span></button>`).join('')}</nav>`;

@@ -160,7 +160,7 @@ export function exosForCounts() {
   return null;
 }
 export function planForEvent(e) { const t = evTeams(e).find((x) => coachOf(x)) || evTeams(e)[0] || ''; S.plan = { club: S.clubId, id: null, title: e.title + ' · ' + new Date(e.starts_at).toLocaleDateString('fr-FR'), team_id: t, event_id: e.id, notes: '', items: [] }; savePlanLocal(); }
-async function loadPlans() { S.plans = (await sb.from('training_plans').select('*').is('deleted_at', null).order('updated_at', { ascending: false }).limit(200)).data || []; }
+export async function loadPlans() { S.plans = (await sb.from('training_plans').select('*').is('deleted_at', null).order('updated_at', { ascending: false }).limit(200)).data || []; }
 // Compteurs pour l'onglet Club (bureau) : relevés d'heures et exercices publics à valider
 export async function loadCoachCounts() {
   S.coachCounts = { hours: 0, exos: 0 };

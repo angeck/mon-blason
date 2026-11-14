@@ -450,7 +450,8 @@ export function teamBand(tid, cur, fallback = '') {
   ${teamTabs(tid, cur)}</div>`;
 }
 // N° 116 : les cinq onglets de l'équipe, placés au bas du bloc bleu de l'en-tête dans l'espace de l'équipe
-const TEAM_TABS = [['Pointer', 'pointer'], ['Planifier', 'planifier'], ['Carnet du coach', 'preparer'], ['Stats', 'stats'], ['Effectif', 'effectif']];
+// 5.16.0 · n° 252 : Planifier · Carnet du coach · Effectif · Stats ; « Pointer » n'est plus un onglet (bandeau « Aujourd'hui » le jour J)
+const TEAM_TABS = [['Planifier', 'planifier'], ['Carnet du coach', 'preparer'], ['Effectif', 'effectif'], ['Stats', 'stats']];
 export function teamTabs(tid, cur) {
   return `<nav class="ttabs" aria-label="Équipe">${TEAM_TABS.map(([l, k]) => `<button data-act="tsgo" data-id="${esc(tid || '')}" data-tab="${k}" ${l === cur ? 'aria-current="page"' : ''}>${l}</button>`).join('')}</nav>`;
 }
@@ -466,7 +467,7 @@ export function appelPage(eid, strip) {
   const ann = { oui: 0, non: 0, '': 0 }; ps.forEach((p) => ann[announced(p, eid)]++);
   // Navigation : séance précédente / suivante de l'équipe, type de rendez-vous
   const list = rollEvents(e), i = list.findIndex((x) => x.id === eid), prev = list[i - 1], next = list[i + 1];
-  let h = strip ? teamStrip(e, 'Pointer') : '';
+  let h = strip ? teamStrip(e, 'Planifier') : '';
   h += `<div class="rollnav"><button class="roundbtn" data-act="appgo" data-id="${prev?.id || ''}" ${prev ? '' : 'disabled'} aria-label="Séance précédente">${icon('back', 20, '#11162E', 2.4)}</button><span><b>${esc(new Date(e.starts_at).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }))}</b><small>${esc(timeRange(e))}${e.place ? ' · ' + esc(e.place) : ''}</small></span><button class="roundbtn" data-act="appgo" data-id="${next?.id || ''}" ${next ? '' : 'disabled'} aria-label="Séance suivante" style="transform:scaleX(-1)">${icon('back', 20, '#11162E', 2.4)}</button></div>`;
   h += `<div class="seg" role="group" aria-label="Type">${ROLL_TYPES.map((t) => { const near = list.filter((x) => x.type === t).sort((a, b) => Math.abs(new Date(a.starts_at) - new Date(e.starts_at)) - Math.abs(new Date(b.starts_at) - new Date(e.starts_at)))[0]; return `<button data-act="appgo" data-id="${near?.id || ''}" aria-pressed="${e.type === t}" ${near || e.type === t ? '' : 'disabled'}>${t}</button>`; }).join('')}</div>`;
   if (!N) return h + '<div class="card"><p class="empty">Aucune fiche joueur dans cette équipe.</p></div>';

@@ -9,7 +9,7 @@
 // Rappel : chaque droit est vérifié par la base ; l'écran n'est qu'un confort.
 import { S, sb, esc, hooks, ACTIONS, INPUTS, render, toast, run, club, armed, isArmed, store, toValidate, casquettes, isCoachCasq } from './core.js';
 import { icon, SPACE_VIEWS } from './ui.js';
-import { COACH_VIEWS, thumb, exosForCounts, plansForEvent } from './coach.js';
+import { COACH_VIEWS, thumb, exosForCounts, plansForEvent, loadPlans } from './coach.js';
 import { canCallRoll, homeEvents, needsAnswer } from './agenda.js';
 import { normalize, stepsSvg, player, hasSteps } from './v510.js';
 
@@ -95,6 +95,19 @@ function wrapBack() {
 
 // ---------- n° 246 · sous-onglets du rôle ouvert, dans le bandeau de gauche ----------
 const wide = matchMedia('(min-width:600px)');
+// 5.16.0 · n° 252 : sous « Carnet du coach », trois entrées (Exercices, Tactiques, Séances types) ; seule l'entrée en cours est en jaune
+const CARNET_CUR = { exos: 'ex', exo: 'ex', exoform: 'ex', expick: 'ex', tactics: 'tac', tac: 'tac', tacshow: 'tac', terrain: 'tac', plans: 'tpl' };
+function carnetSubs(sub, key) {
+  if (!isCoachCasq(key)) return;
+  const par = sub.querySelector('[data-act=tsgo][data-tab=preparer]'); if (!par) return;
+  const cur = CARNET_CUR[S.view?.type] || '';
+  const items = [['ex', 'Exercices', 'data-act="cexos" data-tab="mine"'], ['tac', 'Tactiques', 'data-act="tactics"'], ['tpl', 'Séances types', 'data-act="cplans"']];
+  const d = document.createElement('div');
+  d.className = 'rsub2'; d.setAttribute('role', 'group'); d.setAttribute('aria-label', 'Carnet du coach');
+  d.innerHTML = items.map(([k, l, a]) => `<button ${a} ${cur === k ? 'aria-current="page"' : ''}>${l}</button>`).join('');
+  if (cur) par.removeAttribute('aria-current');
+  par.after(d);
+}
 function roleSubs() {
   const root = document.documentElement;
   root.classList.remove('rsubon');
@@ -114,6 +127,7 @@ function roleSubs() {
   const sub = document.createElement('div');
   sub.className = 'rsub'; sub.setAttribute('role', 'group'); sub.setAttribute('aria-label', 'Sous-onglets du rôle');
   sub.innerHTML = tt.innerHTML;
+  carnetSubs(sub, key);
   btn.after(sub);
   root.classList.add('rsubon');
 }
@@ -149,6 +163,28 @@ const exTile = (e) => `<button class="ctile" data-act="cexo" data-id="${e.id}"><
 const addTile = (act, label, extra = '') => `<button class="ctile add" data-act="${act}" ${extra}>${icon('plus', 26)}<span class="ct">${label}</span></button>`;
 
 // Le carnet du coach (onglet de l'espace de l'équipe) : Exercices / Tactiques, l'un sous l'autre sur téléphone, côte à côte au-delà
+// 5.16.0 · n° 252 : troisième partie du carnet, les séances types (modèles sans date)
+function tplHtml() {
+  if (!S.plans) {
+    if (!S.plLoading) { S.plLoading = true; loadPlans().then(() => { S.plLoading = false; render(true); }, () => { S.plLoading = false; }); }
+    return '<p class="det">Chargement…</p>';
+  }
+  const l = S.plans.filter((p) => p.is_template && p.created_by === S.me.id).slice(0, 5);
+  if (!l.length) return '<p class="det">Aucune séance type pour l’instant.</p>';
+  return `<div class="card"><div class="list">${l.map((p) => `<button class="row" data-act="ptpluse" data-id="${p.id}"><span class="g">${esc(p.title || 'Séance type')}<small>${(p.items || []).length} exercice${(p.items || []).length > 1 ? 's' : ''}</small></span><span class="chev"></span></button>`).join('')}</div></div>`;
+}
+// 5.16.0 · n° 252 : outils du jour J (bandeau « Aujourd'hui » de l'espace Coach et carte du jour de l'Accueil)
+hooks.dayTools = (e) => {
+  if (!e || e.cancelled || !canCallRoll(e)) return '';
+  if (e.type === 'Entraînement') {
+    const p = plansForEvent(e.id)[0];
+    return `<button class="btn ghost" data-act="${p ? 'pview' : 'cplanfor'}" data-id="${p ? p.id : e.id}">${icon('doc', 20)}Gérer la séance</button><button class="btn ghost" data-act="terrain" data-ev="${e.id}">${icon('target', 20)}Tactiques</button>`;
+  }
+  if (['Match', 'Plateau', 'Tournoi'].includes(e.type)) return `<button class="btn ghost" data-act="terrain" data-ev="${e.id}">${icon('target', 20)}Tactique</button>`;
+  return '';
+};
+// n° 252 : le bloc séparé « Carnet du coach » du bandeau de gauche disparaît pour un coach (le carnet est dans le rôle Coach)
+hooks.hideBank = () => casquettes().some((x) => isCoachCasq(x.k));
 hooks.carnetBody = () => {
   const ex = exosForCounts(), tac = tacticsNow();
   const myEx = ex ? ex.filter((e) => !e.deleted_at).sort((a, b) => (a.created_by === S.me.id ? -1 : 0) - (b.created_by === S.me.id ? -1 : 0)).slice(0, 5) : null;
@@ -157,8 +193,9 @@ hooks.carnetBody = () => {
   return `<div class="carnet">
   <section class="cblk"><div class="sec"><h2>Exercices</h2><button class="linkbtn" data-act="cexos" data-tab="mine">Tout voir</button></div><div class="ctiles">${exHtml}</div></section>
   <section class="cblk"><div class="sec"><h2>Tactiques</h2><button class="linkbtn" data-act="tactics">Tout voir</button></div><div class="ctiles">${tacHtml}</div>
-  <button class="terrainbtn" data-act="terrain"><span class="tbic">${icon('target', 26, '#11162E')}</span><span><b>Ouvrir le terrain</b><small>Dessiner en direct, ou montrer une tactique</small></span></button></section></div>
-  <p class="note">Les séances se préparent dans chaque entraînement : Planifier › l’entraînement › « Gérer la séance ».</p>`;
+  <button class="terrainbtn" data-act="terrain"><span class="tbic">${icon('target', 26, '#11162E')}</span><span><b>Ouvrir le terrain</b><small>Dessiner en direct, ou montrer une tactique</small></span></button></section>
+  <section class="cblk"><div class="sec"><h2>Séances types</h2><button class="linkbtn" data-act="cplans">Tout voir</button></div>${tplHtml()}</section></div>
+  <p class="note">Une séance se prépare dans l’entraînement (Planifier › l’entraînement › « Gérer la séance ») ; « Enregistrer comme séance type » la range ici.</p>`;
 };
 
 // Toutes les tactiques

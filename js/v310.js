@@ -34,8 +34,8 @@ export async function loadV310() {
 
 // ---------- n° 113 · contexte « espace de l'équipe » ----------
 // Pages qui gardent le bandeau de l'équipe quand on y arrive depuis l'espace de l'équipe (S.tsp = identifiant de l'équipe)
-const TEAM_CTX = { tspace: '', appel: 'Pointer', event: 'Planifier', evform: 'Planifier', team: 'Effectif', player: 'Effectif', import: 'Effectif', stats: 'Stats', plans: 'Carnet du coach', exos: 'Carnet du coach', exo: 'Carnet du coach', exoform: 'Carnet du coach', expick: 'Carnet du coach', tactics: 'Carnet du coach', tac: 'Carnet du coach' };
-const TAB_LABEL = { pointer: 'Pointer', planifier: 'Planifier', preparer: 'Carnet du coach', stats: 'Stats', effectif: 'Effectif' };
+const TEAM_CTX = { tspace: '', appel: 'Planifier', event: 'Planifier', evform: 'Planifier', team: 'Effectif', player: 'Effectif', import: 'Effectif', stats: 'Stats', plans: 'Carnet du coach', exos: 'Carnet du coach', exo: 'Carnet du coach', exoform: 'Carnet du coach', expick: 'Carnet du coach', tactics: 'Carnet du coach', tac: 'Carnet du coach' };
+const TAB_LABEL = { pointer: 'Planifier', planifier: 'Planifier', preparer: 'Carnet du coach', stats: 'Stats', effectif: 'Effectif' };
 function inCtx(v) {
   if (!S.tsp || !v || !(v.type in TEAM_CTX)) return false;
   if (v.type === 'tspace') return v.id === S.tsp;
@@ -52,7 +52,19 @@ export function teamWrap(v, head, body) {
 }
 const nextRoll = (tid) => upcoming(S.events.filter((e) => !e.cancelled && evTeams(e).includes(tid) && ROLL.includes(e.type) && canCallRoll(e) && new Date(e.starts_at) > Date.now() - 6 * 3600e3))[0];
 
-// Onglet « Pointer » : l'appel du prochain rendez-vous (avec son bandeau), sinon un bandeau et une invitation à planifier
+// 5.16.0 · n° 252 : bandeau « Aujourd'hui » en tête de l'espace Coach, le jour d'un rendez-vous de l'équipe :
+// l'appel, puis la séance et les tactiques (entraînement) ou la tactique (match, plateau, tournoi)
+export function todayBand(tid) {
+  const day = new Date().toDateString();
+  const l = S.events.filter((e) => !e.cancelled && evTeams(e).includes(tid) && ROLL.includes(e.type) && canCallRoll(e) && new Date(e.starts_at).toDateString() === day)
+    .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
+  return l.map((e) => {
+    const done = S.att.some((x) => x.event_id === e.id), hh = new Date(e.starts_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', ' h ');
+    return `<div class="tday"><div class="kick">Aujourd’hui · ${esc(hh)}</div><b class="tdt">${esc(e.type)}${e.place ? ' · ' + esc(e.place) : ''}</b>
+    <div class="btns"><button class="btn ${done ? 'ghost' : 'main'}" data-act="appel" data-id="${e.id}">${icon('check', 20)}${done ? 'Voir l’appel' : 'Faire l’appel'}</button>${hooks.dayTools ? hooks.dayTools(e) : ''}</div></div>`;
+  }).join('');
+}
+// Ancien onglet « Pointer » (avant la 5.16.0) : l'appel du prochain rendez-vous (avec son bandeau), sinon un bandeau et une invitation à planifier
 export function teamPointer(tid) {
   const e = nextRoll(tid);
   if (e) return appelPage(e.id, false);
@@ -79,11 +91,11 @@ function preparerBody(tid) {
 }
 // N° 116 : même bloc bleu que l'espace : en-tête, équipe et « club · saison », casquettes, onglets de l'équipe
 function tspaceView(v) {
-  const t = team(v.id), tab = v.tab || 'pointer';
+  const t = team(v.id), tab = v.tab === 'preparer' ? 'preparer' : 'planifier';
   S.tsp = v.id; currentCasq();
   const head = header({ back: true, space: true, title: esc(t?.name || 'Équipe'), under: clubSeason(t?.season || SEASON), casq: casqTabs(), tabs: t ? teamTabs(v.id, TAB_LABEL[tab]) : '' });
   if (!t) return { head, body: '<p class="empty">Équipe introuvable.</p>' };
-  const body = tab === 'pointer' ? teamPointer(v.id) : tab === 'planifier' ? planifierBody(v.id) : preparerBody(v.id);
+  const body = tab === 'preparer' ? preparerBody(v.id) : todayBand(v.id) + planifierBody(v.id);
   return { head, body };
 }
 
@@ -118,13 +130,13 @@ export function coachHub(ids) {
     { id: 'heures', label: 'Mes heures', html: `<button class="btn" data-act="chours">${icon('check', 20)}Mes heures · relevé du mois</button>` },
   ]);
 }
-// Coach d'une seule équipe : l'espace de l'équipe directement (onglet Pointer) ; les onglets sont dans l'en-tête (n° 116)
+// Coach d'une seule équipe : l'espace de l'équipe directement (onglet Planifier, bandeau « Aujourd'hui » le jour J) ; les onglets sont dans l'en-tête (n° 116)
 export function coachSingle(tid) {
   S.tsp = tid;
   const vp = toValidate().filter((m) => m.team_id === tid).length;
   // alertes au-dessus ; « Mes heures » et « Mes exercices » (à la personne) sous le contenu de l'onglet (n° 116)
   return hoursHome() + (vp ? `<button class="btn main" data-act="tsgo" data-id="${tid}" data-tab="effectif">${plural(vp, 'demande à valider', 'demandes à valider')}</button>` : '')
-    + teamPointer(tid) + `<div class="grid2"><button class="btn small" data-act="chours">${icon('check', 18)}Mes heures</button><button class="btn small" data-act="cexos" data-tab="mine">${icon('doc', 18)}Mes exercices</button></div>`;
+    + todayBand(tid) + planifierBody(tid) + `<div class="grid2"><button class="btn small" data-act="chours">${icon('check', 18)}Mes heures</button><button class="btn small" data-act="cexos" data-tab="mine">${icon('doc', 18)}Mes exercices</button></div>`;
 }
 
 // ---------- vue par défaut du bouton de rôle (n° 113) ----------
@@ -297,10 +309,10 @@ Object.assign(ACTIONS, {
   // n° 132 : ouvre le dépliant « Équipes » de la vue d'ensemble, formulaire « Créer une équipe » déplié
   tcreateopen: () => { S.ptab = 'ensemble'; S.pfold = 'equipes'; S.tcreate = true; render(true); const d = document.querySelector('details[data-tcreate]'); if (d) { d.scrollIntoView({ block: 'start', behavior: 'smooth' }); d.querySelector('select,input')?.focus({ preventScroll: true }); } },
   // Ouvrir l'espace d'une équipe (depuis la liste des équipes du coach ou le dépliant « Équipes » du président)
-  tsopen: (el, d) => { S.sel = null; S.tsp = d.id; S.view = { type: 'tspace', id: d.id, tab: 'pointer' }; render(); },
+  tsopen: (el, d) => { S.sel = null; S.tsp = d.id; S.view = { type: 'tspace', id: d.id, tab: 'planifier' }; render(); },
   // Onglets du bandeau : Pointer · Planifier · Préparer · Stats · Effectif (sans empiler les onglets dans le bouton Retour)
   tsgo: async (el, d) => {
-    const tid = d.id, tab = d.tab || 'pointer', wasIn = !!S.tsp && S.tsp === tid;
+    const tid = d.id, tab = d.tab === 'pointer' ? 'planifier' : d.tab || 'planifier', wasIn = !!S.tsp && S.tsp === tid;
     S.tsp = tid; S.sel = null; if (wasIn) S.noStack = true;
     if (tab === 'stats') { S.st = { team: tid, period: S.st?.period || 'saison' }; S.view = { type: 'stats' }; render(); await ACTIONS.stteam(el, { id: tid }); return; }
     if (tab === 'effectif') { S.view = { type: 'team', id: tid }; render(); return; }
