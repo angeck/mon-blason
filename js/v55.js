@@ -41,7 +41,8 @@ const TAB = (i) => `.tb > nav [data-act=tab][data-i="${i}"]`;
 const ACC = '[data-act=account]';
 const FTAB = (...v) => v.map((x) => `[data-act=ftab][data-v="${x}"]`).join(', ');
 const PTAB = (v) => `[data-act=ptab][data-v="${v}"]`;
-const TS = (t) => `.hd [data-act=tsgo][data-tab="${t}"]`;
+// 5.15.2 · n° 249 : sur tablette et ordinateur, les onglets de l'équipe sont dans le bandeau de gauche (n° 246)
+const TS = (t) => `.hd [data-act=tsgo][data-tab="${t}"], .tb .rsub [data-act=tsgo][data-tab="${t}"]`;
 const HUB = '[data-act=tsopen]'; // coach de plusieurs équipes : la liste des équipes
 // 5.8.0 · n° 208 g : le rôle de la fiche (Trésorier, Secrétaire…), pas le premier de la liste
 const RK = {
@@ -160,7 +161,7 @@ export const FICHES = {
     steps: ['Convocations reçues : « Transférer ».', 'Choisis les personnes : elles reçoivent une annonce avec le jour, l’heure et le lieu, sans le contact de l’autre club.', '« Rattacher » relie un match reçu à un rendez-vous déjà dans l’agenda.'] },
   B1: { q: 'Faire le tour de ma fonction', line: 'Faire le tour de ta fonction', who: () => has('bureau') && !fnHas('Trésorier', 'Trésorier adjoint', 'Secrétaire', 'Secrétaire adjoint', 'Correspondant rencontres', 'Directeur technique', 'Vice-président', 'Chargé de communication', 'Responsable événements'),
     why: 'Chaque espace s’ouvre sur « Aperçu » : ce qui est à faire, puis tes droits.', steps: ['« Mes rôles », puis ta fonction.', 'Lis l’« Aperçu », puis ouvre chaque onglet.'],
-    role: RK.bur, show: [[ROLE(RK.bur), 0], ['.hd .ttabs', 1, 'z']] },
+    role: RK.bur, show: [[ROLE(RK.bur), 0], ['.hd .ttabs, .tb .rsub', 1, 'z']] },
   // 5.14.0 · fiches détaillées du vice-président, de la communication et des événements (go de Gaël, 13 novembre)
   VP1: { q: 'Vice-président : que puis-je faire ?', line: 'Découvrir ton espace de vice-président', who: () => fnHas('Vice-président'),
     why: 'Tu as tous les accès du club, comme le président, pour le seconder au quotidien.',
@@ -229,7 +230,23 @@ export const FICHES = {
 const txt = (v) => (typeof v === 'function' ? v() : v);
 const isDone = (id, d = doneSet()) => d.has(id) || !!FICHES[id]?.auto?.();
 // 5.8.0 · n° 208 d : « [équipe] » et « [club] » remplacés par les vrais noms
-const sub = (s) => s.replace(/\[équipe\]/g, () => (coachTids()[0] ? teamName(coachTids()[0]) : 'de ton choix')).replace(/\[club\]/g, () => S.clubs?.[S.clubId]?.name || 'ton club');
+// 5.15.2 · n° 251 : le texte dit le bon geste selon le support (téléphone : les quatre carrés en haut ; tablette et ordinateur,
+// dès 600 px : « Mes rôles » dans la colonne de gauche, le rôle ouvert déplie ses onglets)
+const wideNow = () => innerWidth >= 600;
+const DEVICE_TXT = [
+  ['Touche les quatre carrés « Mes rôles » en haut de l’écran (sur ordinateur : le bloc « Mes rôles » à gauche).', 'Touche les quatre carrés « Mes rôles » en haut de l’écran.', 'Dans la colonne de gauche, bloc « Mes rôles » : touche ton rôle.'],
+  ['Avec plusieurs rôles, une rangée « Mes rôles » apparaît dans le bloc bleu : touche le rôle voulu.', null, 'Avec plusieurs rôles, chacun a sa ligne : touche celui voulu ; il se déplie avec ses onglets juste en dessous.'],
+  ['Les onglets du bas servent à consulter', null, 'Les onglets de la colonne de gauche (Accueil, Agenda…) servent à consulter'],
+];
+function byDevice(s) {
+  const w = wideNow();
+  for (const [a, tel, large] of DEVICE_TXT) if (s.includes(a)) s = s.replace(a, (w ? large : tel) || a);
+  if (w) s = s.replace(/^« Mes rôles » › ([^,.(]+?), onglet « ([^»]+) »/, 'Colonne de gauche, « Mes rôles » › $1, puis « $2 »')
+    .replace(/^« Mes rôles » › ([^,.(:]+?)( \(|\.|$| :)/, 'Colonne de gauche, « Mes rôles » › $1$2');
+  else s = s.replace(/^« Mes rôles » ›/, 'Les quatre carrés « Mes rôles » (en haut) ›');
+  return s;
+}
+const sub = (s) => byDevice(s).replace(/\[équipe\]/g, () => (coachTids()[0] ? teamName(coachTids()[0]) : 'de ton choix')).replace(/\[club\]/g, () => S.clubs?.[S.clubId]?.name || 'ton club');
 const stepsOf = (f) => f.steps.map(sub);
 // 5.9.0 · n° 222-223 : « s » = l'action est simulée pendant « Me montrer » (rien n'est enregistré) ;
 // ex = libellé de l'exemple affiché quand la zone n'existe pas encore (pas de demande, pas de match…)
@@ -342,10 +359,10 @@ hooks.obHome = () => {
 function fichePage(id, faq) {
   const f = FICHES[id]; if (!f) return '<p class="empty">Fiche introuvable.</p>';
   const ok = isDone(id), manual = doneSet().has(id) && !f.auto?.(), extra = txt(f.extra) || '', show = canShow(f);
-  const shot = SHOTS.has(id) ? `<figure class="obshot"><button type="button" data-act="obzoom" data-id="${id}" aria-label="Agrandir la capture"><picture><source media="(min-width:600px)" srcset="img/faq/${id}-pc.jpg"><img src="img/faq/${id}-tel.jpg" alt="Capture de l’écran : ${esc(f.q)}" loading="lazy"></picture></button><figcaption class="note">L’écran, zone à toucher en jaune</figcaption></figure>` : '';
+  const shot = SHOTS.has(id) ? `<figure class="obshot"><button type="button" data-act="obzoom" data-id="${id}" aria-label="Agrandir la capture"><picture><source media="(min-width:960px)" srcset="img/faq/${id}-pc.jpg"><source media="(min-width:600px)" srcset="img/faq/${id}-tab.jpg"><img src="img/faq/${id}-tel.jpg" alt="Capture de l’écran : ${esc(f.q)}" loading="lazy"></picture></button><figcaption class="note">L’écran, zone à toucher en jaune</figcaption></figure>` : '';
   const done = !f.line ? '' : ok ? `<span class="obok" role="status">✓ C’est fait</span>${manual ? `<button class="linkbtn" data-act="obundo" data-id="${id}">Annuler</button>` : ''}` : `<button class="btn ${show ? 'ghost' : 'main'}" data-act="obdone" data-id="${id}">C’est fait</button>`;
   const noRole = f.show && !show ? '<p class="note">« Me montrer » sert à la personne qui a ce rôle : tu ne l’as pas dans ce club.</p>' : '';
-  return `<div class="card lift"><div class="kick">À quoi ça sert</div><p style="margin:0">${esc(f.why)}</p></div>
+  return `<div class="card lift"><div class="kick">À quoi ça sert</div><p style="margin:0">${esc(byDevice(f.why))}</p></div>
   <div class="card"><div class="kick">Comment faire</div><ol class="obsteps">${stepsOf(f).map((s) => `<li>${esc(s)}</li>`).join('')}</ol>${shot}</div>${noRole}
   <div class="btns">${show ? `<button class="btn main" data-act="obshow" data-id="${id}">Me montrer</button>${faq ? `<button class="btn ghost" data-act="obgo" data-id="${id}">Y aller</button>` : ''}` : ''}${extra}${done}</div>`;
 }
@@ -489,7 +506,8 @@ function paintShow() {
   const noRing = () => { ringEl = null; ringHide(); ringKick(); };
   showBar = document.createElement('div'); showBar.className = 'obbar' + (s.end ? ' end' : '') + (barSeen ? '' : ' enter'); barSeen = true;
   // sur ordinateur, le bandeau vertical se range dans la colonne de gauche, sous les onglets et « Mes rôles »
-  const side = innerWidth >= 960 && document.querySelector('.tb');
+  // 5.15.2 : plus de bandeau vertical dans la colonne de gauche (il cachait les onglets et les rôles à toucher) : en bas, comme sur tablette
+  const side = false;
   if (side) showBar.classList.add('side');
   const put = () => { document.body.appendChild(showBar); if (side) sidePlace(); noRingIf(); };
   let ringOn = false; const noRingIf = () => { if (!ringOn) noRing(); else ringKick(); };

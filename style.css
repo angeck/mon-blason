@@ -470,13 +470,13 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .obrole { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .obrole select { flex: 1; min-width: 180px; }
 @media (min-width: 960px) {
-  .obbar { flex-direction: column; align-items: stretch; padding: 16px; }
+  .obbar.side { flex-direction: column; align-items: stretch; padding: 16px; }
   .obbar.side { position: fixed; right: auto; bottom: auto; pointer-events: auto; box-shadow: none; }
-  .obbar-q { display: block; font-family: var(--pc-titre); font-weight: 800; font-size: 17px; line-height: 1.2; }
-  .obbar-steps { display: block; margin: 0; padding-left: 20px; font-size: 14px; }
-  .obbar-steps li { margin: 4px 0; }
-  .obbar-steps li.on { font-weight: 700; }
-  .obbar-steps li.done { opacity: .55; text-decoration: line-through; }
+  .obbar.side .obbar-q { display: block; font-family: var(--pc-titre); font-weight: 800; font-size: 17px; line-height: 1.2; }
+  .obbar.side .obbar-steps { display: block; margin: 0; padding-left: 20px; font-size: 14px; }
+  .obbar.side .obbar-steps li { margin: 4px 0; }
+  .obbar.side .obbar-steps li.on { font-weight: 700; }
+  .obbar.side .obbar-steps li.done { opacity: .55; text-decoration: line-through; }
 }
 .obshot { margin: 8px 0 0; }
 .obshot button { border: 0; padding: 0; background: none; display: block; cursor: zoom-in; }
@@ -618,3 +618,6 @@ html.tacfull .stedit svg,html.tacfull .tacbig svg{max-height:calc(100dvh - 260px
 
 /* 5.15.1 · n° 247 : bloc « Carnet du coach » du bandeau : l'entrée en cours encadrée de jaune, comme les sous-onglets d'un rôle */
 @media (min-width:600px){.tb nav.bank button.sub[aria-current="page"]{border:3px solid var(--pc-jaune);background:var(--pc-attente-fond);color:var(--pc-encre);border-radius:14px}}
+/* 5.15.2 : sur tablette et ordinateur, le bandeau de « Me montrer » reste en bas, à droite de la colonne de gauche (onglets et rôles libres) */
+@media (min-width:600px){.obbar:not(.side){left:calc(max(0px, 50% - 520px) + 252px);right:max(12px, calc(50% - 508px));bottom:16px}}
+@media (min-width:600px) and (max-width:959px){.obbar:not(.side){left:232px}}

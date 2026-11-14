@@ -11,7 +11,7 @@ import { FONCTION_AREAS } from './vie.js';
 
 // ---------- n° 190 · pastilles ----------
 // Onglet Agenda : rendez-vous qui attendent une réponse de ce compte (les mêmes que « À répondre » de l'Accueil)
-hooks.toAnswer = () => { try { return homeEvents().filter(needsAnswer).length; } catch { return 0; } };
+hooks.toAnswer = () => { try { return hooks.unseenAnswers ? hooks.unseenAnswers() : homeEvents().filter(needsAnswer).length; } catch { return 0; } }; // 5.15.2 · n° 250 : sans les rendez-vous déjà montrés
 
 // Rubriques que couvre un rôle du bureau : celles de sa fonction ; « Membre du bureau » (ou une fonction sans rubrique) :
 // celles que le président a ouvertes en plus, hors celles de mes autres fonctions
@@ -44,11 +44,18 @@ function itemsOf(k) {
   if (a.includes('technique')) { vp.filter((m) => m.role === 'coach').forEach((m) => out.dem.add(m.id)); out.exos = (S.coachCounts || {}).exos || 0; }
   return out;
 }
-export function roleCount(k) { const o = itemsOf(k); return o.dem.size + o.exos + o.hours; }
+// 5.15.2 · n° 250 : la pastille ne compte que ce qui n'a pas encore été montré en jaune (v515.js)
+hooks.roleRaw = (k) => { const o = itemsOf(k); return { dem: o.dem.size, exos: o.exos, hours: o.hours }; };
+function unseen(k, o) {
+  const dem = [...o.dem].filter((id) => !(hooks.demSeen && hooks.demSeen(id)));
+  const ex = hooks.numSeen ? (o.exos > hooks.numSeen(k, 'exos') ? o.exos : 0) : o.exos, hr = hooks.numSeen ? (o.hours > hooks.numSeen(k, 'hours') ? o.hours : 0) : o.hours;
+  return { dem, exos: ex, hours: hr };
+}
+export function roleCount(k) { const o = unseen(k, itemsOf(k)); return o.dem.length + o.exos + o.hours; }
 export function rolesTotal() {
   const l = casquettes(); if (!l.length) return 0;
   const dem = new Set(); let exos = 0, hours = 0;
-  l.forEach((x) => { const o = itemsOf(x.k); o.dem.forEach((id) => dem.add(id)); exos = Math.max(exos, o.exos); hours = Math.max(hours, o.hours); });
+  l.forEach((x) => { const o = unseen(x.k, itemsOf(x.k)); o.dem.forEach((id) => dem.add(id)); exos = Math.max(exos, o.exos); hours = Math.max(hours, o.hours); });
   return dem.size + exos + hours;
 }
 hooks.roleCount = roleCount; hooks.rolesTotal = rolesTotal;

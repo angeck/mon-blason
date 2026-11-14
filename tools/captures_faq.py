@@ -73,10 +73,11 @@ with sync_playwright() as p:
     pg.evaluate(PREP); pg.wait_for_timeout(300)
     ids = pg.evaluate("(async()=>{const m=await import('/js/v55.js'); return Object.entries(m.FICHES).filter(([,f])=>f.show).map(([k])=>k);})()")
     tel = shoot(pg, {'width': 390, 'height': 844}, 'tel', ids)
+    tab = shoot(pg, {'width': 820, 'height': 1180}, 'tab', ids)   # 5.15.2 · n° 251 : une capture tablette en plus
     pc = shoot(pg, {'width': 1280, 'height': 800}, 'pc', ids)
     b.close()
 srv.shutdown()
-both = [i for i in tel if i in pc]
+both = [i for i in tel if i in pc and i in tab]
 for f in os.listdir(OUT):   # captures sans leur paire : retirées
     if f.split('-')[0] not in both: os.remove(os.path.join(OUT, f))
 with open(os.path.join(ROOT, 'js', 'faq_shots.js'), 'w') as f:
@@ -84,7 +85,7 @@ with open(os.path.join(ROOT, 'js', 'faq_shots.js'), 'w') as f:
     f.write('export const SHOTS = new Set(' + json.dumps(both) + ');\n')
 print(len(both), 'fiches avec captures :', ' '.join(both))
 for i, r in REPORT.items():
-    t, p = r.get('tel', {}), r.get('pc', {})
-    flag = '' if t.get('reached') and p.get('reached') else '   <-- étapes non atteintes'
-    print(f"{i:4} tél. {t.get('at')}/{t.get('last')}  ordi {p.get('at')}/{p.get('last')}{flag}")
+    t, a, p = r.get('tel', {}), r.get('tab', {}), r.get('pc', {})
+    flag = '' if t.get('reached') and a.get('reached') and p.get('reached') else '   <-- étapes non atteintes'
+    print(f"{i:4} tél. {t.get('at')}/{t.get('last')}  tablette {a.get('at')}/{a.get('last')}  ordi {p.get('at')}/{p.get('last')}{flag}")
 print('sans capture :', ' '.join(i for i in ids if i not in both))

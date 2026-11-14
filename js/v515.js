@@ -10,43 +10,83 @@
 import { S, sb, esc, hooks, ACTIONS, INPUTS, render, toast, run, club, armed, isArmed, store, toValidate, casquettes, isCoachCasq } from './core.js';
 import { icon, SPACE_VIEWS } from './ui.js';
 import { COACH_VIEWS, thumb, exosForCounts, plansForEvent } from './coach.js';
-import { canCallRoll } from './agenda.js';
+import { canCallRoll, homeEvents, needsAnswer } from './agenda.js';
 import { normalize, stepsSvg, player, hasSteps } from './v510.js';
 
-// ---------- n° 239 · le jaune sur ce qui attend ----------
-const SEEN_KEY = () => 'pc_dem_vues_' + (S.me?.id || '');
-function seenSet() { try { return new Set(JSON.parse(store.get(SEEN_KEY()) || '[]')); } catch { return new Set(); } }
-function markSeen(ids) {
-  const s = seenSet(); ids.forEach((id) => s.add(id));
-  const keep = new Set(toValidate().map((m) => String(m.id)));   // on n'oublie que les demandes encore en attente
-  store.set(SEEN_KEY(), JSON.stringify([...s].filter((id) => keep.has(id)).slice(-300)));
+// ---------- n° 239 et 250 · toute pastille mène à l'élément en jaune ; une fois vu, pastille et jaune s'enlèvent ----------
+// « Vu » gardé dans le compte (métadonnées, comme l'onboarding) : d = demandes de rôle, e = rendez-vous à répondre,
+// g = { groupe: non lus vus }, x = { rôle: { exos, hours } } (compteurs sans identifiant)
+const VK = 'vus515';
+export function vus() { const v = S.session?.user?.user_metadata?.[VK] || {}; return { d: v.d || [], e: v.e || [], g: v.g || {}, x: v.x || {} }; }
+let vusTimer = 0;
+function saveVus(v) {
+  const u = S.session?.user; if (!u) return;
+  const keepD = new Set(toValidate().map((m) => String(m.id)));
+  const keepE = new Set(homeEvents().filter(needsAnswer).map((e) => String(e.id)));
+  const o = { d: v.d.filter((id) => keepD.has(String(id))).slice(-300), e: v.e.filter((id) => keepE.has(String(id))).slice(-300), g: v.g, x: v.x };
+  u.user_metadata = { ...(u.user_metadata || {}), [VK]: o };
+  clearTimeout(vusTimer); vusTimer = setTimeout(() => sb.auth.updateUser({ data: { [VK]: o } }).catch(() => {}), 800);
 }
+// ce que comptent les pastilles des onglets, sans ce qui a été vu
+hooks.toAnswerIds = () => { try { return homeEvents().filter(needsAnswer).map((e) => String(e.id)); } catch { return []; } };
+hooks.unseenAnswers = () => { const seen = new Set(vus().e); return hooks.toAnswerIds().filter((id) => !seen.has(id)).length; };
+hooks.unseenMessages = () => { const g = vus().g; return Object.entries(S.unread || {}).reduce((a, [gid, n]) => a + (n > (g[gid] || 0) ? n - (g[gid] || 0) : 0), 0); };
+hooks.demSeen = (id) => vus().d.includes(String(id));
+hooks.numSeen = (k, what) => (vus().x[k] || {})[what] || 0;
+
+const viewKeyOf = () => JSON.stringify([S.tab, S.view?.type || '', S.view?.id || '', S.view?.tab || '', S.casq || '', S.ptab || '', (S.ftabs || {})[S.casq] || '', S.tsp || '']);
 const ROLE_VIEWS = ['espace', 'rub', 'fonctions', 'fview', 'tspace', 'team'];
 // Onglets ou tuiles qui mènent aux demandes, quand on n'y est pas encore
 const LEADS = ['[data-act=ptab][data-v=demandes]', '[data-act=tsgo][data-tab=effectif]', '[data-act=ftab][data-v=fiches]', '[data-act=ftab][data-v=ap_secretariat]', '[data-act=ftab][data-v=equipes]', '.tile.wait[data-act]'];
 function paintTodo() {
-  S.hlShown = null;
-  if (!S.view || !ROLE_VIEWS.includes(S.view.type)) return;
-  const seen = seenSet(), wait = toValidate().map((m) => String(m.id)).filter((id) => !seen.has(id));
-  if (!wait.length) return;
-  const rows = [...document.querySelectorAll('main [data-act=mok][data-id]')].filter((b) => wait.includes(b.dataset.id));
-  rows.forEach((b) => b.closest('.row')?.classList.add('todo-hl'));
-  if (!rows.length) {
-    LEADS.forEach((sel) => document.querySelectorAll(sel).forEach((el) => {
-      if (el.closest('.tb')) return;
-      if (el.matches('.tile') && !/demande/i.test(el.textContent)) return;
-      if (el.getAttribute('aria-current') === 'page') return;
-      el.classList.add('todo-hl');
-    }));
+  const key = viewKeyOf();
+  if (!S.hlVisit || S.hlVisit.key !== key) S.hlVisit = { key, ids: new Set() };
+  const visit = S.hlVisit.ids, v = vus(); let changed = false;
+  const show = (el, id) => { el.classList.add('todo-hl'); visit.add(id); };
+  // Agenda : les rendez-vous qui attendent ta réponse
+  if (S.tab === 1 && !S.view) {
+    const ids = new Set(hooks.toAnswerIds()), seen = new Set(v.e);
+    document.querySelectorAll('main .ev [data-act=event][data-id]').forEach((b) => {
+      const id = b.dataset.id; if (!ids.has(id) || (seen.has(id) && !visit.has('e:' + id))) return;
+      show(b.closest('.ev'), 'e:' + id); if (!seen.has(id)) { v.e.push(id); changed = true; }
+    });
   }
-  S.hlShown = wait;
+  // une conversation lue (non lus revenus sous le « vu ») : le « vu » redescend, pour qu'un nouveau message refasse la pastille
+  Object.keys(v.g).forEach((gid) => { const n = (S.unread || {})[gid] || 0; if (n < v.g[gid]) { v.g[gid] = n; changed = true; } });
+  // Messages : les conversations non lues
+  if (S.tab === 2 && !S.view) {
+    document.querySelectorAll('main [data-act=group][data-id]').forEach((b) => {
+      const gid = b.dataset.id, n = (S.unread || {})[gid] || 0; if (!n) return;
+      if (n <= (v.g[gid] || 0) && !visit.has('g:' + gid)) return;
+      show(b, 'g:' + gid); if (n > (v.g[gid] || 0)) { v.g[gid] = n; changed = true; }
+    });
+  }
+  // Rôles : demandes à valider (par identifiant), puis ce que comptent les tuiles en attente (heures, exercices, attestations)
+  if (S.view && ROLE_VIEWS.includes(S.view.type)) {
+    const seenD = new Set(v.d.map(String));
+    const wait = toValidate().map((m) => String(m.id)).filter((id) => !seenD.has(id) || visit.has('d:' + id));
+    const rows = [...document.querySelectorAll('main [data-act=mok][data-id]')].filter((b) => wait.includes(b.dataset.id));
+    rows.forEach((b) => { const id = b.dataset.id; show(b.closest('.row') || b, 'd:' + id); if (!seenD.has(id)) { v.d.push(id); changed = true; } });
+    const k = S.casq || '', cnt = k && hooks.roleRaw ? hooks.roleRaw(k) : null, x = (v.x[k] = v.x[k] || {});
+    const numNew = cnt && ((cnt.exos > (x.exos || 0)) || (cnt.hours > (x.hours || 0)));
+    if (!rows.length && (wait.length || numNew || visit.has('lead'))) {
+      LEADS.forEach((sel) => document.querySelectorAll(sel).forEach((el) => {
+        if (el.closest('.tb') || el.getAttribute('aria-current') === 'page') return;
+        if (sel === '[data-act=tsgo][data-tab=effectif]' && !wait.length) return;
+        show(el, 'lead');
+      }));
+    }
+    if (numNew && visit.has('lead')) { x.exos = Math.max(x.exos || 0, cnt.exos); x.hours = Math.max(x.hours || 0, cnt.hours); changed = true; }
+  }
+  // chemin : sur téléphone, le rôle qui a une pastille (rangée « Mes rôles » de l'en-tête) est en jaune
+  document.querySelectorAll('.hd .casq [data-act=casq]').forEach((b) => { if (b.querySelector('.n') && b.getAttribute('aria-selected') !== 'true') b.classList.add('todo-hl'); });
+  if (changed) { saveVus(v); setTimeout(() => render(true), 0); }   // la pastille s'enlève : on redessine (le jaune reste pendant la visite)
 }
 // « Retour » sans valider : vu, pas urgent ; en quittant les écrans de tactique, le brouillon est oublié.
 // app.js définit ACTIONS.back après ce module : on l'enveloppe au premier dessin.
 function wrapBack() {
   const b0 = ACTIONS.back; if (!b0 || b0.w515) return;
   const b = (...a) => {
-    if (S.hlShown?.length) { markSeen(S.hlShown); S.hlShown = null; }
     if (['tac', 'terrain', 'tactics'].includes(S.view?.type)) dropTac();
     return b0(...a);
   };
@@ -79,7 +119,7 @@ function roleSubs() {
 }
 wide.addEventListener?.('change', () => render(true));
 
-hooks.after515 = () => { try { wrapBack(); paintTodo(); roleSubs(); terrainMode(); } catch (e) { console.warn('5.15.0', e); } };
+hooks.after515 = () => { for (const f of [wrapBack, paintTodo, roleSubs, terrainMode]) { try { f(); } catch (e) { console.warn('5.15', f.name, e); } } };
 
 // ---------- n° 242 · tactiques ----------
 const SPORT = () => (club()?.sport === 'Volley-ball' ? 'Volley-ball' : 'Basket-ball');

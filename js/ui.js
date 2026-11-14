@@ -127,8 +127,8 @@ export const SPACE_VIEWS = ['espace', 'rub', 'fonctions', 'journal', 'timport', 
 
 // ---------- Onglets ----------
 const TABS = [['Accueil', 'home'], ['Agenda', 'cal'], ['Messages', 'msg'], ['Équipe', 'team'], ['Club', 'shield']];
-const tabCounts = () => ({ Messages: Object.values(S.unread || {}).reduce((a, b) => a + b, 0), Agenda: hooks.toAnswer ? hooks.toAnswer() : 0 });
-export function seeTab(i) { const t = TABS[i]?.[0], c = tabCounts(); if (t && c[t]) (S.tabSeen = S.tabSeen || {})[t] = c[t]; }
+const tabCounts = () => ({ Messages: hooks.unseenMessages ? hooks.unseenMessages() : Object.values(S.unread || {}).reduce((a, b) => a + b, 0), Agenda: hooks.toAnswer ? hooks.toAnswer() : 0 }); // 5.15.2 · n° 250 : sans ce qui a été montré
+export function seeTab() { /* 5.15.2 · n° 250 : la pastille s'enlève quand l'élément a été montré en jaune (v515.js), plus au simple toucher de l'onglet */ }
 export function tabBar() {
   // 5.1.0 (n° 190) : les onglets ne comptent que ce qui touche le compte (messages non lus, réponses à donner) ;
   // les demandes à valider et les heures à vérifier passent sur le bouton « Mes rôles » et sur chaque rôle
