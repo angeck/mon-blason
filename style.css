@@ -447,12 +447,15 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .obck { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--pc-trait); display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
 .obck.on { background: var(--pc-oui-fond); color: var(--pc-oui-texte); border-color: transparent; }
 .obsteps { margin: 6px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
-/* 5.7.0 · n° 206 : pendant « Me montrer », la zone à toucher passe en jaune mypocketclub */
-.ob-hl { background: var(--pc-jaune) !important; color: var(--pc-encre) !important; border-color: var(--pc-encre) !important; outline: 3px solid var(--pc-encre) !important; outline-offset: 2px; border-radius: 14px; box-shadow: 0 0 0 8px rgba(255, 201, 60, .45) !important; position: relative; z-index: 5; animation: obpulse 1.4s ease-in-out 3; }
-.ob-hl * { color: var(--pc-encre) !important; }
-.ob-hl svg { stroke: var(--pc-encre) !important; }
-@keyframes obpulse { 50% { box-shadow: 0 0 0 14px rgba(255, 201, 60, .2) !important; } }
-@media (prefers-reduced-motion: reduce) { .ob-hl { animation: none; } }
+/* 5.14.0 · n° 237 : pendant « Me montrer », un cadre jaune (.ob-ring, posé par js/v55.js) entoure l'élément à toucher, le reste s'assombrit.
+   .ob-hl ne change plus l'aspect de l'élément : c'est seulement son repère. */
+.ob-ring { position: fixed; left: 0; top: 0; z-index: 59; box-sizing: content-box; border: 4px solid var(--pc-jaune); border-radius: 16px; box-shadow: 0 0 0 4000px rgba(17, 22, 46, .38); pointer-events: none; opacity: 0; transition: left .7s cubic-bezier(.2, .8, .2, 1), top .7s cubic-bezier(.2, .8, .2, 1), width .7s cubic-bezier(.2, .8, .2, 1), height .7s cubic-bezier(.2, .8, .2, 1), opacity .3s; }
+.ob-ring.in { opacity: 1; }
+.ob-ring.fast { transition: opacity .3s; }
+@media (max-width: 959px) { html.obshow main.bd { padding-bottom: 260px; } }
+.obbar.enter { animation: obbarin .4s cubic-bezier(.2, .8, .2, 1); }
+@keyframes obbarin { from { transform: translateY(20px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ob-ring, .ob-ring.fast { transition: none; } .obbar.enter { animation: none; } }
 .obbar { position: fixed; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 60; background: var(--pc-jaune); color: var(--pc-encre); border-radius: 16px; padding: 12px 14px; display: flex; gap: 10px; align-items: center; box-shadow: 0 10px 24px rgba(17,22,46,.18); }
 .obbar-q, .obbar-steps { display: none; }
 .obbar-now { flex: 1; font-weight: 700; }
@@ -468,7 +471,7 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .obrole select { flex: 1; min-width: 180px; }
 @media (min-width: 960px) {
   .obbar { flex-direction: column; align-items: stretch; padding: 16px; }
-  .obbar.side { position: static; width: auto; pointer-events: auto; box-shadow: none; }
+  .obbar.side { position: fixed; right: auto; bottom: auto; pointer-events: auto; box-shadow: none; }
   .obbar-q { display: block; font-family: var(--pc-titre); font-weight: 800; font-size: 17px; line-height: 1.2; }
   .obbar-steps { display: block; margin: 0; padding-left: 20px; font-size: 14px; }
   .obbar-steps li { margin: 4px 0; }

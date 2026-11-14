@@ -27,7 +27,7 @@ PREP = """(async()=>{const {S,render}=await import('/js/core.js');
   render();})()"""
 
 # rôle du compte de test pour chaque famille de fiches (fonction de m1, présidence en plus)
-FONC = {'SE': 'Secrétaire', 'CR': 'Correspondant rencontres', 'DT': 'Directeur technique', 'B1': 'Chargé de communication'}
+FONC = {'SE': 'Secrétaire', 'CR': 'Correspondant rencontres', 'DT': 'Directeur technique', 'B1': 'Chargé de communication', 'VP': 'Vice-président', 'COM': 'Chargé de communication', 'EV': 'Responsable événements'}
 def setup(pg, i):
     f = next((v for k, v in FONC.items() if i.startswith(k)), 'Trésorier')
     pres = 'true' if i.startswith('PR') else 'false'
@@ -43,7 +43,7 @@ def shoot(pg, size, suffix, ids):
     for i in ids:
         setup(pg, i)
         r = pg.evaluate("(async(id)=>{const m=await import('/js/v55.js'); return await m.goFiche(id);})", i)
-        pg.wait_for_timeout(700)
+        pg.wait_for_timeout(1600)   # 5.14.0 : le cadre attend la fin du défilement puis se pose (fondu 0,3 s)
         st = pg.evaluate("(async(id)=>{const m=await import('/js/v55.js'); return m.obProgress(id);})", i)
         REPORT.setdefault(i, {})[suffix] = st
         if r and pg.locator('.ob-hl').count():

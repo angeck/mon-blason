@@ -48,6 +48,7 @@ const RK = {
   any: () => true, coach: isCoachCasq, pres: (k) => k === 'president', tres: (k) => /^f:Trésorier/.test(k), sec: (k) => /^f:Secrétaire/.test(k),
   seclic: (k) => /^f:Secrétaire/.test(k) || k === 'f:Correspondant licences', ren: (k) => k === 'f:Correspondant rencontres', dt: (k) => k === 'f:Directeur technique',
   bur: (k) => k.startsWith('f:'),
+  vp: (k) => k === 'f:Vice-président', com: (k) => k === 'f:Chargé de communication', evt: (k) => k === 'f:Responsable événements',
 };
 const keyOf = (w) => casquettes().find((x) => w(x.k))?.k;
 // téléphone : les quatre carrés, puis le rôle dans la rangée « Mes rôles » (si un autre rôle s'est ouvert) ; ordinateur : le rôle à gauche
@@ -147,15 +148,31 @@ export const FICHES = {
     steps: ['Exercices › « Nouvel exercice » : écris le nom, la description (sans nom de joueur) et les tags.', '« Préparer le schéma avec l’IA » : un compteur montre les secondes (20 à 40 en général) ; reste sur la page.', 'L’éditeur s’ouvre : glisse les joueurs, corrige le texte de chaque étape, « Aperçu animé », puis « Terminé » et « Enregistrer l’exercice ».', 'Dans la liste, la vignette de l’exercice montre le schéma en mouvement (au survol sur ordinateur, quand elle est à l’écran sur téléphone).'] },
   C9: { q: 'Où trouver les exercices des autres clubs ?', faq: true, who: () => has('coach'), why: 'Ne pas repartir de zéro.',
     steps: ['Sur ordinateur : « Mes rôles » › « Banque d’exercices » (tous les clubs, ton club, les tiens).', 'Filtre par catégorie, âge, durée et matériel ; les filtres se combinent.', '« Ajouter » met l’exercice dans ta séance en préparation.'] },
-  K9: { q: 'Comment faire venir mon club sur mypocketclub ?', faq: true, why: 'Plus il y a de membres, plus l’application est utile.',
-    steps: ['Sur l’écran d’ouverture (sans être connecté) : « Recommander mypocketclub à mon club ».', 'Tu as l’e-mail d’un contact du club : il reçoit un seul e-mail de présentation, tout de suite.', 'Tu n’as pas d’e-mail : décris le club (nom, ville, sport) ; nous cherchons son adresse publiée et nous lui écrivons.', 'Tu choisis de donner ton nom ou de rester anonyme.'] },
+  // 5.14.0 · n° 236 suite : une ligne de l'encart (texte seulement : l'écran se trouve hors de l'Accueil, « C'est fait » à la main)
+  K9: { q: 'Comment faire venir mon club sur mypocketclub ?', line: 'Faire venir un autre club sur mypocketclub', who: () => adult(), why: 'Tu joues, tu coaches ou tu supportes dans un autre club ? Plus il y a de clubs, plus l’application est utile.',
+    steps: ['Connecté : la loupe en haut (« Chercher un club »), tape le nom du club, « Chercher », puis « Mon club n’est pas dans la liste ». Pas encore connecté : écran d’ouverture, « Recommander mypocketclub à mon club ».', 'Tu as l’e-mail d’un contact du club : il reçoit un seul e-mail de présentation, tout de suite.', 'Tu n’as pas d’e-mail : décris le club (nom, ville, sport) ; nous cherchons son adresse publiée et nous lui écrivons.', 'Tu choisis de donner ton nom ou de rester anonyme.'] },
   M1: { q: 'Comment écrire à un joueur mineur ?', faq: true, who: () => !onlySupporter(), why: 'Un adulte n’échange avec un mineur qu’avec un de ses parents.',
     steps: ['Crée le groupe avec le joueur : l’écran « Ajouter un parent » s’ouvre.', 'Choisis un parent inscrit, ou saisis l’e-mail d’un parent (jamais demandé à l’enfant).', 'La conversation s’ouvre quand le parent accepte (onglet Messages, « Demandes de conversation »). Refus ou 14 jours sans réponse : annulée.'] },
   F1: { q: 'Comment transférer une convocation reçue ?', faq: true, who: () => isBoard() || (S.tcontacts || []).some((c) => c.user_id === S.me.id), why: 'Faire suivre un match reçu d’un autre club à des personnes du club.',
     steps: ['Convocations reçues : « Transférer ».', 'Choisis les personnes : elles reçoivent une annonce avec le jour, l’heure et le lieu, sans le contact de l’autre club.', '« Rattacher » relie un match reçu à un rendez-vous déjà dans l’agenda.'] },
-  B1: { q: 'Faire le tour de ma fonction', line: 'Faire le tour de ta fonction', who: () => has('bureau') && !fnHas('Trésorier', 'Trésorier adjoint', 'Secrétaire', 'Secrétaire adjoint', 'Correspondant rencontres', 'Directeur technique'),
+  B1: { q: 'Faire le tour de ma fonction', line: 'Faire le tour de ta fonction', who: () => has('bureau') && !fnHas('Trésorier', 'Trésorier adjoint', 'Secrétaire', 'Secrétaire adjoint', 'Correspondant rencontres', 'Directeur technique', 'Vice-président', 'Chargé de communication', 'Responsable événements'),
     why: 'Chaque espace s’ouvre sur « Aperçu » : ce qui est à faire, puis tes droits.', steps: ['« Mes rôles », puis ta fonction.', 'Lis l’« Aperçu », puis ouvre chaque onglet.'],
     role: RK.bur, show: [[ROLE(RK.bur), 0], ['.hd .ttabs', 1, 'z']] },
+  // 5.14.0 · fiches détaillées du vice-président, de la communication et des événements (go de Gaël, 13 novembre)
+  VP1: { q: 'Vice-président : que puis-je faire ?', line: 'Découvrir ton espace de vice-président', who: () => fnHas('Vice-président'),
+    why: 'Tu as tous les accès du club, comme le président, pour le seconder au quotidien.',
+    steps: ['« Mes rôles » › Vice-président : chaque accès (trésorerie, secrétariat, technique, communication, événements) a son bloc, qui se déplie.', 'Tu fais tout comme le président, sauf supprimer le club, transférer la présidence, nommer le bureau, régler la visibilité du club et les droits des coachs.'],
+    role: RK.vp, show: [[ROLE(RK.vp), 0]] },
+  COM1: { q: 'Comment publier une annonce ?', line: 'Publier une annonce', who: () => fnHas('Chargé de communication'),
+    why: 'Une annonce officielle s’affiche en haut de l’Accueil des destinataires jusqu’à ce qu’ils l’aient lue. L’onglet « Lecteurs » dit combien de personnes l’ont ouverte.',
+    steps: ['« Mes rôles » › Chargé de communication, onglet « Annonces ».', '« Nouvelle annonce » : choisis « Pour » (tout le club, des équipes, le bureau, les coachs…).', 'Écris le titre et le texte, puis « Publier l’annonce ».'],
+    role: RK.com, show: [[ROLE(RK.com), 0], [FTAB('annonces'), 0], ['main.bd [data-act=annnew]', 1], ['#ant', 2, 'z', 'Titre de l’annonce'], ['#annf [type=submit]', 2, 'z+s', 'Publier l’annonce']],
+    auto: () => S.annonces.some((a) => a.created_by === S.me.id) },
+  EV1: { q: 'Comment créer un événement ?', line: 'Créer un événement du club', who: () => fnHas('Responsable événements'),
+    why: 'Assemblée générale, tournoi, fête du club : les membres répondent et les bénévoles se répartissent les missions.',
+    steps: ['« Mes rôles » › Responsable événements, onglet « Événements ».', '« Nouvel événement » : titre, date et heure, lieu.', '« Enregistrer ». Le bloc « Bénévoles », dans le même onglet, montre les places à pourvoir.'],
+    role: RK.evt, show: [[ROLE(RK.evt), 0], [FTAB('events'), 0], ['main.bd [data-act=evnew]', 1], ['#ed', 2, 'z'], ['#evf [type=submit]', 2, 'z+s', 'Enregistrer']],
+    auto: () => myEventIds().size > 0 },
   // 5.8.0 · n° 208 f : le directeur technique a sa fiche (les onglets un à un, à quoi chacun sert)
   DT1: { q: 'Directeur technique : à quoi servent tes onglets ?', line: 'Découvrir ton espace de directeur technique', who: () => fnHas('Directeur technique'),
     why: 'Tu t’occupes des équipes, des coachs et des exercices du club. Chaque onglet a une tâche.',
@@ -222,7 +239,7 @@ const canShow = (f) => !!f.show && (!f.role || !!keyOf(f.role));
 // 5.8.0 · n° 208 i : le président voit l'onboarding de chaque rôle (menu), compté dans sa progression
 const ROLE_MENU = [
   ['coach', 'Coach', ['C1', 'C2', 'C3', 'C4', 'C5', 'C6']], ['tres', 'Trésorier', ['TR1', 'TR2', 'TR3']], ['sec', 'Secrétaire', ['SE1', 'SE2', 'SE3']],
-  ['ren', 'Contact rencontres', ['CR1', 'CR2', 'CR3']], ['dt', 'Directeur technique', ['DT1']], ['joueur', 'Joueur', ['J1', 'J2']], ['parent', 'Parent', ['P1']], ['sup', 'Supporteur', ['S1', 'S2', 'S3']],
+  ['ren', 'Contact rencontres', ['CR1', 'CR2', 'CR3']], ['dt', 'Directeur technique', ['DT1']], ['vp', 'Vice-président', ['VP1']], ['com', 'Communication', ['COM1']], ['evt', 'Événements', ['EV1']], ['joueur', 'Joueur', ['J1', 'J2']], ['parent', 'Parent', ['P1']], ['sup', 'Supporteur', ['S1', 'S2', 'S3']],
 ];
 const RANK = { president: 0, bureau: 1, coach: 2, joueur: 3, parent: 4, supporteur: 5 };
 function blocks() {
@@ -242,13 +259,13 @@ function blocks() {
     if (m.role === 'president') add(k, 'Président', ['R1', 'PR1', 'PR2', 'PR3', 'PR4', 'R4'], m);
     else if (m.role === 'coach') add(k, 'Coach' + (coachTids().length === 1 ? ' · ' + teamName(coachTids()[0]) : ''), ['R1', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6'], m);
     else if (m.role === 'bureau') {
-      const ids = /^Trésorier/.test(f) ? ['TR1', 'TR2', 'TR3'] : /^Secrétaire/.test(f) ? ['SE1', 'SE2', 'SE3'] : f === 'Correspondant rencontres' ? ['CR1', 'CR2', 'CR3'] : f === 'Correspondant licences' ? ['SE3'] : f === 'Directeur technique' ? ['DT1'] : ['B1'];
+      const ids = /^Trésorier/.test(f) ? ['TR1', 'TR2', 'TR3'] : /^Secrétaire/.test(f) ? ['SE1', 'SE2', 'SE3'] : f === 'Correspondant rencontres' ? ['CR1', 'CR2', 'CR3'] : f === 'Correspondant licences' ? ['SE3'] : f === 'Directeur technique' ? ['DT1'] : f === 'Vice-président' ? ['VP1'] : f === 'Chargé de communication' ? ['COM1'] : f === 'Responsable événements' ? ['EV1'] : ['B1'];
       add(k, f === 'Correspondant rencontres' ? 'Contact rencontres' : f === 'Correspondant licences' ? 'Contact licences' : f || 'Membre du bureau', ['R1', 'R4', ...ids], m);
     } else if (m.role === 'parent') add(k, 'Parent', ['P1', 'T3', 'T4', 'K5'], m);
     else if (m.role === 'joueur') add(k, 'Joueur', ['J1', 'T3', 'T4', 'J2', 'K5'], m);
     else if (m.role === 'supporteur') add(k, 'Supporteur', ['S1', 'S2', 'S3', 'K5'], m);
   }
-  add('moi', 'Ton compte', ['K1']);
+  add('moi', 'Ton compte', ['K1', 'K9']);
   if (isPresident()) {
     const groups = ROLE_MENU.map(([k, l, ids]) => ({ k, l, ids: ids.filter(ok) })).filter((g) => g.ids.length);
     if (groups.length) { const ids = groups.flatMap((g) => g.ids); ids.forEach((id) => used.add(id)); out.push({ key: 'menu', title: 'Les autres rôles du club', ids, groups, menu: true }); }
@@ -304,7 +321,7 @@ const FAQ_GROUPS = [
   ['Pour tout le monde', ['T1', 'T2', 'T3', 'T4', 'T5', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8', 'K9', 'M1']], ['Mes rôles', ['R1', 'R2', 'R4']],
   ['Joueur', ['J1', 'J2', 'P4']], ['Parent', ['P1', 'P2', 'P3', 'P4']], ['Supporteur', ['S1', 'S2', 'S3']], ['Coach', ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']],
   ['Président', ['PR1', 'PR2', 'PR3', 'PR4', 'PR5']], ['Trésorier', ['TR1', 'TR2', 'TR3', 'TR4']], ['Secrétaire et licences', ['SE1', 'SE2', 'SE3']],
-  ['Contact rencontres', ['CR1', 'CR2', 'CR3', 'F1']], ['Directeur technique', ['DT1']], ['Autres fonctions du bureau', ['B1']],
+  ['Contact rencontres', ['CR1', 'CR2', 'CR3', 'F1']], ['Directeur technique', ['DT1']], ['Vice-président', ['VP1']], ['Communication', ['COM1']], ['Événements', ['EV1']], ['Autres fonctions du bureau', ['B1']],
 ];
 const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 function faqPage() {
@@ -329,12 +346,52 @@ hooks.helpAccount = () => `<button class="btn ghost" data-act="faq">${icon('msg'
 let showBar = null;
 // premier élément visible qui correspond (sur ordinateur, les quatre carrés sont cachés : c'est le bloc « Mes rôles »)
 const seen = (sel) => { if (!sel) return null; try { return [...document.querySelectorAll(sel)].find((x) => x.offsetParent !== null || x.getClientRects().length) || null; } catch { return null; } };
-function clearShow() { document.querySelectorAll('.ob-hl').forEach((x) => x.classList.remove('ob-hl')); document.querySelectorAll('.obsimbox').forEach((x) => x.remove()); if (showBar) { showBar.remove(); showBar = null; } }
+function clearShow(keep) { document.querySelectorAll('.ob-hl').forEach((x) => x.classList.remove('ob-hl')); document.querySelectorAll('.obsimbox').forEach((x) => x.remove()); if (showBar) { showBar.remove(); showBar = null; } if (!keep) { ringStop(); barSeen = false; document.documentElement.classList.remove('obshow'); } }
+// ---------- 5.14.0 · n° 237 : cadre jaune, fond assombri, glissement doux, défilement jusqu'à l'élément (modèle : la présentation commerciale) ----------
+// Le cadre (.ob-ring) est un élément à part, fixe, qui suit l'élément à toucher à chaque image ; l'élément garde seulement la classe .ob-hl.
+// Il attend que le défilement soit fini (position stable) avant de se poser, et glisse d'un élément à l'autre (0,7 s ; tout de suite si l'animation est réduite).
+let showRing = null, ringEl = null, ringReady = false, ringLast = '', ringStable = 0, ringApplied = '', ringRaf = 0, lastScroll = 0, barSeen = false;
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const markScroll = () => { lastScroll = performance.now(); };
+document.addEventListener('scroll', markScroll, true);
+addEventListener('resize', markScroll);
+function ringHide() { if (showRing) showRing.classList.remove('in'); ringReady = false; ringLast = ''; ringStable = 0; }
+function ringStop() { cancelAnimationFrame(ringRaf); ringRaf = 0; ringEl = null; ringReady = false; ringLast = ''; ringApplied = ''; ringStable = 0; if (showRing) { showRing.remove(); showRing = null; } }
+const ringKick = () => { if (!ringRaf) ringRaf = requestAnimationFrame(ringFrame); };
+// sur ordinateur, le bandeau est fixe dans la colonne de gauche, sous les onglets et « Mes rôles » (hors du fond assombri)
+function sidePlace() {
+  const tb = document.querySelector('.tb'); if (!tb || !showBar) return;
+  const r = tb.getBoundingClientRect(), h = showBar.offsetHeight;
+  const under = [...tb.children].reduce((m, c) => Math.max(m, c.getBoundingClientRect().bottom), r.top + 24) + 16;
+  showBar.style.left = r.left + 16 + 'px'; showBar.style.width = Math.max(160, r.width - 32) + 'px';
+  showBar.style.top = Math.max(8, Math.min(under, innerHeight - h - 8)) + 'px';
+}
+function ringFrame() {
+  ringRaf = 0;
+  const side = showBar && showBar.classList.contains('side');
+  if (!ringEl && !side) return;
+  ringRaf = requestAnimationFrame(ringFrame);
+  if (side) sidePlace();
+  const el = ringEl;
+  if (!el || !el.isConnected) { if (showRing && showRing.classList.contains('in')) ringHide(); return; }
+  const a = el.getBoundingClientRect(), p = 6, k = [a.left, a.top, a.width, a.height].map(Math.round).join();
+  if (k === ringLast) ringStable++; else { ringStable = 0; ringLast = k; }
+  if (!ringReady && ringStable >= 4 && a.width > 0) ringReady = true;
+  if (!ringReady) return;
+  if (!showRing) { showRing = document.createElement('div'); showRing.className = 'ob-ring fast'; showRing.setAttribute('aria-hidden', 'true'); document.body.appendChild(showRing); ringApplied = ''; }
+  const shown = showRing.classList.contains('in');
+  if (ringApplied !== k) {
+    showRing.classList.toggle('fast', reduceMotion() || !shown || performance.now() - lastScroll < 250);
+    Object.assign(showRing.style, { left: a.left - p + 'px', top: a.top - p + 'px', width: a.width + 2 * p + 'px', height: a.height + 2 * p + 'px' });
+    ringApplied = k;
+  }
+  if (!shown) { void showRing.offsetWidth; showRing.classList.add('in'); }
+}
 // 5.8.0 · n° 208 j : « Étape 1 sur 2 · » suivi du texte de l'étape ; n° 208 a : à la fin, le bandeau reste avec « Revenir à la fiche »
 function barHtml(f, id, st, cur, found) {
   const steps = stepsOf(f), n = steps.length;
   let head;
-  if (st.end) head = isDone(id) ? 'C’est fait. Bravo !' : 'Tu as vu toutes les étapes. Reviens à la fiche et touche « C’est fait » quand c’est fini.';
+  if (st.end) head = isDone(id) ? 'C’est fait. Bravo !' : 'C’est tout ! Reviens à la fiche et touche « C’est fait » quand c’est fini.';
   else head = `Étape ${cur + 1} sur ${n} · ${esc(steps[cur])}${found ? '' : ' <span class="obbar-hint">(ouvre cet écran)</span>'}`;
   // n° 223 : la personne sait que ses touches ne changent rien
   if (!st.end && showOf(f).some((e) => e.sim || e.ex)) head += '<small class="obbar-sim">Exemple : rien n’est enregistré pendant « Me montrer ».</small>';
@@ -390,14 +447,16 @@ hooks.obBack = () => { if (S.obShow && S.obRet) { backToFiche(); return true; } 
 // 5.9.1 : la zone doit rester au-dessus du bandeau jaune (sa vraie hauteur), sinon il la cache (retour de Gaël sur « Vérifier la liste »)
 const inView = (el) => { const r = el.getBoundingClientRect(), b = showBar && !showBar.classList.contains('side') ? showBar.getBoundingClientRect().top : innerHeight - 140; return r.top >= 60 && r.bottom <= Math.min(b, innerHeight - 140) - 12; };
 function paintShow() {
-  clearShow();
-  const s = S.obShow; if (!s) return;
-  const f = FICHES[s.id], L = showOf(f); if (!L.length) { S.obShow = null; return; }
-  showBar = document.createElement('div'); showBar.className = 'obbar' + (s.end ? ' end' : '');
+  const s = S.obShow; clearShow(!!s); if (!s) return;
+  const f = FICHES[s.id], L = showOf(f); if (!L.length) { S.obShow = null; clearShow(); return; }
+  document.documentElement.classList.add('obshow'); // téléphone : de la place sous la page pour que le bas défile au-dessus du bandeau
+  const noRing = () => { ringEl = null; ringHide(); ringKick(); };
+  showBar = document.createElement('div'); showBar.className = 'obbar' + (s.end ? ' end' : '') + (barSeen ? '' : ' enter'); barSeen = true;
   // sur ordinateur, le bandeau vertical se range dans la colonne de gauche, sous les onglets et « Mes rôles »
   const side = innerWidth >= 960 && document.querySelector('.tb');
   if (side) showBar.classList.add('side');
-  const put = () => (side ? side.appendChild(showBar) : document.body.appendChild(showBar));
+  const put = () => { document.body.appendChild(showBar); if (side) sidePlace(); noRingIf(); };
+  let ringOn = false; const noRingIf = () => { if (!ringOn) noRing(); else ringKick(); };
   if (s.end) { showBar.innerHTML = barHtml(f, s.id, s, 0, true); put(); return; }
   // l'étape la plus avancée visible ; sur un même écran (« + »), on avance au toucher
   const vis = L.map((e) => seen(selOf(e)));
@@ -416,8 +475,9 @@ function paintShow() {
   const cur = s.i >= g && s.i <= j && vis[s.i] ? s.i : g; s.i = cur;
   const el = vis[cur]; el.classList.add('ob-hl');
   showBar.innerHTML = barHtml(f, s.id, s, L[cur].s, true);
-  put();
-  if (!inView(el)) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  ringOn = true; ringEl = el; put();
+  // n° 237 : hors écran, on fait défiler en douceur ; le cadre attend la fin du défilement avant de se poser
+  if (!inView(el)) { ringHide(); el.scrollIntoView({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' }); }
   // au toucher : l'étape suivante (sur le même écran, la prochaine zone présente) ; après la dernière, le bandeau de fin
   const next = () => { if (S.obShow !== s || s.i !== cur) return; let n = cur + 1; while (n <= j && !vis[n] && L[n].same) n++; if (n > L.length - 1) s.end = true; else { s.i = n; s.wait = true; } setTimeout(paintShow, 250); };
   el.addEventListener('click', next, { once: true, capture: true });
