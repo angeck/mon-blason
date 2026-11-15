@@ -13,7 +13,7 @@ const HOST = typeof location !== 'undefined' ? location.hostname : '';
 export const IS_PROD = /(^|\.)mypocketclub\.fr$/.test(HOST);
 export const IS_TEST = !IS_PROD;
 const BASES = {
-  prod: { url: 'https://A_REMPLIR.supabase.co', key: 'sb_publishable_A_REMPLIR' },   // nouveau projet Supabase (Paris), clés publiques
+  prod: { url: 'https://qydblwrmzmcqkzlnyapp.supabase.co', key: 'sb_publishable__zp8_AyFE2mTaneTLw3KHQ_MF7AksoX' },   // nouveau projet Supabase (Paris), clés publiques
   test: { url: 'https://rmdszovbpmagtvugfrpr.supabase.co', key: 'sb_publishable_KsSQGA_bD3QSpX1vjnYjUw_eYBXXJ2u' },
 };
 export const SUPABASE_URL = BASES[IS_PROD ? 'prod' : 'test'].url;
