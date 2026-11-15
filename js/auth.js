@@ -2,7 +2,7 @@
 import { contactCardHtml } from './club.js'; // n° 122
 import { BRAND, VERSION, CGU_VERSION, TURNSTILE_SITEKEY } from '../config.js';
 import { notListedLine } from './v37.js';
-import { S, sb, esc, run, toast, render, refresh, store, remember, fl, ROLES, JOIN_ROLES, SPORTS, FONCTIONS, niceFirst, niceLast, lum, onColor, isActive, club, ACTIONS, FORMS, INPUTS, CHANGES } from './core.js';
+import { S, sb, esc, run, toast, render, refresh, store, remember, fl, ROLES, JOIN_ROLES, SPORTS, FONCTIONS, niceFirst, niceLast, lum, onColor, isActive, club, ACTIONS, FORMS, INPUTS, CHANGES, hooks } from './core.js';
 import { header, wordmark, crest, field, icon } from './ui.js';
 import { unlinkPush } from './notif.js';
 import { legalBody, legalTitle, legalLinks, LEGAL } from './legal.js';
@@ -203,6 +203,7 @@ export function onboarding() {
   let h = header({ title: o === 'create' ? 'Créer mon club' : o === 'join' ? (S.join.byId ? 'Rejoindre ' + esc(S.join.clubName) : 'Rejoindre un club') : o === 'search' ? 'Chercher un club' : `Salut ${esc(S.me.first_name || '')} !`, brand: true }) + '<main class="bd">';
   if (!o) {
     if (pend.length) h += `<div class="card warn"><div class="kick">Demande en attente</div>${pend.map((m) => `<b>${esc(S.clubs[m.club_id]?.name || 'Club')} · ${ROLES[m.role]}</b>`).join('')}<p class="note">Le club doit valider ta demande. Touche « Actualiser » ensuite.</p><button class="btn small ghost" data-act="refresh">Actualiser</button></div>`;
+    if (pend.length && hooks.pendNotif) h += hooks.pendNotif();   // 5.17.0 · n° 257
     h += `<div class="card"><h3>Chercher ton club</h3><p class="note">Par son nom, sa ville ou son code postal.</p><button class="btn main" data-act="onb" data-v="search">Chercher un club</button></div>
     <div class="card yellow"><h3>Ton club t'a donné un code ?</h3><p class="note">8 caractères, demandés au coach ou au bureau.</p><button class="btn ink" data-act="onb" data-v="join">Rejoindre un club avec son code</button></div>
     <div class="card"><h3>Tu es président d'un club ?</h3><p class="note">Crée l'espace du club : tu pourras ensuite ajouter les équipes et inviter les membres.</p><button class="btn" data-act="onb" data-v="create">Créer mon club</button></div>

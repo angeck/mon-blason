@@ -1,13 +1,13 @@
 // mypocketclub · alpha 4.9.0 · n° 175 et n° 180 : mentions légales, « Vos données » (version courte et politique complète),
 // conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.5 du 13 novembre 2026 : n° 229, toutes les données gardées ;
 // n° 230, coordonnées par fonction ; lot e-mails 1 ; conditions 1.3 : gratuité ; 1.6 du 13 novembre 2026 : n° 162, recommandations,
-// n° 187, journal des actions à 1 an ; 1.7 (5.13.0) : n° 236, un seul chemin « recommander mon club », coordonnées facultatives ; conditions inchangées),
+// n° 187, journal des actions à 1 an ; 1.9 (5.17.0) : n° 257, e-mail « demande validée » sans notification ; n° 254, gymnases du club ; 1.7 (5.13.0) : n° 236, un seul chemin « recommander mon club », coordonnées facultatives ; conditions inchangées),
 // non relus par un juriste. Vouvoiement. Changer LEGAL.version et LEGAL.date (et CGU_VERSION dans config.js
 // pour les conditions) à chaque modification : une nouvelle version des conditions est présentée à la connexion suivante.
 import { BRAND } from '../config.js';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.8', date: '14 novembre 2026' };
+export const LEGAL = { version: '1.9', date: '15 novembre 2026' };
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -108,6 +108,7 @@ Contact pour toute question : ${C}.
 - **Abonnement du club** : nombre de joueurs, statut et montant, visibles du président du club et de mypocketclub.
 - **Exercices préparés avec l'IA** : date, club, compte et coût de chaque demande, pour suivre la dépense ; jamais le texte de l'exercice.
 - **E-mails envoyés** : type, club, date et réussite de chaque envoi, pour respecter les limites d'envoi ; jamais l'adresse ni le contenu. Une adresse qui s'est désinscrite est gardée sous forme d'empreinte, pour ne plus jamais y écrire.
+- **Gymnases du club** : nom et adresse des salles, saisis par le président, visibles des membres du club pour remplir le lieu des rendez-vous à domicile. Toucher une adresse ouvre l'application de cartes de votre appareil (Plans, Google Maps…), qui reçoit alors cette adresse.
 - **Recommandations** : quand une personne recommande mypocketclub à un dirigeant de son club, nous gardons seulement l'empreinte de l'adresse du dirigeant (pour ne jamais lui écrire deux fois), jamais l'adresse, ni le prénom ou le club saisis.
 - **Accords** : droit à l'image et e-mails d'information, avec leur date.
 - **Contenus que vous créez** : exercices, séances, tactiques (schémas de placement des coachs), annonces, fichiers joints.
@@ -149,7 +150,7 @@ Le club peut exporter la liste de ses membres. Ce fichier est alors sous sa resp
 Deux accords sont facultatifs, jamais cochés d'avance, et modifiables à tout moment dans « Mon compte » :
 - le **droit à l'image** ;
 - les **e-mails d'information** (rappels, nouveautés, relances), qui contiennent aussi un lien de désinscription. Une désinscription par ce lien est définitive ; vous pouvez revenir sur ce choix vous-même dans « Mon compte ».
-Les e-mails nécessaires au service sont toujours envoyés : convocation, changement d'un rendez-vous, sécurité du compte, invitation d'un parent, attestation de paiement demandée (si le club choisit de l'envoyer aussi par e-mail), avertissement avant la suppression d'un compte inactif.
+Les e-mails nécessaires au service sont toujours envoyés : convocation, changement d'un rendez-vous, sécurité du compte, invitation d'un parent, attestation de paiement demandée (si le club choisit de l'envoyer aussi par e-mail), avertissement avant la suppression d'un compte inactif, et validation de votre demande pour rejoindre un club (ou de votre club) quand les notifications ne sont activées sur aucun de vos appareils. Cet e-mail attend au plus 7 jours dans une file d'envoi, qui ne garde que votre compte, le club et le rôle demandé.
 ## 7. Combien de temps les données sont-elles gardées ?
 | Fiche dans un club | 2 saisons après votre départ, visible du bureau seulement, puis effacée |
 | Compte | Tant que vous l'utilisez ; sans connexion pendant 2 saisons : e-mail d'avertissement, puis 30 jours de corbeille, puis effacement |

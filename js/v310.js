@@ -244,6 +244,7 @@ function reglagesView() {
   // 4.4.0 (n° 114) : « cotisation à jour » pour le Secrétariat (non par défaut) ; coordonnées des familles pour le Directeur technique (oui par défaut)
   h += `<div class="sec"><h2>Droits</h2></div><div class="card">${sw('coach_sees_fees', 'Les coachs voient licences et cotisations', 'De leurs joueurs seulement, sans les réductions.', c.coach_sees_fees !== false)}${sw('secretary_sees_fees', 'Le secrétariat voit « cotisation à jour »', 'Oui ou non pour chaque joueur, jamais les montants. Vaut aussi pour le contact licences.', c.secretary_sees_fees === true)}${sw('tech_sees_contacts', 'Le Directeur technique voit les coordonnées des familles', 'Parents et joueurs : téléphone, e-mail, contact d’urgence. Celles de ses propres équipes restent visibles s’il est aussi coach.', c.tech_sees_contacts !== false)}${sw('custom_header', 'Aux couleurs du club', 'L’en-tête prend la couleur principale du club.', c.custom_header)}</div>`;
   h += `<div class="sec"><h2>Saison</h2></div>` + (hooks.seasonBlock ? hooks.seasonBlock() : '');
+  h += hooks.gymSettings ? hooks.gymSettings() : '';   // 5.17.0 · n° 254 : gymnases du club
   h += hooks.attestSettings ? hooks.attestSettings() : '';   // 5.7.0 · n° 204 : coordonnées, identifiant et cachet des attestations
   h += hooks.clientBlock ? hooks.clientBlock() : '';   // 5.3.0 · n° 188 : vue client
   // Zone sensible

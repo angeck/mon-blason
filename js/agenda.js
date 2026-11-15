@@ -338,8 +338,8 @@ export function autoTitle(f) {
     const when = !m ? '' : f.repeat && !f.id ? `chaque ${WD[new Date(+m[1], +m[2] - 1, +m[3]).getDay()]} ${hour}` : `${date} ${hour}`;
     return dash(['Entraînement', cats].filter(Boolean).join(' '), when).slice(0, 120);
   }
-  if (['Match', 'Plateau', 'Tournoi'].includes(f.type)) return dash(opp ? `${f.type} vs ${opp}` : f.type, opp ? '' : String(f.place || '').trim(), date).slice(0, 120);
-  return dash(f.type || 'Événement', String(f.place || '').trim(), date).slice(0, 120);
+  if (['Match', 'Plateau', 'Tournoi'].includes(f.type)) return dash(opp ? `${f.type} vs ${opp}` : f.type, opp ? '' : (hooks.placeShort ? hooks.placeShort(f.place) : String(f.place || '').trim()), date).slice(0, 120);
+  return dash(f.type || 'Événement', (hooks.placeShort ? hooks.placeShort(f.place) : String(f.place || '').trim()), date).slice(0, 120);
 }
 const isAuto = (f) => f.titleAuto !== false;
 function titleField(f) {
@@ -359,14 +359,14 @@ export function eventForm() {
   ${durField(f)}
   ${repeatFields(f)}
   ${titleField(f)}
-  ${field('el', 'Lieu', `<input id="el" name="place" data-evauto="1" value="${esc(f.place || '')}" placeholder="Ex. Gymnase de Boissy">`)}
+  ${hooks.placeField ? hooks.placeField(f, matchy) : field('el', 'Lieu', `<input id="el" name="place" data-evauto="1" value="${esc(f.place || '')}" placeholder="Ex. Gymnase de Boissy">`)}
   ${convField(f)}
   ${reinfField(f)}
   ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && hasArea('evenements') ? `<label class="check"><input type="checkbox" name="mkconv" ${f.mkconv ? 'checked' : ''}><span>Préparer la convocation des clubs reçus après l'enregistrement</span></label>` : ''}
   ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && !hasArea('evenements') ? '<p class="note">Le contact rencontres du club sera prévenu pour préparer la convocation des clubs reçus.</p>' : ''}
   <button class="btn main" type="submit">${f.id ? 'Enregistrer les changements' : 'Enregistrer'}</button></form>`;
 }
-function keepForm() {
+export function keepForm() {
   const fm = document.getElementById('evf'); if (!fm) return; const v = Object.fromEntries(new FormData(fm)); Object.assign(S.form, v); S.form.repeat = !!v.repeat; S.form.skiphol = !!v.skiphol;
   if (fm.querySelector('[data-evhome]')) S.form.at_home = !!v.at_home;
   S.form.mkconv = !!v.mkconv;
@@ -381,7 +381,8 @@ export function eventPage(id) {
   const tot = R.oui.length + R.non.length, base = Math.max(tot, isTeamType(e) ? playersOf(e).length : invitedCount(e));
   h += `<div class="card"><div class="sec"><h2>Qui vient ?</h2><span class="det">${plural(R.all.length, 'réponse')}</span></div>${base ? `<div class="bar"><span style="width:${(100 * R.oui.length) / base}%"></span><span style="width:${(100 * R.non.length) / base}%"></span></div>` : ''}
   <div class="chips"><span class="pill ok">${R.oui.length} oui</span><span class="pill ko">${R.non.length} non</span>${base > tot && isOpen(e) ? `<span class="pill">${base - tot} sans réponse</span>` : ''}</div>${!isTeamType(e) && (R.oui.some((x) => x.player_id) || guestsOf(e)) ? `<div class="det">${plural(R.oui.length + guestsOf(e), 'participant')} · ${plural(R.oui.filter((x) => !x.player_id).length, 'adulte')}, ${plural(R.oui.filter((x) => x.player_id).length, 'enfant')}${guestsOf(e) ? ', ' + plural(guestsOf(e), 'accompagnant') + ' sans compte' : ''}</div>` : ''}<div><b>Viennent :</b> ${list(R.oui)}</div><div><b>Ne viennent pas :</b> ${list(R.non)}</div></div>`;
-  h += `<div class="btns"><button class="btn" data-act="ics" data-id="${id}">${icon('calplus', 20)}Ajouter à mon agenda</button>${e.place ? `<a class="btn small" style="flex:none;width:52px;padding:0" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.place)}" target="_blank" rel="noopener" aria-label="Itinéraire">${icon('pin', 22)}</a>` : ''}</div>`;
+  if (e.place && hooks.placeLine) h += hooks.placeLine(e.place);   // 5.17.0 · n° 254 : le lieu, et son adresse qui ouvre le GPS
+  h += `<div class="btns"><button class="btn" data-act="ics" data-id="${id}">${icon('calplus', 20)}Ajouter à mon agenda</button>${e.place ? (hooks.goBtn ? hooks.goBtn(e.place) : `<a class="btn small" style="flex:none;width:52px;padding:0" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.place)}" target="_blank" rel="noopener" aria-label="Itinéraire">${icon('pin', 22)}</a>`) : ''}</div>`;
   // n° 165 (Gaël, 9 novembre 2026) : répondre « non » ne masque rien ; une case à part masque le rendez-vous, quelle que soit la réponse.
   // Masqué avec « oui » : la personne est quand même prévenue d'une annulation ou d'un changement de date ou d'heure (vérifié par la base).
   if (!coachOnly(e)) h += `<div class="card flat"><label class="check"><input type="checkbox" data-hideev="${id}" ${hiddenByMe(e) ? 'checked' : ''}><span><b>Masquer ce rendez-vous de mon agenda</b><br><span class="det">${R.mine === 'oui' || myKidsIn(evTeams(e)).some((p) => R.kid(p.id) === 'oui') ? 'Tu as répondu « oui » : tu seras quand même prévenu s’il est annulé ou si sa date ou son heure change.' : 'Tu ne recevras plus de notification pour ce rendez-vous. Filtre « Masqués » de l’Agenda pour le retrouver.'}</span></span></label></div>`;

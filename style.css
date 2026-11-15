@@ -636,3 +636,29 @@ html.tacfull .stedit svg,html.tacfull .tacbig svg{max-height:calc(100dvh - 260px
 html.site-test body::after { content: 'TEST'; position: fixed; top: calc(env(safe-area-inset-top, 0px) + 2px); left: 50%; transform: translateX(-50%);
   z-index: 2147483000; pointer-events: none; background: var(--pc-jaune); color: var(--pc-encre); font: 800 11px/1 system-ui, sans-serif;
   letter-spacing: .12em; padding: 4px 10px; border-radius: 999px; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+
+/* ---------- 5.17.0 · n° 254 : lieu d'un rendez-vous (adresse qui ouvre le GPS) ---------- */
+.placecard{display:flex;flex-direction:column;gap:4px}
+.placecard b{font-size:17px}
+.placelink{display:inline-flex;align-items:center;gap:6px;color:var(--pc-action);font-weight:600;text-decoration:underline;overflow-wrap:anywhere}
+.btns .gobtn{flex:none;display:inline-flex;align-items:center;gap:6px;padding:0 16px;text-decoration:none}
+
+/* ---------- 5.17.0 · n° 257 : panneau « active les notifications » (monte du bas, site flouté, comme l'onboarding n° 240) ---------- */
+#nask{position:fixed;inset:0;z-index:60}
+.nask-bg{position:absolute;inset:0;background:rgba(17,22,46,.45);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.nask-sheet{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:100%;max-width:720px;box-sizing:border-box;background:var(--pc-papier);color:var(--pc-texte-ecran);
+  border-radius:28px 28px 0 0;padding:14px 22px calc(26px + env(safe-area-inset-bottom));box-shadow:0 -10px 30px rgba(17,22,46,.18);display:flex;flex-direction:column;gap:12px;animation:naskup .25s ease-out}
+@keyframes naskup{from{transform:translate(-50%,40px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
+@media (prefers-reduced-motion:reduce){.nask-sheet{animation:none}}
+.nask-grip{width:44px;height:5px;border-radius:3px;background:var(--pc-trait);align-self:center}
+.nask-row{display:flex;gap:16px;align-items:flex-start}
+.nask-bell{flex:none;width:56px;height:56px;border-radius:18px;background:var(--pc-jaune);display:flex;align-items:center;justify-content:center}
+.nask-txt{flex:1;display:flex;flex-direction:column;gap:10px;min-width:0}
+.nask-txt h2{font-family:var(--pc-titre);font-weight:800;font-size:24px;margin:0;line-height:1.15}
+.nask-txt p{margin:0;line-height:1.5}
+.nask-txt ol{margin:0;padding-left:20px;line-height:1.7}
+.nask-txt ol svg{vertical-align:-3px;color:var(--pc-action)}
+.nask-txt .btns{justify-content:flex-end}
+.nask-card{border:3px solid var(--pc-jaune)}
+.nask-card .nask-ic{flex:none;color:var(--pc-action)}
+@media (max-width:599px){.nask-row{flex-direction:column;gap:12px}.nask-txt .btns{flex-direction:column-reverse}.nask-txt .btns .btn{width:100%}}

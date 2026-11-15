@@ -42,6 +42,9 @@ const P = {
   crown: '<path d="M4 18h16M5 18L3.5 8l5 4L12 5l3.5 7 5-4L19 18"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>', // n° 98 : directeur technique (ex-directeur sportif, n° 114)
   swap: '<path d="M7 7h12l-3.5-3.5M17 17H5l3.5 3.5"/>', // 5.9.0 · n° 225 : changer de club
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>', // 5.17.0 · n° 257
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>', // 5.17.0 · n° 254
+  iosshare: '<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v7h14v-7"/>', // 5.17.0 · n° 257 : bouton Partager de Safari
   share: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>',
 };
 export const icon = (n, size = 22, stroke = 'currentColor', w = 2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ''}</svg>`;
