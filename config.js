@@ -6,9 +6,19 @@ export const BRAND = { name: 'mypocketclub', title: 'mypocketclub', aria: 'my po
   site: 'mypocketclub.fr', siteUrl: 'https://mypocketclub.fr', mailFrom: 'notifications@mypocketclub.fr' };
 // Adresse et clé publique du projet Supabase. La clé « publishable » est faite pour être visible :
 // les données sont protégées par les règles d'accès (RLS) de la base.
-export const SUPABASE_URL = 'https://rmdszovbpmagtvugfrpr.supabase.co';
-export const SUPABASE_KEY = 'sb_publishable_KsSQGA_bD3QSpX1vjnYjUw_eYBXXJ2u';
-export const VERSION = 'alpha 5.16.0';
+// N° 220 · deux installations, un seul code : la vraie application (mypocketclub.fr, base vierge à Paris)
+// et le site de test (angeck.github.io/mon-blason, base de test avec les faux comptes et la liste « Profil de test »).
+// Le site choisit sa base selon son adresse ; partout ailleurs (test, ordinateur de Gaël), c'est la base de test.
+const HOST = typeof location !== 'undefined' ? location.hostname : '';
+export const IS_PROD = /(^|\.)mypocketclub\.fr$/.test(HOST);
+export const IS_TEST = !IS_PROD;
+const BASES = {
+  prod: { url: 'https://A_REMPLIR.supabase.co', key: 'sb_publishable_A_REMPLIR' },   // nouveau projet Supabase (Paris), clés publiques
+  test: { url: 'https://rmdszovbpmagtvugfrpr.supabase.co', key: 'sb_publishable_KsSQGA_bD3QSpX1vjnYjUw_eYBXXJ2u' },
+};
+export const SUPABASE_URL = BASES[IS_PROD ? 'prod' : 'test'].url;
+export const SUPABASE_KEY = BASES[IS_PROD ? 'prod' : 'test'].key;
+export const VERSION = 'alpha 5.16.1';
 // Alpha 3.2.5 · profils de test : liste déroulante « Profil de test » visible seulement quand on est connecté avec un des comptes de la liste.
 // 4.3.0 · n° 126 (audit du 5 novembre 2026) : la liste n'est plus écrite ici (ce fichier est public) ; elle est rangée dans la base
 // (table test_profiles, remplie par le script privé du projet) et lue après la connexion par js/v43.js, qui remplit ce tableau.

@@ -631,3 +631,8 @@ html.tacfull .stedit svg,html.tacfull .tacbig svg{max-height:calc(100dvh - 260px
   .tb .rsub .rsub2{display:flex;flex-direction:column;gap:2px;margin:0 0 4px 16px;padding-left:8px;border-left:2px solid var(--pc-trait)}
   .tb .rsub .rsub2 button{min-height:38px;font-size:14px;font-weight:500}
 }
+
+/* N° 220 · site de test : pastille « TEST » en haut au centre (jamais sur mypocketclub.fr) */
+html.site-test body::after { content: 'TEST'; position: fixed; top: calc(env(safe-area-inset-top, 0px) + 2px); left: 50%; transform: translateX(-50%);
+  z-index: 2147483000; pointer-events: none; background: var(--pc-jaune); color: var(--pc-encre); font: 800 11px/1 system-ui, sans-serif;
+  letter-spacing: .12em; padding: 4px 10px; border-radius: 999px; box-shadow: 0 1px 4px rgba(0,0,0,.25); }

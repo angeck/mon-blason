@@ -1,0 +1,11072 @@
+-- =====================================================================
+-- CREER_BASE_NEUVE.sql · mypocketclub · vraie application (n° 220) · à jour de l'alpha 5.16.0
+-- À lancer UNE fois dans le NOUVEAU projet Supabase (vide) : SQL Editor > coller > Run.
+-- N'efface rien. Refuse de tourner si la base contient déjà mypocketclub (protection de la base de test).
+-- Aucun profil de test, aucune donnée : la liste « Profil de test » n'existe donc pas sur ce site.
+-- =====================================================================
+do $$ begin
+  if to_regclass('public.clubs') is not null then
+    raise exception 'STOP : cette base contient déjà mypocketclub. Ce script est seulement pour un projet neuf.';
+  end if;
+end $$;
+
+-- ===== schema.sql =====
+-- Pocket Club (nom provisoire) · alpha 3.0 · schéma complet de la base
+-- Ne pas lancer seul sur Supabase : utiliser supabase/RESET_ALPHA_3_0.sql, qui efface tout puis installe ce schéma.
+-- Règle : chaque droit est vérifié ici, côté serveur (règles d'accès et fonctions), jamais seulement à l'écran.
+
+create extension if not exists unaccent with schema extensions;
+create extension if not exists fuzzystrmatch with schema extensions;
+
+-- =====================================================================
+-- 1. Tables
+-- =====================================================================
+create table profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  first_name text not null default '',
+  last_name text not null default '',
+  full_name text not null default '',              -- calculé : « Prénom Nom »
+  nickname text,
+  phone text,
+  cgu_version text,
+  cgu_at timestamptz,
+  optin_emails boolean not null default false,
+  show_all_club boolean not null default false,    -- n° 22 : interrupteur « Tout le club »
+  deleted_at timestamptz,                          -- suppression du compte demandée (effective après 30 jours)
+  deleted_snapshot jsonb,                          -- profils et groupes, pour annuler la suppression
+  created_at timestamptz not null default now()
+);
+
+create table clubs (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (length(trim(name)) between 2 and 80),
+  city text not null default '',
+  sport text not null default 'Basket-ball' check (sport in ('Basket-ball','Volley-ball')),
+  color1 text not null default '#2F5BFF' check (color1 ~ '^#[0-9A-Fa-f]{6}$'),
+  color2 text not null default '#FFC93C' check (color2 ~ '^#[0-9A-Fa-f]{6}$'),
+  crest_bg text check (crest_bg is null or crest_bg ~ '^#[0-9A-Fa-f]{6}$'),
+  logo text check (logo is null or (logo like 'data:image/%' and length(logo) < 400000)),
+  custom_header boolean not null default false,    -- en-tête aux couleurs du club (réglage du président)
+  join_code text not null unique,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table teams (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  name text not null check (length(trim(name)) between 1 and 60),
+  category text not null default '',
+  gender text not null default '' check (gender in ('','Féminine','Masculine','Mixte')),
+  state text not null default 'Visible' check (state in ('Visible','Fantôme','Archivée')),
+  season text not null default '2026-2027',
+  slots text not null default '',
+  deleted_at timestamptz,
+  deleted_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index on teams(club_id);
+
+create table players (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  team_id uuid references teams(id) on delete set null,          -- équipe principale
+  user_id uuid references auth.users(id) on delete set null,      -- joueur de 15 ans et plus avec son propre compte
+  first_name text not null,
+  last_name text not null default '',
+  birth_date date check (birth_date is null or birth_date between '1930-01-01' and '2030-12-31'),
+  emergency_name text,
+  emergency_phone text,
+  consents jsonb not null default '{}'::jsonb,                      -- {"image":{"ok":true,"at":"…","by":"…"}, …}
+  parent_email text check (parent_email is null or (length(parent_email) < 200 and parent_email like '%@%')),
+  parent_phone text check (parent_phone is null or length(parent_phone) < 30),
+  deleted_at timestamptz,
+  deleted_by uuid references auth.users(id) on delete set null,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index on players(club_id);
+create index on players(team_id);
+
+create table memberships (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null check (role in ('president','bureau','coach','joueur','parent','supporteur')),
+  team_id uuid references teams(id) on delete set null,
+  player_id uuid references players(id) on delete set null,
+  child_first text,                                                -- seulement tant que la demande de parent attend
+  child_last text,
+  assistant boolean not null default false,
+  status text not null default 'pending' check (status in ('pending','active')),
+  created_at timestamptz not null default now()
+);
+create index on memberships(user_id);
+create index on memberships(club_id);
+create index on memberships(team_id);
+
+create table player_parents (
+  player_id uuid not null references players(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  primary key (player_id, user_id)
+);
+
+create table player_teams (                                        -- équipes en plus de l'équipe principale
+  player_id uuid not null references players(id) on delete cascade,
+  team_id uuid not null references teams(id) on delete cascade,
+  primary key (player_id, team_id)
+);
+
+create table player_admin (                                        -- licence et cotisation (président et bureau)
+  player_id uuid primary key references players(id) on delete cascade,
+  licence_state text not null default 'Préinscrit club' check (licence_state in ('Préinscrit club','Préinscrit fédé','Licencié')),
+  licence_number text,
+  health_doc boolean not null default false,                       -- certificat fourni oui / non, jamais le contenu
+  fee_amount numeric(8,2),
+  fee_paid numeric(8,2) not null default 0,
+  fee_method text check (fee_method is null or fee_method in ('Chèque','Espèces','Virement','HelloAsso','Carte','Autre')),
+  updated_by uuid references auth.users(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+
+create table player_discount (                                     -- réductions : bureau seulement
+  player_id uuid primary key references players(id) on delete cascade,
+  base_amount numeric(8,2),
+  amount numeric(8,2) not null default 0,
+  reason text,
+  updated_by uuid references auth.users(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+
+create table fee_grid (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  season text not null default '2026-2027',
+  category text,
+  team_id uuid references teams(id) on delete cascade,
+  amount numeric(8,2) not null check (amount >= 0),
+  fed_part numeric(8,2) check (fed_part is null or fed_part >= 0),
+  created_at timestamptz not null default now()
+);
+
+create table club_docs (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  kind text not null default 'tarifs' check (kind in ('tarifs')),
+  file_name text not null,
+  data text not null check ((data like 'data:application/pdf;%' or data like 'data:image/%') and length(data) < 5600000),
+  uploaded_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table event_series (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  title text not null,
+  weekday int not null check (weekday between 0 and 6),
+  start_time text not null,
+  until date not null,
+  skip_holidays boolean not null default true,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+-- Destinataires : club, team (une ou plusieurs équipes), board, board_coaches, coaches, people (personnes choisies)
+create table events (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  audience text not null default 'club' check (audience in ('club','team','board','board_coaches','coaches','people')),
+  team_ids uuid[] not null default '{}',
+  people uuid[] not null default '{}',
+  type text not null default 'Événement' check (type in ('Événement','Entraînement','Match','Plateau','Tournoi','Réunion','AG')),
+  title text not null check (length(trim(title)) between 1 and 120),
+  starts_at timestamptz not null,
+  place text not null default '',
+  opponents text not null default '',
+  series_id uuid references event_series(id) on delete set null,
+  cancelled boolean not null default false,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (audience <> 'team' or cardinality(team_ids) between 1 and 20),
+  check (audience <> 'people' or cardinality(people) between 1 and 200)
+);
+create index on events(club_id, starts_at);
+create index on events using gin(team_ids);
+create index on events using gin(people);
+create index on events(series_id);
+
+create table event_responses (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references events(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,     -- qui a répondu
+  player_id uuid references players(id) on delete cascade,               -- au nom de quel joueur (parent)
+  answer text not null check (answer in ('oui','non')),
+  updated_at timestamptz not null default now()
+);
+create unique index event_responses_self on event_responses(event_id, user_id) where player_id is null;
+create unique index event_responses_child on event_responses(event_id, player_id) where player_id is not null;
+
+create table event_hidden (
+  event_id uuid not null references events(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  hidden_at timestamptz not null default now(),
+  primary key (event_id, user_id)
+);
+
+create table attendance (
+  event_id uuid not null references events(id) on delete cascade,
+  player_id uuid not null references players(id) on delete cascade,
+  status text not null check (status in ('present','absent','retard')),
+  marked_by uuid references auth.users(id) on delete set null,
+  marked_at timestamptz not null default now(),
+  primary key (event_id, player_id)
+);
+
+create table groups (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  name text not null check (length(trim(name)) between 1 and 80),
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table group_members (
+  group_id uuid not null references groups(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  muted boolean not null default false,
+  primary key (group_id, user_id)
+);
+
+create table messages (
+  id bigint generated always as identity primary key,
+  group_id uuid not null references groups(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  body text not null check (length(body) between 1 and 2000),
+  created_at timestamptz not null default now()
+);
+create index on messages(group_id, created_at);
+
+create table polls (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references groups(id) on delete cascade,
+  question text not null check (length(trim(question)) between 1 and 200),
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  deleted_by uuid references auth.users(id) on delete set null,          -- corbeille : « supprimé par … »
+  deleted_at timestamptz
+);
+
+create table poll_votes (
+  poll_id uuid not null references polls(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  answer text not null check (answer in ('Présent','Absent','Je ne sais pas')),
+  primary key (poll_id, user_id)
+);
+
+create table join_attempts (user_id uuid not null, at timestamptz not null default now());
+create index on join_attempts(user_id, at);
+
+-- =====================================================================
+-- 2. Mise en forme des noms
+-- =====================================================================
+create function nice_first(t text) returns text language sql immutable as $$
+  select initcap(regexp_replace(trim(coalesce(t, '')), '\s+', ' ', 'g'));
+$$;
+create function nice_last(t text) returns text language sql immutable as $$
+  select case when trim(coalesce(t, '')) = '' then '' else upper(left(regexp_replace(trim(t), '\s+', ' ', 'g'), 1)) || substr(regexp_replace(trim(t), '\s+', ' ', 'g'), 2) end;
+$$;
+create function norm_name(t text) returns text language sql immutable as $$
+  select regexp_replace(lower(extensions.unaccent(coalesce(t, ''))), '[^a-z0-9]', '', 'g');
+$$;
+
+create function profiles_names() returns trigger language plpgsql as $$
+begin
+  new.first_name := nice_first(new.first_name); new.last_name := nice_last(new.last_name);
+  new.full_name := trim(new.first_name || ' ' || new.last_name);
+  return new;
+end $$;
+create trigger profiles_names before insert or update on profiles for each row execute function profiles_names();
+
+create function players_names() returns trigger language plpgsql as $$
+begin
+  new.first_name := nice_first(new.first_name); new.last_name := nice_last(new.last_name);
+  return new;
+end $$;
+create trigger players_names before insert or update on players for each row execute function players_names();
+
+-- Profil créé automatiquement à l'inscription (prénom, nom, version des CGU acceptée, e-mails facultatifs)
+create function handle_new_user() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into profiles(id, first_name, last_name, cgu_version, cgu_at, optin_emails) values (new.id,
+    coalesce(new.raw_user_meta_data->>'first_name', split_part(coalesce(new.raw_user_meta_data->>'full_name', ''), ' ', 1)),
+    coalesce(new.raw_user_meta_data->>'last_name', ''),
+    new.raw_user_meta_data->>'cgu_version',
+    case when new.raw_user_meta_data->>'cgu_version' is not null then now() end,
+    coalesce((new.raw_user_meta_data->>'optin_emails')::boolean, false));
+  return new;
+end $$;
+create trigger on_auth_user_created after insert on auth.users for each row execute function handle_new_user();
+
+-- =====================================================================
+-- 3. Fonctions de droits
+-- =====================================================================
+create function is_member(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from memberships where club_id = c and user_id = auth.uid() and status = 'active');
+$$;
+create function is_board(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from memberships where club_id = c and user_id = auth.uid() and status = 'active' and role in ('president','bureau'));
+$$;
+create function is_president(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from memberships where club_id = c and user_id = auth.uid() and status = 'active' and role = 'president');
+$$;
+create function is_coach_in(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from memberships where club_id = c and user_id = auth.uid() and status = 'active' and role = 'coach');
+$$;
+-- Coach (principal ou assistant) de cette équipe, si l'équipe n'est pas à la corbeille
+create function coaches_team(t uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select t is not null and exists(select 1 from memberships m join teams x on x.id = m.team_id
+    where m.team_id = t and m.user_id = auth.uid() and m.status = 'active' and m.role = 'coach' and x.deleted_at is null);
+$$;
+create function coaches_any(ts uuid[]) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from unnest(coalesce(ts, '{}')) t where coaches_team(t));
+$$;
+create function coaches_all(ts uuid[]) returns boolean language sql stable security definer set search_path = public as $$
+  select cardinality(coalesce(ts, '{}')) > 0 and not exists(select 1 from unnest(ts) t where not coaches_team(t));
+$$;
+create function is_parent_of(p uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from player_parents where player_id = p and user_id = auth.uid());
+$$;
+-- Le compte fait-il partie de l'équipe (coach, joueur, parent d'un joueur de l'équipe) ?
+create function in_team(t uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select t is not null and exists(select 1 from teams x where x.id = t and x.deleted_at is null) and (
+    exists(select 1 from memberships where team_id = t and user_id = auth.uid() and status = 'active')
+    or exists(select 1 from players p where p.deleted_at is null
+              and (p.team_id = t or exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = t))
+              and (p.user_id = auth.uid() or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = auth.uid()))));
+$$;
+create function can_see_player(p uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from players x where x.id = p and x.deleted_at is null and (
+    x.user_id = auth.uid() or is_parent_of(x.id) or is_board(x.club_id) or coaches_team(x.team_id)
+    or exists(select 1 from player_teams pt where pt.player_id = x.id and coaches_team(pt.team_id))));
+$$;
+create function can_manage_player(p uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from players x where x.id = p and x.deleted_at is null and (is_board(x.club_id) or coaches_team(x.team_id)
+    or exists(select 1 from player_teams pt where pt.player_id = x.id and coaches_team(pt.team_id))));
+$$;
+create function is_group_member(g uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from group_members where group_id = g and user_id = auth.uid());
+$$;
+create function shares_club(u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select u = auth.uid() or exists(
+    select 1 from memberships a join memberships b on a.club_id = b.club_id
+    where a.user_id = auth.uid() and a.status = 'active' and b.user_id = u);
+$$;
+
+-- Validation d'une demande : président tout ; bureau joueurs, parents, coachs, supporteurs ; coach joueurs et parents de son équipe
+create function can_validate(mid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(
+    select 1 from memberships t
+    join memberships me on me.club_id = t.club_id and me.user_id = auth.uid() and me.status = 'active'
+    where t.id = mid and t.user_id <> auth.uid() and (
+      me.role = 'president'
+      or (me.role = 'bureau' and t.role in ('joueur','parent','coach','supporteur'))
+      or (me.role = 'coach' and t.role in ('joueur','parent') and t.team_id is not null and t.team_id = me.team_id and coaches_team(t.team_id))));
+$$;
+
+-- Qui voit un rendez-vous
+create function sees_event(eid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and is_member(e.club_id) and (
+    e.created_by = auth.uid() or is_board(e.club_id)
+    or e.audience = 'club'
+    or (e.audience = 'team' and exists(select 1 from unnest(e.team_ids) t where in_team(t)))
+    or (e.audience in ('coaches','board_coaches') and is_coach_in(e.club_id))
+    or (e.audience = 'people' and auth.uid() = any(e.people))));
+$$;
+
+-- Qui crée un rendez-vous : bureau et président pour tous les destinataires ; coach seulement pour ses équipes
+create function can_create_event(c uuid, aud text, ts uuid[], ppl uuid[]) returns boolean language sql stable security definer set search_path = public as $$
+  select
+    not exists(select 1 from unnest(coalesce(ts, '{}')) t where not exists(select 1 from teams x where x.id = t and x.club_id = c and x.deleted_at is null))
+    and not exists(select 1 from unnest(coalesce(ppl, '{}')) u where not exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active'))
+    and (is_board(c) or (aud = 'team' and coaches_all(ts)));
+$$;
+
+-- Qui modifie ou supprime un rendez-vous : le coach d'une de ses équipes, le président et le bureau
+create function can_manage_event(eid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and (
+    is_board(e.club_id) or (e.audience = 'team' and coaches_any(e.team_ids))));
+$$;
+
+-- =====================================================================
+-- 4. Garde-fous
+-- =====================================================================
+create function new_join_code() returns text language plpgsql volatile as $$
+declare a text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; c text; i int;
+begin
+  loop
+    c := ''; for i in 1..8 loop c := c || substr(a, 1 + floor(random() * length(a))::int, 1); end loop;
+    exit when not exists(select 1 from clubs where join_code = c);
+  end loop;
+  return c;
+end $$;
+alter table clubs alter column join_code set default new_join_code();
+
+create function check_join_rate() returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  if (select count(*) from join_attempts where user_id = auth.uid() and at > now() - interval '1 hour') >= 10 then
+    raise exception 'Trop d''essais de code. Réessaie dans une heure.';
+  end if;
+end $$;
+
+-- Club : le code ne change pas ; seul le président active l'en-tête aux couleurs du club
+create function clubs_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.join_code <> old.join_code then raise exception 'Le code du club ne se modifie pas ainsi'; end if;
+  if new.custom_header is distinct from old.custom_header and auth.uid() is not null and not is_president(old.id) then
+    raise exception 'Seul le président choisit l''en-tête aux couleurs du club';
+  end if;
+  return new;
+end $$;
+create trigger clubs_guard before update on clubs for each row execute function clubs_guard();
+
+-- Fiche joueur : le club ne change jamais ; l'équipe change par l'encadrement ; le compte lié par le bureau ; corbeille par les fonctions
+create function players_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return new; end if;
+  if new.club_id <> old.club_id then raise exception 'Le club d''une fiche ne peut pas changer'; end if;
+  if new.team_id is distinct from old.team_id and not can_manage_player(old.id) then raise exception 'Seul l''encadrement change l''équipe'; end if;
+  if new.user_id is distinct from old.user_id and not is_board(old.club_id) and current_setting('pc.link', true) is distinct from 'on' then raise exception 'Seul le bureau relie un compte'; end if;
+  if (new.deleted_at is distinct from old.deleted_at or new.deleted_by is distinct from old.deleted_by)
+     and current_setting('pc.trash', true) is distinct from 'on' then raise exception 'Passe par la corbeille'; end if;
+  return new;
+end $$;
+create trigger players_guard before update on players for each row execute function players_guard();
+
+create function teams_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.club_id <> old.club_id then raise exception 'Le club d''une équipe ne peut pas changer'; end if;
+  if (new.deleted_at is distinct from old.deleted_at or new.deleted_by is distinct from old.deleted_by)
+     and current_setting('pc.trash', true) is distinct from 'on' then raise exception 'Passe par la corbeille'; end if;
+  return new;
+end $$;
+create trigger teams_guard before update on teams for each row execute function teams_guard();
+
+-- n° 23 : un rôle actif identique ou une demande en attente identique bloque ; rien d'autre
+create function join_guard() returns trigger language plpgsql as $$
+begin
+  if new.role <> 'parent' and exists(select 1 from memberships m where m.club_id = new.club_id and m.user_id = new.user_id and m.role = new.role
+       and m.team_id is not distinct from new.team_id and m.id <> new.id) then
+    raise exception 'Tu as déjà ce rôle ou une demande en attente pour ce rôle';
+  end if;
+  return new;
+end $$;
+create trigger join_guard before insert on memberships for each row execute function join_guard();
+
+-- Rendez-vous : date de modification (sert à refaire apparaître un rendez-vous masqué qui change)
+create function events_touch() returns trigger language plpgsql as $$
+begin
+  if new.starts_at is distinct from old.starts_at or new.place is distinct from old.place
+     or new.cancelled is distinct from old.cancelled or new.title is distinct from old.title then new.updated_at := now(); end if;
+  return new;
+end $$;
+create trigger events_touch before update on events for each row execute function events_touch();
+
+-- =====================================================================
+-- 5. Club, adhésions, validations
+-- =====================================================================
+create function create_club(p_name text, p_city text, p_sport text, p_c1 text, p_c2 text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare cid uuid;
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  insert into clubs(name, city, sport, color1, color2, created_by)
+    values (trim(p_name), trim(coalesce(p_city, '')), coalesce(p_sport, 'Basket-ball'), coalesce(p_c1, '#2F5BFF'), coalesce(p_c2, '#FFC93C'), auth.uid()) returning id into cid;
+  insert into memberships(club_id, user_id, role, status) values (cid, auth.uid(), 'president', 'active');
+  return cid;
+end $$;
+
+-- Équipes visibles d'un club à partir de son code (formulaire « Rejoindre »), essais limités
+create function teams_for_code(p_code text) returns table(id uuid, name text, club_name text)
+language plpgsql security definer set search_path = public as $$
+begin
+  perform check_join_rate();
+  if not exists(select 1 from clubs where join_code = upper(trim(p_code))) then
+    insert into join_attempts(user_id) values (auth.uid());
+    return;
+  end if;
+  return query select t.id, t.name, c.name from clubs c
+    left join teams t on t.club_id = c.id and t.state = 'Visible' and t.deleted_at is null
+    where c.join_code = upper(trim(p_code)) order by t.name;
+end $$;
+
+-- Activation (interne) : crée ou relie la fiche joueur ; un second parent est relié à la fiche existante de l'enfant
+create function activate_membership(mid uuid, p_team uuid, p_player uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare m memberships; pid uuid; fn text; ln text;
+begin
+  select * into m from memberships where id = mid;
+  if m.id is null then raise exception 'Demande introuvable'; end if;
+  if p_team is not null and not exists(select 1 from teams where id = p_team and club_id = m.club_id and deleted_at is null) then raise exception 'Équipe inconnue dans ce club'; end if;
+  m.team_id := coalesce(p_team, m.team_id);
+  pid := p_player;
+  if pid is not null and not exists(select 1 from players where id = pid and club_id = m.club_id and deleted_at is null) then raise exception 'Fiche joueur inconnue'; end if;
+  if pid is null and m.role in ('parent','joueur') then
+    if m.role = 'parent' then
+      fn := coalesce(nullif(trim(m.child_first), ''), 'Enfant');
+      ln := coalesce(trim(m.child_last), '');
+      select p.id into pid from players p where p.club_id = m.club_id and p.user_id is null and p.deleted_at is null
+        and norm_name(p.first_name) = norm_name(fn) and norm_name(p.last_name) = norm_name(ln)
+        and (m.team_id is null or p.team_id = m.team_id or exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = m.team_id))
+        order by p.created_at limit 1;
+    else
+      select first_name, last_name into fn, ln from profiles where id = m.user_id;
+      select p.id into pid from players p where p.club_id = m.club_id and p.user_id = m.user_id and p.deleted_at is null limit 1;
+    end if;
+    if pid is null then
+      insert into players(club_id, team_id, user_id, first_name, last_name, created_by)
+        values (m.club_id, m.team_id, case when m.role = 'joueur' then m.user_id end, coalesce(nullif(fn, ''), 'Joueur'), coalesce(ln, ''), auth.uid()) returning id into pid;
+      insert into player_admin(player_id) values (pid) on conflict do nothing;
+    end if;
+  end if;
+  if m.role = 'parent' and pid is not null then insert into player_parents values (pid, m.user_id) on conflict do nothing; end if;
+  if m.role = 'joueur' and pid is not null then
+    perform set_config('pc.link', 'on', true);
+    update players set user_id = m.user_id where id = pid and user_id is null;
+    perform set_config('pc.link', 'off', true);
+  end if;
+  -- n° 12 : une fois la fiche reliée, le nom de l'enfant n'est plus gardé dans l'adhésion
+  update memberships set status = 'active', team_id = m.team_id, player_id = pid,
+    child_first = case when pid is not null then null else child_first end,
+    child_last = case when pid is not null then null else child_last end
+    where id = mid;
+end $$;
+
+create function validate_membership(mid uuid, p_team uuid default null, p_player uuid default null) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not can_validate(mid) then raise exception 'Tu ne peux pas valider cette demande'; end if;
+  perform activate_membership(mid, p_team, p_player);
+end $$;
+
+-- Rejoindre ou ajouter un rôle : supporteur tout de suite ; président tout de suite ; bureau qui devient coach tout de suite
+create function join_club(p_code text, p_role text, p_team uuid, p_child_first text default null, p_child_last text default null) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare cid uuid; mid uuid; auto boolean;
+begin
+  perform check_join_rate();
+  select id into cid from clubs where join_code = upper(trim(p_code));
+  if cid is null then insert into join_attempts(user_id) values (auth.uid()); return null; end if;
+  if exists(select 1 from profiles where id = auth.uid() and deleted_at is not null) then raise exception 'Ton compte est en cours de suppression'; end if;
+  if p_role not in ('bureau','coach','joueur','parent','supporteur') then raise exception 'Rôle invalide'; end if;
+  if p_team is not null and not exists(select 1 from teams where id = p_team and club_id = cid and deleted_at is null) then raise exception 'Équipe inconnue'; end if;
+  if p_role = 'parent' and coalesce(trim(p_child_first), '') = '' then raise exception 'Indique le prénom de l''enfant'; end if;
+  auto := p_role = 'supporteur' or is_president(cid) or (p_role = 'coach' and is_board(cid));
+  insert into memberships(club_id, user_id, role, team_id, child_first, child_last, status)
+    values (cid, auth.uid(), p_role, p_team, nullif(nice_first(p_child_first), ''), nullif(nice_last(p_child_last), ''), 'pending') returning id into mid;
+  if auto then perform activate_membership(mid, null, null); end if;
+  return cid;
+end $$;
+
+-- Nommer un coach (bureau ou président ; un coach peut nommer son assistant)
+create function set_team_coach(p_team uuid, p_user uuid, p_assistant boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  select club_id into c from teams where id = p_team and deleted_at is null;
+  if c is null or not (is_board(c) or (p_assistant and coaches_team(p_team))) then raise exception 'Droit insuffisant'; end if;
+  if not exists(select 1 from memberships where club_id = c and user_id = p_user and status = 'active') then raise exception 'Cette personne n''est pas membre du club'; end if;
+  if exists(select 1 from memberships where club_id = c and user_id = p_user and role = 'coach' and team_id = p_team) then
+    update memberships set assistant = p_assistant, status = 'active' where club_id = c and user_id = p_user and role = 'coach' and team_id = p_team;
+  else
+    insert into memberships(club_id, user_id, role, team_id, status, assistant) values (c, p_user, 'coach', p_team, 'active', p_assistant);
+  end if;
+end $$;
+
+-- Reconduire une équipe pour la saison suivante (mode fantôme, mêmes coachs), l'ancienne est archivée
+create function renew_team(p_team uuid, p_season text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare t teams; nid uuid;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null or not is_board(t.club_id) then raise exception 'Droit insuffisant'; end if;
+  insert into teams(club_id, name, category, gender, state, season, slots) values (t.club_id, t.name, t.category, t.gender, 'Fantôme', p_season, t.slots) returning id into nid;
+  insert into memberships(club_id, user_id, role, team_id, status, assistant)
+    select club_id, user_id, 'coach', nid, 'active', assistant from memberships where team_id = p_team and role = 'coach' and status = 'active';
+  update teams set state = 'Archivée' where id = p_team;
+  return nid;
+end $$;
+
+-- Membres du club selon les droits : encadrement en nom complet, familles en « Prénom N. »
+create function club_roster(p_club uuid) returns table(kind text, ref uuid, user_id uuid, first_name text, last_name text, role text, team_id uuid, assistant boolean, since timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+declare staff boolean := is_board(p_club);
+begin
+  if not is_member(p_club) then return; end if;
+  return query
+    select 'membre', m.id, m.user_id, p.first_name,
+      case when staff or coaches_team(m.team_id) or m.user_id = auth.uid() then p.last_name else case when p.last_name = '' then '' else left(p.last_name, 1) || '.' end end,
+      m.role, m.team_id, m.assistant, m.created_at
+    from memberships m join profiles p on p.id = m.user_id
+    where m.club_id = p_club and m.status = 'active' and m.role in ('president','bureau','coach')
+  union all
+    select 'joueur', x.id, x.user_id, x.first_name,
+      case when staff or can_see_player(x.id) then x.last_name else case when x.last_name = '' then '' else left(x.last_name, 1) || '.' end end,
+      'joueur', x.team_id, false, x.created_at
+    from players x where x.club_id = p_club and x.deleted_at is null
+  union all
+    select 'joueur', x.id, x.user_id, x.first_name,
+      case when staff or can_see_player(x.id) then x.last_name else case when x.last_name = '' then '' else left(x.last_name, 1) || '.' end end,
+      'joueur', pt.team_id, false, x.created_at
+    from players x join player_teams pt on pt.player_id = x.id where x.club_id = p_club and x.deleted_at is null;
+end $$;
+
+-- Téléphones : entre l'encadrement et les familles concernées seulement
+create function phones_for(p_ids uuid[]) returns table(id uuid, phone text)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.phone from profiles p where p.id = any(p_ids) and p.phone is not null and p.deleted_at is null and (
+    p.id = auth.uid()
+    or exists(select 1 from memberships a join memberships b on a.club_id = b.club_id
+      where a.user_id = auth.uid() and a.status = 'active' and a.role in ('president','bureau') and b.user_id = p.id)
+    or exists(select 1 from memberships a join memberships b on a.club_id = b.club_id
+      where b.user_id = p.id and b.status = 'active' and b.role in ('president','bureau','coach') and a.user_id = auth.uid() and a.status = 'active' and a.role <> 'supporteur')
+    or exists(select 1 from players x left join player_parents pp on pp.player_id = x.id
+      where x.deleted_at is null and (pp.user_id = p.id or x.user_id = p.id)
+        and (coaches_team(x.team_id) or exists(select 1 from player_teams pt where pt.player_id = x.id and coaches_team(pt.team_id)))));
+$$;
+
+create function my_profile() returns profiles language sql stable security definer set search_path = public as $$
+  select * from profiles where id = auth.uid();
+$$;
+
+create function accept_cgu(p_version text, p_optin boolean) returns void language sql security definer set search_path = public as $$
+  update profiles set cgu_version = p_version, cgu_at = now(), optin_emails = coalesce(p_optin, optin_emails) where id = auth.uid();
+$$;
+
+-- =====================================================================
+-- 6. Fiches joueurs, doublons, import
+-- =====================================================================
+create function create_player(p_club uuid, p_team uuid, p_first text, p_last text, p_birth date default null) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare pid uuid;
+begin
+  if not (is_board(p_club) or coaches_team(p_team)) then raise exception 'Droit insuffisant'; end if;
+  if p_team is not null and not exists(select 1 from teams where id = p_team and club_id = p_club and deleted_at is null) then raise exception 'Équipe inconnue'; end if;
+  if coalesce(trim(p_first), '') = '' then raise exception 'Prénom obligatoire'; end if;
+  insert into players(club_id, team_id, first_name, last_name, birth_date, created_by) values (p_club, p_team, trim(p_first), trim(coalesce(p_last, '')), p_birth, auth.uid()) returning id into pid;
+  insert into player_admin(player_id) values (pid);
+  return pid;
+end $$;
+
+-- Doublons possibles à l'ajout de joueurs, sans dévoiler plus que nécessaire
+create function match_players(p_club uuid, p_rows jsonb) returns table(idx int, player_id uuid, kind text, label text, team_name text, same_team boolean)
+language plpgsql stable security definer set search_path = public as $$
+declare r record; i int := 0;
+begin
+  if not (is_board(p_club) or is_coach_in(p_club)) then raise exception 'Droit insuffisant'; end if;
+  for r in select * from jsonb_to_recordset(p_rows) as t(first_name text, last_name text, birth_date date, licence text, team_id uuid) loop
+    return query
+      select i, x.id,
+        case when norm_name(x.first_name) = norm_name(r.first_name) and norm_name(x.last_name) = norm_name(r.last_name) then 'certain'
+             when coalesce(r.licence, '') <> '' and a.licence_number = r.licence then 'certain'
+             else 'possible' end,
+        x.first_name || ' ' || case when is_board(p_club) or can_see_player(x.id) then x.last_name else case when x.last_name = '' then '' else left(x.last_name, 1) || '.' end end
+          || case when x.birth_date is not null and (is_board(p_club) or can_see_player(x.id)) then ' · ' || to_char(x.birth_date, 'DD/MM/YYYY') else '' end,
+        coalesce(t.name, 'sans équipe'), x.team_id is not distinct from r.team_id
+      from players x left join player_admin a on a.player_id = x.id left join teams t on t.id = x.team_id
+      where x.club_id = p_club and x.deleted_at is null and (
+        (norm_name(x.first_name) = norm_name(r.first_name) and norm_name(x.last_name) = norm_name(r.last_name))
+        or (coalesce(r.licence, '') <> '' and a.licence_number = r.licence)
+        or (norm_name(x.first_name) = norm_name(r.last_name) and norm_name(x.last_name) = norm_name(r.first_name))
+        or (norm_name(x.last_name) = norm_name(r.last_name) and extensions.levenshtein(norm_name(x.first_name), norm_name(r.first_name)) <= 1)
+        or (norm_name(x.first_name) = norm_name(r.first_name) and r.birth_date is not null and x.birth_date = r.birth_date));
+    i := i + 1;
+  end loop;
+end $$;
+
+-- Import d'une liste : action par ligne 'create' | 'skip' | 'complete' | 'addteam' ; e-mail et téléphone du parent facultatifs
+create function import_players(p_club uuid, p_team uuid, p_rows jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare r record; n int := 0; pid uuid;
+begin
+  if not (is_board(p_club) or coaches_team(p_team)) then raise exception 'Droit insuffisant'; end if;
+  if p_team is not null and not exists(select 1 from teams where id = p_team and club_id = p_club and deleted_at is null) then raise exception 'Équipe inconnue'; end if;
+  if jsonb_array_length(p_rows) > 300 then raise exception 'Liste trop longue (300 lignes au plus)'; end if;
+  for r in select * from jsonb_to_recordset(p_rows) as t(first_name text, last_name text, birth_date date, licence text, action text, existing uuid, email text, phone text) loop
+    if coalesce(r.action, 'create') = 'skip' or coalesce(trim(r.first_name), '') = '' then continue; end if;
+    r.email := nullif(lower(trim(coalesce(r.email, ''))), ''); if r.email is not null and r.email not like '%@%' then r.email := null; end if;
+    r.phone := nullif(trim(coalesce(r.phone, '')), '');
+    if r.action in ('complete', 'addteam') then
+      if not exists(select 1 from players where id = r.existing and club_id = p_club and deleted_at is null) then continue; end if;
+      update players set birth_date = coalesce(birth_date, r.birth_date), parent_email = coalesce(parent_email, r.email), parent_phone = coalesce(parent_phone, r.phone) where id = r.existing;
+      if coalesce(r.licence, '') <> '' then
+        insert into player_admin(player_id, licence_number) values (r.existing, r.licence)
+          on conflict (player_id) do update set licence_number = coalesce(player_admin.licence_number, excluded.licence_number);
+      end if;
+      if r.action = 'addteam' and p_team is not null then insert into player_teams values (r.existing, p_team) on conflict do nothing; end if;
+      n := n + 1; continue;
+    end if;
+    insert into players(club_id, team_id, first_name, last_name, birth_date, parent_email, parent_phone, created_by)
+      values (p_club, p_team, r.first_name, coalesce(r.last_name, ''), r.birth_date, r.email, r.phone, auth.uid()) returning id into pid;
+    insert into player_admin(player_id, licence_number) values (pid, nullif(trim(coalesce(r.licence, '')), ''));
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+-- =====================================================================
+-- 7. Agenda : création, réponses, suppression (n° 25)
+-- =====================================================================
+-- Création en une seule opération : un rendez-vous ou une série (dates calculées à l'écran, vacances exclues)
+-- p = {club_id, audience, team_ids[], people[], type, title, place, opponents, starts[] , series:{weekday,start_time,until,skip_holidays} | null}
+create function create_events(p jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare c uuid := (p->>'club_id')::uuid; aud text := coalesce(p->>'audience', 'club');
+  ts uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'team_ids', '[]'))::uuid), '{}');
+  ppl uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'people', '[]'))::uuid), '{}');
+  starts timestamptz[] := array(select jsonb_array_elements_text(coalesce(p->'starts', '[]'))::timestamptz);
+  sid uuid; n int;
+begin
+  if auth.uid() is null or not is_member(c) then raise exception 'Connexion requise'; end if;
+  if aud <> 'team' then ts := '{}'; end if;
+  if aud <> 'people' then ppl := '{}'; end if;
+  if not can_create_event(c, aud, ts, ppl) then raise exception 'Tu ne peux pas créer ce rendez-vous pour ces destinataires'; end if;
+  if cardinality(starts) = 0 then raise exception 'Aucune date'; end if;
+  if cardinality(starts) > 60 then raise exception 'Trop de séances (60 au plus)'; end if;
+  if p->'series' is not null and jsonb_typeof(p->'series') = 'object' then
+    insert into event_series(club_id, title, weekday, start_time, until, skip_holidays, created_by)
+      values (c, p->>'title', (p->'series'->>'weekday')::int, p->'series'->>'start_time', (p->'series'->>'until')::date, coalesce((p->'series'->>'skip_holidays')::boolean, true), auth.uid())
+      returning id into sid;
+  end if;
+  insert into events(club_id, audience, team_ids, people, type, title, starts_at, place, opponents, series_id, created_by)
+    select c, aud, ts, ppl, coalesce(p->>'type', 'Événement'), trim(p->>'title'), s, coalesce(p->>'place', ''), coalesce(p->>'opponents', ''), sid, auth.uid()
+    from unnest(starts) s;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- Réponse « Je viens / Je ne viens pas » : au nom d'un joueur (parent ou joueur adulte) ou pour soi-même
+create function respond_event(p_event uuid, p_player uuid, p_answer text) returns void
+language plpgsql security definer set search_path = public as $$
+declare e events;
+begin
+  if auth.uid() is null or not sees_event(p_event) then raise exception 'Rendez-vous introuvable'; end if;
+  if p_answer is not null and p_answer not in ('oui','non') then raise exception 'Réponse invalide'; end if;
+  select * into e from events where id = p_event;
+  if e.cancelled then raise exception 'Ce rendez-vous est annulé'; end if;
+  if p_player is not null then
+    if not (is_parent_of(p_player) or exists(select 1 from players where id = p_player and user_id = auth.uid() and deleted_at is null)) then
+      raise exception 'Ce joueur n''est pas relié à ton compte';
+    end if;
+    delete from event_responses where event_id = p_event and player_id = p_player;
+    if p_answer is not null then insert into event_responses(event_id, user_id, player_id, answer) values (p_event, auth.uid(), p_player, p_answer); end if;
+  else
+    -- n° 14 : le coach d'une équipe concernée ne répond pas pour lui-même (sauf joueur-entraîneur)
+    if e.type in ('Entraînement','Match','Plateau','Tournoi') and coaches_any(e.team_ids)
+       and not exists(select 1 from memberships where team_id = any(e.team_ids) and user_id = auth.uid() and status = 'active' and role = 'joueur')
+       and not exists(select 1 from players where user_id = auth.uid() and deleted_at is null and team_id = any(e.team_ids)) then
+      raise exception 'Tu encadres cette équipe : pas de réponse pour toi-même';
+    end if;
+    if e.audience = 'team' and e.type in ('Entraînement','Match','Plateau','Tournoi') and not exists(select 1 from unnest(e.team_ids) t where in_team(t)) then
+      raise exception 'Ce rendez-vous concerne une équipe dont tu ne fais pas partie';
+    end if;
+    delete from event_responses where event_id = p_event and user_id = auth.uid() and player_id is null;
+    if p_answer is not null then insert into event_responses(event_id, user_id, answer) values (p_event, auth.uid(), p_answer); end if;
+  end if;
+end $$;
+
+-- n° 25 : suppression d'une séance ou de toutes les séances à venir d'une série, en une seule opération.
+-- Les séances passées sont gardées, sauf si aucune n'a d'appel (série créée par erreur : tout part).
+-- p_dry = true : ne supprime rien, renvoie seulement le nombre (pour le message de confirmation).
+create function delete_events(p_event uuid, p_mode text, p_dry boolean default false) returns int
+language plpgsql security definer set search_path = public as $$
+declare e events; n int; keep_past boolean;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not can_manage_event(p_event) then raise exception 'Tu ne peux pas supprimer ce rendez-vous'; end if;
+  if p_mode not in ('one','series') then raise exception 'Choix inconnu'; end if;
+  if p_mode = 'one' or e.series_id is null then
+    if not p_dry then delete from events where id = p_event; end if;
+    return 1;
+  end if;
+  keep_past := exists(select 1 from attendance a join events x on x.id = a.event_id where x.series_id = e.series_id and x.starts_at < now());
+  select count(*) into n from events where series_id = e.series_id and (not keep_past or starts_at >= now() or id = p_event);
+  if p_dry then return n; end if;
+  delete from events where series_id = e.series_id and (not keep_past or starts_at >= now() or id = p_event);
+  if not exists(select 1 from events where series_id = e.series_id) then delete from event_series where id = e.series_id; end if;
+  return n;
+end $$;
+
+-- Sélection multiple dans l'Agenda : supprime tous les rendez-vous choisis, ou aucun si l'un n'est pas permis
+create function delete_event_list(p_ids uuid[]) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  if cardinality(coalesce(p_ids, '{}')) = 0 then return 0; end if;
+  if exists(select 1 from unnest(p_ids) i where not can_manage_event(i)) then raise exception 'Un des rendez-vous choisis ne peut pas être supprimé par toi'; end if;
+  create temp table if not exists _pc_series(id uuid) on commit drop;
+  insert into _pc_series select distinct series_id from events where id = any(p_ids) and series_id is not null;
+  delete from events where id = any(p_ids);
+  get diagnostics n = row_count;
+  delete from event_series s where s.id in (select id from _pc_series) and not exists(select 1 from events x where x.series_id = s.id);
+  return n;
+end $$;
+
+-- =====================================================================
+-- 8. Sondages (n° 17)
+-- =====================================================================
+create function can_delete_poll(pid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from polls p join groups g on g.id = p.group_id where p.id = pid and (
+    p.created_by = auth.uid() or g.created_by = auth.uid() or is_board(g.club_id)));
+$$;
+create function delete_poll(pid uuid) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not can_delete_poll(pid) then raise exception 'Tu ne peux pas supprimer ce sondage'; end if;
+  update polls set deleted_by = auth.uid(), deleted_at = now() where id = pid and deleted_at is null;
+end $$;
+
+-- =====================================================================
+-- 9. Corbeille de 30 jours : équipes, fiches joueurs, sondages ; comptes (voir § 10)
+-- =====================================================================
+create function trash_item(p_kind text, p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  perform set_config('pc.trash', 'on', true);
+  if p_kind = 'team' then
+    select club_id into c from teams where id = p_id and deleted_at is null;
+    if c is null or not is_president(c) then raise exception 'Seul le président supprime une équipe'; end if;
+    update teams set deleted_at = now(), deleted_by = auth.uid() where id = p_id;
+  elsif p_kind = 'player' then
+    select club_id into c from players where id = p_id and deleted_at is null;
+    if c is null or not is_board(c) then raise exception 'Seuls le président et le bureau suppriment une fiche'; end if;
+    update players set deleted_at = now(), deleted_by = auth.uid() where id = p_id;
+  elsif p_kind = 'poll' then
+    perform delete_poll(p_id);
+  else raise exception 'Élément inconnu';
+  end if;
+  perform set_config('pc.trash', 'off', true);
+end $$;
+
+create function restore_item(p_kind text, p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  perform set_config('pc.trash', 'on', true);
+  if p_kind = 'team' then
+    select club_id into c from teams where id = p_id and deleted_at is not null;
+    if c is null or not is_board(c) then raise exception 'Restauration réservée au président et au bureau'; end if;
+    update teams set deleted_at = null, deleted_by = null where id = p_id;
+  elsif p_kind = 'player' then
+    select club_id into c from players where id = p_id and deleted_at is not null;
+    if c is null or not is_board(c) then raise exception 'Restauration réservée au président et au bureau'; end if;
+    update players set deleted_at = null, deleted_by = null where id = p_id;
+  elsif p_kind = 'poll' then
+    select g.club_id into c from polls p join groups g on g.id = p.group_id where p.id = p_id and p.deleted_at is not null;
+    if c is null or not (is_board(c) or can_delete_poll(p_id)) then raise exception 'Restauration impossible'; end if;
+    update polls set deleted_at = null, deleted_by = null where id = p_id;
+  else raise exception 'Élément inconnu';
+  end if;
+  perform set_config('pc.trash', 'off', true);
+end $$;
+
+-- Contenu de la corbeille d'un club (président et bureau)
+create function club_trash(p_club uuid) returns table(kind text, id uuid, label text, deleted_at timestamptz, deleted_by text, purge_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_board(p_club) then return; end if;
+  return query
+    select 'team', t.id, t.name || coalesce(' · ' || nullif(t.season, ''), ''), t.deleted_at, pr.full_name, t.deleted_at + interval '30 days'
+      from teams t left join profiles pr on pr.id = t.deleted_by where t.club_id = p_club and t.deleted_at is not null
+  union all
+    select 'player', x.id, trim(x.first_name || ' ' || x.last_name), x.deleted_at, pr.full_name, x.deleted_at + interval '30 days'
+      from players x left join profiles pr on pr.id = x.deleted_by where x.club_id = p_club and x.deleted_at is not null
+  union all
+    select 'poll', p.id, p.question || ' · ' || g.name, p.deleted_at, pr.full_name, p.deleted_at + interval '30 days'
+      from polls p join groups g on g.id = p.group_id left join profiles pr on pr.id = p.deleted_by where g.club_id = p_club and p.deleted_at is not null
+  order by 4 desc;
+end $$;
+
+-- Effacement définitif après 30 jours (appelé par l'application ; peut aussi être planifié côté Supabase)
+create function purge_trash() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; k int; u uuid; lim timestamptz := now() - interval '30 days';
+begin
+  -- équipes : on retire les coachs de l'équipe, les fiches restent au club sans équipe
+  delete from memberships where role = 'coach' and team_id in (select id from teams where deleted_at < lim);
+  update events set team_ids = (select coalesce(array_agg(t), '{}') from unnest(team_ids) t where t not in (select id from teams where deleted_at < lim))
+    where team_ids && array(select id from teams where deleted_at < lim);
+  delete from events where audience = 'team' and cardinality(team_ids) = 0;
+  delete from teams where deleted_at < lim; get diagnostics k = row_count; n := n + k;
+  delete from players where deleted_at < lim; get diagnostics k = row_count; n := n + k;
+  delete from poll_votes where poll_id in (select id from polls where deleted_at < lim);
+  delete from join_attempts where at < now() - interval '1 day';
+  -- comptes dont la suppression a été demandée il y a plus de 30 jours
+  for u in select id from profiles where deleted_at < lim loop
+    begin
+      delete from auth.users where id = u;
+    exception when others then
+      -- si la base refuse, on efface quand même toutes les données personnelles du profil
+      update profiles set first_name = 'Compte', last_name = 'supprimé', nickname = null, phone = null, deleted_snapshot = null where id = u;
+      delete from player_parents where user_id = u; delete from group_members where user_id = u; delete from memberships where user_id = u;
+    end;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+-- =====================================================================
+-- 10. Mes données (RGPD) : export, suppression du compte, annulation
+-- =====================================================================
+create function export_my_data() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'exporté_le', now(),
+    'profil', (select to_jsonb(p) - 'deleted_snapshot' from profiles p where p.id = auth.uid()),
+    'profils_dans_les_clubs', coalesce((select jsonb_agg(jsonb_build_object('club', c.name, 'rôle', m.role, 'équipe', t.name, 'état', m.status, 'depuis', m.created_at))
+        from memberships m join clubs c on c.id = m.club_id left join teams t on t.id = m.team_id where m.user_id = auth.uid()), '[]'),
+    'fiches_joueurs', coalesce((select jsonb_agg(to_jsonb(x) || jsonb_build_object('licence_cotisation', (select to_jsonb(a) from player_admin a where a.player_id = x.id),
+          'présences', (select coalesce(jsonb_agg(jsonb_build_object('rendez_vous', e.title, 'date', e.starts_at, 'statut', a2.status)), '[]') from attendance a2 join events e on e.id = a2.event_id where a2.player_id = x.id)))
+        from players x where x.deleted_at is null and (x.user_id = auth.uid() or exists(select 1 from player_parents pp where pp.player_id = x.id and pp.user_id = auth.uid()))), '[]'),
+    'réponses', coalesce((select jsonb_agg(jsonb_build_object('rendez_vous', e.title, 'date', e.starts_at, 'réponse', r.answer, 'pour', x.first_name, 'le', r.updated_at))
+        from event_responses r join events e on e.id = r.event_id left join players x on x.id = r.player_id where r.user_id = auth.uid()), '[]'),
+    'messages_écrits', coalesce((select jsonb_agg(jsonb_build_object('groupe', g.name, 'texte', m.body, 'le', m.created_at))
+        from messages m join groups g on g.id = m.group_id where m.user_id = auth.uid()), '[]'),
+    'groupes', coalesce((select jsonb_agg(g.name) from group_members gm join groups g on g.id = gm.group_id where gm.user_id = auth.uid()), '[]'),
+    'votes', coalesce((select jsonb_agg(jsonb_build_object('question', p.question, 'réponse', v.answer)) from poll_votes v join polls p on p.id = v.poll_id where v.user_id = auth.uid()), '[]'));
+$$;
+
+-- Suppression du compte : effective après 30 jours ; les profils et groupes sont retirés tout de suite
+create function delete_my_account() returns timestamptz
+language plpgsql security definer set search_path = public as $$
+declare lone text;
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  select string_agg(c.name, ', ') into lone from clubs c
+    where exists(select 1 from memberships m where m.club_id = c.id and m.user_id = auth.uid() and m.role = 'president' and m.status = 'active')
+      and not exists(select 1 from memberships m where m.club_id = c.id and m.user_id <> auth.uid() and m.role = 'president' and m.status = 'active');
+  if lone is not null then raise exception 'Tu es le seul président de % : nomme un autre président ou supprime le club avant', lone; end if;
+  update profiles set deleted_at = now(), deleted_snapshot = jsonb_build_object(
+      'memberships', (select coalesce(jsonb_agg(to_jsonb(m)), '[]') from memberships m where m.user_id = auth.uid()),
+      'parents', (select coalesce(jsonb_agg(to_jsonb(pp)), '[]') from player_parents pp where pp.user_id = auth.uid()),
+      'groups', (select coalesce(jsonb_agg(to_jsonb(g)), '[]') from group_members g where g.user_id = auth.uid()))
+    where id = auth.uid() and deleted_at is null;
+  delete from group_members where user_id = auth.uid();
+  delete from player_parents where user_id = auth.uid();
+  delete from memberships where user_id = auth.uid();
+  return now() + interval '30 days';
+end $$;
+
+create function cancel_account_deletion() returns void
+language plpgsql security definer set search_path = public as $$
+declare s jsonb; r jsonb;
+begin
+  select deleted_snapshot into s from profiles where id = auth.uid() and deleted_at is not null;
+  if s is null then raise exception 'Aucune suppression en cours'; end if;
+  for r in select * from jsonb_array_elements(s->'memberships') loop
+    begin
+      insert into memberships(id, club_id, user_id, role, team_id, player_id, child_first, child_last, assistant, status, created_at)
+        select (r->>'id')::uuid, (r->>'club_id')::uuid, auth.uid(), r->>'role',
+          (select id from teams where id = (r->>'team_id')::uuid), (select id from players where id = (r->>'player_id')::uuid),
+          r->>'child_first', r->>'child_last', coalesce((r->>'assistant')::boolean, false), r->>'status', (r->>'created_at')::timestamptz
+        where exists(select 1 from clubs where id = (r->>'club_id')::uuid);
+    exception when others then null; end;
+  end loop;
+  insert into player_parents(player_id, user_id) select (x->>'player_id')::uuid, auth.uid() from jsonb_array_elements(s->'parents') x
+    where exists(select 1 from players where id = (x->>'player_id')::uuid) on conflict do nothing;
+  insert into group_members(group_id, user_id, muted) select (x->>'group_id')::uuid, auth.uid(), coalesce((x->>'muted')::boolean, false) from jsonb_array_elements(s->'groups') x
+    where exists(select 1 from groups where id = (x->>'group_id')::uuid) on conflict do nothing;
+  update profiles set deleted_at = null, deleted_snapshot = null where id = auth.uid();
+end $$;
+
+-- Fonctions internes : jamais appelées directement depuis l'application
+revoke execute on function activate_membership(uuid, uuid, uuid) from public, anon, authenticated;
+
+-- =====================================================================
+-- 11. Règles d'accès (RLS)
+-- =====================================================================
+alter table profiles enable row level security;
+alter table clubs enable row level security;
+alter table teams enable row level security;
+alter table players enable row level security;
+alter table memberships enable row level security;
+alter table player_parents enable row level security;
+alter table player_teams enable row level security;
+alter table player_admin enable row level security;
+alter table player_discount enable row level security;
+alter table fee_grid enable row level security;
+alter table club_docs enable row level security;
+alter table event_series enable row level security;
+alter table events enable row level security;
+alter table event_responses enable row level security;
+alter table event_hidden enable row level security;
+alter table attendance enable row level security;
+alter table groups enable row level security;
+alter table group_members enable row level security;
+alter table messages enable row level security;
+alter table polls enable row level security;
+alter table poll_votes enable row level security;
+alter table join_attempts enable row level security;   -- aucune règle : lecture et écriture seulement par les fonctions
+
+-- Profils : lisibles par les membres des mêmes clubs, sans le téléphone (voir phones_for)
+create policy "profil lisible par les membres des mêmes clubs" on profiles for select using (shares_club(id));
+create policy "chacun modifie son profil" on profiles for update using (id = auth.uid()) with check (id = auth.uid());
+
+create policy "club lisible par ses membres (même en attente)" on clubs for select using (
+  exists(select 1 from memberships where club_id = clubs.id and user_id = auth.uid()));
+create policy "club modifié par le président et le bureau" on clubs for update using (is_board(id)) with check (is_board(id));
+create policy "club supprimé par le président" on clubs for delete using (is_president(id));
+
+create policy "équipes lisibles par les membres" on teams for select using (is_member(club_id) and deleted_at is null);
+create policy "équipes créées par le bureau" on teams for insert with check (is_board(club_id) and deleted_at is null);
+create policy "équipes modifiées par le bureau ou le coach" on teams for update using (deleted_at is null and (is_board(club_id) or coaches_team(id))) with check (is_board(club_id) or coaches_team(id));
+
+create policy "fiche lisible" on players for select using (can_see_player(id));
+create policy "fiche modifiable" on players for update using (can_see_player(id)) with check (can_see_player(id));
+
+create policy "adhésions lisibles selon les droits" on memberships for select using (
+  user_id = auth.uid() or is_board(club_id) or coaches_team(team_id));
+create policy "adhésion quittée par soi ou retirée selon les droits" on memberships for delete using (user_id = auth.uid() or can_validate(id));
+create policy "coach assistant modifié par le bureau" on memberships for update using (is_board(club_id)) with check (is_board(club_id));
+
+create policy "parents lisibles" on player_parents for select using (can_see_player(player_id));
+create policy "parents retirés par l'encadrement" on player_parents for delete using (can_manage_player(player_id));
+
+create policy "équipes secondaires lisibles" on player_teams for select using (can_see_player(player_id));
+create policy "équipes secondaires gérées" on player_teams for all using (can_manage_player(player_id))
+  with check (exists(select 1 from players x join teams t on t.id = team_id where x.id = player_id and t.club_id = x.club_id and t.deleted_at is null
+    and (is_board(x.club_id) or (can_manage_player(player_id) and coaches_team(team_id)))));
+
+create policy "dossier lisible" on player_admin for select using (can_see_player(player_id));
+create policy "dossier créé par le bureau" on player_admin for insert with check (exists(select 1 from players x where x.id = player_id and is_board(x.club_id)));
+create policy "dossier saisi par le bureau" on player_admin for update using (exists(select 1 from players x where x.id = player_id and is_board(x.club_id)));
+
+create policy "réductions : bureau seulement" on player_discount for all
+  using (exists(select 1 from players x where x.id = player_id and is_board(x.club_id)))
+  with check (exists(select 1 from players x where x.id = player_id and is_board(x.club_id)));
+
+create policy "tarifs lisibles par les membres" on fee_grid for select using (is_member(club_id));
+create policy "tarifs gérés par le bureau" on fee_grid for all using (is_board(club_id)) with check (is_board(club_id));
+
+create policy "documents lisibles par les membres" on club_docs for select using (is_member(club_id));
+create policy "documents gérés par le bureau" on club_docs for all using (is_board(club_id)) with check (is_board(club_id) and uploaded_by = auth.uid());
+
+create policy "séries lisibles par les membres" on event_series for select using (is_member(club_id));
+
+create policy "rendez-vous lisibles par les destinataires" on events for select using (sees_event(id));
+create policy "rendez-vous créés selon les droits" on events for insert with check (
+  created_by = auth.uid() and can_create_event(club_id, audience, team_ids, people));
+create policy "rendez-vous modifiés selon les droits" on events for update using (can_manage_event(id))
+  with check (can_create_event(club_id, audience, team_ids, people));
+create policy "rendez-vous supprimés selon les droits" on events for delete using (can_manage_event(id));
+
+-- Réponses : lecture par les destinataires ; écriture seulement par respond_event
+create policy "réponses lisibles par les destinataires" on event_responses for select using (sees_event(event_id));
+
+create policy "masquage personnel" on event_hidden for all using (user_id = auth.uid()) with check (user_id = auth.uid() and sees_event(event_id));
+
+create policy "appel lisible" on attendance for select using (can_see_player(player_id));
+create policy "appel fait par l'encadrement" on attendance for all using (can_manage_player(player_id))
+  with check (can_manage_player(player_id) and sees_event(event_id));
+
+create policy "groupes visibles par leurs membres" on groups for select using (is_group_member(id) or created_by = auth.uid());
+create policy "tout membre actif crée un groupe" on groups for insert with check (is_member(club_id) and created_by = auth.uid());
+create policy "groupe modifié par son créateur" on groups for update using (created_by = auth.uid());
+create policy "groupe supprimé par son créateur ou le bureau" on groups for delete using (created_by = auth.uid() or is_board(club_id));
+
+create policy "membres du groupe visibles par le groupe" on group_members for select using (is_group_member(group_id));
+create policy "le créateur invite des membres du club" on group_members for insert with check (
+  exists(select 1 from groups g where g.id = group_id and g.created_by = auth.uid())
+  and exists(select 1 from memberships m join groups g on g.club_id = m.club_id where g.id = group_id and m.user_id = group_members.user_id and m.status = 'active'));
+create policy "chacun coupe ses notifications" on group_members for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "quitter ou retirer" on group_members for delete using (
+  user_id = auth.uid() or exists(select 1 from groups g where g.id = group_id and g.created_by = auth.uid()));
+
+create policy "messages lus par le groupe" on messages for select using (is_group_member(group_id));
+create policy "messages écrits par le groupe" on messages for insert with check (is_group_member(group_id) and user_id = auth.uid());
+create policy "message supprimé par son auteur" on messages for delete using (user_id = auth.uid());
+
+create policy "sondages lus par le groupe" on polls for select using (is_group_member(group_id));
+create policy "sondages créés par le groupe" on polls for insert with check (is_group_member(group_id) and created_by = auth.uid() and deleted_at is null);
+
+create policy "votes lus par le groupe" on poll_votes for select using (
+  exists(select 1 from polls p where p.id = poll_id and p.deleted_at is null and is_group_member(p.group_id)));
+create policy "chacun vote pour soi" on poll_votes for insert with check (
+  user_id = auth.uid() and exists(select 1 from polls p where p.id = poll_id and p.deleted_at is null and is_group_member(p.group_id)));
+create policy "chacun change son vote" on poll_votes for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "chacun retire son vote" on poll_votes for delete using (user_id = auth.uid());
+
+-- Colonnes des profils : le téléphone et la suppression en cours ne se lisent pas directement
+revoke select, insert, update, delete on profiles from anon, authenticated;
+grant select (id, first_name, last_name, full_name, nickname, show_all_club, created_at) on profiles to authenticated;
+grant update (first_name, last_name, nickname, phone, optin_emails, show_all_club) on profiles to authenticated;
+
+-- =====================================================================
+-- 12. Temps réel
+-- =====================================================================
+do $$ begin alter publication supabase_realtime add table messages; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table poll_votes; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table event_responses; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table memberships; exception when duplicate_object then null; end $$;
+
+-- ===== alpha_3_0_1.sql =====
+-- Pocket Club · alpha 3.0.1 · mise à jour de la base (relançable sans risque, ne supprime aucune donnée)
+-- N° 29 équipes fantômes · 32 droits en pyramide et journal · 33 versements · 36 messages non lus · 37 contour du blason
+-- 38 import de la grille · 39 tarifs réservés au bureau · 40 membres visibles selon le rôle · 41 suivre une équipe · 42 contacts du club
+set client_min_messages = warning;
+
+-- =====================================================================
+-- Colonnes et tables nouvelles
+-- =====================================================================
+alter table teams alter column state set default 'Fantôme';                        -- n° 29
+alter table group_members add column if not exists last_read_at timestamptz not null default now();   -- n° 36
+alter table clubs add column if not exists crest_outline text not null default 'auto';                -- n° 37
+do $$ begin alter table clubs add constraint clubs_crest_outline check (crest_outline in ('auto','noir','blanc','aucun')); exception when duplicate_object then null; end $$;
+
+create table if not exists team_follows (                                          -- n° 41
+  user_id uuid not null references auth.users(id) on delete cascade,
+  team_id uuid not null references teams(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_id, team_id)
+);
+create table if not exists club_contacts (                                         -- n° 42
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  for_licence boolean not null default false,
+  for_matches boolean not null default false,
+  show_phone boolean not null default false,
+  show_email boolean not null default false,
+  updated_at timestamptz not null default now(),
+  primary key (club_id, user_id)
+);
+create table if not exists player_payments (                                       -- n° 33
+  id uuid primary key default gen_random_uuid(),
+  player_id uuid not null references players(id) on delete cascade,
+  amount numeric(8,2) not null check (amount > 0 and amount < 10000),
+  method text check (method is null or length(method) < 40),
+  paid_at timestamptz not null default now(),
+  created_by uuid references auth.users(id) on delete set null
+);
+create index if not exists player_payments_player on player_payments(player_id);
+create table if not exists action_log (                                            -- n° 32 : journal des actions sensibles
+  id bigint generated always as identity primary key,
+  club_id uuid references clubs(id) on delete cascade,
+  actor uuid references auth.users(id) on delete set null,
+  target_user uuid references auth.users(id) on delete set null,
+  target_player uuid references players(id) on delete set null,
+  action text not null,
+  detail jsonb,
+  at timestamptz not null default now()
+);
+create index if not exists action_log_club on action_log(club_id, at);
+
+-- =====================================================================
+-- N° 32 : rang dans le club (président 3, bureau 2, coach 1, autres 0)
+-- =====================================================================
+create or replace function member_rank(c uuid, u uuid) returns int language sql stable security definer set search_path = public as $$
+  select coalesce(max(case role when 'president' then 3 when 'bureau' then 2 when 'coach' then 1 else 0 end), 0)
+  from memberships where club_id = c and user_id = u and status = 'active';
+$$;
+create or replace function my_rank(c uuid) returns int language sql stable security definer set search_path = public as $$
+  select member_rank(c, auth.uid());
+$$;
+-- La personne liée à la fiche est-elle sous moi dans la pyramide ? (fiche d'enfant sans compte : toujours oui)
+create or replace function outranks_player(p uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from players x where x.id = p and (x.user_id is null or x.user_id = auth.uid() or member_rank(x.club_id, x.user_id) < my_rank(x.club_id)));
+$$;
+create or replace function can_admin_player(p uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from players x where x.id = p and x.deleted_at is null and is_board(x.club_id)) and outranks_player(p);
+$$;
+create or replace function log_action(c uuid, tu uuid, tp uuid, act text, det jsonb) returns void language sql security definer set search_path = public as $$
+  insert into action_log(club_id, actor, target_user, target_player, action, detail) values (c, auth.uid(), tu, tp, act, det);
+$$;
+revoke execute on function log_action(uuid, uuid, uuid, text, jsonb) from public, anon, authenticated;
+
+-- =====================================================================
+-- N° 29 et 41 : qui fait partie d'une équipe, qui voit un rendez-vous
+-- =====================================================================
+-- Une équipe fantôme n'existe pas encore pour les familles : seuls ses coachs et le bureau la voient
+create or replace function team_visible(t uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from teams x where x.id = t and x.deleted_at is null and (x.state <> 'Fantôme' or is_board(x.club_id) or coaches_team(x.id)));
+$$;
+create or replace function in_team(t uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select t is not null and team_visible(t) and (
+    exists(select 1 from memberships where team_id = t and user_id = auth.uid() and status = 'active')
+    or exists(select 1 from players p where p.deleted_at is null
+              and (p.team_id = t or exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = t))
+              and (p.user_id = auth.uid() or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = auth.uid()))));
+$$;
+create or replace function follows_any(ts uuid[]) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from team_follows f join teams x on x.id = f.team_id where f.user_id = auth.uid() and f.team_id = any(ts) and x.state <> 'Fantôme' and x.deleted_at is null);
+$$;
+-- N° 35 : le créateur voit toujours son rendez-vous ; n° 41 : les matchs des équipes suivies
+create or replace function sees_event(eid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and is_member(e.club_id) and (
+    e.created_by = auth.uid() or is_board(e.club_id)
+    or e.audience = 'club'
+    or (e.audience = 'team' and exists(select 1 from unnest(e.team_ids) t where in_team(t)))
+    or (e.audience = 'team' and e.type in ('Match','Plateau','Tournoi') and follows_any(e.team_ids))
+    or (e.audience in ('coaches','board_coaches') and is_coach_in(e.club_id))
+    or (e.audience = 'people' and auth.uid() = any(e.people))));
+$$;
+
+drop policy if exists "équipes lisibles par les membres" on teams;
+create policy "équipes lisibles par les membres" on teams for select using (is_member(club_id) and deleted_at is null and (state <> 'Fantôme' or is_board(club_id) or coaches_team(id)));
+
+alter table team_follows enable row level security;
+drop policy if exists "chacun voit ses équipes suivies" on team_follows;
+drop policy if exists "chacun suit une équipe visible" on team_follows;
+drop policy if exists "chacun arrête de suivre" on team_follows;
+create policy "chacun voit ses équipes suivies" on team_follows for select using (user_id = auth.uid());
+create policy "chacun suit une équipe visible" on team_follows for insert with check (user_id = auth.uid() and exists(select 1 from teams x where x.id = team_id and x.state <> 'Fantôme' and x.deleted_at is null and is_member(x.club_id)));
+create policy "chacun arrête de suivre" on team_follows for delete using (user_id = auth.uid());
+
+-- Liste des équipes pour tous les membres : coach principal en « Prénom N. », nombres seulement pour qui y a droit (n° 31, 41)
+create or replace function club_teams(p_club uuid) returns table(id uuid, name text, category text, gender text, state text, season text, slots text, coach text, coaches int, players int, followed boolean)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_member(p_club) then return; end if;
+  return query
+    select t.id, t.name, t.category, t.gender, t.state, t.season, t.slots,
+      (select p.first_name || case when p.last_name = '' then '' else ' ' || left(p.last_name, 1) || '.' end from memberships m join profiles p on p.id = m.user_id
+         where m.team_id = t.id and m.role = 'coach' and m.status = 'active' order by m.assistant, m.created_at limit 1),
+      case when is_board(p_club) or coaches_team(t.id) or in_team(t.id) then (select count(distinct m.user_id)::int from memberships m where m.team_id = t.id and m.role = 'coach' and m.status = 'active') end,
+      case when is_board(p_club) or coaches_team(t.id) or in_team(t.id) then (select count(*)::int from players x where x.deleted_at is null and (x.team_id = t.id or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = t.id))) end,
+      exists(select 1 from team_follows f where f.team_id = t.id and f.user_id = auth.uid())
+    from teams t where t.club_id = p_club and t.deleted_at is null and (t.state <> 'Fantôme' or is_board(p_club) or coaches_team(t.id))
+    order by t.name;
+end $$;
+
+-- =====================================================================
+-- N° 40 : qui voit quels membres
+-- =====================================================================
+-- Profils : soi ; le bureau de ses clubs ; les membres d'une même équipe ; les membres d'un même groupe
+create or replace function can_see_profile(u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select u = auth.uid()
+    or exists(select 1 from memberships a join memberships b on a.club_id = b.club_id
+              where a.user_id = auth.uid() and a.status = 'active' and a.role in ('president','bureau') and b.user_id = u)
+    or exists(select 1 from memberships b where b.user_id = u and b.team_id is not null and (coaches_team(b.team_id) or (b.status = 'active' and in_team(b.team_id))))
+    or exists(select 1 from players x join player_parents pp on pp.player_id = x.id where pp.user_id = u and x.deleted_at is null
+              and (coaches_team(x.team_id) or in_team(x.team_id) or exists(select 1 from player_teams pt where pt.player_id = x.id and (coaches_team(pt.team_id) or in_team(pt.team_id)))))
+    or exists(select 1 from players x where x.user_id = u and x.deleted_at is null and (coaches_team(x.team_id) or in_team(x.team_id)))
+    or exists(select 1 from group_members a join group_members b on a.group_id = b.group_id where a.user_id = auth.uid() and b.user_id = u);
+$$;
+drop policy if exists "profil lisible par les membres des mêmes clubs" on profiles;
+drop policy if exists "profil lisible selon les droits" on profiles;
+create policy "profil lisible selon les droits" on profiles for select using (can_see_profile(id));
+
+-- Liste des membres : bureau tout le club ; coach ses équipes ; joueur et parent leur équipe en « Prénom N. » ; supporteur rien
+create or replace function club_roster(p_club uuid) returns table(kind text, ref uuid, user_id uuid, first_name text, last_name text, role text, team_id uuid, assistant boolean, since timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+declare staff boolean := is_board(p_club);
+begin
+  if not is_member(p_club) then return; end if;
+  return query
+    select 'membre', m.id, m.user_id, p.first_name,
+      case when staff or coaches_team(m.team_id) or m.user_id = auth.uid() then p.last_name else case when p.last_name = '' then '' else left(p.last_name, 1) || '.' end end,
+      m.role, m.team_id, m.assistant, m.created_at
+    from memberships m join profiles p on p.id = m.user_id
+    where m.club_id = p_club and m.status = 'active' and m.role in ('president','bureau','coach')
+      and (staff or m.user_id = auth.uid() or (m.team_id is not null and (coaches_team(m.team_id) or in_team(m.team_id))))
+  union all
+    select 'joueur', x.id, x.user_id, x.first_name,
+      case when staff or can_see_player(x.id) then x.last_name else case when x.last_name = '' then '' else left(x.last_name, 1) || '.' end end,
+      'joueur', x.team_id, false, x.created_at
+    from players x where x.club_id = p_club and x.deleted_at is null and (staff or can_see_player(x.id) or in_team(x.team_id))
+  union all
+    select 'joueur', x.id, x.user_id, x.first_name,
+      case when staff or can_see_player(x.id) then x.last_name else case when x.last_name = '' then '' else left(x.last_name, 1) || '.' end end,
+      'joueur', pt.team_id, false, x.created_at
+    from players x join player_teams pt on pt.player_id = x.id where x.club_id = p_club and x.deleted_at is null and (staff or can_see_player(x.id) or in_team(pt.team_id));
+end $$;
+
+-- =====================================================================
+-- N° 39 : tarifs et documents de tarifs réservés au président et au bureau
+-- =====================================================================
+drop policy if exists "tarifs lisibles par les membres" on fee_grid;
+drop policy if exists "tarifs lisibles par le bureau" on fee_grid;
+create policy "tarifs lisibles par le bureau" on fee_grid for select using (is_board(club_id));
+drop policy if exists "documents lisibles par les membres" on club_docs;
+drop policy if exists "documents lisibles par le bureau" on club_docs;
+create policy "documents lisibles par le bureau" on club_docs for select using (is_board(club_id));
+
+-- =====================================================================
+-- N° 32 : modification des fiches en pyramide, journal
+-- =====================================================================
+drop policy if exists "fiche modifiable" on players;
+create policy "fiche modifiable" on players for update using (
+  deleted_at is null and (user_id = auth.uid() or is_parent_of(id) or (can_manage_player(id) and outranks_player(id))))
+  with check (user_id = auth.uid() or is_parent_of(id) or can_manage_player(id));
+drop policy if exists "dossier créé par le bureau" on player_admin;
+drop policy if exists "dossier saisi par le bureau" on player_admin;
+create policy "dossier créé par le bureau" on player_admin for insert with check (can_admin_player(player_id));
+create policy "dossier saisi par le bureau" on player_admin for update using (can_admin_player(player_id)) with check (can_admin_player(player_id));
+drop policy if exists "réductions : bureau seulement" on player_discount;
+create policy "réductions : bureau seulement" on player_discount for all using (can_admin_player(player_id)) with check (can_admin_player(player_id));
+
+-- Fiche d'un membre (bureau, coach, supporteur…) modifiée par quelqu'un au-dessus de lui dans la pyramide
+create or replace function update_member_profile(p_club uuid, p_user uuid, p_first text, p_last text, p_phone text) returns void
+language plpgsql security definer set search_path = public as $$
+declare old profiles;
+begin
+  if p_user = auth.uid() then raise exception 'Modifie ta propre fiche depuis « Mon compte »'; end if;
+  if my_rank(p_club) < 2 or member_rank(p_club, p_user) >= my_rank(p_club) or not exists(select 1 from memberships where club_id = p_club and user_id = p_user) then
+    raise exception 'Tu ne peux pas modifier la fiche de cette personne';
+  end if;
+  if coalesce(trim(p_first), '') = '' then raise exception 'Prénom obligatoire'; end if;
+  select * into old from profiles where id = p_user;
+  update profiles set first_name = p_first, last_name = coalesce(p_last, ''), phone = nullif(trim(coalesce(p_phone, '')), '') where id = p_user;
+  perform log_action(p_club, p_user, null, 'fiche du membre modifiée', jsonb_build_object('avant', jsonb_build_object('prénom', old.first_name, 'nom', old.last_name, 'téléphone', old.phone is not null), 'après', jsonb_build_object('prénom', p_first, 'nom', p_last, 'téléphone', nullif(trim(coalesce(p_phone, '')), '') is not null)));
+end $$;
+
+-- Journal : toute modification d'une fiche par quelqu'un d'autre que la personne elle-même
+create or replace function log_player_change() returns trigger language plpgsql security definer set search_path = public as $$
+declare pid uuid := coalesce(new.player_id, old.player_id); x players;
+begin
+  if auth.uid() is null then return coalesce(new, old); end if;
+  -- dossier : seules les saisies du bureau comptent (pas les recalculs automatiques du montant dû)
+  if tg_table_name = 'player_admin' then
+    if tg_op = 'INSERT' then return new; end if;
+    if to_jsonb(new) - 'fee_amount' - 'fee_paid' - 'updated_at' - 'updated_by' = to_jsonb(old) - 'fee_amount' - 'fee_paid' - 'updated_at' - 'updated_by' then return new; end if;
+  end if;
+  select * into x from players where id = pid;
+  if x.id is not null and x.user_id is distinct from auth.uid() then
+    perform log_action(x.club_id, x.user_id, pid, tg_table_name || ' ' || lower(tg_op), case when tg_op = 'DELETE' then to_jsonb(old) else to_jsonb(new) end);
+  end if;
+  return coalesce(new, old);
+end $$;
+create or replace function log_player_fiche() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is not null and new.user_id is distinct from auth.uid() and current_setting('pc.trash', true) is distinct from 'on' and current_setting('pc.link', true) is distinct from 'on'
+     and (new.first_name, new.last_name, new.birth_date, new.team_id, new.emergency_name, new.emergency_phone, new.consents) is distinct from (old.first_name, old.last_name, old.birth_date, old.team_id, old.emergency_name, old.emergency_phone, old.consents) then
+    perform log_action(new.club_id, new.user_id, new.id, 'fiche joueur modifiée', jsonb_build_object('équipe', new.team_id <> old.team_id, 'naissance', new.birth_date is distinct from old.birth_date, 'autorisations', new.consents <> old.consents));
+  end if;
+  return new;
+end $$;
+drop trigger if exists log_player_fiche on players;
+create trigger log_player_fiche after update on players for each row execute function log_player_fiche();
+drop trigger if exists log_player_admin on player_admin;
+create trigger log_player_admin after insert or update on player_admin for each row execute function log_player_change();
+drop trigger if exists log_player_discount on player_discount;
+create trigger log_player_discount after insert or update or delete on player_discount for each row execute function log_player_change();
+alter table action_log enable row level security;
+drop policy if exists "journal lu par le président" on action_log;
+create policy "journal lu par le président" on action_log for select using (is_president(club_id));
+
+-- =====================================================================
+-- N° 33 : montant dû calculé, versements, pastille « Payé »
+-- =====================================================================
+-- Tarif de base : tarif de l'équipe principale s'il existe, sinon celui de sa catégorie (même saison)
+create or replace function grid_for(p uuid) returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select g.amount from fee_grid g join players x on x.id = p where g.club_id = x.club_id and g.team_id = x.team_id order by g.created_at desc limit 1),
+    (select g.amount from fee_grid g join players x on x.id = p join teams t on t.id = x.team_id
+       where g.club_id = x.club_id and g.team_id is null and g.season = t.season and g.category = coalesce(nullif(t.category, ''), t.name) order by g.created_at desc limit 1));
+$$;
+create or replace function due_for(p uuid) returns numeric language sql stable security definer set search_path = public as $$
+  select case when grid_for(p) is null then null else greatest(0, grid_for(p) - coalesce((select amount from player_discount where player_id = p), 0)) end;
+$$;
+-- Le montant dû n'est jamais saisi : il est recalculé, sauf pour une cotisation déjà payée (elle ne change plus)
+create or replace function player_admin_compute() returns trigger language plpgsql security definer set search_path = public as $$
+declare was_paid boolean := tg_op = 'UPDATE' and old.fee_amount is not null and old.fee_paid >= old.fee_amount;
+begin
+  new.fee_paid := coalesce((select sum(amount) from player_payments where player_id = new.player_id), 0);
+  new.fee_amount := case when was_paid and new.fee_paid >= old.fee_amount then old.fee_amount else due_for(new.player_id) end;
+  return new;
+end $$;
+drop trigger if exists player_admin_compute on player_admin;
+create trigger player_admin_compute before insert or update on player_admin for each row execute function player_admin_compute();
+-- Recalcul pour tout le club (après un changement de la grille), ou pour un joueur
+create or replace function touch_fees(c uuid, p uuid) returns void language plpgsql security definer set search_path = public as $$
+begin
+  insert into player_admin(player_id) select x.id from players x where (p is null and x.club_id = c or x.id = p) and x.deleted_at is null on conflict do nothing;
+  update player_admin a set updated_at = a.updated_at from players x where x.id = a.player_id and (p is null and x.club_id = c or x.id = p);
+end $$;
+revoke execute on function touch_fees(uuid, uuid) from public, anon, authenticated;
+create or replace function fee_grid_changed() returns trigger language plpgsql security definer set search_path = public as $$
+begin perform touch_fees(coalesce(new.club_id, old.club_id), null); return null; end $$;
+drop trigger if exists fee_grid_changed on fee_grid;
+create trigger fee_grid_changed after insert or update or delete on fee_grid for each row execute function fee_grid_changed();
+create or replace function fee_player_changed() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_table_name = 'players' then
+    if new.team_id is distinct from old.team_id then perform touch_fees(null, new.id); end if;
+  else perform touch_fees(null, coalesce(new.player_id, old.player_id)); end if;
+  return null;
+end $$;
+drop trigger if exists fee_player_team on players;
+create trigger fee_player_team after update on players for each row execute function fee_player_changed();
+drop trigger if exists fee_discount_changed on player_discount;
+create trigger fee_discount_changed after insert or update or delete on player_discount for each row execute function fee_player_changed();
+drop trigger if exists fee_payment_changed on player_payments;
+create trigger fee_payment_changed after insert or delete on player_payments for each row execute function fee_player_changed();
+
+alter table player_payments enable row level security;
+drop policy if exists "versements lisibles" on player_payments;
+drop policy if exists "versements saisis par le bureau" on player_payments;
+drop policy if exists "versements retirés par le bureau" on player_payments;
+create policy "versements lisibles" on player_payments for select using (can_see_player(player_id));
+create policy "versements saisis par le bureau" on player_payments for insert with check (can_admin_player(player_id) and created_by = auth.uid());
+create policy "versements retirés par le bureau" on player_payments for delete using (can_admin_player(player_id));
+create or replace function log_payment() returns trigger language plpgsql security definer set search_path = public as $$
+declare x players;
+begin
+  select * into x from players where id = coalesce(new.player_id, old.player_id);
+  if auth.uid() is not null then perform log_action(x.club_id, x.user_id, x.id, case when tg_op = 'INSERT' then 'versement ajouté' else 'versement retiré' end, jsonb_build_object('montant', coalesce(new.amount, old.amount))); end if;
+  return null;
+end $$;
+drop trigger if exists log_payment on player_payments;
+create trigger log_payment after insert or delete on player_payments for each row execute function log_payment();
+
+-- Pastille « Payé » à la main : le reste est enregistré comme un dernier versement ; annulation : versements retirés
+create or replace function mark_paid(p_player uuid, p_paid boolean) returns void language plpgsql security definer set search_path = public as $$
+declare a player_admin;
+begin
+  if not can_admin_player(p_player) then raise exception 'Réservé au président et au bureau'; end if;
+  perform touch_fees(null, p_player);
+  select * into a from player_admin where player_id = p_player;
+  if p_paid then
+    if a.fee_amount is null then raise exception 'Montant dû inconnu : ajoute d''abord le tarif de sa catégorie dans la grille'; end if;
+    if a.fee_amount > a.fee_paid then insert into player_payments(player_id, amount, method, created_by) values (p_player, a.fee_amount - a.fee_paid, 'Solde validé à la main', auth.uid()); end if;
+  else
+    delete from player_payments where player_id = p_player;
+  end if;
+end $$;
+
+-- =====================================================================
+-- N° 38 : import de la grille avec remplacement des prix existants
+-- p_rows = [{team_id | category, amount, fed}] ; renvoie {updated, added, deleted}
+-- =====================================================================
+create or replace function import_fee_grid(p_club uuid, p_season text, p_rows jsonb, p_delete_absent boolean) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r record; up int := 0; ad int := 0; dl int := 0; keep uuid[] := '{}'; gid uuid;
+begin
+  if not is_board(p_club) then raise exception 'Réservé au président et au bureau'; end if;
+  for r in select * from jsonb_to_recordset(p_rows) as t(team_id uuid, category text, amount numeric, fed numeric) loop
+    if r.amount is null or r.amount < 0 then continue; end if;
+    if r.team_id is not null and not exists(select 1 from teams where id = r.team_id and club_id = p_club) then continue; end if;
+    select id into gid from fee_grid where club_id = p_club and season = p_season
+      and ((r.team_id is not null and team_id = r.team_id) or (r.team_id is null and team_id is null and lower(category) = lower(r.category))) limit 1;
+    if gid is null then
+      insert into fee_grid(club_id, season, team_id, category, amount, fed_part) values (p_club, p_season, r.team_id, case when r.team_id is null then r.category end, r.amount, r.fed) returning id into gid; ad := ad + 1;
+    else
+      update fee_grid set amount = r.amount, fed_part = r.fed where id = gid and (amount <> r.amount or fed_part is distinct from r.fed);
+      if found then up := up + 1; end if;
+    end if;
+    keep := keep || gid; gid := null;
+  end loop;
+  if p_delete_absent then delete from fee_grid where club_id = p_club and season = p_season and not (id = any(keep)); get diagnostics dl = row_count; end if;
+  return jsonb_build_object('updated', up, 'added', ad, 'deleted', dl);
+end $$;
+
+-- =====================================================================
+-- N° 42 : contacts du club
+-- =====================================================================
+alter table club_contacts enable row level security;
+drop policy if exists "chacun voit sa fiche contact" on club_contacts;
+drop policy if exists "le bureau gère sa fiche contact" on club_contacts;
+create policy "chacun voit sa fiche contact" on club_contacts for select using (user_id = auth.uid());
+create policy "le bureau gère sa fiche contact" on club_contacts for all using (user_id = auth.uid()) with check (user_id = auth.uid() and is_board(club_id));
+-- Encadré « Contacter le club » : comptes connectés et membres ; coordonnées seulement si la personne l'a choisi
+create or replace function club_contacts_list(p_club uuid) returns table(kind text, user_id uuid, name text, fonction text, for_licence boolean, for_matches boolean, phone text, email text)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if auth.uid() is null or not exists(select 1 from memberships where club_id = p_club and user_id = auth.uid()) then return; end if;
+  return query
+    select 'contact', c.user_id, trim(p.first_name || ' ' || p.last_name), case when member_rank(p_club, c.user_id) = 3 then 'Président' else 'Membre du bureau' end,
+      c.for_licence, c.for_matches, case when c.show_phone then p.phone end, case when c.show_email then u.email::text end
+    from club_contacts c join profiles p on p.id = c.user_id join auth.users u on u.id = c.user_id
+    where c.club_id = p_club and (c.for_licence or c.for_matches) and member_rank(p_club, c.user_id) >= 2 and p.deleted_at is null
+  union all
+    select 'president', m.user_id, trim(p.first_name || ' ' || left(p.last_name, 1) || case when p.last_name = '' then '' else '.' end), 'Président', false, false, null::text, null::text
+    from memberships m join profiles p on p.id = m.user_id
+    where m.club_id = p_club and m.role = 'president' and m.status = 'active';
+end $$;
+-- Le message au président passe par un groupe d'échange à deux (créé par le demandeur)
+create or replace function message_president(p_club uuid) returns uuid language plpgsql security definer set search_path = public as $$
+declare pres uuid; gid uuid; me_name text;
+begin
+  if not is_member(p_club) then raise exception 'Rejoins le club d''abord'; end if;
+  select user_id into pres from memberships where club_id = p_club and role = 'president' and status = 'active' order by created_at limit 1;
+  if pres is null then raise exception 'Ce club n''a pas encore de président'; end if;
+  if pres = auth.uid() then raise exception 'Tu es le président'; end if;
+  select g.id into gid from groups g where g.club_id = p_club and g.created_by = auth.uid() and g.name like 'Message au président%'
+    and exists(select 1 from group_members x where x.group_id = g.id and x.user_id = pres) limit 1;
+  if gid is not null then return gid; end if;
+  select full_name into me_name from profiles where id = auth.uid();
+  insert into groups(club_id, name, created_by) values (p_club, 'Message au président · ' || coalesce(me_name, 'membre'), auth.uid()) returning id into gid;
+  insert into group_members(group_id, user_id) values (gid, auth.uid()), (gid, pres);
+  return gid;
+end $$;
+
+-- =====================================================================
+-- Ajustements des fonctions existantes
+-- =====================================================================
+-- N° 39 : le coach ne lit plus la grille, mais la validation d'équipe nouvelle reste au bureau ; rien à changer dans teams_for_code.
+-- N° 33 : la création d'une fiche ouvre le dossier (le montant dû est calculé tout seul)
+select touch_fees(c.id, null) from clubs c;
+
+-- ===== alpha_3_0_2.sql =====
+-- Pocket Club · alpha 3.0.2 · mise à jour de la base (relançable sans risque, ne supprime aucune donnée)
+-- N° 49 page d'accueil publique : recherche de clubs, page d'un club pour un visiteur, rejoindre sans code
+-- N° 50 groupes triés par dernier message
+set client_min_messages = warning;
+
+-- =====================================================================
+-- N° 49 · réglages du club : apparaître dans la recherche (président), code postal
+-- =====================================================================
+alter table clubs add column if not exists public_listed boolean not null default true;
+alter table clubs add column if not exists postal_code text not null default '';
+do $$ begin alter table clubs add constraint clubs_postal_code check (postal_code ~ '^([0-9]{5})?$'); exception when duplicate_object then null; end $$;
+
+create or replace function clubs_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.join_code <> old.join_code then raise exception 'Le code du club ne se modifie pas ainsi'; end if;
+  if new.custom_header is distinct from old.custom_header and auth.uid() is not null and not is_president(old.id) then
+    raise exception 'Seul le président choisit l''en-tête aux couleurs du club';
+  end if;
+  if new.public_listed is distinct from old.public_listed and auth.uid() is not null and not is_president(old.id) then
+    raise exception 'Seul le président choisit si le club apparaît dans la recherche';
+  end if;
+  return new;
+end $$;
+
+-- Limite des recherches publiques (anti-aspiration) : 30 par minute et par adresse
+create table if not exists search_attempts (ip text not null, at timestamptz not null default now());
+create index if not exists search_attempts_ip on search_attempts(ip, at);
+alter table search_attempts enable row level security;   -- aucune règle : seulement par les fonctions
+create or replace function request_ip() returns text language plpgsql stable as $$
+declare h json;
+begin
+  begin h := nullif(current_setting('request.headers', true), '')::json; exception when others then h := null; end;
+  return coalesce(h->>'cf-connecting-ip', trim(split_part(h->>'x-forwarded-for', ',', 1)), 'inconnu');
+end $$;
+create or replace function check_search_rate() returns void language plpgsql security definer set search_path = public as $$
+declare v_ip text := request_ip();
+begin
+  if (select count(*) from search_attempts s where s.ip = v_ip and s.at > now() - interval '1 minute') >= 30 then
+    raise exception 'Trop de recherches. Réessaie dans une minute.';
+  end if;
+  insert into search_attempts(ip) values (v_ip);
+  if random() < 0.02 then delete from search_attempts where at < now() - interval '1 hour'; end if;
+end $$;
+revoke execute on function check_search_rate() from public, anon, authenticated;
+
+-- Recherche publique : nom, ville ou code postal ; seulement les champs publics ; jamais les tables complètes
+create or replace function public_search_clubs(p_query text, p_sport text default null)
+returns table(id uuid, name text, city text, postal_code text, sport text, logo text, crest_bg text, color1 text, crest_outline text)
+language plpgsql security definer set search_path = public as $$
+#variable_conflict use_column
+declare q text := norm_name(p_query); d text := regexp_replace(coalesce(p_query, ''), '\D', '', 'g');
+begin
+  if length(q) < 2 then return; end if;
+  perform check_search_rate();
+  return query
+    select c.id, c.name, c.city, c.postal_code, c.sport, c.logo, c.crest_bg, c.color1, c.crest_outline
+    from clubs c
+    where c.public_listed and (coalesce(p_sport, '') = '' or c.sport = p_sport)
+      and (norm_name(c.name) like '%' || q || '%' or norm_name(c.city) like '%' || q || '%'
+           or (length(d) >= 2 and c.postal_code <> '' and c.postal_code like d || '%'))
+    order by c.name limit 20;
+end $$;
+
+-- Page d'un club pour un visiteur : le club, ses équipes visibles et leurs créneaux ; aucun nombre, aucune personne, aucun match
+create or replace function public_club(p_club uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r jsonb;
+begin
+  perform check_search_rate();
+  select jsonb_build_object('id', c.id, 'name', c.name, 'city', c.city, 'postal_code', c.postal_code, 'sport', c.sport, 'logo', c.logo,
+      'crest_bg', c.crest_bg, 'color1', c.color1, 'crest_outline', c.crest_outline,
+      'teams', coalesce((select jsonb_agg(jsonb_build_object('id', t.id, 'name', t.name, 'category', t.category, 'gender', t.gender, 'slots', t.slots) order by t.name)
+                         from teams t where t.club_id = c.id and t.state = 'Visible' and t.deleted_at is null), '[]'::jsonb))
+    into r from clubs c where c.id = p_club and c.public_listed;
+  return r;
+end $$;
+
+-- Rejoindre un club trouvé par la recherche, sans retaper son code (mêmes règles que join_club)
+create or replace function join_club_by_id(p_club uuid, p_role text, p_team uuid, p_child_first text default null, p_child_last text default null) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare code text;
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  select join_code into code from clubs where id = p_club and public_listed;
+  if code is null then raise exception 'Ce club se rejoint seulement avec son code : demande-le au club'; end if;
+  return join_club(code, p_role, p_team, p_child_first, p_child_last);
+end $$;
+
+grant execute on function public_search_clubs(text, text), public_club(uuid) to anon, authenticated;
+
+-- =====================================================================
+-- N° 50 · groupes triés par dernier message (un sondage compte comme un message)
+-- =====================================================================
+alter table groups add column if not exists last_message_at timestamptz;
+update groups g set last_message_at = (select max(x.at) from (select created_at as at from messages m where m.group_id = g.id union all select created_at from polls p where p.group_id = g.id) x)
+  where last_message_at is null;
+create or replace function touch_group() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  update groups set last_message_at = greatest(coalesce(last_message_at, new.created_at), new.created_at) where id = new.group_id;
+  return null;
+end $$;
+drop trigger if exists touch_group_msg on messages;
+create trigger touch_group_msg after insert on messages for each row execute function touch_group();
+drop trigger if exists touch_group_poll on polls;
+create trigger touch_group_poll after insert on polls for each row execute function touch_group();
+
+-- Dernier message (ou sondage) de chacun de mes groupes, sans charger tous les messages
+create or replace function group_previews(p_club uuid) returns table(group_id uuid, user_id uuid, body text, created_at timestamptz, kind text)
+language sql stable security definer set search_path = public as $$
+  select distinct on (x.group_id) x.group_id, x.user_id, x.body, x.created_at, x.kind
+  from (
+    select m.group_id, m.user_id, m.body, m.created_at, 'message' as kind from messages m
+    union all
+    select p.group_id, p.created_by, p.question, p.created_at, 'sondage' from polls p where p.deleted_at is null
+  ) x join groups g on g.id = x.group_id
+  where g.club_id = p_club and is_group_member(g.id)
+  order by x.group_id, x.created_at desc;
+$$;
+
+-- =====================================================================
+-- N° 51 · une personne n'est jamais « parent » de sa propre fiche de joueur
+-- =====================================================================
+delete from player_parents pp using players x where x.id = pp.player_id and x.user_id = pp.user_id;
+create or replace function player_parents_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if exists(select 1 from players where id = new.player_id and user_id = new.user_id) then return null; end if;
+  return new;
+end $$;
+drop trigger if exists player_parents_guard on player_parents;
+create trigger player_parents_guard before insert on player_parents for each row execute function player_parents_guard();
+
+-- ===== alpha_3_1.sql =====
+-- Pocket Club · alpha 3.1 · espace coach (relançable sans risque, ne supprime aucune donnée)
+-- Banque d'exercices (Ma banque, Club, Libre) avec garde-fous de droits d'auteur, séances, statistiques de présence, heures des coachs.
+set client_min_messages = warning;
+
+-- =====================================================================
+-- 1. Exercices
+-- =====================================================================
+create table if not exists exercises (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,               -- club de l'auteur
+  created_by uuid references auth.users(id) on delete set null,
+  sport text not null default 'Basket-ball' check (sport in ('Basket-ball','Volley-ball','Tous les sports')),
+  title text not null check (length(trim(title)) between 2 and 80),
+  category text not null default 'Technique' check (category in ('Échauffement','Technique','Tactique','Physique','Jeu','Retour au calme')),
+  duration_min int not null default 10 check (duration_min between 1 and 120),
+  level text not null default '' check (length(level) <= 40),                  -- ex. « U9 à U13 »
+  description text not null default '' check (length(description) <= 4000),
+  diagram jsonb not null default '[]'::jsonb check (jsonb_typeof(diagram) = 'array' and jsonb_array_length(diagram) <= 60),
+  sharing text not null default 'me' check (sharing in ('me','club','public')),          -- moi seul, mon club, tous les clubs
+  public_state text not null default 'none' check (public_state in ('none','pending','validated','refused')),
+  origin text not null default 'perso' check (origin in ('perso','adapte','ia')),         -- création, adapté d'une source, préparé avec une IA
+  source text not null default '' check (length(source) <= 300),
+  certified boolean not null default false,                                     -- « J'ai le droit de partager ce contenu »
+  up_count int not null default 0,
+  down_count int not null default 0,
+  validated_by uuid references auth.users(id) on delete set null,
+  validated_at timestamptz,
+  deleted_at timestamptz,
+  deleted_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (sharing = 'me' or certified),
+  check (origin <> 'adapte' or length(trim(source)) > 0)
+);
+create index if not exists exercises_club on exercises(club_id);
+create index if not exists exercises_public on exercises(sharing, public_state) where deleted_at is null;
+
+create table if not exists exercise_votes (
+  exercise_id uuid not null references exercises(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  up boolean not null,
+  at timestamptz not null default now(),
+  primary key (exercise_id, user_id)
+);
+create table if not exists exercise_reports (
+  id uuid primary key default gen_random_uuid(),
+  exercise_id uuid not null references exercises(id) on delete cascade,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  reason text not null check (length(trim(reason)) between 3 and 500),
+  handled boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+-- Qui voit un exercice : l'auteur ; son club s'il est partagé au club ou à tous ; tout compte connecté s'il est public et validé par le bureau
+create or replace function can_see_exercise(x uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from exercises e where e.id = x and e.deleted_at is null and (
+    e.created_by = auth.uid()
+    or (e.sharing in ('club','public') and is_member(e.club_id))
+    or (e.sharing = 'public' and e.public_state = 'validated' and auth.uid() is not null)));
+$$;
+
+-- Mots qui signalent un contenu copié (droits d'auteur)
+create or replace function exercise_text_ok(t text) returns boolean language sql immutable as $$
+  select not (lower(coalesce(t, '')) ~ '(©|copyright|tous droits réservés|tous droits reserves|all rights reserved|reproduction interdite|reproduction strictement interdite)');
+$$;
+
+create or replace function exercises_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    new.created_by := auth.uid();
+    if auth.uid() is not null and not (is_coach_in(new.club_id) or is_board(new.club_id)) then
+      raise exception 'Seuls les coachs et le bureau ajoutent des exercices';
+    end if;
+    new.up_count := 0; new.down_count := 0; new.validated_by := null; new.validated_at := null; new.deleted_at := null; new.deleted_by := null;
+  else
+    new.created_by := old.created_by; new.club_id := old.club_id; new.created_at := old.created_at;
+    if coalesce(current_setting('pc.exsys', true), '') <> 'on' then
+      new.up_count := old.up_count; new.down_count := old.down_count;
+      new.validated_by := old.validated_by; new.validated_at := old.validated_at;
+      new.deleted_at := old.deleted_at; new.deleted_by := old.deleted_by;
+    end if;
+  end if;
+  if not (exercise_text_ok(new.title) and exercise_text_ok(new.description) and exercise_text_ok(new.source)) then
+    raise exception 'Texte refusé : il contient une mention de droits d''auteur (©, « tous droits réservés »…). Écris l''exercice avec tes propres mots.';
+  end if;
+  -- partage public : toujours revu par le bureau du club ; un contenu modifié repasse en attente
+  if coalesce(current_setting('pc.exsys', true), '') <> 'on' then
+    if new.sharing <> 'public' then new.public_state := 'none';
+    elsif tg_op = 'INSERT' or old.sharing <> 'public' or old.public_state = 'none'
+      or (new.title, new.description, new.diagram, new.source, new.origin) is distinct from (old.title, old.description, old.diagram, old.source, old.origin) then
+      new.public_state := 'pending'; new.validated_by := null; new.validated_at := null;
+    else new.public_state := old.public_state;
+    end if;
+  end if;
+  new.updated_at := now();
+  return new;
+end $$;
+drop trigger if exists exercises_guard on exercises;
+create trigger exercises_guard before insert or update on exercises for each row execute function exercises_guard();
+
+-- Pouces : un avis par compte, compteurs tenus par la base
+create or replace function exercise_votes_count() returns trigger language plpgsql security definer set search_path = public as $$
+declare x uuid := coalesce(new.exercise_id, old.exercise_id);
+begin
+  perform set_config('pc.exsys', 'on', true);
+  update exercises set up_count = (select count(*) from exercise_votes where exercise_id = x and up),
+                       down_count = (select count(*) from exercise_votes where exercise_id = x and not up) where id = x;
+  perform set_config('pc.exsys', 'off', true);
+  return null;
+end $$;
+drop trigger if exists exercise_votes_count on exercise_votes;
+create trigger exercise_votes_count after insert or update or delete on exercise_votes for each row execute function exercise_votes_count();
+
+-- Un signalement sur un exercice public le retire des autres clubs jusqu'à une nouvelle validation du bureau
+create or replace function exercise_reported() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  perform set_config('pc.exsys', 'on', true);
+  update exercises set public_state = 'pending', validated_by = null, validated_at = null where id = new.exercise_id and public_state = 'validated';
+  perform set_config('pc.exsys', 'off', true);
+  return null;
+end $$;
+drop trigger if exists exercise_reported on exercise_reports;
+create trigger exercise_reported after insert on exercise_reports for each row execute function exercise_reported();
+
+-- Validation du partage public par le bureau du club de l'auteur
+create or replace function validate_exercise(p_id uuid, p_ok boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  select club_id into c from exercises where id = p_id and deleted_at is null and sharing = 'public';
+  if c is null or not is_board(c) then raise exception 'Seul le bureau du club valide un exercice public'; end if;
+  perform set_config('pc.exsys', 'on', true);
+  update exercises set public_state = case when p_ok then 'validated' else 'refused' end, validated_by = auth.uid(), validated_at = now() where id = p_id;
+  update exercise_reports set handled = true where exercise_id = p_id;
+  perform set_config('pc.exsys', 'off', true);
+  perform log_action(c, null, null, case when p_ok then 'exercice public validé' else 'exercice public refusé' end, jsonb_build_object('exercice', p_id));
+end $$;
+
+-- Suppression d'un exercice (corbeille de 30 jours) : l'auteur, ou le bureau pour un exercice partagé au club
+create or replace function trash_exercise(p_id uuid, p_restore boolean default false) returns void
+language plpgsql security definer set search_path = public as $$
+declare e exercises;
+begin
+  select * into e from exercises where id = p_id;
+  if e.id is null or not (e.created_by = auth.uid() or (e.sharing <> 'me' and is_board(e.club_id))) then raise exception 'Suppression impossible'; end if;
+  perform set_config('pc.exsys', 'on', true);
+  if p_restore then update exercises set deleted_at = null, deleted_by = null where id = p_id;
+  else update exercises set deleted_at = now(), deleted_by = auth.uid() where id = p_id and deleted_at is null; end if;
+  perform set_config('pc.exsys', 'off', true);
+end $$;
+
+alter table exercises enable row level security;
+alter table exercise_votes enable row level security;
+alter table exercise_reports enable row level security;
+drop policy if exists "exercice lisible" on exercises;
+create policy "exercice lisible" on exercises for select using (can_see_exercise(id) or created_by = auth.uid() or (deleted_at is not null and sharing <> 'me' and is_board(club_id)));
+drop policy if exists "exercice ajouté par un coach ou le bureau" on exercises;
+create policy "exercice ajouté par un coach ou le bureau" on exercises for insert with check (is_coach_in(club_id) or is_board(club_id));
+drop policy if exists "exercice modifié par son auteur" on exercises;
+create policy "exercice modifié par son auteur" on exercises for update using (created_by = auth.uid() and deleted_at is null);
+drop policy if exists "avis lisible par son auteur" on exercise_votes;
+create policy "avis lisible par son auteur" on exercise_votes for select using (user_id = auth.uid());
+drop policy if exists "avis donné sur un exercice visible" on exercise_votes;
+create policy "avis donné sur un exercice visible" on exercise_votes for insert with check (user_id = auth.uid() and can_see_exercise(exercise_id));
+drop policy if exists "avis changé" on exercise_votes;
+create policy "avis changé" on exercise_votes for update using (user_id = auth.uid()) with check (user_id = auth.uid() and can_see_exercise(exercise_id));
+drop policy if exists "avis retiré" on exercise_votes;
+create policy "avis retiré" on exercise_votes for delete using (user_id = auth.uid());
+drop policy if exists "signalement lu par le bureau et son auteur" on exercise_reports;
+create policy "signalement lu par le bureau et son auteur" on exercise_reports for select
+  using (user_id = auth.uid() or exists(select 1 from exercises e where e.id = exercise_id and is_board(e.club_id)));
+drop policy if exists "signalement d'un exercice visible" on exercise_reports;
+create policy "signalement d'un exercice visible" on exercise_reports for insert with check (user_id = auth.uid() and can_see_exercise(exercise_id));
+drop policy if exists "signalement traité par le bureau" on exercise_reports;
+create policy "signalement traité par le bureau" on exercise_reports for update using (exists(select 1 from exercises e where e.id = exercise_id and is_board(e.club_id)));
+
+-- Nom de l'auteur et club pour la banque « Libre » (sans autre donnée personnelle)
+create or replace function exercise_authors(p_ids uuid[]) returns table(id uuid, author text, club_name text)
+language sql stable security definer set search_path = public as $$
+  select e.id, coalesce(nullif(trim(p.first_name || ' ' || left(p.last_name, 1) || case when p.last_name <> '' then '.' else '' end), ''), 'Coach'), c.name
+  from exercises e join clubs c on c.id = e.club_id left join profiles p on p.id = e.created_by
+  where e.id = any(p_ids) and can_see_exercise(e.id);
+$$;
+
+-- =====================================================================
+-- 2. Séances (composées depuis la banque, reliées si on veut à un entraînement)
+-- =====================================================================
+create table if not exists training_plans (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  team_id uuid references teams(id) on delete set null,
+  event_id uuid references events(id) on delete set null,
+  created_by uuid references auth.users(id) on delete set null,
+  title text not null check (length(trim(title)) between 1 and 80),
+  notes text not null default '' check (length(notes) <= 2000),
+  items jsonb not null default '[]'::jsonb check (jsonb_typeof(items) = 'array' and jsonb_array_length(items) <= 30),
+  deleted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists training_plans_club on training_plans(club_id);
+create index if not exists training_plans_event on training_plans(event_id);
+
+create or replace function training_plans_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then new.created_by := auth.uid(); else new.created_by := old.created_by; new.club_id := old.club_id; end if;
+  if new.team_id is not null and not exists(select 1 from teams where id = new.team_id and club_id = new.club_id) then raise exception 'Équipe d''un autre club'; end if;
+  if auth.uid() is not null and new.team_id is distinct from (case when tg_op = 'INSERT' then null else old.team_id end)
+     and new.team_id is not null and not (coaches_team(new.team_id) or is_board(new.club_id)) then
+    raise exception 'Tu n''encadres pas cette équipe';
+  end if;
+  if new.event_id is not null and new.event_id is distinct from (case when tg_op = 'INSERT' then null else old.event_id end) then
+    if not exists(select 1 from events where id = new.event_id and club_id = new.club_id) then raise exception 'Rendez-vous d''un autre club'; end if;
+    if auth.uid() is not null and not can_manage_event(new.event_id) then raise exception 'Tu ne gères pas ce rendez-vous'; end if;
+  end if;
+  new.updated_at := now();
+  return new;
+end $$;
+drop trigger if exists training_plans_guard on training_plans;
+create trigger training_plans_guard before insert or update on training_plans for each row execute function training_plans_guard();
+
+alter table training_plans enable row level security;
+drop policy if exists "séance lisible par l'encadrement" on training_plans;
+create policy "séance lisible par l'encadrement" on training_plans for select
+  using (created_by = auth.uid() or is_board(club_id) or (team_id is not null and coaches_team(team_id)));
+drop policy if exists "séance créée par un coach ou le bureau" on training_plans;
+create policy "séance créée par un coach ou le bureau" on training_plans for insert
+  with check (is_coach_in(club_id) or is_board(club_id));
+drop policy if exists "séance modifiée par l'encadrement" on training_plans;
+create policy "séance modifiée par l'encadrement" on training_plans for update
+  using (created_by = auth.uid() or (team_id is not null and coaches_team(team_id)));
+drop policy if exists "séance supprimée par l'encadrement" on training_plans;
+create policy "séance supprimée par l'encadrement" on training_plans for delete
+  using (created_by = auth.uid() or (team_id is not null and coaches_team(team_id)) or is_board(club_id));
+
+-- =====================================================================
+-- 3. Statistiques de présence et de réponses (coach de l'équipe et bureau)
+-- =====================================================================
+-- Seules les séances pointées (appel fait) comptent ; « oui mais absent » = fiabilité
+create or replace function team_attendance(p_team uuid, p_from date, p_to date)
+returns table(event_id uuid, starts_at timestamptz, title text, type text, player_id uuid, first_name text, last_name text, status text, answer text)
+language plpgsql stable security definer set search_path = public as $$
+declare c uuid;
+begin
+  select club_id into c from teams where id = p_team;
+  if c is null or not (coaches_team(p_team) or is_board(c)) then raise exception 'Statistiques réservées aux coachs de l''équipe et au bureau'; end if;
+  return query
+    with ev as (
+      select e.id, e.starts_at, e.title, e.type from events e
+      where e.club_id = c and p_team = any(e.team_ids) and not e.cancelled and e.type in ('Entraînement','Match','Plateau','Tournoi')
+        and e.starts_at >= p_from and e.starts_at < p_to + 1 and e.starts_at < now()
+        and exists(select 1 from attendance a where a.event_id = e.id)
+    ), pl as (
+      select x.id, x.first_name, x.last_name, x.user_id from players x
+      where x.deleted_at is null and (x.team_id = p_team or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = p_team))
+    )
+    select ev.id, ev.starts_at, ev.title, ev.type, pl.id, pl.first_name, pl.last_name,
+      a.status,
+      coalesce((select r.answer from event_responses r where r.event_id = ev.id and r.player_id = pl.id),
+               (select r.answer from event_responses r where r.event_id = ev.id and r.player_id is null and pl.user_id is not null and r.user_id = pl.user_id))
+    from ev cross join pl
+    left join attendance a on a.event_id = ev.id and a.player_id = pl.id
+    order by ev.starts_at, pl.last_name, pl.first_name;
+end $$;
+
+create or replace function team_stats(p_team uuid, p_from date, p_to date)
+returns table(player_id uuid, first_name text, last_name text, sessions int, present int, late int, absent int, answered int, yes_absent int, no_present int)
+language sql stable security definer set search_path = public as $$
+  select t.player_id, t.first_name, t.last_name,
+    count(t.status)::int,
+    count(*) filter (where t.status = 'present')::int,
+    count(*) filter (where t.status = 'retard')::int,
+    count(*) filter (where t.status = 'absent')::int,
+    count(*) filter (where t.status is not null and t.answer is not null)::int,
+    count(*) filter (where t.status = 'absent' and t.answer = 'oui')::int,
+    count(*) filter (where t.status in ('present','retard') and t.answer = 'non')::int
+  from team_attendance(p_team, p_from, p_to) t
+  group by t.player_id, t.first_name, t.last_name
+  order by t.last_name, t.first_name;
+$$;
+
+-- =====================================================================
+-- 4. Heures des coachs et relevé mensuel validé par le bureau
+-- =====================================================================
+create table if not exists coach_hours (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  team_id uuid references teams(id) on delete set null,
+  event_id uuid references events(id) on delete set null,
+  day date not null,
+  minutes int not null check (minutes between 5 and 720),
+  kind text not null default 'Entraînement' check (kind in ('Entraînement','Match','Plateau','Tournoi','Réunion','Formation','Autre')),
+  note text not null default '' check (length(note) <= 200),
+  created_at timestamptz not null default now()
+);
+create index if not exists coach_hours_user on coach_hours(club_id, user_id, day);
+create unique index if not exists coach_hours_event on coach_hours(user_id, event_id) where event_id is not null;
+
+create table if not exists coach_statements (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  month date not null check (extract(day from month) = 1),
+  status text not null default 'submitted' check (status in ('submitted','validated','refused')),
+  total_minutes int not null default 0,
+  submitted_at timestamptz not null default now(),
+  decided_by uuid references auth.users(id) on delete set null,
+  decided_at timestamptz,
+  comment text not null default '' check (length(comment) <= 300),
+  unique (club_id, user_id, month)
+);
+
+-- Un mois envoyé au bureau (ou validé) ne se modifie plus ; un mois refusé redevient modifiable
+create or replace function month_locked(c uuid, u uuid, d date) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from coach_statements s where s.club_id = c and s.user_id = u and s.month = date_trunc('month', d)::date and s.status in ('submitted','validated'));
+$$;
+create or replace function coach_hours_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op in ('UPDATE','DELETE') and month_locked(old.club_id, old.user_id, old.day) then raise exception 'Ce mois est envoyé au bureau : il ne se modifie plus'; end if;
+  if tg_op = 'DELETE' then return old; end if;
+  if tg_op = 'UPDATE' then new.user_id := old.user_id; new.club_id := old.club_id; end if;
+  if month_locked(new.club_id, new.user_id, new.day) then raise exception 'Ce mois est envoyé au bureau : il ne se modifie plus'; end if;
+  if new.team_id is not null and not exists(select 1 from teams where id = new.team_id and club_id = new.club_id) then raise exception 'Équipe d''un autre club'; end if;
+  if auth.uid() is not null and new.team_id is not null and not coaches_team(new.team_id) then raise exception 'Tu n''encadres pas cette équipe'; end if;
+  if new.day > current_date + 1 then raise exception 'On note les heures une fois faites'; end if;
+  return new;
+end $$;
+drop trigger if exists coach_hours_guard on coach_hours;
+create trigger coach_hours_guard before insert or update or delete on coach_hours for each row execute function coach_hours_guard();
+
+alter table coach_hours enable row level security;
+alter table coach_statements enable row level security;
+drop policy if exists "heures lues par le coach et le bureau" on coach_hours;
+create policy "heures lues par le coach et le bureau" on coach_hours for select using (user_id = auth.uid() or is_board(club_id));
+drop policy if exists "heures notées par le coach" on coach_hours;
+create policy "heures notées par le coach" on coach_hours for insert with check (user_id = auth.uid() and is_coach_in(club_id));
+drop policy if exists "heures modifiées par le coach" on coach_hours;
+create policy "heures modifiées par le coach" on coach_hours for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "heures retirées par le coach" on coach_hours;
+create policy "heures retirées par le coach" on coach_hours for delete using (user_id = auth.uid());
+drop policy if exists "relevés lus par le coach et le bureau" on coach_statements;
+create policy "relevés lus par le coach et le bureau" on coach_statements for select using (user_id = auth.uid() or is_board(club_id));
+-- écriture des relevés : seulement par les fonctions ci-dessous
+
+-- Pré-remplir le mois avec les séances passées de mes équipes (90 min l'entraînement, 120 le match, 240 le plateau ou le tournoi)
+create or replace function fill_coach_hours(p_club uuid, p_month date) returns int
+language plpgsql security definer set search_path = public as $$
+declare m date := date_trunc('month', p_month)::date; n int;
+begin
+  if not is_coach_in(p_club) then raise exception 'Réservé aux coachs'; end if;
+  if month_locked(p_club, auth.uid(), m) then raise exception 'Ce mois est envoyé au bureau : il ne se modifie plus'; end if;
+  insert into coach_hours(club_id, user_id, team_id, event_id, day, minutes, kind)
+    select p_club, auth.uid(), (select t from unnest(e.team_ids) t where coaches_team(t) limit 1), e.id, (e.starts_at at time zone 'Europe/Paris')::date,
+      case e.type when 'Entraînement' then 90 when 'Match' then 120 else 240 end, e.type
+    from events e
+    where e.club_id = p_club and not e.cancelled and e.type in ('Entraînement','Match','Plateau','Tournoi') and coaches_any(e.team_ids)
+      and e.starts_at >= m and e.starts_at < (m + interval '1 month') and e.starts_at < now()
+      and not exists(select 1 from coach_hours h where h.user_id = auth.uid() and h.event_id = e.id);
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+create or replace function submit_coach_month(p_club uuid, p_month date) returns void
+language plpgsql security definer set search_path = public as $$
+declare m date := date_trunc('month', p_month)::date; tot int;
+begin
+  if not is_coach_in(p_club) then raise exception 'Réservé aux coachs'; end if;
+  select coalesce(sum(minutes), 0) into tot from coach_hours where club_id = p_club and user_id = auth.uid() and day >= m and day < m + interval '1 month';
+  if tot = 0 then raise exception 'Aucune heure notée ce mois-ci'; end if;
+  insert into coach_statements(club_id, user_id, month, status, total_minutes, submitted_at)
+    values (p_club, auth.uid(), m, 'submitted', tot, now())
+    on conflict (club_id, user_id, month) do update set status = 'submitted', total_minutes = tot, submitted_at = now(), decided_by = null, decided_at = null
+    where coach_statements.status = 'refused';
+  if not found then raise exception 'Ce mois est déjà envoyé au bureau'; end if;
+end $$;
+
+create or replace function decide_coach_month(p_statement uuid, p_ok boolean, p_comment text default '') returns void
+language plpgsql security definer set search_path = public as $$
+declare s coach_statements;
+begin
+  select * into s from coach_statements where id = p_statement;
+  if s.id is null or not is_board(s.club_id) then raise exception 'Validation réservée au président et au bureau'; end if;
+  if s.user_id = auth.uid() then raise exception 'On ne valide pas son propre relevé : un autre membre du bureau s''en charge'; end if;
+  if s.status <> 'submitted' then raise exception 'Ce relevé est déjà traité'; end if;
+  update coach_statements set status = case when p_ok then 'validated' else 'refused' end, decided_by = auth.uid(), decided_at = now(), comment = left(coalesce(p_comment, ''), 300)
+    where id = p_statement;
+  perform log_action(s.club_id, s.user_id, null, case when p_ok then 'relevé d''heures validé' else 'relevé d''heures refusé' end,
+    jsonb_build_object('mois', to_char(s.month, 'YYYY-MM'), 'minutes', s.total_minutes));
+end $$;
+
+-- =====================================================================
+-- 5. Corbeille du club : les exercices partagés supprimés y apparaissent ; effacement après 30 jours
+-- =====================================================================
+create or replace function club_trash(p_club uuid) returns table(kind text, id uuid, label text, deleted_at timestamptz, deleted_by text, purge_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_board(p_club) then return; end if;
+  return query
+    select 'team', t.id, t.name || coalesce(' · ' || nullif(t.season, ''), ''), t.deleted_at, pr.full_name, t.deleted_at + interval '30 days'
+      from teams t left join profiles pr on pr.id = t.deleted_by where t.club_id = p_club and t.deleted_at is not null
+  union all
+    select 'player', x.id, trim(x.first_name || ' ' || x.last_name), x.deleted_at, pr.full_name, x.deleted_at + interval '30 days'
+      from players x left join profiles pr on pr.id = x.deleted_by where x.club_id = p_club and x.deleted_at is not null
+  union all
+    select 'poll', p.id, p.question || ' · ' || g.name, p.deleted_at, pr.full_name, p.deleted_at + interval '30 days'
+      from polls p join groups g on g.id = p.group_id left join profiles pr on pr.id = p.deleted_by where g.club_id = p_club and p.deleted_at is not null
+  union all
+    select 'exercise', e.id, 'Exercice · ' || e.title, e.deleted_at, pr.full_name, e.deleted_at + interval '30 days'
+      from exercises e left join profiles pr on pr.id = e.deleted_by where e.club_id = p_club and e.deleted_at is not null and e.sharing <> 'me'
+  order by 4 desc;
+end $$;
+
+create or replace function restore_item(p_kind text, p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  if p_kind = 'exercise' then perform trash_exercise(p_id, true); return; end if;
+  perform set_config('pc.trash', 'on', true);
+  if p_kind = 'team' then
+    select club_id into c from teams where id = p_id and deleted_at is not null;
+    if c is null or not is_board(c) then raise exception 'Restauration réservée au président et au bureau'; end if;
+    update teams set deleted_at = null, deleted_by = null where id = p_id;
+  elsif p_kind = 'player' then
+    select club_id into c from players where id = p_id and deleted_at is not null;
+    if c is null or not is_board(c) then raise exception 'Restauration réservée au président et au bureau'; end if;
+    update players set deleted_at = null, deleted_by = null where id = p_id;
+  elsif p_kind = 'poll' then
+    select g.club_id into c from polls p join groups g on g.id = p.group_id where p.id = p_id and p.deleted_at is not null;
+    if c is null or not (is_board(c) or can_delete_poll(p_id)) then raise exception 'Restauration impossible'; end if;
+    update polls set deleted_at = null, deleted_by = null where id = p_id;
+  else raise exception 'Élément inconnu';
+  end if;
+  perform set_config('pc.trash', 'off', true);
+end $$;
+
+create or replace function purge_trash() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; k int; u uuid; lim timestamptz := now() - interval '30 days';
+begin
+  delete from memberships where role = 'coach' and team_id in (select id from teams where deleted_at < lim);
+  update events set team_ids = (select coalesce(array_agg(t), '{}') from unnest(team_ids) t where t not in (select id from teams where deleted_at < lim))
+    where team_ids && array(select id from teams where deleted_at < lim);
+  delete from events where audience = 'team' and cardinality(team_ids) = 0;
+  delete from teams where deleted_at < lim; get diagnostics k = row_count; n := n + k;
+  delete from players where deleted_at < lim; get diagnostics k = row_count; n := n + k;
+  delete from poll_votes where poll_id in (select id from polls where deleted_at < lim);
+  delete from exercises where deleted_at < lim; get diagnostics k = row_count; n := n + k;
+  delete from training_plans where deleted_at < lim;
+  delete from join_attempts where at < now() - interval '1 day';
+  for u in select id from profiles where deleted_at < lim loop
+    begin
+      delete from auth.users where id = u;
+    exception when others then
+      update profiles set first_name = 'Compte', last_name = 'supprimé', nickname = null, phone = null, deleted_snapshot = null where id = u;
+      delete from player_parents where user_id = u; delete from group_members where user_id = u; delete from memberships where user_id = u;
+    end;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+revoke execute on function exercise_votes_count() from public, anon, authenticated;
+revoke execute on function exercise_reported() from public, anon, authenticated;
+
+-- ===== alpha_3_2.sql =====
+-- Pocket Club · alpha 3.2 · vie du club (relançable sans risque, ne supprime aucune donnée)
+-- N° 54 fonctions du bureau · N° 55 rubriques par fonction (contrôlées par la base) · N° 53 bénévoles
+-- Annonces officielles, convocations et relance · accueil multi-clubs · réglages du président
+set client_min_messages = warning;
+
+create table if not exists pc_migrations (name text primary key, at timestamptz not null default now());
+alter table pc_migrations enable row level security;   -- aucune règle : lecture et écriture par les scripts seulement
+
+-- =====================================================================
+-- 1. N° 54 · fonctions du bureau ; N° 55 · rubriques
+-- =====================================================================
+alter table memberships add column if not exists fonction text;
+do $$ begin alter table memberships add constraint memberships_fonction check (fonction is null or fonction in (
+  'Vice-président','Secrétaire','Secrétaire adjoint','Trésorier','Trésorier adjoint','Directeur sportif','Coordinateur',
+  'Correspondant licences','Chargé de communication','Responsable sponsoring','Responsable événements et buvette','Membre du bureau'));
+exception when duplicate_object then null; end $$;
+-- une seule personne pour la vice-présidence, le secrétariat et la trésorerie
+create unique index if not exists memberships_fonction_unique on memberships(club_id, fonction)
+  where status = 'active' and fonction in ('Vice-président','Secrétaire','Trésorier');
+
+-- Rubriques : tresorerie, secretariat, technique, communication, evenements (« Commun » = tout le bureau)
+create or replace function fonction_areas(f text) returns text[] language sql immutable as $$
+  select case f
+    when 'Vice-président' then array['tresorerie','secretariat','technique','communication','evenements']
+    when 'Trésorier' then array['tresorerie'] when 'Trésorier adjoint' then array['tresorerie']
+    when 'Secrétaire' then array['secretariat'] when 'Secrétaire adjoint' then array['secretariat']
+    when 'Correspondant licences' then array['secretariat']
+    when 'Directeur sportif' then array['technique']
+    when 'Coordinateur' then array['technique','evenements']
+    when 'Chargé de communication' then array['communication'] when 'Responsable sponsoring' then array['communication']
+    when 'Responsable événements et buvette' then array['evenements']
+    else '{}'::text[] end;
+$$;
+
+create table if not exists board_areas (                                 -- rubrique ouverte en plus par le président
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  area text not null check (area in ('tresorerie','secretariat','technique','communication','evenements')),
+  granted_by uuid references auth.users(id) on delete set null,
+  at timestamptz not null default now(),
+  primary key (club_id, user_id, area)
+);
+alter table board_areas enable row level security;
+drop policy if exists "rubriques lues par le bureau" on board_areas;
+create policy "rubriques lues par le bureau" on board_areas for select using (user_id = auth.uid() or is_board(club_id));
+
+create or replace function areas_of(c uuid, u uuid) returns text[] language sql stable security definer set search_path = public as $$
+  select case
+    when exists(select 1 from memberships where club_id = c and user_id = u and status = 'active' and role = 'president')
+      then array['tresorerie','secretariat','technique','communication','evenements']
+    when not exists(select 1 from memberships where club_id = c and user_id = u and status = 'active' and role = 'bureau') then '{}'::text[]
+    else coalesce((select array_agg(distinct a order by a) from (
+        select unnest(fonction_areas(m.fonction)) a from memberships m where m.club_id = c and m.user_id = u and m.status = 'active' and m.role = 'bureau'
+        union select b.area from board_areas b where b.club_id = c and b.user_id = u) x), '{}'::text[]) end;
+$$;
+create or replace function has_area(c uuid, a text) returns boolean language sql stable security definer set search_path = public as $$
+  select a = any(areas_of(c, auth.uid()));
+$$;
+create or replace function my_areas(c uuid) returns text[] language sql stable security definer set search_path = public as $$
+  select areas_of(c, auth.uid());
+$$;
+
+-- Une demande de bureau = une fonction ; plusieurs fonctions = plusieurs demandes
+create or replace function join_guard() returns trigger language plpgsql as $$
+begin
+  if new.role = 'bureau' then new.fonction := coalesce(new.fonction, 'Membre du bureau'); else new.fonction := null; end if;
+  if new.role <> 'parent' and exists(select 1 from memberships m where m.club_id = new.club_id and m.user_id = new.user_id and m.role = new.role
+       and m.team_id is not distinct from new.team_id and m.fonction is not distinct from new.fonction and m.id <> new.id) then
+    raise exception 'Tu as déjà ce rôle ou une demande en attente pour ce rôle';
+  end if;
+  return new;
+end $$;
+-- reprise : les membres du bureau déjà inscrits sont « Membre du bureau » et gardent toutes leurs rubriques
+-- (ouvertes par le président) jusqu'à ce que le président règle leurs fonctions
+update memberships set fonction = 'Membre du bureau' where role = 'bureau' and fonction is null;
+do $$ begin
+  if not exists(select 1 from pc_migrations where name = '3.2-rubriques') then
+    insert into board_areas(club_id, user_id, area)
+      select distinct m.club_id, m.user_id, a from memberships m, unnest(array['tresorerie','secretariat','technique','communication','evenements']) a
+      where m.role = 'bureau' and m.status = 'active' on conflict do nothing;
+    insert into pc_migrations(name) values ('3.2-rubriques');
+  end if;
+end $$;
+
+-- Demander une fonction au bureau (par le code du club, ou par l'identifiant d'un club où l'on est déjà ou qui est dans la recherche)
+create or replace function request_bureau(p_club uuid, p_code text, p_fonction text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare cid uuid; mid uuid;
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  perform check_join_rate();
+  if p_code is not null and trim(p_code) <> '' then select id into cid from clubs where join_code = upper(trim(p_code));
+  else select id into cid from clubs c where c.id = p_club and (c.public_listed or exists(select 1 from memberships m where m.club_id = c.id and m.user_id = auth.uid())); end if;
+  if cid is null then if p_code is not null then insert into join_attempts(user_id) values (auth.uid()); end if; raise exception 'Club introuvable'; end if;
+  if p_fonction is null or fonction_areas(p_fonction) is null then raise exception 'Fonction inconnue'; end if;
+  insert into memberships(club_id, user_id, role, fonction, status) values (cid, auth.uid(), 'bureau', p_fonction, 'pending') returning id into mid;
+  if is_president(cid) then perform activate_membership(mid, null, null); end if;
+  return cid;
+end $$;
+
+-- Le président nomme, change ou retire une fonction ; il ouvre ou ferme une rubrique en plus
+create or replace function set_bureau_fonction(p_club uuid, p_user uuid, p_fonction text, p_membership uuid default null) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_president(p_club) then raise exception 'Seul le président attribue les fonctions du bureau'; end if;
+  if p_fonction is null then raise exception 'Fonction manquante'; end if;
+  if not exists(select 1 from memberships where club_id = p_club and user_id = p_user and status = 'active') then raise exception 'Cette personne n''est pas membre du club'; end if;
+  if p_membership is not null then
+    update memberships set fonction = p_fonction where id = p_membership and club_id = p_club and role = 'bureau';
+  else
+    insert into memberships(club_id, user_id, role, fonction, status) values (p_club, p_user, 'bureau', p_fonction, 'active');
+  end if;
+  perform log_action(p_club, p_user, null, 'fonction du bureau', jsonb_build_object('fonction', p_fonction));
+exception when unique_violation then raise exception 'Cette fonction est déjà tenue par quelqu''un : retire-la d''abord';
+end $$;
+create or replace function set_board_area(p_club uuid, p_user uuid, p_area text, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_president(p_club) then raise exception 'Seul le président ouvre une rubrique en plus'; end if;
+  if p_on then
+    if not exists(select 1 from memberships where club_id = p_club and user_id = p_user and status = 'active' and role = 'bureau') then raise exception 'Seuls les membres du bureau reçoivent une rubrique'; end if;
+    insert into board_areas(club_id, user_id, area, granted_by) values (p_club, p_user, p_area, auth.uid()) on conflict do nothing;
+  else delete from board_areas where club_id = p_club and user_id = p_user and area = p_area; end if;
+  perform log_action(p_club, p_user, null, case when p_on then 'rubrique ouverte' else 'rubrique fermée' end, jsonb_build_object('rubrique', p_area));
+end $$;
+-- une validation d'adhésion au bureau qui heurte une fonction unique : message clair
+create or replace function memberships_fonction_check() returns trigger language plpgsql as $$
+begin
+  if new.status = 'active' and new.fonction in ('Vice-président','Secrétaire','Trésorier')
+     and exists(select 1 from memberships m where m.club_id = new.club_id and m.fonction = new.fonction and m.status = 'active' and m.id <> new.id) then
+    raise exception 'La fonction « % » est déjà tenue : le président doit d''abord la retirer', new.fonction;
+  end if;
+  return new;
+end $$;
+drop trigger if exists memberships_fonction_check on memberships;
+create trigger memberships_fonction_check before insert or update on memberships for each row execute function memberships_fonction_check();
+-- les rubriques ouvertes en plus disparaissent quand la personne quitte le bureau
+create or replace function board_areas_cleanup() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if old.role = 'bureau' and not exists(select 1 from memberships where club_id = old.club_id and user_id = old.user_id and role = 'bureau' and id <> old.id) then
+    delete from board_areas where club_id = old.club_id and user_id = old.user_id;
+  end if;
+  return null;
+end $$;
+drop trigger if exists board_areas_cleanup on memberships;
+create trigger board_areas_cleanup after delete on memberships for each row execute function board_areas_cleanup();
+
+-- Qui valide quoi : le président tout ; le secrétariat les joueurs, parents et supporteurs ; secrétariat ou technique les coachs ;
+-- le coach les joueurs et parents de son équipe
+create or replace function can_validate(mid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(
+    select 1 from memberships t
+    where t.id = mid and t.user_id <> auth.uid() and is_member(t.club_id) and (
+      is_president(t.club_id)
+      or (t.role in ('joueur','parent','supporteur') and has_area(t.club_id, 'secretariat'))
+      or (t.role = 'coach' and (has_area(t.club_id, 'secretariat') or has_area(t.club_id, 'technique')))
+      or (t.role in ('joueur','parent') and t.team_id is not null and coaches_team(t.team_id))));
+$$;
+
+-- =====================================================================
+-- 1 bis. Contrôles des fonctions existantes par rubrique
+-- =====================================================================
+-- (partie générée par gen.py à partir des fonctions existantes : seule la ligne de contrôle des droits change)
+
+create or replace function import_fee_grid(p_club uuid, p_season text, p_rows jsonb, p_delete_absent boolean) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r record; up int := 0; ad int := 0; dl int := 0; keep uuid[] := '{}'; gid uuid;
+begin
+  if not has_area(p_club, 'tresorerie') then raise exception 'Réservé à la trésorerie'; end if;
+  for r in select * from jsonb_to_recordset(p_rows) as t(team_id uuid, category text, amount numeric, fed numeric) loop
+    if r.amount is null or r.amount < 0 then continue; end if;
+    if r.team_id is not null and not exists(select 1 from teams where id = r.team_id and club_id = p_club) then continue; end if;
+    select id into gid from fee_grid where club_id = p_club and season = p_season
+      and ((r.team_id is not null and team_id = r.team_id) or (r.team_id is null and team_id is null and lower(category) = lower(r.category))) limit 1;
+    if gid is null then
+      insert into fee_grid(club_id, season, team_id, category, amount, fed_part) values (p_club, p_season, r.team_id, case when r.team_id is null then r.category end, r.amount, r.fed) returning id into gid; ad := ad + 1;
+    else
+      update fee_grid set amount = r.amount, fed_part = r.fed where id = gid and (amount <> r.amount or fed_part is distinct from r.fed);
+      if found then up := up + 1; end if;
+    end if;
+    keep := keep || gid; gid := null;
+  end loop;
+  if p_delete_absent then delete from fee_grid where club_id = p_club and season = p_season and not (id = any(keep)); get diagnostics dl = row_count; end if;
+  return jsonb_build_object('updated', up, 'added', ad, 'deleted', dl);
+end $$;
+
+create or replace function mark_paid(p_player uuid, p_paid boolean) returns void language plpgsql security definer set search_path = public as $$
+declare a player_admin;
+begin
+  if not (can_admin_player(p_player) and has_area((select club_id from players where id = p_player), 'tresorerie')) then raise exception 'Réservé à la trésorerie'; end if;
+  perform touch_fees(null, p_player);
+  select * into a from player_admin where player_id = p_player;
+  if p_paid then
+    if a.fee_amount is null then raise exception 'Montant dû inconnu : ajoute d''abord le tarif de sa catégorie dans la grille'; end if;
+    if a.fee_amount > a.fee_paid then insert into player_payments(player_id, amount, method, created_by) values (p_player, a.fee_amount - a.fee_paid, 'Solde validé à la main', auth.uid()); end if;
+  else
+    delete from player_payments where player_id = p_player;
+  end if;
+end $$;
+
+create or replace function decide_coach_month(p_statement uuid, p_ok boolean, p_comment text default '') returns void
+language plpgsql security definer set search_path = public as $$
+declare s coach_statements;
+begin
+  select * into s from coach_statements where id = p_statement;
+  if s.id is null or not has_area(s.club_id, 'technique') then raise exception 'Validation réservée au président et au bureau'; end if;
+  if s.user_id = auth.uid() then raise exception 'On ne valide pas son propre relevé : un autre membre du bureau s''en charge'; end if;
+  if s.status <> 'submitted' then raise exception 'Ce relevé est déjà traité'; end if;
+  update coach_statements set status = case when p_ok then 'validated' else 'refused' end, decided_by = auth.uid(), decided_at = now(), comment = left(coalesce(p_comment, ''), 300)
+    where id = p_statement;
+  perform log_action(s.club_id, s.user_id, null, case when p_ok then 'relevé d''heures validé' else 'relevé d''heures refusé' end,
+    jsonb_build_object('mois', to_char(s.month, 'YYYY-MM'), 'minutes', s.total_minutes));
+end $$;
+
+create or replace function validate_exercise(p_id uuid, p_ok boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  select club_id into c from exercises where id = p_id and deleted_at is null and sharing = 'public';
+  if c is null or not has_area(c, 'technique') then raise exception 'Seul le bureau du club valide un exercice public'; end if;
+  perform set_config('pc.exsys', 'on', true);
+  update exercises set public_state = case when p_ok then 'validated' else 'refused' end, validated_by = auth.uid(), validated_at = now() where id = p_id;
+  update exercise_reports set handled = true where exercise_id = p_id;
+  perform set_config('pc.exsys', 'off', true);
+  perform log_action(c, null, null, case when p_ok then 'exercice public validé' else 'exercice public refusé' end, jsonb_build_object('exercice', p_id));
+end $$;
+
+create or replace function set_team_coach(p_team uuid, p_user uuid, p_assistant boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  select club_id into c from teams where id = p_team and deleted_at is null;
+  if c is null or not (has_area(c, 'technique') or (p_assistant and coaches_team(p_team))) then raise exception 'Droit insuffisant'; end if;
+  if not exists(select 1 from memberships where club_id = c and user_id = p_user and status = 'active') then raise exception 'Cette personne n''est pas membre du club'; end if;
+  if exists(select 1 from memberships where club_id = c and user_id = p_user and role = 'coach' and team_id = p_team) then
+    update memberships set assistant = p_assistant, status = 'active' where club_id = c and user_id = p_user and role = 'coach' and team_id = p_team;
+  else
+    insert into memberships(club_id, user_id, role, team_id, status, assistant) values (c, p_user, 'coach', p_team, 'active', p_assistant);
+  end if;
+end $$;
+
+create or replace function renew_team(p_team uuid, p_season text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare t teams; nid uuid;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null or not has_area(t.club_id, 'technique') then raise exception 'Droit insuffisant'; end if;
+  insert into teams(club_id, name, category, gender, state, season, slots) values (t.club_id, t.name, t.category, t.gender, 'Fantôme', p_season, t.slots) returning id into nid;
+  insert into memberships(club_id, user_id, role, team_id, status, assistant)
+    select club_id, user_id, 'coach', nid, 'active', assistant from memberships where team_id = p_team and role = 'coach' and status = 'active';
+  update teams set state = 'Archivée' where id = p_team;
+  return nid;
+end $$;
+
+create or replace function create_player(p_club uuid, p_team uuid, p_first text, p_last text, p_birth date default null) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare pid uuid;
+begin
+  if not (has_area(p_club, 'secretariat') or coaches_team(p_team)) then raise exception 'Droit insuffisant'; end if;
+  if p_team is not null and not exists(select 1 from teams where id = p_team and club_id = p_club and deleted_at is null) then raise exception 'Équipe inconnue'; end if;
+  if coalesce(trim(p_first), '') = '' then raise exception 'Prénom obligatoire'; end if;
+  insert into players(club_id, team_id, first_name, last_name, birth_date, created_by) values (p_club, p_team, trim(p_first), trim(coalesce(p_last, '')), p_birth, auth.uid()) returning id into pid;
+  insert into player_admin(player_id) values (pid);
+  return pid;
+end $$;
+
+create or replace function import_players(p_club uuid, p_team uuid, p_rows jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare r record; n int := 0; pid uuid;
+begin
+  if not (has_area(p_club, 'secretariat') or coaches_team(p_team)) then raise exception 'Droit insuffisant'; end if;
+  if p_team is not null and not exists(select 1 from teams where id = p_team and club_id = p_club and deleted_at is null) then raise exception 'Équipe inconnue'; end if;
+  if jsonb_array_length(p_rows) > 300 then raise exception 'Liste trop longue (300 lignes au plus)'; end if;
+  for r in select * from jsonb_to_recordset(p_rows) as t(first_name text, last_name text, birth_date date, licence text, action text, existing uuid, email text, phone text) loop
+    if coalesce(r.action, 'create') = 'skip' or coalesce(trim(r.first_name), '') = '' then continue; end if;
+    r.email := nullif(lower(trim(coalesce(r.email, ''))), ''); if r.email is not null and r.email not like '%@%' then r.email := null; end if;
+    r.phone := nullif(trim(coalesce(r.phone, '')), '');
+    if r.action in ('complete', 'addteam') then
+      if not exists(select 1 from players where id = r.existing and club_id = p_club and deleted_at is null) then continue; end if;
+      update players set birth_date = coalesce(birth_date, r.birth_date), parent_email = coalesce(parent_email, r.email), parent_phone = coalesce(parent_phone, r.phone) where id = r.existing;
+      if coalesce(r.licence, '') <> '' then
+        insert into player_admin(player_id, licence_number) values (r.existing, r.licence)
+          on conflict (player_id) do update set licence_number = coalesce(player_admin.licence_number, excluded.licence_number);
+      end if;
+      if r.action = 'addteam' and p_team is not null then insert into player_teams values (r.existing, p_team) on conflict do nothing; end if;
+      n := n + 1; continue;
+    end if;
+    insert into players(club_id, team_id, first_name, last_name, birth_date, parent_email, parent_phone, created_by)
+      values (p_club, p_team, r.first_name, coalesce(r.last_name, ''), r.birth_date, r.email, r.phone, auth.uid()) returning id into pid;
+    insert into player_admin(player_id, licence_number) values (pid, nullif(trim(coalesce(r.licence, '')), ''));
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+create or replace function trash_item(p_kind text, p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  perform set_config('pc.trash', 'on', true);
+  if p_kind = 'team' then
+    select club_id into c from teams where id = p_id and deleted_at is null;
+    if c is null or not is_president(c) then raise exception 'Seul le président supprime une équipe'; end if;
+    update teams set deleted_at = now(), deleted_by = auth.uid() where id = p_id;
+  elsif p_kind = 'player' then
+    select club_id into c from players where id = p_id and deleted_at is null;
+    if c is null or not has_area(c, 'secretariat') then raise exception 'Seuls le président et le secrétariat suppriment une fiche'; end if;
+    update players set deleted_at = now(), deleted_by = auth.uid() where id = p_id;
+  elsif p_kind = 'poll' then
+    perform delete_poll(p_id);
+  else raise exception 'Élément inconnu';
+  end if;
+  perform set_config('pc.trash', 'off', true);
+end $$;
+
+-- =====================================================================
+-- 2. N° 55 · chaque rubrique protégée par la base
+-- =====================================================================
+alter table clubs add column if not exists coach_sees_fees boolean not null default true;      -- réglage du président
+alter table clubs add column if not exists default_missions jsonb not null
+  default '[{"label":"Arbitre","slots":2},{"label":"Table de marque","slots":2},{"label":"Aide","slots":2},{"label":"Buvette","slots":2}]'::jsonb;
+
+-- Trésorerie : tarifs, réductions, versements, documents des tarifs
+drop policy if exists "tarifs lisibles par le bureau" on fee_grid;
+drop policy if exists "tarifs gérés par le bureau" on fee_grid;
+drop policy if exists "tarifs : trésorerie" on fee_grid;
+create policy "tarifs : trésorerie" on fee_grid for all using (has_area(club_id, 'tresorerie')) with check (has_area(club_id, 'tresorerie'));
+drop policy if exists "documents lisibles par le bureau" on club_docs;
+drop policy if exists "documents gérés par le bureau" on club_docs;
+drop policy if exists "documents : trésorerie et secrétariat" on club_docs;
+create policy "documents : trésorerie et secrétariat" on club_docs for all
+  using (has_area(club_id, 'tresorerie') or has_area(club_id, 'secretariat'))
+  with check ((has_area(club_id, 'tresorerie') or has_area(club_id, 'secretariat')) and uploaded_by = auth.uid());
+drop policy if exists "réductions : bureau seulement" on player_discount;
+drop policy if exists "réductions : trésorerie" on player_discount;
+create policy "réductions : trésorerie" on player_discount for all
+  using (can_admin_player(player_id) and has_area((select club_id from players where id = player_id), 'tresorerie'))
+  with check (can_admin_player(player_id) and has_area((select club_id from players where id = player_id), 'tresorerie'));
+
+-- Lire licence et cotisation : le joueur, ses parents, ses coachs (si le président le permet), la trésorerie et le secrétariat
+create or replace function can_see_fees(p uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from players x join clubs c on c.id = x.club_id where x.id = p and x.deleted_at is null and (
+    x.user_id = auth.uid() or is_parent_of(x.id) or has_area(x.club_id, 'tresorerie') or has_area(x.club_id, 'secretariat')
+    or (c.coach_sees_fees and (coaches_team(x.team_id) or exists(select 1 from player_teams pt where pt.player_id = x.id and coaches_team(pt.team_id))))));
+$$;
+drop policy if exists "dossier lisible" on player_admin;
+create policy "dossier lisible" on player_admin for select using (can_see_fees(player_id));
+drop policy if exists "dossier créé par le bureau" on player_admin;
+drop policy if exists "dossier saisi par le bureau" on player_admin;
+create policy "dossier créé par le bureau" on player_admin for insert with check (can_admin_player(player_id)
+  and (has_area((select club_id from players where id = player_id), 'tresorerie') or has_area((select club_id from players where id = player_id), 'secretariat')));
+create policy "dossier saisi par le bureau" on player_admin for update
+  using (can_admin_player(player_id) and (has_area((select club_id from players where id = player_id), 'tresorerie') or has_area((select club_id from players where id = player_id), 'secretariat')))
+  with check (can_admin_player(player_id));
+-- la licence relève du secrétariat, le moyen de paiement de la trésorerie
+create or replace function player_admin_area_guard() returns trigger language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  if auth.uid() is null then return new; end if;
+  select club_id into c from players where id = new.player_id;
+  if (new.licence_state, new.licence_number, new.health_doc) is distinct from (old.licence_state, old.licence_number, old.health_doc) and not has_area(c, 'secretariat') then
+    raise exception 'La licence se règle dans la rubrique Secrétariat';
+  end if;
+  if new.fee_method is distinct from old.fee_method and not has_area(c, 'tresorerie') then
+    raise exception 'La cotisation se règle dans la rubrique Trésorerie';
+  end if;
+  return new;
+end $$;
+drop trigger if exists player_admin_area_guard on player_admin;
+create trigger player_admin_area_guard before update on player_admin for each row execute function player_admin_area_guard();
+
+drop policy if exists "versements lisibles" on player_payments;
+drop policy if exists "versements saisis par le bureau" on player_payments;
+drop policy if exists "versements retirés par le bureau" on player_payments;
+create policy "versements lisibles" on player_payments for select using (can_see_fees(player_id));
+create policy "versements saisis par le bureau" on player_payments for insert
+  with check (can_admin_player(player_id) and has_area((select club_id from players where id = player_id), 'tresorerie') and created_by = auth.uid());
+create policy "versements retirés par le bureau" on player_payments for delete
+  using (can_admin_player(player_id) and has_area((select club_id from players where id = player_id), 'tresorerie'));
+
+-- Technique : équipes (création, réglages ; le coach règle la sienne)
+drop policy if exists "équipes créées par le bureau" on teams;
+create policy "équipes créées par le bureau" on teams for insert with check (has_area(club_id, 'technique') and deleted_at is null);
+drop policy if exists "équipes modifiées par le bureau ou le coach" on teams;
+create policy "équipes modifiées par le bureau ou le coach" on teams for update
+  using (deleted_at is null and (has_area(club_id, 'technique') or coaches_team(id))) with check (has_area(club_id, 'technique') or coaches_team(id));
+
+-- Communication : blason, couleurs, nom ; réglages réservés : président (en-tête, recherche, cotisations vues des coachs), événements (missions par défaut)
+drop policy if exists "club modifié par le président et le bureau" on clubs;
+drop policy if exists "club modifié par la communication" on clubs;
+create policy "club modifié par la communication" on clubs for update
+  using (has_area(id, 'communication') or has_area(id, 'evenements')) with check (has_area(id, 'communication') or has_area(id, 'evenements'));
+create or replace function clubs_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.join_code <> old.join_code then raise exception 'Le code du club ne se modifie pas ainsi'; end if;
+  if auth.uid() is null then return new; end if;
+  if new.custom_header is distinct from old.custom_header and not is_president(old.id) then raise exception 'Seul le président choisit l''en-tête aux couleurs du club'; end if;
+  if new.public_listed is distinct from old.public_listed and not is_president(old.id) then raise exception 'Seul le président choisit si le club apparaît dans la recherche'; end if;
+  if new.coach_sees_fees is distinct from old.coach_sees_fees and not is_president(old.id) then raise exception 'Réglage réservé au président'; end if;
+  if new.default_missions is distinct from old.default_missions and not has_area(old.id, 'evenements') then raise exception 'Les missions par défaut se règlent dans la rubrique Événements'; end if;
+  if (new.name, new.city, new.postal_code, new.sport, new.color1, new.color2, new.crest_bg, new.logo, new.crest_outline)
+     is distinct from (old.name, old.city, old.postal_code, old.sport, old.color1, old.color2, old.crest_bg, old.logo, old.crest_outline)
+     and not has_area(old.id, 'communication') then raise exception 'Le blason et les informations du club se règlent dans la rubrique Communication'; end if;
+  if jsonb_typeof(new.default_missions) <> 'array' or jsonb_array_length(new.default_missions) > 12 then raise exception 'Liste de missions invalide'; end if;
+  return new;
+end $$;
+
+-- =====================================================================
+-- 3. Convocations : un match, plateau ou tournoi peut ne convoquer que certains joueurs
+-- =====================================================================
+alter table events add column if not exists convoked uuid[] not null default '{}';
+alter table events add column if not exists reminded_at timestamptz;
+create or replace function events_convoked_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if cardinality(new.convoked) > 0 then
+    if new.audience <> 'team' then raise exception 'Une convocation de joueurs choisis vaut pour une équipe'; end if;
+    if exists(select 1 from unnest(new.convoked) p where not exists(select 1 from players x where x.id = p and x.deleted_at is null and x.club_id = new.club_id
+         and (x.team_id = any(new.team_ids) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(new.team_ids))))) then
+      raise exception 'Un joueur convoqué ne fait pas partie de l''équipe';
+    end if;
+  end if;
+  if tg_op = 'UPDATE' and new.reminded_at is distinct from old.reminded_at and coalesce(current_setting('pc.remind', true), '') <> 'on' then new.reminded_at := old.reminded_at; end if;
+  return new;
+end $$;
+drop trigger if exists events_convoked_guard on events;
+create trigger events_convoked_guard before insert or update on events for each row execute function events_convoked_guard();
+
+create or replace function respond_event(p_event uuid, p_player uuid, p_answer text) returns void
+language plpgsql security definer set search_path = public as $$
+declare e events;
+begin
+  if auth.uid() is null or not sees_event(p_event) then raise exception 'Rendez-vous introuvable'; end if;
+  if p_answer is not null and p_answer not in ('oui','non') then raise exception 'Réponse invalide'; end if;
+  select * into e from events where id = p_event;
+  if e.cancelled then raise exception 'Ce rendez-vous est annulé'; end if;
+  if p_player is not null then
+    if not (is_parent_of(p_player) or exists(select 1 from players where id = p_player and user_id = auth.uid() and deleted_at is null)) then
+      raise exception 'Ce joueur n''est pas relié à ton compte';
+    end if;
+    if cardinality(e.convoked) > 0 and not p_player = any(e.convoked) then raise exception 'Ce joueur n''est pas convoqué à ce rendez-vous'; end if;
+    delete from event_responses where event_id = p_event and player_id = p_player;
+    if p_answer is not null then insert into event_responses(event_id, user_id, player_id, answer) values (p_event, auth.uid(), p_player, p_answer); end if;
+  else
+    if e.type in ('Entraînement','Match','Plateau','Tournoi') and coaches_any(e.team_ids)
+       and not exists(select 1 from memberships where team_id = any(e.team_ids) and user_id = auth.uid() and status = 'active' and role = 'joueur')
+       and not exists(select 1 from players where user_id = auth.uid() and deleted_at is null and team_id = any(e.team_ids)) then
+      raise exception 'Tu encadres cette équipe : pas de réponse pour toi-même';
+    end if;
+    if e.audience = 'team' and e.type in ('Entraînement','Match','Plateau','Tournoi') and not exists(select 1 from unnest(e.team_ids) t where in_team(t)) then
+      raise exception 'Ce rendez-vous concerne une équipe dont tu ne fais pas partie';
+    end if;
+    if cardinality(e.convoked) > 0 and not exists(select 1 from players x where x.user_id = auth.uid() and x.id = any(e.convoked)) then
+      raise exception 'Tu n''es pas convoqué à ce rendez-vous';
+    end if;
+    delete from event_responses where event_id = p_event and user_id = auth.uid() and player_id is null;
+    if p_answer is not null then insert into event_responses(event_id, user_id, answer) values (p_event, auth.uid(), p_answer); end if;
+  end if;
+end $$;
+
+-- =====================================================================
+-- 4. Annonces officielles (et relances), avec « lu par »
+-- =====================================================================
+create table if not exists announcements (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  audience text not null default 'club' check (audience in ('club','team','board','board_coaches','coaches','people')),
+  team_ids uuid[] not null default '{}',
+  people uuid[] not null default '{}',
+  kind text not null default 'annonce' check (kind in ('annonce','relance','missions','cotisation')),
+  event_id uuid references events(id) on delete cascade,
+  title text not null check (length(trim(title)) between 2 and 120),
+  body text not null default '' check (length(body) <= 3000),
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  check (audience <> 'team' or cardinality(team_ids) between 1 and 20),
+  check (audience <> 'people' or cardinality(people) between 1 and 500)
+);
+create index if not exists announcements_club on announcements(club_id, created_at desc);
+create table if not exists announcement_reads (
+  announcement_id uuid not null references announcements(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  read_at timestamptz not null default now(),
+  primary key (announcement_id, user_id)
+);
+create or replace function sees_announcement(aid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from announcements a where a.id = aid and a.deleted_at is null and is_member(a.club_id) and (
+    a.created_by = auth.uid()
+    or a.audience = 'club'
+    or (a.audience = 'team' and (exists(select 1 from unnest(a.team_ids) t where in_team(t)) or is_board(a.club_id)))
+    or (a.audience = 'board' and is_board(a.club_id))
+    or (a.audience in ('coaches','board_coaches') and (is_coach_in(a.club_id) or is_board(a.club_id)))
+    or (a.audience = 'people' and auth.uid() = any(a.people))));
+$$;
+-- Qui publie : la communication (et le président) pour tout le club ; le bureau pour le bureau et les coachs ; le coach pour ses équipes
+create or replace function can_announce(c uuid, aud text, ts uuid[]) returns boolean language sql stable security definer set search_path = public as $$
+  select not exists(select 1 from unnest(coalesce(ts, '{}')) t where not exists(select 1 from teams x where x.id = t and x.club_id = c and x.deleted_at is null))
+    and (has_area(c, 'communication')
+      or (aud in ('board','board_coaches','coaches') and is_board(c))
+      or (aud = 'team' and coaches_all(ts)));
+$$;
+create or replace function announcements_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    new.created_by := auth.uid(); new.created_at := now(); new.deleted_at := null;
+    if coalesce(current_setting('pc.announce', true), '') <> 'on' then
+      new.kind := 'annonce'; new.event_id := null;
+      if new.audience = 'people' then raise exception 'Une annonce à des personnes choisies passe par une relance'; end if;
+      if not can_announce(new.club_id, new.audience, new.team_ids) then raise exception 'Tu ne peux pas publier pour ces destinataires'; end if;
+    end if;
+  else
+    if (new.club_id, new.audience, new.team_ids, new.people, new.kind, new.event_id, new.created_by) is distinct from
+       (old.club_id, old.audience, old.team_ids, old.people, old.kind, old.event_id, old.created_by) then raise exception 'Seuls le titre et le texte se modifient'; end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists announcements_guard on announcements;
+create trigger announcements_guard before insert or update on announcements for each row execute function announcements_guard();
+alter table announcements enable row level security;
+alter table announcement_reads enable row level security;
+drop policy if exists "annonces lues par les destinataires" on announcements;
+create policy "annonces lues par les destinataires" on announcements for select using (sees_announcement(id));
+drop policy if exists "annonces publiées selon les droits" on announcements;
+create policy "annonces publiées selon les droits" on announcements for insert with check (is_member(club_id));
+drop policy if exists "annonce modifiée par son auteur" on announcements;
+create policy "annonce modifiée par son auteur" on announcements for update using (created_by = auth.uid() or has_area(club_id, 'communication'));
+drop policy if exists "lu : chacun pour soi" on announcement_reads;
+create policy "lu : chacun pour soi" on announcement_reads for insert with check (user_id = auth.uid() and sees_announcement(announcement_id));
+drop policy if exists "lu : lisible par soi et l'auteur" on announcement_reads;
+create policy "lu : lisible par soi et l'auteur" on announcement_reads for select using (user_id = auth.uid()
+  or exists(select 1 from announcements a where a.id = announcement_id and (a.created_by = auth.uid() or has_area(a.club_id, 'communication'))));
+create or replace function delete_announcement(p_id uuid) returns void language plpgsql security definer set search_path = public as $$
+declare a announcements;
+begin
+  select * into a from announcements where id = p_id and deleted_at is null;
+  if a.id is null or not (a.created_by = auth.uid() or has_area(a.club_id, 'communication')) then raise exception 'Suppression impossible'; end if;
+  update announcements set deleted_at = now() where id = p_id;
+end $$;
+
+-- Personnes qui n'ont pas répondu à un rendez-vous (convoqués seulement) : parents des enfants, joueurs avec compte, autres invités
+create or replace function event_missing(p_event uuid) returns uuid[] language sql stable security definer set search_path = public as $$
+  with e as (select * from events where id = p_event),
+  pl as (select x.* from players x, e where x.deleted_at is null and e.audience = 'team' and e.type in ('Entraînement','Match','Plateau','Tournoi')
+           and (x.team_id = any(e.team_ids) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(e.team_ids)))
+           and (cardinality(e.convoked) = 0 or x.id = any(e.convoked))
+           and not exists(select 1 from event_responses r where r.event_id = p_event and (r.player_id = x.id or (r.player_id is null and x.user_id is not null and r.user_id = x.user_id)))),
+  team_users as (select pp.user_id from player_parents pp join pl on pl.id = pp.player_id union select pl.user_id from pl where pl.user_id is not null),
+  invited as (select distinct m.user_id from memberships m, e where m.club_id = e.club_id and m.status = 'active'
+           and not (e.audience = 'team' and e.type in ('Entraînement','Match','Plateau','Tournoi'))
+           and (e.audience = 'club' or (e.audience = 'board' and m.role in ('president','bureau')) or (e.audience = 'coaches' and m.role = 'coach')
+             or (e.audience = 'board_coaches' and m.role in ('president','bureau','coach')) or (e.audience = 'people' and m.user_id = any(e.people))
+             or (e.audience = 'team' and (m.team_id = any(e.team_ids))))
+           and not exists(select 1 from event_responses r where r.event_id = p_event and r.user_id = m.user_id and r.player_id is null))
+  select coalesce(array_agg(distinct u), '{}') from (select user_id u from team_users union select user_id from invited) z where u is not null and u <> auth.uid();
+$$;
+revoke execute on function event_missing(uuid) from public, anon, authenticated;
+
+-- Relance des sans-réponse par l'organisateur : une annonce « Rappel » à ces seules personnes (une fois toutes les 12 heures)
+create or replace function remind_event(p_event uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare e events; who uuid[];
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not (can_manage_event(p_event) or e.created_by = auth.uid()) then raise exception 'Seul l''organisateur relance'; end if;
+  if e.cancelled or e.starts_at < now() then raise exception 'Ce rendez-vous est passé ou annulé'; end if;
+  if e.reminded_at > now() - interval '12 hours' then raise exception 'Relance déjà faite il y a moins de 12 heures'; end if;
+  who := event_missing(p_event);
+  if cardinality(who) = 0 then return 0; end if;
+  perform set_config('pc.announce', 'on', true);
+  insert into announcements(club_id, audience, people, kind, event_id, title, body)
+    values (e.club_id, 'people', who, 'relance', e.id, 'Rappel : ta réponse est attendue',
+            e.title || ' · ' || to_char(e.starts_at at time zone 'Europe/Paris', 'DD/MM à HH24"h"MI') || '. Réponds « Je viens » ou « Je ne viens pas ».');
+  perform set_config('pc.remind', 'on', true);
+  update events set reminded_at = now() where id = p_event;
+  perform set_config('pc.announce', 'off', true); perform set_config('pc.remind', 'off', true);
+  return cardinality(who);
+end $$;
+
+-- =====================================================================
+-- 5. N° 53 · bénévoles : missions à pourvoir sur un match, plateau, tournoi, événement ou AG
+-- =====================================================================
+create table if not exists event_missions (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references events(id) on delete cascade,
+  label text not null check (length(trim(label)) between 2 and 40),
+  slots int not null default 1 check (slots between 1 and 20),
+  position int not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists event_missions_event on event_missions(event_id);
+create table if not exists mission_signups (
+  mission_id uuid not null references event_missions(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  added_by uuid references auth.users(id) on delete set null,
+  at timestamptz not null default now(),
+  primary key (mission_id, user_id)
+);
+create or replace function can_manage_missions(eid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and ((e.audience = 'team' and coaches_any(e.team_ids)) or e.created_by = auth.uid() or has_area(e.club_id, 'evenements')));
+$$;
+-- Peuvent s'inscrire : bureau, coachs, parents de joueurs et joueurs majeurs (d'une équipe concernée pour un rendez-vous d'équipe) ; jamais les supporteurs seuls ni les mineurs
+create or replace function can_volunteer(eid uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and not e.cancelled and exists(select 1 from memberships m where m.club_id = e.club_id and m.user_id = u and m.status = 'active') and (
+    exists(select 1 from memberships m where m.club_id = e.club_id and m.user_id = u and m.status = 'active' and m.role in ('president','bureau','coach'))
+    or exists(select 1 from player_parents pp join players x on x.id = pp.player_id where pp.user_id = u and x.deleted_at is null and x.club_id = e.club_id
+              and (e.audience <> 'team' or x.team_id = any(e.team_ids) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(e.team_ids))))
+    or exists(select 1 from players x where x.user_id = u and x.deleted_at is null and x.club_id = e.club_id
+              and x.birth_date is not null and x.birth_date <= current_date - interval '18 years'
+              and (e.audience <> 'team' or x.team_id = any(e.team_ids) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(e.team_ids))))));
+$$;
+create or replace function event_missions_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if not exists(select 1 from events where id = new.event_id and type in ('Match','Plateau','Tournoi','Événement','AG')) then
+    raise exception 'Les missions de bénévoles valent pour un match, un plateau, un tournoi, un événement ou une AG';
+  end if;
+  if tg_op = 'UPDATE' and new.event_id <> old.event_id then raise exception 'Mission d''un autre rendez-vous'; end if;
+  if tg_op = 'UPDATE' and new.slots < (select count(*) from mission_signups where mission_id = new.id) then
+    raise exception 'Des bénévoles sont déjà inscrits : retire-les avant de réduire le nombre de places';
+  end if;
+  return new;
+end $$;
+drop trigger if exists event_missions_guard on event_missions;
+create trigger event_missions_guard before insert or update on event_missions for each row execute function event_missions_guard();
+alter table event_missions enable row level security;
+alter table mission_signups enable row level security;
+drop policy if exists "missions lisibles par les destinataires" on event_missions;
+create policy "missions lisibles par les destinataires" on event_missions for select using (sees_event(event_id));
+drop policy if exists "missions gérées par l'organisateur" on event_missions;
+create policy "missions gérées par l'organisateur" on event_missions for all using (can_manage_missions(event_id)) with check (can_manage_missions(event_id));
+drop policy if exists "bénévoles lisibles par les destinataires" on mission_signups;
+create policy "bénévoles lisibles par les destinataires" on mission_signups for select
+  using (exists(select 1 from event_missions mi where mi.id = mission_id and sees_event(mi.event_id)));
+-- écriture des inscriptions : seulement par volunteer() et assign_volunteer()
+
+create or replace function volunteer(p_mission uuid, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare mi event_missions; e events;
+begin
+  select * into mi from event_missions where id = p_mission;
+  select * into e from events where id = mi.event_id;
+  if mi.id is null or not sees_event(e.id) then raise exception 'Mission introuvable'; end if;
+  if not p_on then delete from mission_signups where mission_id = p_mission and user_id = auth.uid(); return; end if;
+  if e.starts_at < now() then raise exception 'Ce rendez-vous est passé'; end if;
+  if not can_volunteer(e.id, auth.uid()) then raise exception 'Les missions sont ouvertes aux parents, joueurs majeurs, coachs et au bureau concernés'; end if;
+  if exists(select 1 from mission_signups s join event_missions m2 on m2.id = s.mission_id where m2.event_id = e.id and s.user_id = auth.uid()) then
+    raise exception 'Tu as déjà une mission sur ce rendez-vous : l''organisateur peut t''en ajouter une autre';
+  end if;
+  perform 1 from event_missions where id = p_mission for update;
+  if (select count(*) from mission_signups where mission_id = p_mission) >= mi.slots then raise exception 'Complet'; end if;
+  insert into mission_signups(mission_id, user_id, added_by) values (p_mission, auth.uid(), auth.uid());
+end $$;
+create or replace function assign_volunteer(p_mission uuid, p_user uuid, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare mi event_missions;
+begin
+  select * into mi from event_missions where id = p_mission;
+  if mi.id is null or not can_manage_missions(mi.event_id) then raise exception 'Seul l''organisateur inscrit ou retire un bénévole'; end if;
+  if not p_on then delete from mission_signups where mission_id = p_mission and user_id = p_user; return; end if;
+  if not exists(select 1 from memberships m join events e on e.club_id = m.club_id where e.id = mi.event_id and m.user_id = p_user and m.status = 'active') then raise exception 'Cette personne n''est pas membre du club'; end if;
+  perform 1 from event_missions where id = p_mission for update;
+  if (select count(*) from mission_signups where mission_id = p_mission) >= mi.slots then raise exception 'Complet'; end if;
+  insert into mission_signups(mission_id, user_id, added_by) values (p_mission, p_user, auth.uid()) on conflict do nothing;
+end $$;
+-- Ajouter les missions par défaut du club à un rendez-vous
+create or replace function add_default_missions(p_event uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare e events; n int;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not can_manage_missions(p_event) then raise exception 'Seul l''organisateur ajoute des missions'; end if;
+  insert into event_missions(event_id, label, slots, position)
+    select p_event, x->>'label', greatest(1, least(20, coalesce((x->>'slots')::int, 1))), (row_number() over ())::int
+    from clubs c, jsonb_array_elements(c.default_missions) x where c.id = e.club_id
+      and not exists(select 1 from event_missions m where m.event_id = p_event and lower(m.label) = lower(x->>'label'));
+  get diagnostics n = row_count; return n;
+end $$;
+-- Relance des missions vides : une annonce aux destinataires du rendez-vous
+create or replace function remind_missions(p_event uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare e events; txt text;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not can_manage_missions(p_event) then raise exception 'Seul l''organisateur relance'; end if;
+  select string_agg(n || ' ' || lower(label), ', ' order by position) into txt from (
+    select m.label, m.position, m.slots - (select count(*) from mission_signups s where s.mission_id = m.id) n from event_missions m where m.event_id = p_event) z where n > 0;
+  if txt is null then raise exception 'Toutes les missions sont pourvues'; end if;
+  perform set_config('pc.announce', 'on', true);
+  insert into announcements(club_id, audience, team_ids, people, kind, event_id, title, body)
+    values (e.club_id, case when e.audience in ('team','club','people') then e.audience else 'club' end, e.team_ids, e.people, 'missions', e.id,
+            'Bénévoles : il manque ' || txt,
+            e.title || ' · ' || to_char(e.starts_at at time zone 'Europe/Paris', 'DD/MM à HH24"h"MI') || '. Ouvre le rendez-vous pour t''inscrire.');
+  perform set_config('pc.announce', 'off', true);
+  return txt;
+end $$;
+
+-- =====================================================================
+-- 6. Accueil multi-clubs : un aperçu de chacun de mes autres clubs
+-- =====================================================================
+create or replace function my_clubs_overview() returns table(club_id uuid, name text, sport text, color1 text, crest_bg text, logo text, crest_outline text, roles text[], next_events jsonb, unread int)
+language sql stable security definer set search_path = public as $$
+  select c.id, c.name, c.sport, c.color1, c.crest_bg, c.logo, c.crest_outline,
+    (select array_agg(distinct m.role) from memberships m where m.club_id = c.id and m.user_id = auth.uid() and m.status = 'active'),
+    coalesce((select jsonb_agg(jsonb_build_object('id', e.id, 'title', e.title, 'type', e.type, 'starts_at', e.starts_at) order by e.starts_at)
+      from (select * from events e where e.club_id = c.id and not e.cancelled and e.starts_at between now() and now() + interval '7 days' and sees_event(e.id) order by e.starts_at limit 3) e), '[]'::jsonb),
+    (select count(*)::int from announcements a where a.club_id = c.id and a.created_at > now() - interval '30 days' and a.created_by is distinct from auth.uid()
+      and sees_announcement(a.id) and not exists(select 1 from announcement_reads r where r.announcement_id = a.id and r.user_id = auth.uid()))
+  from clubs c where exists(select 1 from memberships m where m.club_id = c.id and m.user_id = auth.uid() and m.status = 'active')
+  order by c.name;
+$$;
+
+-- Journal des actions sensibles lisible par le président, avec les noms
+create or replace function club_log(p_club uuid, p_limit int default 100) returns table(at timestamptz, actor text, target text, action text, detail jsonb)
+language sql stable security definer set search_path = public as $$
+  select l.at, coalesce(a.full_name, '—'), coalesce(nullif(trim(x.first_name || ' ' || x.last_name), ''), t.full_name, ''), l.action, l.detail
+  from action_log l left join profiles a on a.id = l.actor left join profiles t on t.id = l.target_user left join players x on x.id = l.target_player
+  where l.club_id = p_club and is_president(p_club) order by l.at desc limit least(coalesce(p_limit, 100), 500);
+$$;
+
+do $$ begin alter publication supabase_realtime add table announcements; exception when duplicate_object then null; end $$;
+revoke execute on function areas_of(uuid, uuid) from public, anon, authenticated;
+
+-- Rappel de cotisation (trésorerie) : une annonce au joueur et à ses parents seulement, une fois par semaine au plus
+create or replace function remind_fee(p_player uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare x players; a player_admin; who uuid[];
+begin
+  select * into x from players where id = p_player and deleted_at is null;
+  if x.id is null or not has_area(x.club_id, 'tresorerie') then raise exception 'Réservé à la trésorerie'; end if;
+  select * into a from player_admin where player_id = p_player;
+  if a.fee_amount is null or a.fee_paid >= a.fee_amount then raise exception 'Rien à régler pour ce joueur'; end if;
+  if exists(select 1 from announcements n where n.kind = 'cotisation' and n.club_id = x.club_id and n.body like '%' || x.id::text || '%' and n.created_at > now() - interval '7 days') then
+    raise exception 'Rappel déjà envoyé cette semaine';
+  end if;
+  select coalesce(array_agg(distinct u), '{}') into who from (select user_id u from player_parents where player_id = p_player union select x.user_id) z where u is not null;
+  if cardinality(who) = 0 then raise exception 'Aucun compte relié à cette fiche : contacte la famille directement'; end if;
+  perform set_config('pc.announce', 'on', true);
+  insert into announcements(club_id, audience, people, kind, title, body)
+    values (x.club_id, 'people', who, 'cotisation', 'Cotisation de ' || x.first_name || ' : reste ' || trim(to_char(a.fee_amount - a.fee_paid, 'FM999990D00')) || ' €',
+            'Merci de régler le reste de la cotisation auprès du trésorier du club. Réf. ' || x.id::text);
+  perform set_config('pc.announce', 'off', true);
+  return cardinality(who);
+end $$;
+
+-- ===== alpha_3_2_1.sql =====
+-- =====================================================================
+-- Alpha 3.2.1 · vidéos des exercices (stockage privé Supabase, vignette dans la liste)
+-- Relançable sans risque.
+-- =====================================================================
+alter table exercises add column if not exists video_path text not null default '';
+alter table exercises add column if not exists poster_path text not null default '';
+do $$ begin
+  alter table exercises add constraint exercises_video_len check (length(video_path) <= 200 and length(poster_path) <= 200);
+exception when duplicate_object then null; end $$;
+
+-- Espace de stockage privé : un dossier par exercice (<id de l'exercice>/video.mp4 et poster.jpg), 50 Mo par fichier
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('exercise-videos', 'exercise-videos', false, 52428800, array['video/mp4','video/quicktime','video/webm','image/jpeg'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+create or replace function exercise_of_path(p text) returns uuid language sql immutable as $$
+  select case when split_part(p, '/', 1) ~ '^[0-9a-f-]{36}$' then split_part(p, '/', 1)::uuid end;
+$$;
+-- Lecture : qui voit l'exercice voit sa vidéo ; ajout, remplacement, retrait : l'auteur seulement
+drop policy if exists "video d'exercice lisible" on storage.objects;
+create policy "video d'exercice lisible" on storage.objects for select to authenticated
+  using (bucket_id = 'exercise-videos' and (can_see_exercise(exercise_of_path(name))
+         or exists(select 1 from exercises e where e.video_path = name and can_see_exercise(e.id))));
+drop policy if exists "video d'exercice ajoutee par l'auteur" on storage.objects;
+create policy "video d'exercice ajoutee par l'auteur" on storage.objects for insert to authenticated
+  with check (bucket_id = 'exercise-videos' and exists(select 1 from exercises e where e.id = exercise_of_path(name) and e.created_by = auth.uid() and e.deleted_at is null));
+drop policy if exists "video d'exercice remplacee par l'auteur" on storage.objects;
+create policy "video d'exercice remplacee par l'auteur" on storage.objects for update to authenticated
+  using (bucket_id = 'exercise-videos' and exists(select 1 from exercises e where e.id = exercise_of_path(name) and e.created_by = auth.uid()));
+drop policy if exists "video d'exercice retiree par l'auteur" on storage.objects;
+create policy "video d'exercice retiree par l'auteur" on storage.objects for delete to authenticated
+  using (bucket_id = 'exercise-videos' and exists(select 1 from exercises e where e.id = exercise_of_path(name) and e.created_by = auth.uid()));
+
+-- Une nouvelle vidéo sur un exercice public repasse par la validation du bureau
+create or replace function exercises_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    new.created_by := auth.uid();
+    if auth.uid() is not null and not (is_coach_in(new.club_id) or is_board(new.club_id)) then
+      raise exception 'Seuls les coachs et le bureau ajoutent des exercices';
+    end if;
+    new.up_count := 0; new.down_count := 0; new.validated_by := null; new.validated_at := null; new.deleted_at := null; new.deleted_by := null;
+  else
+    new.created_by := old.created_by; new.club_id := old.club_id; new.created_at := old.created_at;
+    if coalesce(current_setting('pc.exsys', true), '') <> 'on' then
+      new.up_count := old.up_count; new.down_count := old.down_count;
+      new.validated_by := old.validated_by; new.validated_at := old.validated_at;
+      new.deleted_at := old.deleted_at; new.deleted_by := old.deleted_by;
+    end if;
+  end if;
+  if not (exercise_text_ok(new.title) and exercise_text_ok(new.description) and exercise_text_ok(new.source)) then
+    raise exception 'Texte refusé : il contient une mention de droits d''auteur (©, « tous droits réservés »…). Écris l''exercice avec tes propres mots.';
+  end if;
+  -- partage public : toujours revu par le bureau du club ; un contenu modifié repasse en attente
+  if coalesce(current_setting('pc.exsys', true), '') <> 'on' then
+    if new.sharing <> 'public' then new.public_state := 'none';
+    elsif tg_op = 'INSERT' or old.sharing <> 'public' or old.public_state = 'none'
+      or (new.title, new.description, new.diagram, new.source, new.origin, new.video_path) is distinct from (old.title, old.description, old.diagram, old.source, old.origin, old.video_path) then
+      new.public_state := 'pending'; new.validated_by := null; new.validated_at := null;
+    else new.public_state := old.public_state;
+    end if;
+  end if;
+  new.updated_at := now();
+  return new;
+end $$;
+
+-- ===== alpha_3_2_4.sql =====
+-- =====================================================================
+-- Pocket Club · alpha 3.2.4 (mise à jour cumulative, relançable sans risque)
+-- À installer APRÈS schema.sql, alpha_3_0_1, alpha_3_0_2, alpha_3_1, alpha_3_2 et alpha_3_2_1.
+--   n° 57 : reprise des entraînements sans lien de série (recopiés, importés, créés avant la 3.1)
+--   Retrait de la fonction « Responsable événements et buvette » et de la rubrique « Événements et buvette »
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- N° 57 · Rattacher à une série les entraînements identiques restés sans lien
+-- Même club, mêmes équipes, même titre, même jour de la semaine, même heure (heure de Paris), même créateur ;
+-- au moins deux séances. Les séances déjà liées à une série ne sont jamais touchées.
+-- Relançable : une fois rattachées, les séances ne sont plus « sans lien ».
+-- ---------------------------------------------------------------------
+create or replace function link_unlinked_trainings() returns int
+language plpgsql set search_path = public as $$
+declare g record; sid uuid; n int := 0;
+begin
+  for g in
+    select club_id, team_ids, lower(trim(title)) as k_title, min(title) as title,
+           extract(dow from starts_at at time zone 'Europe/Paris')::int as wd,
+           to_char(starts_at at time zone 'Europe/Paris', 'HH24:MI') as hm,
+           created_by, array_agg(id) as ids,
+           max((starts_at at time zone 'Europe/Paris')::date) as last_day
+    from events
+    where type = 'Entraînement' and series_id is null and audience = 'team'
+    group by club_id, team_ids, lower(trim(title)), extract(dow from starts_at at time zone 'Europe/Paris'),
+             to_char(starts_at at time zone 'Europe/Paris', 'HH24:MI'), created_by
+    having count(*) >= 2
+  loop
+    insert into event_series(club_id, title, weekday, start_time, until, skip_holidays, created_by)
+      values (g.club_id, g.title, g.wd, g.hm, g.last_day, true, g.created_by) returning id into sid;
+    update events set series_id = sid where id = any(g.ids) and series_id is null;
+    n := n + array_length(g.ids, 1);
+  end loop;
+  return n;
+end $$;
+revoke all on function link_unlinked_trainings() from public;
+do $$ begin execute 'revoke all on function link_unlinked_trainings() from anon, authenticated'; exception when undefined_object then null; end $$;
+
+select link_unlinked_trainings();
+
+-- ---------------------------------------------------------------------
+-- Retrait de la fonction « Responsable événements et buvette »
+-- Les événements et les bénévoles relèvent du Coordinateur, du vice-président et du président.
+-- La rubrique (clé interne « evenements ») reste, sous le nom « Événements ».
+-- Reprise sans perte d'accès : les personnes qui avaient cette fonction passent « Membre du bureau »
+-- et gardent la rubrique Événements, ouverte en plus, jusqu'à ce que le président règle leur fonction.
+-- ---------------------------------------------------------------------
+insert into board_areas(club_id, user_id, area)
+  select distinct club_id, user_id, 'evenements' from memberships
+  where fonction = 'Responsable événements et buvette' and status = 'active' and role = 'bureau'
+  on conflict do nothing;
+update memberships set fonction = 'Membre du bureau' where fonction = 'Responsable événements et buvette';
+
+alter table memberships drop constraint if exists memberships_fonction;
+alter table memberships add constraint memberships_fonction check (fonction is null or fonction in (
+  'Vice-président','Secrétaire','Secrétaire adjoint','Trésorier','Trésorier adjoint','Directeur sportif','Coordinateur',
+  'Correspondant licences','Chargé de communication','Responsable sponsoring','Membre du bureau'));
+
+create or replace function fonction_areas(f text) returns text[] language sql immutable as $$
+  select case f
+    when 'Vice-président' then array['tresorerie','secretariat','technique','communication','evenements']
+    when 'Trésorier' then array['tresorerie'] when 'Trésorier adjoint' then array['tresorerie']
+    when 'Secrétaire' then array['secretariat'] when 'Secrétaire adjoint' then array['secretariat']
+    when 'Correspondant licences' then array['secretariat']
+    when 'Directeur sportif' then array['technique']
+    when 'Coordinateur' then array['technique','evenements']
+    when 'Chargé de communication' then array['communication'] when 'Responsable sponsoring' then array['communication']
+    else '{}'::text[] end;
+$$;
+
+-- ===== alpha_3_3.sql =====
+-- =====================================================================
+-- Pocket Club · alpha 3.3 · étape B 2 sur 5 : notifications (mise à jour relançable sans risque)
+-- À installer APRÈS alpha_3_2_4.sql.
+--   1. Les téléphones inscrits (un par appareil, rattaché au compte connecté)
+--   2. La file des notifications à envoyer (vidée par la fonction d'envoi de l'étape 3)
+--   3. Ce qui remplit la file : nouveaux rendez-vous, changements, annulations, annonces et relances,
+--      messages et sondages des groupes
+-- Règle d'or : une personne n'est prévenue que d'un rendez-vous ou d'une annonce qu'elle voit déjà dans l'application.
+-- Pour le vérifier, la base pose la question « que voit cette personne ? » avec les mêmes règles que l'écran
+-- (sees_event, sees_announcement), compte par compte, et seulement pour les comptes qui ont un téléphone inscrit.
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- 1. Téléphones inscrits
+-- ---------------------------------------------------------------------
+create table if not exists push_subscriptions (
+  endpoint text primary key check (length(endpoint) between 10 and 1000),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  p256dh text not null check (length(p256dh) between 10 and 200),
+  auth text not null check (length(auth) between 8 and 100),
+  agent text not null default '',
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now()
+);
+create index if not exists push_subscriptions_user on push_subscriptions(user_id);
+alter table push_subscriptions enable row level security;   -- aucune lecture directe : tout passe par les fonctions ci-dessous
+
+-- L'appareil s'inscrit (ou se rattache au compte connecté s'il était inscrit pour un autre compte)
+create or replace function push_subscribe(p_endpoint text, p_p256dh text, p_auth text, p_agent text default '') returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi d''abord'; end if;
+  if p_endpoint !~ '^https://' then raise exception 'Adresse d''envoi invalide'; end if;
+  insert into push_subscriptions(endpoint, user_id, p256dh, auth, agent)
+    values (p_endpoint, auth.uid(), p_p256dh, p_auth, left(coalesce(p_agent, ''), 200))
+  on conflict (endpoint) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, agent = excluded.agent, last_seen_at = now();
+  -- 10 appareils au plus par compte : les plus anciens sont retirés
+  delete from push_subscriptions where user_id = auth.uid() and endpoint in (
+    select endpoint from push_subscriptions where user_id = auth.uid() order by last_seen_at desc offset 10);
+  return true;
+end $$;
+-- L'appareil se retire (« Couper », déconnexion, changement de profil de test)
+create or replace function push_unsubscribe(p_endpoint text) returns boolean
+language sql security definer set search_path = public as $$
+  delete from push_subscriptions where endpoint = p_endpoint and user_id = auth.uid() returning true;
+$$;
+revoke execute on function push_subscribe(text, text, text, text) from public, anon;
+revoke execute on function push_unsubscribe(text) from public, anon;
+grant execute on function push_subscribe(text, text, text, text) to authenticated;
+grant execute on function push_unsubscribe(text) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 2. File des notifications
+-- ---------------------------------------------------------------------
+create table if not exists push_queue (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  title text not null,
+  body text not null default '',
+  url text not null default './',
+  tag text not null default '',
+  dedupe_key text not null,                         -- une seule notification par personne pour un même fait (ex. une série créée d'un coup)
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  tries int not null default 0,
+  last_error text
+);
+create unique index if not exists push_queue_dedupe on push_queue(user_id, dedupe_key);
+create index if not exists push_queue_key on push_queue(dedupe_key);
+create index if not exists push_queue_todo on push_queue(created_at) where sent_at is null;
+alter table push_queue enable row level security;   -- aucune lecture directe
+
+-- Ajoute une notification pour une personne (seulement si elle a au moins un téléphone inscrit)
+create or replace function push_enqueue(u uuid, p_title text, p_body text, p_tag text, p_key text, p_url text default './') returns void
+language sql security definer set search_path = public as $$
+  insert into push_queue(user_id, title, body, url, tag, dedupe_key)
+  select u, left(p_title, 80), left(coalesce(p_body, ''), 180), p_url, coalesce(p_tag, ''), p_key
+  where exists(select 1 from push_subscriptions s where s.user_id = u)
+  on conflict (user_id, dedupe_key) do nothing;
+$$;
+
+-- « Se mettre à la place » d'un compte, le temps de poser la question « que voit-il ? »
+-- (auth.uid() de Supabase lit d'abord request.jwt.claim.sub ; la base de test lit request.uid)
+create or replace function push_as(u uuid) returns void language sql volatile set search_path = public as $$
+  select set_config('request.jwt.claim.sub', coalesce(u::text, ''), true), set_config('request.uid', coalesce(u::text, ''), true);
+$$;
+create or replace function push_restore(sub text, uid text) returns void language sql volatile set search_path = public as $$
+  select set_config('request.jwt.claim.sub', coalesce(sub, ''), true), set_config('request.uid', coalesce(uid, ''), true);
+$$;
+
+-- Petits outils de mise en forme (heure de Paris)
+create or replace function push_when(t timestamptz) returns text language sql immutable as $$
+  select (array['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'])[extract(dow from t at time zone 'Europe/Paris')::int + 1]
+         || ' ' || to_char(t at time zone 'Europe/Paris', 'DD/MM "à" HH24"h"MI');
+$$;
+create or replace function push_ev_line(e events) returns text language sql stable set search_path = public as $$
+  select e.title || ' · ' || push_when(e.starts_at) || case when e.place <> '' then ' · ' || e.place else '' end
+         || ' (' || coalesce((select name from clubs where id = e.club_id), '') || ')';
+$$;
+
+-- Comptes à prévenir pour un rendez-vous : ceux qui le voient, avec un téléphone inscrit, sauf l'auteur du geste
+-- et ceux qui l'ont masqué. Convocation de joueurs choisis : les familles des joueurs non convoqués ne sont pas prévenues.
+create or replace function push_event_targets(eid uuid, actor uuid) returns setof uuid
+language plpgsql security definer set search_path = public as $$
+declare e events; u uuid; sub0 text := current_setting('request.jwt.claim.sub', true); uid0 text := current_setting('request.uid', true);
+begin
+  select * into e from events where id = eid; if e.id is null then return; end if;
+  for u in select distinct m.user_id from memberships m join push_subscriptions s on s.user_id = m.user_id
+           where m.club_id = e.club_id and m.status = 'active' and m.user_id is distinct from actor loop
+    perform push_as(u);
+    if sees_event(eid)
+       and not exists(select 1 from event_hidden h where h.event_id = eid and h.user_id = u)
+       and (cardinality(e.convoked) = 0 or is_board(e.club_id) or coaches_any(e.team_ids) or e.created_by = u
+            or exists(select 1 from players p where p.id = any(e.convoked) and p.deleted_at is null
+                      and (p.user_id = u or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = u)))
+            or not exists(select 1 from players p where p.deleted_at is null and p.club_id = e.club_id
+                      and (p.team_id = any(e.team_ids) or exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = any(e.team_ids)))
+                      and (p.user_id = u or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = u)))) then
+      return next u;
+    end if;
+  end loop;
+  perform push_restore(sub0, uid0);
+end $$;
+
+create or replace function push_announcement_targets(aid uuid, actor uuid) returns setof uuid
+language plpgsql security definer set search_path = public as $$
+declare a announcements; u uuid; sub0 text := current_setting('request.jwt.claim.sub', true); uid0 text := current_setting('request.uid', true);
+begin
+  select * into a from announcements where id = aid; if a.id is null then return; end if;
+  for u in select distinct m.user_id from memberships m join push_subscriptions s on s.user_id = m.user_id
+           where m.club_id = a.club_id and m.status = 'active' and m.user_id is distinct from actor loop
+    perform push_as(u);
+    if sees_announcement(aid) then return next u; end if;
+  end loop;
+  perform push_restore(sub0, uid0);
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 3. Ce qui remplit la file
+-- ---------------------------------------------------------------------
+-- Nouveau rendez-vous (une seule notification pour une série créée d'un coup) ; passés ignorés
+create or replace function push_on_event_insert() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; k text := 'evnew:' || coalesce(new.series_id::text, new.id::text); s event_series; t text; b text;
+begin
+  if new.cancelled or new.starts_at < now() then return null; end if;
+  if new.series_id is not null and exists(select 1 from push_queue where dedupe_key = k) then return null; end if;
+  if new.series_id is not null then
+    select * into s from event_series where id = new.series_id;
+    t := 'Nouveaux entraînements';
+    b := new.title || ' · chaque ' || (array['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'])[extract(dow from new.starts_at at time zone 'Europe/Paris')::int + 1]
+         || ' à ' || to_char(new.starts_at at time zone 'Europe/Paris', 'HH24"h"MI') || ', dès le ' || to_char(new.starts_at at time zone 'Europe/Paris', 'DD/MM')
+         || ' (' || coalesce((select name from clubs where id = new.club_id), '') || ')';
+  else
+    t := case when new.type in ('Match','Plateau','Tournoi') and cardinality(new.convoked) > 0 then 'Convocation : ' || lower(new.type)
+              else 'Nouveau : ' || lower(new.type) end;
+    b := push_ev_line(new);
+  end if;
+  for u in select * from push_event_targets(new.id, auth.uid()) loop
+    perform push_enqueue(u, t, b, 'ev:' || new.id, k);
+  end loop;
+  return null;
+end $$;
+drop trigger if exists push_event_insert on events;
+create trigger push_event_insert after insert on events for each row execute function push_on_event_insert();
+
+-- Annulation, ou changement d'heure ou de lieu d'un rendez-vous à venir (série modifiée d'un coup : une seule notification)
+create or replace function push_on_event_update() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; k text; t text; b text;
+begin
+  if new.starts_at < now() - interval '1 hour' then return null; end if;
+  if new.cancelled and not old.cancelled then
+    k := 'evcancel:' || coalesce(new.series_id::text || ':' || to_char(now(), 'YYYYMMDDHH24MI'), new.id::text);
+    t := 'Annulé'; b := push_ev_line(new);
+  elsif not new.cancelled and old.cancelled then
+    k := 'evback:' || new.id || ':' || to_char(now(), 'YYYYMMDDHH24MI');
+    t := 'De nouveau prévu'; b := push_ev_line(new);
+  elsif not new.cancelled and (new.starts_at is distinct from old.starts_at or new.place is distinct from old.place) then
+    k := 'evmod:' || coalesce(new.series_id::text, new.id::text) || ':' || to_char(now(), 'YYYYMMDDHH24MI');
+    t := case when new.starts_at is distinct from old.starts_at then 'Nouvel horaire' else 'Nouveau lieu' end; b := push_ev_line(new);
+  else return null; end if;
+  if new.series_id is not null and exists(select 1 from push_queue where dedupe_key = k) then return null; end if;
+  for u in select * from push_event_targets(new.id, auth.uid()) loop
+    perform push_enqueue(u, t, b, 'ev:' || new.id, k);
+  end loop;
+  return null;
+end $$;
+drop trigger if exists push_event_update on events;
+create trigger push_event_update after update of cancelled, starts_at, place on events for each row execute function push_on_event_update();
+
+-- Rendez-vous à venir supprimé : prévenu comme une annulation (suppression d'une série : une seule notification)
+create or replace function push_on_event_delete() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; k text := 'evdel:' || coalesce(old.series_id::text || ':' || to_char(now(), 'YYYYMMDDHH24MI'), old.id::text);
+begin
+  if old.cancelled or old.starts_at < now() then return old; end if;
+  if old.series_id is not null and exists(select 1 from push_queue where dedupe_key = k) then return old; end if;
+  for u in select * from push_event_targets(old.id, auth.uid()) loop
+    perform push_enqueue(u, case when old.series_id is not null then 'Séances supprimées' else 'Annulé' end, push_ev_line(old), 'ev:' || old.id, k);
+  end loop;
+  return old;
+end $$;
+drop trigger if exists push_event_delete on events;
+create trigger push_event_delete before delete on events for each row execute function push_on_event_delete();
+
+-- Annonces officielles, relances des sans-réponse, missions de bénévoles, rappels de cotisation
+create or replace function push_on_announcement() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; c text := coalesce((select name from clubs where id = new.club_id), '');
+begin
+  for u in select * from push_announcement_targets(new.id, coalesce(new.created_by, auth.uid())) loop
+    perform push_enqueue(u, new.title, coalesce(nullif(left(new.body, 140), ''), c) || case when new.body <> '' then ' (' || c || ')' else '' end, 'ann:' || new.id, 'ann:' || new.id);
+  end loop;
+  return null;
+end $$;
+drop trigger if exists push_announcement on announcements;
+create trigger push_announcement after insert on announcements for each row execute function push_on_announcement();
+
+-- Messages et sondages des groupes : les membres du groupe, sauf l'auteur et ceux qui ont coupé le groupe.
+-- Sur le téléphone, les messages d'un même groupe se remplacent (une seule notification par groupe à l'écran).
+create or replace function push_on_message() returns trigger language plpgsql security definer set search_path = public as $$
+declare g groups; who text;
+begin
+  select * into g from groups where id = new.group_id; if g.id is null then return null; end if;
+  select coalesce(nullif(nickname, ''), first_name, 'Quelqu''un') into who from profiles where id = new.user_id;
+  perform push_enqueue(gm.user_id, g.name, coalesce(who, 'Quelqu''un') || ' : ' || left(new.body, 120), 'grp:' || g.id, 'msg:' || new.id)
+    from group_members gm where gm.group_id = g.id and gm.user_id <> new.user_id and not gm.muted
+      and exists(select 1 from memberships m where m.club_id = g.club_id and m.user_id = gm.user_id and m.status = 'active');
+  return null;
+end $$;
+drop trigger if exists push_message on messages;
+create trigger push_message after insert on messages for each row execute function push_on_message();
+
+create or replace function push_on_poll() returns trigger language plpgsql security definer set search_path = public as $$
+declare g groups;
+begin
+  select * into g from groups where id = new.group_id; if g.id is null then return null; end if;
+  perform push_enqueue(gm.user_id, g.name, 'Nouveau sondage : ' || left(new.question, 120), 'grp:' || g.id, 'poll:' || new.id)
+    from group_members gm where gm.group_id = g.id and gm.user_id is distinct from new.created_by and not gm.muted
+      and exists(select 1 from memberships m where m.club_id = g.club_id and m.user_id = gm.user_id and m.status = 'active');
+  return null;
+end $$;
+drop trigger if exists push_poll on polls;
+create trigger push_poll after insert on polls for each row execute function push_on_poll();
+
+-- Notification d'essai envoyée à soi-même (pour l'étape 5 ; une par minute au plus)
+create or replace function push_test() returns int language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi d''abord'; end if;
+  select count(*) into n from push_subscriptions where user_id = auth.uid();
+  if n = 0 then raise exception 'Aucun appareil inscrit : active d''abord les notifications'; end if;
+  perform push_enqueue(auth.uid(), 'Essai Pocket Club', 'Les notifications marchent sur cet appareil.', 'test', 'test:' || to_char(now(), 'YYYYMMDDHH24MI'));
+  return n;
+end $$;
+revoke execute on function push_test() from public, anon;
+grant execute on function push_test() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 4. Pour la fonction d'envoi (étape 3) : réservé à la clé de service, jamais à l'application
+-- ---------------------------------------------------------------------
+-- Prend les prochaines notifications à envoyer (moins de 2 jours, 5 essais au plus), une ligne par appareil
+create or replace function push_claim(p_limit int default 200) returns table(queue_id bigint, endpoint text, p256dh text, auth text, title text, body text, url text, tag text)
+language plpgsql security definer set search_path = public as $$
+begin
+  return query
+  with picked as (
+    select q.id from push_queue q
+    where q.sent_at is null and q.tries < 5 and q.created_at > now() - interval '2 days'
+    order by q.created_at limit greatest(1, least(p_limit, 1000)) for update skip locked
+  ), upd as (
+    update push_queue q set tries = q.tries + 1 from picked where q.id = picked.id returning q.*
+  )
+  select upd.id, s.endpoint, s.p256dh, s.auth, upd.title, upd.body, upd.url, upd.tag
+  from upd join push_subscriptions s on s.user_id = upd.user_id;
+end $$;
+-- Résultat de l'envoi : envoyées, en erreur, appareils disparus (désinstallés ou notifications coupées : retirés)
+create or replace function push_result(p_sent bigint[], p_failed bigint[] default '{}', p_gone text[] default '{}', p_error text default null) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  update push_queue set sent_at = now(), last_error = null where id = any(coalesce(p_sent, '{}'));
+  update push_queue set last_error = left(coalesce(p_error, 'échec'), 300) where id = any(coalesce(p_failed, '{}')) and sent_at is null;
+  delete from push_subscriptions where endpoint = any(coalesce(p_gone, '{}'));
+end $$;
+-- Ménage : notifications envoyées depuis plus de 30 jours, ou jamais envoyées depuis plus de 3 jours
+create or replace function push_cleanup() returns int language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  delete from push_queue where (sent_at < now() - interval '30 days') or (sent_at is null and created_at < now() - interval '3 days');
+  get diagnostics n = row_count; return n;
+end $$;
+revoke execute on function push_claim(int), push_result(bigint[], bigint[], text[], text), push_cleanup(), push_enqueue(uuid, text, text, text, text, text),
+  push_event_targets(uuid, uuid), push_announcement_targets(uuid, uuid), push_as(uuid), push_restore(text, text) from public, anon, authenticated;
+do $$ begin
+  grant execute on function push_claim(int), push_result(bigint[], bigint[], text[], text), push_cleanup() to service_role;
+exception when undefined_object then null; end $$;   -- le rôle service_role n'existe que dans Supabase
+
+-- ===== alpha_3_3_2.sql =====
+-- =====================================================================
+-- Pocket Club · alpha 3.3.2 · étape B 4 sur 5 : envoi automatique des notifications (relançable sans risque)
+-- À installer APRÈS alpha_3_3.sql.
+-- Chaque minute, la base :
+--   1. prépare le rappel 72 h avant un rendez-vous, pour ceux qui n'ont pas encore répondu ;
+--   2. prépare, à partir de 18 h la veille, le rappel aux bénévoles inscrits sur une mission ;
+--   3. vide la corbeille de plus de 30 jours (une fois par jour, à 4 h) ;
+--   4. appelle la fonction d'envoi « envoyer-notifications » s'il y a quelque chose à envoyer (et une fois par heure pour le ménage).
+-- =====================================================================
+do $$ begin create extension if not exists pg_cron; exception when others then raise notice 'pg_cron indisponible ici : %', sqlerrm; end $$;
+do $$ begin create extension if not exists pg_net; exception when others then raise notice 'pg_net indisponible ici : %', sqlerrm; end $$;
+
+-- Adresse de la fonction d'envoi et mot de passe d'appel (lisibles de la base seulement)
+create table if not exists push_settings (
+  id int primary key default 1 check (id = 1),
+  function_url text not null default '',
+  secret text not null default ''
+);
+alter table push_settings enable row level security;
+revoke all on push_settings from public, anon, authenticated;
+insert into push_settings(id, function_url, secret)
+values (1, '', 'METS_ICI_PUSH_SECRET')
+on conflict (id) do update set function_url = excluded.function_url,
+  secret = case when excluded.secret = 'METS_ICI_PUSH_SECRET' then push_settings.secret else excluded.secret end;
+
+create or replace function push_tick() returns text language plpgsql security definer set search_path = public as $$
+declare e events; u uuid; m record; s push_settings; paris timestamp := now() at time zone 'Europe/Paris'; called boolean := false;
+begin
+  -- 1. Rappel 72 h avant, à ceux qui n'ont pas encore répondu (une fois par rendez-vous et par personne)
+  for e in select * from events where not cancelled and starts_at between now() + interval '70 hours' and now() + interval '72 hours'
+           and created_at < now() - interval '12 hours' loop
+    foreach u in array coalesce(event_missing(e.id), '{}'::uuid[]) loop
+      if not exists(select 1 from event_hidden h where h.event_id = e.id and h.user_id = u) then
+        perform push_enqueue(u, 'Ta réponse est attendue', push_ev_line(e), 'ev:' || e.id, 'ev72:' || e.id);
+      end if;
+    end loop;
+  end loop;
+  -- 2. Bénévoles : rappel la veille, à partir de 18 h (heure de Paris)
+  if extract(hour from paris) >= 18 then
+    for m in select ms.user_id, em.id as mission_id, em.label, ev as evrow
+             from mission_signups ms join event_missions em on em.id = ms.mission_id join events ev on ev.id = em.event_id
+             where not ev.cancelled and (ev.starts_at at time zone 'Europe/Paris')::date = paris::date + 1 loop
+      perform push_enqueue(m.user_id, 'Demain, tu es ' || lower(m.label), push_ev_line(m.evrow), 'ev:' || (m.evrow).id, 'benev:' || m.mission_id || ':' || m.user_id);
+    end loop;
+  end if;
+  -- 3. Corbeille de plus de 30 jours, une fois par jour
+  if to_char(paris, 'HH24MI') = '0400' then
+    begin perform purge_trash(); exception when others then raise notice 'corbeille : %', sqlerrm; end;
+  end if;
+  -- 4. Appel de la fonction d'envoi
+  select * into s from push_settings where id = 1;
+  if s.function_url <> '' and s.secret not in ('', 'METS_ICI_PUSH_SECRET')
+     and (extract(minute from paris) = 0 or exists(select 1 from push_queue where sent_at is null and tries < 5 and created_at > now() - interval '2 days')) then
+    perform net.http_post(url := s.function_url, body := '{}'::jsonb,
+      headers := jsonb_build_object('Content-Type', 'application/json', 'x-pocket-secret', s.secret), timeout_milliseconds := 30000);
+    called := true;
+  end if;
+  return case when called then 'envoi demandé' else 'rien à envoyer' end;
+end $$;
+revoke execute on function push_tick() from public, anon, authenticated;
+
+-- Programme automatique : chaque minute
+do $$ begin
+  begin perform cron.unschedule('pocket-notifications'); exception when others then null; end;
+  perform cron.schedule('pocket-notifications', '* * * * *', 'select public.push_tick()');
+exception when others then raise notice 'programme automatique non créé ici : %', sqlerrm; end $$;
+
+-- ===== alpha_3_4.sql =====
+-- =====================================================================
+-- Pocket Club · alpha 3.4 · convocations inter-clubs en PDF (mise à jour relançable sans risque)
+-- À installer APRÈS alpha_3_3_2.sql.
+--   1. « Nous recevons » sur un match, un plateau ou un tournoi (rencontre à domicile)
+--   2. Correction : les joueurs choisis (convocation) et « Nous recevons » sont enregistrés dès la création
+--      (avant, les joueurs choisis n'étaient gardés qu'en modifiant le rendez-vous)
+--   3. Données de la convocation d'un week-end : le club qui reçoit, son contact « planification des matchs »,
+--      les rencontres à domicile du week-end, le coach de chaque équipe. Réservé à la rubrique Événements
+--      (coordinateur, vice-président, président).
+-- =====================================================================
+alter table events add column if not exists at_home boolean not null default true;
+
+create or replace function create_events(p jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare c uuid := (p->>'club_id')::uuid; aud text := coalesce(p->>'audience', 'club');
+  ts uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'team_ids', '[]'))::uuid), '{}');
+  ppl uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'people', '[]'))::uuid), '{}');
+  conv uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'convoked', '[]'))::uuid), '{}');
+  starts timestamptz[] := array(select jsonb_array_elements_text(coalesce(p->'starts', '[]'))::timestamptz);
+  sid uuid; n int;
+begin
+  if auth.uid() is null or not is_member(c) then raise exception 'Connexion requise'; end if;
+  if aud <> 'team' then ts := '{}'; end if;
+  if aud <> 'people' then ppl := '{}'; end if;
+  if not can_create_event(c, aud, ts, ppl) then raise exception 'Tu ne peux pas créer ce rendez-vous pour ces destinataires'; end if;
+  if cardinality(starts) = 0 then raise exception 'Aucune date'; end if;
+  if cardinality(starts) > 60 then raise exception 'Trop de séances (60 au plus)'; end if;
+  if p->'series' is not null and jsonb_typeof(p->'series') = 'object' then
+    insert into event_series(club_id, title, weekday, start_time, until, skip_holidays, created_by)
+      values (c, p->>'title', (p->'series'->>'weekday')::int, p->'series'->>'start_time', (p->'series'->>'until')::date, coalesce((p->'series'->>'skip_holidays')::boolean, true), auth.uid())
+      returning id into sid;
+  end if;
+  insert into events(club_id, audience, team_ids, people, type, title, starts_at, place, opponents, series_id, created_by, convoked, at_home)
+    select c, aud, ts, ppl, coalesce(p->>'type', 'Événement'), trim(p->>'title'), s, coalesce(p->>'place', ''), coalesce(p->>'opponents', ''), sid, auth.uid(),
+           conv, coalesce((p->>'at_home')::boolean, true)
+    from unnest(starts) s;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- Données de la convocation du week-end d'un rendez-vous (samedi + dimanche ; en semaine : ce jour-là seulement)
+create or replace function convocation_data(p_event uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare e events; c clubs; d date; d0 date; d1 date; dw int;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null then raise exception 'Rendez-vous introuvable'; end if;
+  if not has_area(e.club_id, 'evenements') then raise exception 'La convocation est réservée au coordinateur, au vice-président et au président'; end if;
+  if e.type not in ('Match','Plateau','Tournoi') then raise exception 'La convocation vaut pour un match, un plateau ou un tournoi'; end if;
+  d := (e.starts_at at time zone 'Europe/Paris')::date; dw := extract(isodow from d)::int;
+  if dw >= 6 then d0 := d - (dw - 6); d1 := d0 + 1; else d0 := d; d1 := d; end if;
+  select * into c from clubs where id = e.club_id;
+  return jsonb_build_object(
+    'club', jsonb_build_object('id', c.id, 'name', c.name, 'city', c.city, 'sport', c.sport, 'color1', c.color1, 'color2', c.color2, 'logo', c.logo, 'crest_bg', c.crest_bg),
+    'from', d0, 'to', d1,
+    'correspondent', (select jsonb_build_object('name', p.full_name, 'phone', case when k.show_phone then nullif(p.phone, '') end, 'email', case when k.show_email then u.email end)
+                      from club_contacts k join profiles p on p.id = k.user_id join auth.users u on u.id = k.user_id
+                      join memberships m on m.user_id = k.user_id and m.club_id = k.club_id and m.status = 'active' and m.role in ('president','bureau')
+                      where k.club_id = c.id and k.for_matches order by k.updated_at limit 1),
+    'events', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', x.id, 'type', x.type, 'title', x.title, 'starts_at', x.starts_at, 'place', x.place, 'opponents', x.opponents, 'cancelled', x.cancelled,
+        'team', (select jsonb_build_object('name', t.name, 'category', t.category, 'gender', t.gender) from teams t where t.id = any(x.team_ids) and t.deleted_at is null order by t.name limit 1),
+        'coach', (select jsonb_build_object('name', p.full_name, 'phone', nullif(p.phone, ''), 'email', u.email)
+                  from memberships m join profiles p on p.id = m.user_id join auth.users u on u.id = m.user_id
+                  where m.club_id = x.club_id and m.role = 'coach' and m.status = 'active' and m.team_id = any(x.team_ids) order by p.full_name limit 1))
+        order by x.starts_at, x.title)
+      from events x where x.club_id = e.club_id and x.at_home and x.type in ('Match','Plateau','Tournoi') and x.audience = 'team'
+        and (x.starts_at at time zone 'Europe/Paris')::date between d0 and d1), '[]'::jsonb));
+end $$;
+revoke execute on function convocation_data(uuid) from public, anon;
+grant execute on function convocation_data(uuid) to authenticated;
+
+-- ===== alpha_3_4_1.sql =====
+-- =====================================================================
+-- Pocket Club · alpha 3.4.1 (mise à jour relançable sans risque) · n° 59 à 68
+-- À installer APRÈS alpha_3_4.sql.
+--   n° 59 : un compte qui n'a que le rôle supporteur (dont un membre du bureau en attente de validation) ne répond pas
+--           aux rendez-vous ; il n'est prévenu que des rendez-vous publics du club et des matchs des équipes qu'il suit
+--   n° 62 : notification pour chaque demande à valider ; un téléphone peut rester inscrit pour plusieurs comptes de test
+--   n° 66 : « Nouveau match prévu » ; « On cherche des bénévoles » ; option « Je participe au bénévolat du club »
+--   n° 67 : relance des bénévoles vers tout le club, des équipes ou des personnes choisies (une fois toutes les 12 heures)
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- N° 59 · réponses : jamais pour un compte qui n'est que supporteur (sauf invitation nominative)
+-- ---------------------------------------------------------------------
+create or replace function has_real_role(c uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from memberships where club_id = c and user_id = u and status = 'active' and role <> 'supporteur');
+$$;
+revoke execute on function has_real_role(uuid, uuid) from public, anon;
+
+create or replace function respond_event(p_event uuid, p_player uuid, p_answer text) returns void
+language plpgsql security definer set search_path = public as $$
+declare e events;
+begin
+  if auth.uid() is null or not sees_event(p_event) then raise exception 'Rendez-vous introuvable'; end if;
+  if p_answer is not null and p_answer not in ('oui','non') then raise exception 'Réponse invalide'; end if;
+  select * into e from events where id = p_event;
+  if e.cancelled then raise exception 'Ce rendez-vous est annulé'; end if;
+  if p_player is not null then
+    if not (is_parent_of(p_player) or exists(select 1 from players where id = p_player and user_id = auth.uid() and deleted_at is null)) then
+      raise exception 'Ce joueur n''est pas relié à ton compte';
+    end if;
+    if cardinality(e.convoked) > 0 and not p_player = any(e.convoked) then raise exception 'Ce joueur n''est pas convoqué à ce rendez-vous'; end if;
+    delete from event_responses where event_id = p_event and player_id = p_player;
+    if p_answer is not null then insert into event_responses(event_id, user_id, player_id, answer) values (p_event, auth.uid(), p_player, p_answer); end if;
+  else
+    if not has_real_role(e.club_id, auth.uid()) and not (e.audience = 'people' and auth.uid() = any(e.people)) then
+      raise exception 'Un supporteur n''a pas de réponse à donner (ou ta demande attend la validation du club)';
+    end if;
+    if e.type in ('Entraînement','Match','Plateau','Tournoi') and coaches_any(e.team_ids)
+       and not exists(select 1 from memberships where team_id = any(e.team_ids) and user_id = auth.uid() and status = 'active' and role = 'joueur')
+       and not exists(select 1 from players where user_id = auth.uid() and deleted_at is null and team_id = any(e.team_ids)) then
+      raise exception 'Tu encadres cette équipe : pas de réponse pour toi-même';
+    end if;
+    if e.audience = 'team' and e.type in ('Entraînement','Match','Plateau','Tournoi') and not exists(select 1 from unnest(e.team_ids) t where in_team(t)) then
+      raise exception 'Ce rendez-vous concerne une équipe dont tu ne fais pas partie';
+    end if;
+    if cardinality(e.convoked) > 0 and not exists(select 1 from players x where x.user_id = auth.uid() and x.id = any(e.convoked)) then
+      raise exception 'Tu n''es pas convoqué à ce rendez-vous';
+    end if;
+    delete from event_responses where event_id = p_event and user_id = auth.uid() and player_id is null;
+    if p_answer is not null then insert into event_responses(event_id, user_id, answer) values (p_event, auth.uid(), p_answer); end if;
+  end if;
+end $$;
+
+-- Notifications de rendez-vous : un compte qui n'est que supporteur n'est prévenu que des rendez-vous de tout le club et des matchs des équipes qu'il suit
+create or replace function push_event_targets(eid uuid, actor uuid) returns setof uuid
+language plpgsql security definer set search_path = public as $$
+declare e events; u uuid; sub0 text := current_setting('request.jwt.claim.sub', true); uid0 text := current_setting('request.uid', true);
+begin
+  select * into e from events where id = eid; if e.id is null then return; end if;
+  for u in select distinct m.user_id from memberships m join push_subscriptions s on s.user_id = m.user_id
+           where m.club_id = e.club_id and m.status = 'active' and m.user_id is distinct from actor loop
+    perform push_as(u);
+    if sees_event(eid)
+       and (has_real_role(e.club_id, u) or e.audience = 'club' or (e.type in ('Match','Plateau','Tournoi') and follows_any(e.team_ids)) or u = any(e.people))
+       and not exists(select 1 from event_hidden h where h.event_id = eid and h.user_id = u)
+       and (cardinality(e.convoked) = 0 or is_board(e.club_id) or coaches_any(e.team_ids) or e.created_by = u
+            or exists(select 1 from players p where p.id = any(e.convoked) and p.deleted_at is null
+                      and (p.user_id = u or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = u)))
+            or not exists(select 1 from players p where p.deleted_at is null and p.club_id = e.club_id
+                      and (p.team_id = any(e.team_ids) or exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = any(e.team_ids)))
+                      and (p.user_id = u or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = u)))) then
+      return next u;
+    end if;
+  end loop;
+  perform push_restore(sub0, uid0);
+end $$;
+
+-- N° 66 · texte : « U13 contre Étampes · sam. 14/11 à 14h00 · Gymnase (Club) »
+create or replace function push_ev_line(e events) returns text language sql stable set search_path = public as $$
+  select e.title
+         || case when e.opponents <> '' and position(lower(e.opponents) in lower(e.title)) = 0 then ' contre ' || e.opponents else '' end
+         || ' · ' || push_when(e.starts_at) || case when e.place <> '' then ' · ' || e.place else '' end
+         || ' (' || coalesce((select name from clubs where id = e.club_id), '') || ')';
+$$;
+create or replace function push_on_event_insert() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; k text := 'evnew:' || coalesce(new.series_id::text, new.id::text); t text; b text;
+begin
+  if new.cancelled or new.starts_at < now() then return null; end if;
+  if new.series_id is not null and exists(select 1 from push_queue where dedupe_key = k) then return null; end if;
+  if new.series_id is not null then
+    t := 'Nouveaux entraînements';
+    b := new.title || ' · chaque ' || (array['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'])[extract(dow from new.starts_at at time zone 'Europe/Paris')::int + 1]
+         || ' à ' || to_char(new.starts_at at time zone 'Europe/Paris', 'HH24"h"MI') || ', dès le ' || to_char(new.starts_at at time zone 'Europe/Paris', 'DD/MM')
+         || ' (' || coalesce((select name from clubs where id = new.club_id), '') || ')';
+  else
+    t := case when new.type in ('Match','Plateau','Tournoi') and cardinality(new.convoked) > 0 then 'Convocation : ' || lower(new.type)
+              when new.type in ('Match','Plateau','Tournoi') then 'Nouveau ' || lower(new.type) || ' prévu'
+              else 'Nouveau : ' || lower(new.type) end;
+    b := push_ev_line(new);
+  end if;
+  for u in select * from push_event_targets(new.id, auth.uid()) loop
+    perform push_enqueue(u, t, b, 'ev:' || new.id, k);
+  end loop;
+  return null;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- N° 62 · un téléphone peut rester inscrit pour plusieurs comptes (option des comptes de test) ;
+--         la notification porte alors le nom du profil
+-- ---------------------------------------------------------------------
+alter table push_subscriptions add column if not exists label text not null default '';
+do $$ begin
+  if exists(select 1 from pg_constraint where conname = 'push_subscriptions_pkey' and conrelid = 'push_subscriptions'::regclass and array_length(conkey, 1) = 1) then
+    alter table push_subscriptions drop constraint push_subscriptions_pkey;
+    alter table push_subscriptions add primary key (endpoint, user_id);
+  end if;
+end $$;
+drop function if exists push_subscribe(text, text, text, text);
+create or replace function push_subscribe(p_endpoint text, p_p256dh text, p_auth text, p_agent text default '', p_keep boolean default false, p_label text default '') returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi d''abord'; end if;
+  if p_endpoint !~ '^https://' then raise exception 'Adresse d''envoi invalide'; end if;
+  if not coalesce(p_keep, false) then delete from push_subscriptions where endpoint = p_endpoint and user_id <> auth.uid(); end if;
+  insert into push_subscriptions(endpoint, user_id, p256dh, auth, agent, label)
+    values (p_endpoint, auth.uid(), p_p256dh, p_auth, left(coalesce(p_agent, ''), 200), left(coalesce(p_label, ''), 30))
+  on conflict (endpoint, user_id) do update set p256dh = excluded.p256dh, auth = excluded.auth, agent = excluded.agent, label = excluded.label, last_seen_at = now();
+  update push_subscriptions set p256dh = p_p256dh, auth = p_auth where endpoint = p_endpoint;
+  delete from push_subscriptions where user_id = auth.uid() and endpoint in (
+    select endpoint from push_subscriptions where user_id = auth.uid() order by last_seen_at desc offset 10);
+  return true;
+end $$;
+revoke execute on function push_subscribe(text, text, text, text, boolean, text) from public, anon;
+grant execute on function push_subscribe(text, text, text, text, boolean, text) to authenticated;
+
+create or replace function push_claim(p_limit int default 200) returns table(queue_id bigint, endpoint text, p256dh text, auth text, title text, body text, url text, tag text)
+language plpgsql security definer set search_path = public as $$
+begin
+  return query
+  with picked as (
+    select q.id from push_queue q
+    where q.sent_at is null and q.tries < 5 and q.created_at > now() - interval '2 days'
+    order by q.created_at limit greatest(1, least(p_limit, 1000)) for update skip locked
+  ), upd as (
+    update push_queue q set tries = q.tries + 1 from picked where q.id = picked.id returning q.*
+  )
+  select upd.id, s.endpoint, s.p256dh, s.auth,
+         case when s.label <> '' and (select count(*) from push_subscriptions s2 where s2.endpoint = s.endpoint) > 1 then left(s.label || ' · ' || upd.title, 80) else upd.title end,
+         upd.body, upd.url, upd.tag
+  from upd join push_subscriptions s on s.user_id = upd.user_id;
+end $$;
+revoke execute on function push_claim(int) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- N° 62 · demandes à valider : prévenir ceux qui peuvent valider (vérifié à la fin de la transaction,
+--         pour ne rien envoyer quand la demande est acceptée d'office)
+-- ---------------------------------------------------------------------
+create or replace function push_on_join() returns trigger language plpgsql security definer set search_path = public as $$
+declare m memberships; u uuid; who text; what text; cname text; sub0 text := current_setting('request.jwt.claim.sub', true); uid0 text := current_setting('request.uid', true);
+begin
+  select * into m from memberships where id = new.id;
+  if m.id is null or m.status <> 'pending' then return null; end if;
+  select coalesce(nullif(full_name, ''), 'Quelqu''un') into who from profiles where id = m.user_id;
+  select name into cname from clubs where id = m.club_id;
+  what := case m.role when 'parent' then 'parent de joueur' when 'bureau' then lower(coalesce(m.fonction, 'membre du bureau')) else m.role end
+          || coalesce(' ' || (select name from teams where id = m.team_id), '');
+  for u in select distinct mm.user_id from memberships mm join push_subscriptions s on s.user_id = mm.user_id
+           where mm.club_id = m.club_id and mm.status = 'active' and mm.user_id <> m.user_id loop
+    perform push_as(u);
+    if can_validate(m.id) then
+      perform push_enqueue(u, 'Demande à valider', coalesce(who, 'Quelqu''un') || ' : ' || what || ' (' || coalesce(cname, '') || ')', 'join:' || m.club_id, 'join:' || m.id);
+    end if;
+  end loop;
+  perform push_restore(sub0, uid0);
+  return null;
+end $$;
+drop trigger if exists push_join on memberships;
+create constraint trigger push_join after insert on memberships deferrable initially deferred for each row execute function push_on_join();
+
+-- ---------------------------------------------------------------------
+-- N° 66 · « Je participe au bénévolat du club » (coché par défaut) ; le coordinateur et le président sont prévenus d'un changement
+-- ---------------------------------------------------------------------
+alter table profiles add column if not exists volunteer boolean not null default true;
+create or replace function set_volunteer(p_on boolean) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  update profiles set volunteer = coalesce(p_on, true) where id = auth.uid();
+end $$;
+revoke execute on function set_volunteer(boolean) from public, anon;
+grant execute on function set_volunteer(boolean) to authenticated;
+create or replace function push_on_volunteer() returns trigger language plpgsql security definer set search_path = public as $$
+declare c record; u uuid; who text := coalesce(nullif(new.full_name, ''), 'Un membre');
+begin
+  if new.volunteer is not distinct from old.volunteer then return null; end if;
+  for c in select distinct m.club_id, cl.name from memberships m join clubs cl on cl.id = m.club_id where m.user_id = new.id and m.status = 'active' and m.role <> 'supporteur' loop
+    for u in select distinct mm.user_id from memberships mm where mm.club_id = c.club_id and mm.status = 'active' and mm.user_id <> new.id and 'evenements' = any(areas_of(c.club_id, mm.user_id)) loop
+      perform push_enqueue(u, 'Bénévolat', who || case when new.volunteer then ' participe de nouveau au bénévolat du club' else ' ne souhaite plus être sollicité pour le bénévolat' end || ' (' || c.name || ')',
+                           'vol:' || new.id, 'vol:' || new.id || ':' || to_char(now(), 'YYYYMMDDHH24MISS'));
+    end loop;
+  end loop;
+  return null;
+end $$;
+drop trigger if exists push_volunteer on profiles;
+create trigger push_volunteer after update of volunteer on profiles for each row execute function push_on_volunteer();
+-- Liste des personnes qui ne souhaitent pas être sollicitées : rubrique Événements seulement (coordinateur, vice-président, président)
+create or replace function volunteer_optouts(p_club uuid) returns uuid[] language sql stable security definer set search_path = public as $$
+  select case when has_area(p_club, 'evenements') then coalesce(array_agg(distinct p.id), '{}') else '{}' end
+  from profiles p join memberships m on m.user_id = p.id and m.club_id = p_club and m.status = 'active' where not p.volunteer;
+$$;
+revoke execute on function volunteer_optouts(uuid) from public, anon;
+grant execute on function volunteer_optouts(uuid) to authenticated;
+
+-- Peut être bénévole sur ce rendez-vous : règle du n° 53, plus toute personne relancée nominativement ou par équipe pour ce rendez-vous
+create or replace function can_volunteer(eid uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and not e.cancelled and exists(select 1 from memberships m where m.club_id = e.club_id and m.user_id = u and m.status = 'active') and (
+    exists(select 1 from memberships m where m.club_id = e.club_id and m.user_id = u and m.status = 'active' and m.role in ('president','bureau','coach'))
+    or exists(select 1 from player_parents pp join players x on x.id = pp.player_id where pp.user_id = u and x.deleted_at is null and x.club_id = e.club_id
+              and (e.audience <> 'team' or x.team_id = any(e.team_ids) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(e.team_ids))))
+    or exists(select 1 from players x where x.user_id = u and x.deleted_at is null and x.club_id = e.club_id
+              and x.birth_date is not null and x.birth_date <= current_date - interval '18 years'
+              and (e.audience <> 'team' or x.team_id = any(e.team_ids) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(e.team_ids))))
+    or exists(select 1 from announcements a where a.kind = 'missions' and a.event_id = e.id and a.deleted_at is null and u = any(a.people))));
+$$;
+
+-- « On cherche des bénévoles » : une notification par rendez-vous dès qu'il a des missions (vérifié à la fin de la transaction)
+create or replace function push_on_missions() returns trigger language plpgsql security definer set search_path = public as $$
+declare e events; u uuid; n int; free int; sub0 text := current_setting('request.jwt.claim.sub', true); uid0 text := current_setting('request.uid', true); actor uuid := auth.uid();
+begin
+  select * into e from events where id = new.event_id;
+  if e.id is null or e.cancelled or e.starts_at < now() then return null; end if;
+  if exists(select 1 from push_queue where dedupe_key = 'benev:' || e.id) then return null; end if;
+  select count(*), coalesce(sum(greatest(0, m.slots - (select count(*) from mission_signups s where s.mission_id = m.id))), 0) into n, free from event_missions m where m.event_id = e.id;
+  if free = 0 then return null; end if;
+  for u in select distinct mm.user_id from memberships mm join push_subscriptions s on s.user_id = mm.user_id join profiles p on p.id = mm.user_id
+           where mm.club_id = e.club_id and mm.status = 'active' and mm.user_id is distinct from actor and p.volunteer loop
+    perform push_as(u);
+    if sees_event(e.id) and can_volunteer(e.id, u)
+       and not exists(select 1 from mission_signups s join event_missions m on m.id = s.mission_id where m.event_id = e.id and s.user_id = u) then
+      perform push_enqueue(u, 'On cherche des bénévoles', e.title || ' · ' || push_when(e.starts_at) || ' · ' || n || case when n > 1 then ' missions à pourvoir' else ' mission à pourvoir' end,
+                           'ev:' || e.id, 'benev:' || e.id);
+    end if;
+  end loop;
+  perform push_restore(sub0, uid0);
+  return null;
+end $$;
+drop trigger if exists push_missions on event_missions;
+create constraint trigger push_missions after insert on event_missions deferrable initially deferred for each row execute function push_on_missions();
+
+-- ---------------------------------------------------------------------
+-- N° 67 · relance des bénévoles : le rendez-vous (comme avant), tout le club, des équipes, des personnes choisies
+-- ---------------------------------------------------------------------
+alter table events add column if not exists missions_reminded_at timestamptz;
+create or replace function events_missions_guard() returns trigger language plpgsql as $$
+begin
+  if new.missions_reminded_at is distinct from old.missions_reminded_at and coalesce(current_setting('pc.mremind', true), '') <> 'on' then new.missions_reminded_at := old.missions_reminded_at; end if;
+  return new;
+end $$;
+drop trigger if exists events_missions_guard on events;
+create trigger events_missions_guard before update on events for each row execute function events_missions_guard();
+
+-- Adulte du club qui peut aider : bureau, coach, parent d'un joueur, joueur majeur (jamais un supporteur seul ni un joueur mineur)
+create or replace function club_helper(c uuid, u uuid, ts uuid[] default null) returns boolean language sql stable security definer set search_path = public as $$
+  select not exists(select 1 from players x where x.user_id = u and x.club_id = c and x.deleted_at is null and (x.birth_date is null or x.birth_date > current_date - interval '18 years'))
+    and (
+      (ts is null and exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active' and m.role in ('president','bureau','coach')))
+      or (ts is not null and exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active' and m.role = 'coach' and m.team_id = any(ts)))
+      or exists(select 1 from player_parents pp join players x on x.id = pp.player_id where pp.user_id = u and x.deleted_at is null and x.club_id = c
+                and (ts is null or x.team_id = any(ts) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(ts))))
+      or exists(select 1 from players x where x.user_id = u and x.deleted_at is null and x.club_id = c and x.birth_date <= current_date - interval '18 years'
+                and (ts is null or x.team_id = any(ts) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(ts)))));
+$$;
+revoke execute on function club_helper(uuid, uuid, uuid[]) from public, anon, authenticated;
+
+drop function if exists remind_missions(uuid);
+create or replace function remind_missions(p_event uuid, p_target text default 'event', p_teams uuid[] default null, p_people uuid[] default null) returns text
+language plpgsql security definer set search_path = public as $$
+declare e events; txt text; who uuid[];
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not can_manage_missions(p_event) then raise exception 'Seul l''organisateur relance'; end if;
+  if e.cancelled or e.starts_at < now() then raise exception 'Ce rendez-vous est passé ou annulé'; end if;
+  if e.missions_reminded_at > now() - interval '12 hours' then raise exception 'Relance des bénévoles déjà faite il y a moins de 12 heures'; end if;
+  if coalesce(p_target, 'event') not in ('event','club','teams','people') then raise exception 'Cible inconnue'; end if;
+  select string_agg(n || ' ' || lower(label), ', ' order by position) into txt from (
+    select m.label, m.position, m.slots - (select count(*) from mission_signups s where s.mission_id = m.id) n from event_missions m where m.event_id = p_event) z where n > 0;
+  if txt is null then raise exception 'Toutes les missions sont pourvues'; end if;
+  if p_target = 'teams' and (p_teams is null or cardinality(p_teams) = 0 or exists(select 1 from unnest(p_teams) t where not exists(select 1 from teams x where x.id = t and x.club_id = e.club_id and x.deleted_at is null))) then
+    raise exception 'Choisis une ou plusieurs équipes du club';
+  end if;
+  if p_target = 'people' and (p_people is null or cardinality(p_people) = 0) then raise exception 'Choisis au moins une personne'; end if;
+  select array_agg(distinct m.user_id) into who
+  from memberships m join profiles p on p.id = m.user_id
+  where m.club_id = e.club_id and m.status = 'active' and m.user_id <> auth.uid()
+    and not exists(select 1 from mission_signups s join event_missions mi on mi.id = s.mission_id where mi.event_id = e.id and s.user_id = m.user_id)
+    and case coalesce(p_target, 'event')
+      when 'event' then p.volunteer and can_volunteer(e.id, m.user_id) and club_helper(e.club_id, m.user_id)
+      when 'club' then p.volunteer and club_helper(e.club_id, m.user_id)
+      when 'teams' then p.volunteer and club_helper(e.club_id, m.user_id, p_teams)
+      else m.user_id = any(p_people) and club_helper(e.club_id, m.user_id) end;
+  if who is null or cardinality(who) = 0 then raise exception 'Personne à relancer pour cette cible (déjà inscrits, mineurs, supporteurs ou bénévolat décoché)'; end if;
+  perform set_config('pc.announce', 'on', true);
+  insert into announcements(club_id, audience, people, kind, event_id, title, body)
+    values (e.club_id, 'people', who[1:500], 'missions', e.id,
+            'Il manque ' || txt || ' pour ' || e.title,
+            e.title || ' · ' || to_char(e.starts_at at time zone 'Europe/Paris', 'DD/MM à HH24"h"MI') || '. Ouvre le rendez-vous pour t''inscrire.');
+  perform set_config('pc.announce', 'off', true);
+  perform set_config('pc.mremind', 'on', true);
+  update events set missions_reminded_at = now() where id = e.id;
+  perform set_config('pc.mremind', 'off', true);
+  insert into action_log(club_id, actor, action, detail)
+    values (e.club_id, auth.uid(), 'relance_benevoles', jsonb_build_object('event', e.id, 'titre', e.title, 'cible', coalesce(p_target, 'event'), 'personnes', cardinality(who)));
+  return txt;
+end $$;
+revoke execute on function remind_missions(uuid, text, uuid[], uuid[]) from public, anon;
+grant execute on function remind_missions(uuid, text, uuid[], uuid[]) to authenticated;
+
+-- N° 67 : une personne relancée pour les bénévoles d'un rendez-vous le voit, pour pouvoir s'inscrire
+create or replace function sees_event(eid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and is_member(e.club_id) and (
+    e.created_by = auth.uid() or is_board(e.club_id)
+    or e.audience = 'club'
+    or (e.audience = 'team' and exists(select 1 from unnest(e.team_ids) t where in_team(t)))
+    or (e.audience = 'team' and e.type in ('Match','Plateau','Tournoi') and follows_any(e.team_ids))
+    or (e.audience in ('coaches','board_coaches') and is_coach_in(e.club_id))
+    or (e.audience = 'people' and auth.uid() = any(e.people))
+    or exists(select 1 from announcements a where a.kind = 'missions' and a.event_id = e.id and a.deleted_at is null and auth.uid() = any(a.people))));
+$$;
+
+-- ===== alpha_3_4_2.sql =====
+-- =====================================================================
+-- Pocket Club · alpha 3.4.2 (relançable sans risque) · n° 69 à 74 · À installer APRÈS alpha_3_4_1.sql.
+--   n° 70 : réglage « Les supporteurs peuvent être bénévoles » (président, rubrique Événements) ; réponse du supporteur
+--   n° 72 : l'appel et la convocation sont réservés aux coachs de l'équipe et au président
+--   n° 73 : seul le retrait du bénévolat d'un membre (hors supporteurs) prévient le coordinateur et le président
+--   n° 74 : compteurs des bénévoles (rubrique Événements)
+-- =====================================================================
+alter table clubs add column if not exists supporters_volunteer boolean not null default false;
+alter table profiles add column if not exists supporter_volunteer boolean;   -- null = pas encore répondu
+
+-- Le club ouvre ou ferme le bénévolat aux supporteurs (inscrit au journal) ; à l'ouverture, les supporteurs revoient l'encart une fois
+create or replace function set_supporters_volunteer(p_club uuid, p_on boolean) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not has_area(p_club, 'evenements') then raise exception 'Réglage réservé au président et au coordinateur'; end if;
+  if (select supporters_volunteer from clubs where id = p_club) = coalesce(p_on, false) then return; end if;
+  update clubs set supporters_volunteer = coalesce(p_on, false) where id = p_club;
+  if p_on then
+    update profiles p set supporter_volunteer = null where p.supporter_volunteer is false
+      and exists(select 1 from memberships m where m.club_id = p_club and m.user_id = p.id and m.status = 'active') and not has_real_role(p_club, p.id);
+  end if;
+  insert into action_log(club_id, actor, action, detail) values (p_club, auth.uid(), 'benevolat_supporteurs', jsonb_build_object('ouvert', coalesce(p_on, false)));
+end $$;
+create or replace function set_supporter_volunteer(p_on boolean) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  update profiles set supporter_volunteer = p_on where id = auth.uid();
+end $$;
+revoke execute on function set_supporters_volunteer(uuid, boolean), set_supporter_volunteer(boolean) from public, anon;
+grant execute on function set_supporters_volunteer(uuid, boolean), set_supporter_volunteer(boolean) to authenticated;
+
+-- Mineur du club (fiche joueur de moins de 18 ans, ou date de naissance inconnue) : jamais bénévole
+create or replace function is_minor_in(c uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from players x where x.user_id = u and x.club_id = c and x.deleted_at is null and (x.birth_date is null or x.birth_date > current_date - interval '18 years'));
+$$;
+-- Supporteur qui peut aider sur ce rendez-vous : club ouvert, majeur, événement de tout le club ou match d'une équipe suivie
+create or replace function supporter_can_help(eid uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e join clubs c on c.id = e.club_id where e.id = eid and c.supporters_volunteer
+    and exists(select 1 from memberships m where m.club_id = e.club_id and m.user_id = u and m.status = 'active')
+    and not has_real_role(e.club_id, u) and not is_minor_in(e.club_id, u)
+    and (e.audience = 'club' or (e.type in ('Match','Plateau','Tournoi') and exists(select 1 from team_follows f where f.user_id = u and f.team_id = any(e.team_ids)))));
+$$;
+-- Souhaite être sollicité : membre (option, cochée par défaut) ou supporteur qui a répondu oui
+create or replace function wants_volunteer(c uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select case when has_real_role(c, u) then coalesce((select volunteer from profiles where id = u), true)
+              else coalesce((select supporter_volunteer from profiles where id = u), false) end;
+$$;
+revoke execute on function is_minor_in(uuid, uuid), supporter_can_help(uuid, uuid), wants_volunteer(uuid, uuid) from public, anon, authenticated;
+
+create or replace function can_volunteer(eid uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and not e.cancelled and exists(select 1 from memberships m where m.club_id = e.club_id and m.user_id = u and m.status = 'active') and (
+    exists(select 1 from memberships m where m.club_id = e.club_id and m.user_id = u and m.status = 'active' and m.role in ('president','bureau','coach'))
+    or exists(select 1 from player_parents pp join players x on x.id = pp.player_id where pp.user_id = u and x.deleted_at is null and x.club_id = e.club_id
+              and (e.audience <> 'team' or x.team_id = any(e.team_ids) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(e.team_ids))))
+    or exists(select 1 from players x where x.user_id = u and x.deleted_at is null and x.club_id = e.club_id
+              and x.birth_date is not null and x.birth_date <= current_date - interval '18 years'
+              and (e.audience <> 'team' or x.team_id = any(e.team_ids) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(e.team_ids))))
+    or (has_real_role(e.club_id, u) and exists(select 1 from announcements a where a.kind = 'missions' and a.event_id = e.id and a.deleted_at is null and u = any(a.people)))
+    or supporter_can_help(e.id, u)));
+$$;
+
+-- Relances : les supporteurs comptent quand le club leur ouvre le bénévolat (tout le club ; équipes suivies ; nominatif)
+create or replace function club_helper(c uuid, u uuid, ts uuid[] default null) returns boolean language sql stable security definer set search_path = public as $$
+  select not is_minor_in(c, u)
+    and (
+      (ts is null and exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active' and m.role in ('president','bureau','coach')))
+      or (ts is not null and exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active' and m.role = 'coach' and m.team_id = any(ts)))
+      or exists(select 1 from player_parents pp join players x on x.id = pp.player_id where pp.user_id = u and x.deleted_at is null and x.club_id = c
+                and (ts is null or x.team_id = any(ts) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(ts))))
+      or exists(select 1 from players x where x.user_id = u and x.deleted_at is null and x.club_id = c and x.birth_date <= current_date - interval '18 years'
+                and (ts is null or x.team_id = any(ts) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(ts))))
+      or ((select supporters_volunteer from clubs where id = c) and not has_real_role(c, u)
+          and exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active')
+          and (ts is null or exists(select 1 from team_follows f where f.user_id = u and f.team_id = any(ts)))));
+$$;
+revoke execute on function club_helper(uuid, uuid, uuid[]) from public, anon, authenticated;
+
+create or replace function remind_missions(p_event uuid, p_target text default 'event', p_teams uuid[] default null, p_people uuid[] default null) returns text
+language plpgsql security definer set search_path = public as $$
+declare e events; txt text; who uuid[];
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not can_manage_missions(p_event) then raise exception 'Seul l''organisateur relance'; end if;
+  if e.cancelled or e.starts_at < now() then raise exception 'Ce rendez-vous est passé ou annulé'; end if;
+  if e.missions_reminded_at > now() - interval '12 hours' then raise exception 'Relance des bénévoles déjà faite il y a moins de 12 heures'; end if;
+  if coalesce(p_target, 'event') not in ('event','club','teams','people') then raise exception 'Cible inconnue'; end if;
+  select string_agg(n || ' ' || lower(label), ', ' order by position) into txt from (
+    select m.label, m.position, m.slots - (select count(*) from mission_signups s where s.mission_id = m.id) n from event_missions m where m.event_id = p_event) z where n > 0;
+  if txt is null then raise exception 'Toutes les missions sont pourvues'; end if;
+  if p_target = 'teams' and (p_teams is null or cardinality(p_teams) = 0 or exists(select 1 from unnest(p_teams) t where not exists(select 1 from teams x where x.id = t and x.club_id = e.club_id and x.deleted_at is null))) then
+    raise exception 'Choisis une ou plusieurs équipes du club';
+  end if;
+  if p_target = 'people' and (p_people is null or cardinality(p_people) = 0) then raise exception 'Choisis au moins une personne'; end if;
+  select array_agg(distinct m.user_id) into who
+  from memberships m
+  where m.club_id = e.club_id and m.status = 'active' and m.user_id <> auth.uid()
+    and not exists(select 1 from mission_signups s join event_missions mi on mi.id = s.mission_id where mi.event_id = e.id and s.user_id = m.user_id)
+    and case coalesce(p_target, 'event')
+      when 'event' then wants_volunteer(e.club_id, m.user_id) and can_volunteer(e.id, m.user_id) and club_helper(e.club_id, m.user_id)
+      when 'club' then wants_volunteer(e.club_id, m.user_id) and club_helper(e.club_id, m.user_id)
+      when 'teams' then wants_volunteer(e.club_id, m.user_id) and club_helper(e.club_id, m.user_id, p_teams)
+      else m.user_id = any(p_people) and club_helper(e.club_id, m.user_id) end;
+  if who is null or cardinality(who) = 0 then raise exception 'Personne à relancer pour cette cible (déjà inscrits, mineurs, supporteurs ou bénévolat décoché)'; end if;
+  perform set_config('pc.announce', 'on', true);
+  insert into announcements(club_id, audience, people, kind, event_id, title, body)
+    values (e.club_id, 'people', who[1:500], 'missions', e.id, 'Il manque ' || txt || ' pour ' || e.title,
+            e.title || ' · ' || to_char(e.starts_at at time zone 'Europe/Paris', 'DD/MM à HH24"h"MI') || '. Ouvre le rendez-vous pour t''inscrire.');
+  perform set_config('pc.announce', 'off', true);
+  perform set_config('pc.mremind', 'on', true);
+  update events set missions_reminded_at = now() where id = e.id;
+  perform set_config('pc.mremind', 'off', true);
+  insert into action_log(club_id, actor, action, detail)
+    values (e.club_id, auth.uid(), 'relance_benevoles', jsonb_build_object('event', e.id, 'titre', e.title, 'cible', coalesce(p_target, 'event'), 'personnes', cardinality(who)));
+  return txt;
+end $$;
+
+-- « On cherche des bénévoles » : membres qui ont gardé l'option, supporteurs qui ont dit oui
+create or replace function push_on_missions() returns trigger language plpgsql security definer set search_path = public as $$
+declare e events; u uuid; n int; free int; sub0 text := current_setting('request.jwt.claim.sub', true); uid0 text := current_setting('request.uid', true); actor uuid := auth.uid();
+begin
+  select * into e from events where id = new.event_id;
+  if e.id is null or e.cancelled or e.starts_at < now() then return null; end if;
+  if exists(select 1 from push_queue where dedupe_key = 'benev:' || e.id) then return null; end if;
+  select count(*), coalesce(sum(greatest(0, m.slots - (select count(*) from mission_signups s where s.mission_id = m.id))), 0) into n, free from event_missions m where m.event_id = e.id;
+  if free = 0 then return null; end if;
+  for u in select distinct mm.user_id from memberships mm join push_subscriptions s on s.user_id = mm.user_id
+           where mm.club_id = e.club_id and mm.status = 'active' and mm.user_id is distinct from actor loop
+    perform push_as(u);
+    if wants_volunteer(e.club_id, u) and sees_event(e.id) and can_volunteer(e.id, u)
+       and not exists(select 1 from mission_signups s join event_missions m on m.id = s.mission_id where m.event_id = e.id and s.user_id = u) then
+      perform push_enqueue(u, 'On cherche des bénévoles', e.title || ' · ' || push_when(e.starts_at) || ' · ' || n || case when n > 1 then ' missions à pourvoir' else ' mission à pourvoir' end,
+                           'ev:' || e.id, 'benev:' || e.id);
+    end if;
+  end loop;
+  perform push_restore(sub0, uid0);
+  return null;
+end $$;
+
+-- N° 73 : seul un retrait prévient, et seulement pour un membre (hors supporteurs)
+create or replace function push_on_volunteer() returns trigger language plpgsql security definer set search_path = public as $$
+declare c record; u uuid; who text := coalesce(nullif(new.full_name, ''), 'Un membre');
+begin
+  if new.volunteer is not distinct from old.volunteer or new.volunteer then return null; end if;
+  for c in select distinct m.club_id, cl.name from memberships m join clubs cl on cl.id = m.club_id where m.user_id = new.id and m.status = 'active' and m.role <> 'supporteur' loop
+    for u in select distinct mm.user_id from memberships mm where mm.club_id = c.club_id and mm.status = 'active' and mm.user_id <> new.id and 'evenements' = any(areas_of(c.club_id, mm.user_id)) loop
+      perform push_enqueue(u, 'Bénévolat', who || ' ne souhaite plus être sollicité pour le bénévolat (' || c.name || ')', 'vol:' || new.id, 'vol:' || new.id || ':' || to_char(now(), 'YYYYMMDDHH24MISS'));
+    end loop;
+  end loop;
+  return null;
+end $$;
+
+-- N° 74 : compteurs des bénévoles (rubrique Événements) ; listes de noms pour le coordinateur et le président
+create or replace function volunteer_stats(p_club uuid) returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare r jsonb;
+begin
+  if not has_area(p_club, 'evenements') then raise exception 'Réservé au président et au coordinateur'; end if;
+  with u as (
+    select distinct m.user_id, p.volunteer, p.supporter_volunteer, has_real_role(p_club, m.user_id) as real,
+      case when exists(select 1 from memberships x where x.club_id = p_club and x.user_id = m.user_id and x.status = 'active' and x.role in ('president','bureau')) then 'bureau'
+           when exists(select 1 from memberships x where x.club_id = p_club and x.user_id = m.user_id and x.status = 'active' and x.role = 'coach') then 'coachs'
+           when exists(select 1 from player_parents pp join players y on y.id = pp.player_id where pp.user_id = m.user_id and y.club_id = p_club and y.deleted_at is null) then 'parents'
+           else 'joueurs majeurs' end as cat
+    from memberships m join profiles p on p.id = m.user_id
+    where m.club_id = p_club and m.status = 'active' and not is_minor_in(p_club, m.user_id))
+  select jsonb_build_object(
+    'members', jsonb_build_object(
+      'yes', coalesce((select jsonb_agg(user_id) from u where real and volunteer), '[]'),
+      'no', coalesce((select jsonb_agg(user_id) from u where real and not volunteer), '[]'),
+      'cats', coalesce((select jsonb_object_agg(cat, jsonb_build_array(y, n)) from (select cat, count(*) filter (where volunteer) y, count(*) filter (where not volunteer) n from u where real group by cat) z), '{}')),
+    'supporters', case when (select supporters_volunteer from clubs where id = p_club) then jsonb_build_object(
+      'yes', coalesce((select jsonb_agg(user_id) from u where not real and supporter_volunteer), '[]'),
+      'no', coalesce((select jsonb_agg(user_id) from u where not real and supporter_volunteer is false), '[]'),
+      'none', coalesce((select jsonb_agg(user_id) from u where not real and supporter_volunteer is null), '[]')) end) into r;
+  return r;
+end $$;
+revoke execute on function volunteer_stats(uuid) from public, anon;
+grant execute on function volunteer_stats(uuid) to authenticated;
+
+-- N° 72 : appel et convocation réservés aux coachs de l'équipe (principal ou assistant) et au président
+create or replace function can_call_roll(eid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and (is_president(e.club_id) or (e.audience = 'team' and coaches_any(e.team_ids))));
+$$;
+drop policy if exists "appel fait par l'encadrement" on attendance;
+create policy "appel fait par l'encadrement" on attendance for all using (can_call_roll(event_id) and can_manage_player(player_id))
+  with check (can_call_roll(event_id) and can_manage_player(player_id) and sees_event(event_id));
+create or replace function events_convoke_rights() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return new; end if;   -- administrateur de la base
+  if (tg_op = 'INSERT' and cardinality(new.convoked) > 0) or (tg_op = 'UPDATE' and new.convoked is distinct from old.convoked) then
+    if not (is_president(new.club_id) or (new.audience = 'team' and coaches_all(new.team_ids))) then
+      raise exception 'La convocation est faite par le coach de l''équipe (ou le président)';
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists events_convoke_rights on events;
+create trigger events_convoke_rights before insert or update on events for each row execute function events_convoke_rights();
+
+-- ===== alpha_3_5_0.sql =====
+-- =====================================================================
+-- Pocket Club · alpha 3.5.0 (mise à jour relançable sans risque) · nouveau look, appel en tuiles, n° 75 à 81
+-- À installer APRÈS alpha_3_4_2.sql.
+--   n° 75 : « Avez-vous vérifié vos heures ? » (président et trésorerie → coachs), heures figées après « C'est bon »
+--   n° 76 : ordre des blocs de chaque espace, propre à chaque personne (préférences du compte)
+--   n° 77 : score en fin de match, plateau ou tournoi (coach de l'équipe ou président), notification « Résultat »
+--   n° 78 : équipe en entente avec un autre club (demande, invitation, joueurs du club partenaire hors trésorerie)
+--   n° 80 : durée d'un rendez-vous (15 min à 6 h, ou toute la journée)
+--   n° 81 : appel en tuiles : heure d'arrivée d'un retard ; statistique « sans réponse mais venu »
+-- (n° 79, réponse pour toute la famille, ne demande rien à la base : la réponse d'un enfant est déjà commune aux deux parents.)
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- N° 81 · appel : heure d'arrivée d'un retard
+-- ---------------------------------------------------------------------
+alter table attendance add column if not exists arrived_at timestamptz;
+
+-- Statistiques : on garde la réponse au sondage et l'état final ; ajout de « sans réponse mais venu »
+drop function if exists team_stats(uuid, date, date);
+create function team_stats(p_team uuid, p_from date, p_to date)
+returns table(player_id uuid, first_name text, last_name text, sessions int, present int, late int, absent int, answered int, yes_absent int, no_present int, unanswered_present int)
+language sql stable security definer set search_path = public as $$
+  select t.player_id, t.first_name, t.last_name,
+    count(t.status)::int,
+    count(*) filter (where t.status = 'present')::int,
+    count(*) filter (where t.status = 'retard')::int,
+    count(*) filter (where t.status = 'absent')::int,
+    count(*) filter (where t.status is not null and t.answer is not null)::int,
+    count(*) filter (where t.status = 'absent' and t.answer = 'oui')::int,
+    count(*) filter (where t.status in ('present','retard') and t.answer = 'non')::int,
+    count(*) filter (where t.status in ('present','retard') and t.answer is null)::int
+  from team_attendance(p_team, p_from, p_to) t
+  group by t.player_id, t.first_name, t.last_name
+  order by t.last_name, t.first_name;
+$$;
+
+-- ---------------------------------------------------------------------
+-- N° 80 · durée d'un rendez-vous et heure de fin
+-- ---------------------------------------------------------------------
+alter table events add column if not exists duration_min int;
+alter table events add column if not exists all_day boolean not null default false;
+do $$ begin
+  alter table events add constraint events_duration_ok check (duration_min is null or (duration_min between 15 and 360 and duration_min % 15 = 0));
+exception when duplicate_object then null; end $$;
+-- Reprise sans perte : les rendez-vous déjà créés reçoivent la durée par défaut de leur type
+update events set duration_min = case type when 'Entraînement' then 90 when 'Match' then 120 when 'Plateau' then 180 when 'Tournoi' then 360 else 120 end
+  where duration_min is null and not all_day;
+
+create or replace function push_ev_line(e events) returns text language sql stable set search_path = public as $$
+  select e.title
+         || case when e.opponents <> '' and position(lower(e.opponents) in lower(e.title)) = 0 then ' contre ' || e.opponents else '' end
+         || ' · ' || push_when(e.starts_at)
+         || case when e.all_day then ' (toute la journée)' when e.duration_min is not null then ' → ' || to_char((e.starts_at + make_interval(mins => e.duration_min)) at time zone 'Europe/Paris', 'HH24"h"MI') else '' end
+         || case when e.place <> '' then ' · ' || e.place else '' end
+         || ' (' || coalesce((select name from clubs where id = e.club_id), '') || ')';
+$$;
+
+-- Création : la durée (une série garde la même durée pour toutes ses séances)
+create or replace function create_events(p jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare c uuid := (p->>'club_id')::uuid; aud text := coalesce(p->>'audience', 'club');
+  ts uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'team_ids', '[]'))::uuid), '{}');
+  ppl uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'people', '[]'))::uuid), '{}');
+  conv uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'convoked', '[]'))::uuid), '{}');
+  starts timestamptz[] := array(select jsonb_array_elements_text(coalesce(p->'starts', '[]'))::timestamptz);
+  sid uuid; n int;
+begin
+  if auth.uid() is null or not is_member(c) then raise exception 'Connexion requise'; end if;
+  if aud <> 'team' then ts := '{}'; end if;
+  if aud <> 'people' then ppl := '{}'; end if;
+  if not can_create_event(c, aud, ts, ppl) then raise exception 'Tu ne peux pas créer ce rendez-vous pour ces destinataires'; end if;
+  if cardinality(starts) = 0 then raise exception 'Aucune date'; end if;
+  if cardinality(starts) > 60 then raise exception 'Trop de séances (60 au plus)'; end if;
+  if p->'series' is not null and jsonb_typeof(p->'series') = 'object' then
+    insert into event_series(club_id, title, weekday, start_time, until, skip_holidays, created_by)
+      values (c, p->>'title', (p->'series'->>'weekday')::int, p->'series'->>'start_time', (p->'series'->>'until')::date, coalesce((p->'series'->>'skip_holidays')::boolean, true), auth.uid())
+      returning id into sid;
+  end if;
+  insert into events(club_id, audience, team_ids, people, type, title, starts_at, place, opponents, series_id, created_by, convoked, at_home, duration_min, all_day)
+    select c, aud, ts, ppl, coalesce(p->>'type', 'Événement'), trim(p->>'title'), s, coalesce(p->>'place', ''), coalesce(p->>'opponents', ''), sid, auth.uid(),
+           conv, coalesce((p->>'at_home')::boolean, true),
+           case when coalesce((p->>'all_day')::boolean, false) then null else nullif(p->>'duration_min', '')::int end, coalesce((p->>'all_day')::boolean, false)
+    from unnest(starts) s;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- Une nouvelle durée refait apparaître un rendez-vous masqué, comme un changement d'heure
+create or replace function events_touch() returns trigger language plpgsql as $$
+begin
+  if new.starts_at is distinct from old.starts_at or new.place is distinct from old.place or new.duration_min is distinct from old.duration_min
+     or new.all_day is distinct from old.all_day or new.cancelled is distinct from old.cancelled or new.title is distinct from old.title then new.updated_at := now(); end if;
+  return new;
+end $$;
+
+-- Un changement de durée prévient comme un changement d'heure
+create or replace function push_on_event_update() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; k text; t text; b text;
+begin
+  if new.starts_at < now() - interval '1 hour' then return null; end if;
+  if new.cancelled and not old.cancelled then
+    k := 'evcancel:' || coalesce(new.series_id::text || ':' || to_char(now(), 'YYYYMMDDHH24MI'), new.id::text);
+    t := 'Annulé'; b := push_ev_line(new);
+  elsif not new.cancelled and old.cancelled then
+    k := 'evback:' || new.id || ':' || to_char(now(), 'YYYYMMDDHH24MI');
+    t := 'De nouveau prévu'; b := push_ev_line(new);
+  elsif not new.cancelled and (new.starts_at is distinct from old.starts_at or new.place is distinct from old.place
+        or new.duration_min is distinct from old.duration_min or new.all_day is distinct from old.all_day) then
+    k := 'evmod:' || coalesce(new.series_id::text, new.id::text) || ':' || to_char(now(), 'YYYYMMDDHH24MI');
+    t := case when new.place is distinct from old.place and new.starts_at is not distinct from old.starts_at
+                   and new.duration_min is not distinct from old.duration_min and new.all_day is not distinct from old.all_day
+              then 'Nouveau lieu' else 'Nouvel horaire' end;
+    b := push_ev_line(new);
+  else return null; end if;
+  if new.series_id is not null and exists(select 1 from push_queue where dedupe_key = k) then return null; end if;
+  for u in select * from push_event_targets(new.id, auth.uid()) loop
+    perform push_enqueue(u, t, b, 'ev:' || new.id, k);
+  end loop;
+  return null;
+end $$;
+drop trigger if exists push_event_update on events;
+create trigger push_event_update after update of cancelled, starts_at, place, duration_min, all_day on events for each row execute function push_on_event_update();
+
+-- ---------------------------------------------------------------------
+-- N° 77 · score en fin de match, plateau ou tournoi
+-- ---------------------------------------------------------------------
+alter table events add column if not exists scores jsonb;
+alter table events add column if not exists score_by uuid references auth.users(id) on delete set null;
+alter table events add column if not exists score_at timestamptz;
+alter table events add column if not exists score_edited boolean not null default false;
+
+-- Le score ne s'écrit que par set_score (coach de l'équipe ou président), jamais par une modification directe
+create or replace function events_score_guard() returns trigger language plpgsql as $$
+begin
+  if auth.uid() is null or coalesce(current_setting('pc.score', true), '') = 'on' then return new; end if;
+  if tg_op = 'INSERT' then new.scores := null; new.score_by := null; new.score_at := null; new.score_edited := false; return new; end if;
+  if new.scores is distinct from old.scores or new.score_by is distinct from old.score_by or new.score_at is distinct from old.score_at or new.score_edited is distinct from old.score_edited then
+    raise exception 'Le score se met avec « Mettre le score » (coach de l''équipe ou président)';
+  end if;
+  return new;
+end $$;
+drop trigger if exists events_score_guard on events;
+create trigger events_score_guard before insert or update on events for each row execute function events_score_guard();
+
+-- Personnes liées à l'équipe : joueurs, parents des joueurs, coachs de l'équipe, supporteurs qui la suivent
+create or replace function team_people(ts uuid[]) returns setof uuid language sql stable security definer set search_path = public as $$
+  select distinct u from (
+    select m.user_id u from memberships m where m.status = 'active' and m.team_id = any(ts) and m.role in ('coach','joueur','parent')
+    union select f.user_id from team_follows f where f.team_id = any(ts)
+    union select p.user_id from players p where p.deleted_at is null and p.user_id is not null
+      and (p.team_id = any(ts) or exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = any(ts)))
+    union select pp.user_id from player_parents pp join players p on p.id = pp.player_id where p.deleted_at is null
+      and (p.team_id = any(ts) or exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = any(ts)))
+  ) z where u is not null;
+$$;
+revoke execute on function team_people(uuid[]) from public, anon, authenticated;
+
+-- p_lines : [{ "opponent": "Lardy", "us": 54, "them": 48, "forfeit": false }, …] ; tableau vide = retirer le score
+create or replace function set_score(p_event uuid, p_lines jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare e events; l jsonb; clean jsonb := '[]'::jsonb; u uuid; w int := 0; lo int := 0; d int := 0; body text;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not sees_event(p_event) then raise exception 'Rendez-vous introuvable'; end if;
+  if not can_call_roll(p_event) then raise exception 'Le score est mis par le coach de l''équipe (ou le président)'; end if;
+  if e.type not in ('Match','Plateau','Tournoi') then raise exception 'Score seulement pour un match, un plateau ou un tournoi'; end if;
+  if e.cancelled then raise exception 'Ce rendez-vous est annulé'; end if;
+  if e.starts_at > now() then raise exception 'Le score se met une fois la rencontre commencée'; end if;
+  if jsonb_typeof(coalesce(p_lines, '[]'::jsonb)) <> 'array' or jsonb_array_length(coalesce(p_lines, '[]'::jsonb)) > 20 then raise exception 'Vingt rencontres au plus'; end if;
+  for l in select * from jsonb_array_elements(coalesce(p_lines, '[]'::jsonb)) loop
+    if coalesce((l->>'us')::int, -1) not between 0 and 999 or coalesce((l->>'them')::int, -1) not between 0 and 999 then raise exception 'Score invalide (0 à 999)'; end if;
+    if length(trim(coalesce(l->>'opponent', ''))) > 80 then raise exception 'Nom de l''adversaire trop long'; end if;
+    clean := clean || jsonb_build_object('opponent', trim(coalesce(l->>'opponent', '')), 'us', (l->>'us')::int, 'them', (l->>'them')::int, 'forfeit', coalesce((l->>'forfeit')::boolean, false));
+    if (l->>'us')::int > (l->>'them')::int then w := w + 1; elsif (l->>'us')::int < (l->>'them')::int then lo := lo + 1; else d := d + 1; end if;
+  end loop;
+  perform set_config('pc.score', 'on', true);
+  update events set scores = case when jsonb_array_length(clean) = 0 then null else clean end,
+    score_by = case when jsonb_array_length(clean) = 0 then null else auth.uid() end,
+    score_at = case when jsonb_array_length(clean) = 0 then null else now() end,
+    score_edited = (e.scores is not null and jsonb_array_length(clean) > 0)
+    where id = p_event;
+  perform set_config('pc.score', 'off', true);
+  if e.scores is not null then perform log_action(e.club_id, null, null, 'Score modifié', jsonb_build_object('rendez_vous', e.title, 'avant', e.scores, 'après', clean)); end if;
+  -- Une seule notification « Résultat » par rendez-vous (pas à la correction)
+  if jsonb_array_length(clean) > 0 and e.scores is null then
+    body := case when jsonb_array_length(clean) = 1
+      then (case when w = 1 then 'Victoire ' when lo = 1 then 'Défaite ' else 'Nul ' end) || (clean->0->>'us') || ' – ' || (clean->0->>'them')
+           || case when clean->0->>'opponent' <> '' then ' contre ' || (clean->0->>'opponent') else '' end
+      else e.type || ' · ' || w || ' victoire' || case when w > 1 then 's' else '' end || ', ' || lo || ' défaite' || case when lo > 1 then 's' else '' end
+           || case when d > 0 then ', ' || d || ' nul' || case when d > 1 then 's' else '' end else '' end end;
+    for u in select * from team_people(e.team_ids) where team_people is distinct from auth.uid() loop
+      perform push_enqueue(u, 'Résultat · ' || coalesce((select string_agg(name, ', ') from teams where id = any(e.team_ids)), e.title), body, 'score:' || e.id, 'score:' || e.id);
+    end loop;
+  end if;
+  return jsonb_array_length(clean);
+end $$;
+revoke execute on function set_score(uuid, jsonb) from public, anon;
+
+-- ---------------------------------------------------------------------
+-- N° 78 · équipe en entente avec un autre club
+-- ---------------------------------------------------------------------
+alter table teams add column if not exists partner_club_id uuid references clubs(id) on delete set null;
+alter table teams add column if not exists partner_name text not null default '';
+alter table teams add column if not exists partner_contact jsonb;
+alter table teams add column if not exists partner_state text not null default 'aucune';
+do $$ begin
+  alter table teams add constraint teams_partner_state check (partner_state in ('aucune','demandee','acceptee','refusee','invitee'));
+exception when duplicate_object then null; end $$;
+alter table players add column if not exists from_partner boolean not null default false;
+
+-- L'entente ne change que par set_team_partner / answer_partner
+create or replace function teams_partner_guard() returns trigger language plpgsql as $$
+begin
+  if auth.uid() is null or coalesce(current_setting('pc.partner', true), '') = 'on' then return new; end if;
+  if tg_op = 'INSERT' then new.partner_club_id := null; new.partner_name := ''; new.partner_contact := null; new.partner_state := 'aucune'; return new; end if;
+  if new.partner_club_id is distinct from old.partner_club_id or new.partner_name is distinct from old.partner_name
+     or new.partner_contact is distinct from old.partner_contact or new.partner_state is distinct from old.partner_state then
+    raise exception 'L''entente se règle avec « Équipe en entente »';
+  end if;
+  return new;
+end $$;
+drop trigger if exists teams_partner_guard on teams;
+create trigger teams_partner_guard before insert or update on teams for each row execute function teams_partner_guard();
+
+-- Un joueur « du club partenaire » seulement dans une équipe en entente
+create or replace function players_partner_guard() returns trigger language plpgsql as $$
+begin
+  if new.from_partner and not exists(select 1 from teams t where t.id = new.team_id and t.partner_state <> 'aucune') then new.from_partner := false; end if;
+  return new;
+end $$;
+drop trigger if exists players_partner_guard on players;
+create trigger players_partner_guard before insert or update of from_partner, team_id on players for each row execute function players_partner_guard();
+
+-- Qui règle une entente : le coach de l'équipe, la rubrique Technique, le président
+create or replace function set_team_partner(p_team uuid, p_club uuid, p_name text, p_contact jsonb) returns text
+language plpgsql security definer set search_path = public as $$
+declare t teams; st text; u uuid;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null then raise exception 'Équipe introuvable'; end if;
+  if not (coaches_team(p_team) or has_area(t.club_id, 'technique') or is_president(t.club_id)) then raise exception 'Réservé au coach de l''équipe, à la Technique et au président'; end if;
+  if p_club = t.club_id then raise exception 'Choisis un autre club que le tien'; end if;
+  if p_club is not null then
+    if not exists(select 1 from clubs where id = p_club) then raise exception 'Club introuvable'; end if;
+    st := 'demandee';
+  elsif length(trim(coalesce(p_name, ''))) > 0 then
+    if length(trim(p_name)) > 80 then raise exception 'Nom du club trop long'; end if;
+    st := 'invitee';
+  else st := 'aucune'; end if;
+  perform set_config('pc.partner', 'on', true);
+  update teams set partner_club_id = p_club,
+    partner_name = case when st = 'aucune' then '' when p_club is not null then coalesce((select name from clubs where id = p_club), '') else trim(p_name) end,
+    partner_contact = case when st = 'invitee' then jsonb_build_object('name', left(coalesce(p_contact->>'name', ''), 80), 'email', left(coalesce(p_contact->>'email', ''), 120), 'phone', left(coalesce(p_contact->>'phone', ''), 30)) else null end,
+    partner_state = st
+    where id = p_team;
+  perform set_config('pc.partner', 'off', true);
+  if st = 'aucune' then update players set from_partner = false where team_id = p_team and from_partner; end if;
+  perform log_action(t.club_id, null, null, case st when 'aucune' then 'Entente retirée' when 'demandee' then 'Entente demandée' else 'Entente : club invité' end,
+    jsonb_build_object('équipe', t.name, 'club', case when p_club is not null then (select name from clubs where id = p_club) else trim(coalesce(p_name, '')) end));
+  if st = 'demandee' then
+    for u in select distinct m.user_id from memberships m where m.club_id = p_club and m.status = 'active' and m.role in ('president','bureau') and 'technique' = any(areas_of(p_club, m.user_id)) loop
+      perform push_enqueue(u, 'Entente à valider', (select name from clubs where id = t.club_id) || ' propose l''équipe ' || t.name || ' en entente avec votre club', 'entente:' || t.id, 'entente:' || t.id || ':' || to_char(now(), 'YYYYMMDDHH24MI'));
+    end loop;
+  end if;
+  return st;
+end $$;
+revoke execute on function set_team_partner(uuid, uuid, text, jsonb) from public, anon;
+
+-- Réponse du club partenaire (président ou rubrique Technique)
+create or replace function answer_partner(p_team uuid, p_accept boolean) returns text
+language plpgsql security definer set search_path = public as $$
+declare t teams; u uuid;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null or t.partner_club_id is null or t.partner_state not in ('demandee','acceptee','refusee') then raise exception 'Aucune demande d''entente'; end if;
+  if not (is_president(t.partner_club_id) or has_area(t.partner_club_id, 'technique')) then raise exception 'Réservé au président et à la Technique du club partenaire'; end if;
+  perform set_config('pc.partner', 'on', true);
+  update teams set partner_state = case when p_accept then 'acceptee' else 'refusee' end where id = p_team;
+  perform set_config('pc.partner', 'off', true);
+  perform log_action(t.partner_club_id, null, null, case when p_accept then 'Entente acceptée' else 'Entente refusée' end, jsonb_build_object('équipe', t.name, 'club porteur', (select name from clubs where id = t.club_id)));
+  for u in select distinct m.user_id from memberships m where m.status = 'active' and ((m.club_id = t.club_id and m.role = 'president') or (m.team_id = t.id and m.role = 'coach')) loop
+    perform push_enqueue(u, case when p_accept then 'Entente acceptée' else 'Entente refusée' end, coalesce((select name from clubs where id = t.partner_club_id), '') || ' · ' || t.name, 'entente:' || t.id, 'entente-r:' || t.id || ':' || to_char(now(), 'YYYYMMDDHH24MI'));
+  end loop;
+  return case when p_accept then 'acceptee' else 'refusee' end;
+end $$;
+revoke execute on function answer_partner(uuid, boolean) from public, anon;
+
+-- Ce que voit le club partenaire : les équipes en entente avec lui (club porteur, coachs, ses joueurs en « Prénom N. »)
+create or replace function partner_teams(p_club uuid) returns table(team_id uuid, team_name text, host_club text, state text, coaches text, my_players text[], players_count int)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not (is_president(p_club) or has_area(p_club, 'technique')) then return; end if;
+  return query
+    select t.id, t.name, c.name, t.partner_state,
+      coalesce((select string_agg(coalesce(nullif(trim(pr.first_name || ' ' || pr.last_name), ''), 'Coach'), ', ') from memberships m join profiles pr on pr.id = m.user_id where m.team_id = t.id and m.role = 'coach' and m.status = 'active'), ''),
+      coalesce((select array_agg(p.first_name || ' ' || left(p.last_name, 1) || '.' order by p.last_name) from players p where p.team_id = t.id and p.from_partner and p.deleted_at is null), '{}'),
+      (select count(*)::int from players p where p.team_id = t.id and p.deleted_at is null)
+    from teams t join clubs c on c.id = t.club_id
+    where t.partner_club_id = p_club and t.deleted_at is null and t.partner_state in ('demandee','acceptee','refusee')
+    order by t.name;
+end $$;
+revoke execute on function partner_teams(uuid) from public, anon;
+
+-- Les joueurs du club partenaire n'entrent jamais dans notre trésorerie
+create or replace function remind_fee(p_player uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare x players; a player_admin; who uuid[];
+begin
+  select * into x from players where id = p_player and deleted_at is null;
+  if x.id is null or not has_area(x.club_id, 'tresorerie') then raise exception 'Réservé à la trésorerie'; end if;
+  if x.from_partner then raise exception 'Joueur du club partenaire : sa cotisation se règle dans son club'; end if;
+  select * into a from player_admin where player_id = p_player;
+  if a.fee_amount is null or a.fee_paid >= a.fee_amount then raise exception 'Rien à régler pour ce joueur'; end if;
+  if exists(select 1 from announcements n where n.kind = 'cotisation' and n.club_id = x.club_id and n.body like '%' || x.id::text || '%' and n.created_at > now() - interval '7 days') then
+    raise exception 'Rappel déjà envoyé cette semaine';
+  end if;
+  select coalesce(array_agg(distinct u), '{}') into who from (select user_id u from player_parents where player_id = p_player union select x.user_id) z where u is not null;
+  if cardinality(who) = 0 then raise exception 'Aucun compte relié à cette fiche : contacte la famille directement'; end if;
+  perform set_config('pc.announce', 'on', true);
+  insert into announcements(club_id, audience, people, kind, title, body)
+    values (x.club_id, 'people', who, 'cotisation', 'Cotisation de ' || x.first_name || ' : reste ' || trim(to_char(a.fee_amount - a.fee_paid, 'FM999990D00')) || ' €',
+            'Merci de régler le reste de la cotisation auprès du trésorier du club. Réf. ' || x.id::text);
+  perform set_config('pc.announce', 'off', true);
+  return cardinality(who);
+end $$;
+
+-- Décompte facturé par Pocket Club : joueurs de notre club seulement
+create or replace function billable_players(p_club uuid) returns int language sql stable security definer set search_path = public as $$
+  select case when is_board(p_club) then (select count(*)::int from players where club_id = p_club and deleted_at is null and not from_partner) else null end;
+$$;
+revoke execute on function billable_players(uuid) from public, anon;
+
+-- ---------------------------------------------------------------------
+-- N° 75 · « Avez-vous vérifié vos heures ? »
+-- ---------------------------------------------------------------------
+create table if not exists hours_checks (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  month date not null check (extract(day from month) = 1),
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  done_notified boolean not null default false,
+  unique (club_id, month)
+);
+create table if not exists hours_confirms (
+  check_id uuid not null references hours_checks(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  minutes int not null default 0,
+  confirmed_at timestamptz,
+  relanced_at timestamptz,
+  primary key (check_id, user_id)
+);
+alter table hours_checks enable row level security;
+alter table hours_confirms enable row level security;
+create or replace function hours_manager(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select is_president(c) or has_area(c, 'tresorerie');
+$$;
+create or replace function hours_asked_me(k uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from hours_confirms where check_id = k and user_id = auth.uid());
+$$;
+create or replace function hours_check_manager(k uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from hours_checks where id = k and hours_manager(club_id));
+$$;
+drop policy if exists "demandes d'heures lues" on hours_checks;
+create policy "demandes d'heures lues" on hours_checks for select
+  using (hours_manager(club_id) or hours_asked_me(id));
+drop policy if exists "confirmations lues" on hours_confirms;
+create policy "confirmations lues" on hours_confirms for select
+  using (user_id = auth.uid() or hours_check_manager(check_id));
+
+create or replace function month_minutes(c uuid, u uuid, m date) returns int language sql stable security definer set search_path = public as $$
+  select coalesce(sum(minutes), 0)::int from coach_hours where club_id = c and user_id = u and day >= m and day < (m + interval '1 month');
+$$;
+
+-- p_users vide ou null = tous les coachs du club
+create or replace function ask_hours_check(p_club uuid, p_month date, p_users uuid[] default null) returns int
+language plpgsql security definer set search_path = public as $$
+declare m date := date_trunc('month', p_month)::date; k uuid; u uuid; n int := 0; lbl text;
+begin
+  if not hours_manager(p_club) then raise exception 'Réservé au président et à la trésorerie'; end if;
+  if m > date_trunc('month', current_date)::date then raise exception 'Choisis un mois passé ou en cours'; end if;
+  if exists(select 1 from hours_checks where club_id = p_club and month = m) then raise exception 'La vérification de ce mois est déjà demandée'; end if;
+  insert into hours_checks(club_id, month, created_by) values (p_club, m, auth.uid()) returning id into k;
+  lbl := (array['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'])[extract(month from m)::int];
+  for u in select distinct ms.user_id from memberships ms where ms.club_id = p_club and ms.status = 'active' and ms.role = 'coach'
+           and (p_users is null or cardinality(p_users) = 0 or ms.user_id = any(p_users)) loop
+    insert into hours_confirms(check_id, user_id, minutes) values (k, u, month_minutes(p_club, u, m));
+    perform push_enqueue(u, 'Heures à vérifier', 'As-tu vérifié tes heures de ' || lbl || ' ? ' || replace(trim(to_char(month_minutes(p_club, u, m) / 60.0, 'FM9990.0')), '.', ',') || ' h déclarées', 'hours:' || k, 'hours:' || k);
+    n := n + 1;
+  end loop;
+  if n = 0 then raise exception 'Aucun coach à qui demander'; end if;
+  perform log_action(p_club, null, null, 'Vérification des heures demandée', jsonb_build_object('mois', lbl || ' ' || extract(year from m), 'coachs', n));
+  return n;
+end $$;
+revoke execute on function ask_hours_check(uuid, date, uuid[]) from public, anon;
+
+create or replace function confirm_hours(p_check uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare k hours_checks; left_n int; u uuid; lbl text;
+begin
+  select * into k from hours_checks where id = p_check;
+  if k.id is null or not exists(select 1 from hours_confirms where check_id = p_check and user_id = auth.uid()) then raise exception 'Aucune vérification demandée'; end if;
+  update hours_confirms set confirmed_at = coalesce(confirmed_at, now()), minutes = month_minutes(k.club_id, auth.uid(), k.month) where check_id = p_check and user_id = auth.uid();
+  select count(*) into left_n from hours_confirms where check_id = p_check and confirmed_at is null;
+  if left_n = 0 and not k.done_notified then
+    update hours_checks set done_notified = true where id = p_check;
+    lbl := (array['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'])[extract(month from k.month)::int];
+    for u in select distinct m.user_id from memberships m where m.club_id = k.club_id and m.status = 'active' and m.role in ('president','bureau') and (m.role = 'president' or 'tresorerie' = any(areas_of(k.club_id, m.user_id))) loop
+      perform push_enqueue(u, 'Heures vérifiées', 'Tous les coachs ont vérifié leurs heures de ' || lbl || ' : vous pouvez faire les comptes', 'hours-done:' || k.id, 'hours-done:' || k.id);
+    end loop;
+  end if;
+  return left_n;
+end $$;
+revoke execute on function confirm_hours(uuid) from public, anon;
+
+-- Relance d'un coach qui n'a pas confirmé : une fois par jour au plus
+create or replace function relance_hours(p_check uuid, p_user uuid default null) returns int
+language plpgsql security definer set search_path = public as $$
+declare k hours_checks; u uuid; n int := 0;
+begin
+  select * into k from hours_checks where id = p_check;
+  if k.id is null or not hours_manager(k.club_id) then raise exception 'Réservé au président et à la trésorerie'; end if;
+  for u in select user_id from hours_confirms where check_id = p_check and confirmed_at is null and (p_user is null or user_id = p_user)
+           and (relanced_at is null or relanced_at < now() - interval '1 day') loop
+    update hours_confirms set relanced_at = now() where check_id = p_check and user_id = u;
+    perform push_enqueue(u, 'Rappel : heures à vérifier', 'Le club attend ta confirmation de tes heures', 'hours:' || k.id, 'hours-r:' || k.id || ':' || u || ':' || to_char(now(), 'YYYYMMDD'));
+    n := n + 1;
+  end loop;
+  if n = 0 and p_user is not null then raise exception 'Relance déjà faite aujourd''hui'; end if;
+  return n;
+end $$;
+revoke execute on function relance_hours(uuid, uuid) from public, anon;
+
+-- Après « C'est bon », les heures du mois sont figées pour le coach (correction par le trésorier ou le président)
+create or replace function hours_frozen(c uuid, u uuid, d date) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from hours_confirms h join hours_checks k on k.id = h.check_id
+                where k.club_id = c and h.user_id = u and k.month = date_trunc('month', d)::date and h.confirmed_at is not null);
+$$;
+create or replace function coach_hours_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op in ('UPDATE','DELETE') and month_locked(old.club_id, old.user_id, old.day) then raise exception 'Ce mois est envoyé au bureau : il ne se modifie plus'; end if;
+  if tg_op in ('UPDATE','DELETE') and auth.uid() = old.user_id and hours_frozen(old.club_id, old.user_id, old.day) then
+    raise exception 'Tu as confirmé ces heures : demande une correction au trésorier ou au président';
+  end if;
+  if tg_op = 'DELETE' then return old; end if;
+  if tg_op = 'UPDATE' then new.user_id := old.user_id; new.club_id := old.club_id; end if;
+  if month_locked(new.club_id, new.user_id, new.day) then raise exception 'Ce mois est envoyé au bureau : il ne se modifie plus'; end if;
+  if auth.uid() = new.user_id and hours_frozen(new.club_id, new.user_id, new.day) then
+    raise exception 'Tu as confirmé ces heures : demande une correction au trésorier ou au président';
+  end if;
+  if new.team_id is not null and not exists(select 1 from teams where id = new.team_id and club_id = new.club_id) then raise exception 'Équipe d''un autre club'; end if;
+  if auth.uid() is not null and new.team_id is not null and not coaches_team(new.team_id) then raise exception 'Tu n''encadres pas cette équipe'; end if;
+  if new.day > current_date + 1 then raise exception 'On note les heures une fois faites'; end if;
+  return new;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- N° 76 · préférences du compte (ordre des blocs de chaque espace), retrouvées sur tous les appareils
+-- ---------------------------------------------------------------------
+create table if not exists user_prefs (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  key text not null check (length(key) between 1 and 80),
+  value jsonb not null default '[]'::jsonb check (length(value::text) <= 4000),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, key)
+);
+alter table user_prefs enable row level security;
+drop policy if exists "préférences personnelles" on user_prefs;
+create policy "préférences personnelles" on user_prefs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ===== alpha_3_6_0.sql =====
+-- =====================================================================
+-- Pocket Club · alpha 3.6.0 (mise à jour relançable sans risque) · n° 82 à 92
+-- À installer APRÈS alpha_3_5_0.sql.
+--   n° 82 : taux horaire de chaque coach (président et trésorerie seulement), historique des changements
+--   n° 83 : pièces jointes dans les messages des groupes (stockage privé, lisible des seuls membres du groupe)
+--   n° 84 : transférer un message (mention « Transféré par … »)
+--   n° 86 : exercices : tags, demande de schéma à l'administrateur Pocket Club (Gaël), qui met à jour l'exercice
+--   n° 89 : rendez-vous « Tout le club » avec ou sans les supporteurs (visibilité ET notifications)
+-- (n° 85, 87, 88, 90, 91 et 92 ne demandent rien à la base : les cartes refusées vont dans user_prefs, déjà en place.)
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- N° 89 · « Tout le club » avec ou sans les supporteurs
+-- Les rendez-vous déjà publiés restent « supporteurs compris » (rien ne change pour eux) ; les nouveaux sont
+-- « membres seulement » par défaut, le créateur ouvre aux supporteurs volontairement (l'écran le propose pour les matchs).
+-- ---------------------------------------------------------------------
+do $$ begin
+  if not exists(select 1 from information_schema.columns where table_name = 'events' and column_name = 'with_supporters') then
+    alter table events add column with_supporters boolean not null default true;   -- reprise : tout l'existant « supporteurs compris »
+    alter table events alter column with_supporters set default false;               -- puis défaut prudent pour la suite
+  end if;
+end $$;
+
+create or replace function sees_event(eid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and is_member(e.club_id) and (
+    e.created_by = auth.uid() or is_board(e.club_id)
+    or (e.audience = 'club' and (e.with_supporters or has_real_role(e.club_id, auth.uid())))
+    or (e.audience = 'team' and exists(select 1 from unnest(e.team_ids) t where in_team(t)))
+    or (e.audience = 'team' and e.type in ('Match','Plateau','Tournoi') and follows_any(e.team_ids))
+    or (e.audience in ('coaches','board_coaches') and is_coach_in(e.club_id))
+    or (e.audience = 'people' and auth.uid() = any(e.people))
+    or exists(select 1 from announcements a where a.kind = 'missions' and a.event_id = e.id and a.deleted_at is null and auth.uid() = any(a.people))));
+$$;
+
+-- Bénévolat des supporteurs : seulement sur les rendez-vous qu'ils voient
+create or replace function supporter_can_help(eid uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e join clubs c on c.id = e.club_id where e.id = eid and c.supporters_volunteer
+    and exists(select 1 from memberships m where m.club_id = e.club_id and m.user_id = u and m.status = 'active')
+    and not has_real_role(e.club_id, u) and not is_minor_in(e.club_id, u)
+    and ((e.audience = 'club' and e.with_supporters) or (e.type in ('Match','Plateau','Tournoi') and exists(select 1 from team_follows f where f.user_id = u and f.team_id = any(e.team_ids)))));
+$$;
+revoke execute on function supporter_can_help(uuid, uuid) from public, anon, authenticated;
+
+create or replace function create_events(p jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare c uuid := (p->>'club_id')::uuid; aud text := coalesce(p->>'audience', 'club');
+  ts uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'team_ids', '[]'))::uuid), '{}');
+  ppl uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'people', '[]'))::uuid), '{}');
+  conv uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'convoked', '[]'))::uuid), '{}');
+  starts timestamptz[] := array(select jsonb_array_elements_text(coalesce(p->'starts', '[]'))::timestamptz);
+  sid uuid; n int;
+begin
+  if auth.uid() is null or not is_member(c) then raise exception 'Connexion requise'; end if;
+  if aud <> 'team' then ts := '{}'; end if;
+  if aud <> 'people' then ppl := '{}'; end if;
+  if not can_create_event(c, aud, ts, ppl) then raise exception 'Tu ne peux pas créer ce rendez-vous pour ces destinataires'; end if;
+  if cardinality(starts) = 0 then raise exception 'Aucune date'; end if;
+  if cardinality(starts) > 60 then raise exception 'Trop de séances (60 au plus)'; end if;
+  if p->'series' is not null and jsonb_typeof(p->'series') = 'object' then
+    insert into event_series(club_id, title, weekday, start_time, until, skip_holidays, created_by)
+      values (c, p->>'title', (p->'series'->>'weekday')::int, p->'series'->>'start_time', (p->'series'->>'until')::date, coalesce((p->'series'->>'skip_holidays')::boolean, true), auth.uid())
+      returning id into sid;
+  end if;
+  insert into events(club_id, audience, team_ids, people, type, title, starts_at, place, opponents, series_id, created_by, convoked, at_home, duration_min, all_day, with_supporters)
+    select c, aud, ts, ppl, coalesce(p->>'type', 'Événement'), trim(p->>'title'), s, coalesce(p->>'place', ''), coalesce(p->>'opponents', ''), sid, auth.uid(),
+           conv, coalesce((p->>'at_home')::boolean, true),
+           case when coalesce((p->>'all_day')::boolean, false) then null else nullif(p->>'duration_min', '')::int end, coalesce((p->>'all_day')::boolean, false),
+           case when aud = 'club' then coalesce((p->>'with_supporters')::boolean, false) else true end
+    from unnest(starts) s;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- N° 82 · taux horaire de chaque coach : lu et modifié par le président et la trésorerie seulement
+-- ---------------------------------------------------------------------
+create table if not exists coach_rates (
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  rate numeric(7,2) not null check (rate >= 0 and rate <= 500),
+  updated_by uuid references auth.users(id) on delete set null,
+  updated_at timestamptz not null default now(),
+  primary key (club_id, user_id)
+);
+create table if not exists coach_rate_log (
+  id bigint generated always as identity primary key,
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  old_rate numeric(7,2), new_rate numeric(7,2),
+  changed_by uuid references auth.users(id) on delete set null,
+  changed_at timestamptz not null default now()
+);
+alter table coach_rates enable row level security;
+alter table coach_rate_log enable row level security;
+drop policy if exists "taux lus par président et trésorerie" on coach_rates;
+create policy "taux lus par président et trésorerie" on coach_rates for select using (hours_manager(club_id));
+drop policy if exists "historique des taux lu par président et trésorerie" on coach_rate_log;
+create policy "historique des taux lu par président et trésorerie" on coach_rate_log for select using (hours_manager(club_id));
+
+create or replace function set_coach_rate(p_club uuid, p_user uuid, p_rate numeric) returns void
+language plpgsql security definer set search_path = public as $$
+declare old numeric;
+begin
+  if auth.uid() is null or not hours_manager(p_club) then raise exception 'Réservé au président et à la trésorerie'; end if;
+  if not exists(select 1 from memberships m where m.club_id = p_club and m.user_id = p_user and m.status = 'active' and m.role = 'coach') then raise exception 'Ce membre n''est pas coach du club'; end if;
+  select rate into old from coach_rates where club_id = p_club and user_id = p_user;
+  if p_rate is null then
+    delete from coach_rates where club_id = p_club and user_id = p_user;
+  else
+    if p_rate < 0 or p_rate > 500 then raise exception 'Taux entre 0 et 500 € de l''heure'; end if;
+    insert into coach_rates(club_id, user_id, rate, updated_by) values (p_club, p_user, round(p_rate, 2), auth.uid())
+      on conflict (club_id, user_id) do update set rate = excluded.rate, updated_by = auth.uid(), updated_at = now();
+  end if;
+  if old is distinct from p_rate then
+    insert into coach_rate_log(club_id, user_id, old_rate, new_rate, changed_by) values (p_club, p_user, old, round(p_rate, 2), auth.uid());
+  end if;
+end $$;
+grant execute on function set_coach_rate(uuid, uuid, numeric) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- N° 83 · pièces jointes dans les messages des groupes ; n° 84 · transfert
+-- Fichiers rangés dans le dossier du groupe (<id du groupe>/<nom>), lisibles des seuls membres du groupe.
+-- PDF, images, documents bureautiques ; 10 Mo par fichier, 5 fichiers par message.
+-- ---------------------------------------------------------------------
+alter table messages add column if not exists files jsonb not null default '[]'::jsonb;
+alter table messages add column if not exists forwarded_by text not null default '';
+do $$ begin
+  if not exists(select 1 from pg_constraint where conname = 'messages_files_check') then
+    alter table messages add constraint messages_files_check check (jsonb_typeof(files) = 'array' and jsonb_array_length(files) <= 5 and length(forwarded_by) <= 120);
+  end if;
+end $$;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('message-files', 'message-files', false, 10485760, array['application/pdf','image/jpeg','image/png','image/webp','image/heic','image/gif',
+  'application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','text/plain'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+create or replace function group_of_path(p text) returns uuid language sql immutable as $$
+  select case when split_part(p, '/', 1) ~ '^[0-9a-f-]{36}$' then split_part(p, '/', 1)::uuid end;
+$$;
+drop policy if exists "pièce jointe lisible par le groupe" on storage.objects;
+create policy "pièce jointe lisible par le groupe" on storage.objects for select to authenticated
+  using (bucket_id = 'message-files' and is_group_member(group_of_path(name)));
+drop policy if exists "pièce jointe ajoutée par un membre du groupe" on storage.objects;
+create policy "pièce jointe ajoutée par un membre du groupe" on storage.objects for insert to authenticated
+  with check (bucket_id = 'message-files' and is_group_member(group_of_path(name)));
+drop policy if exists "pièce jointe retirée par son auteur" on storage.objects;
+create policy "pièce jointe retirée par son auteur" on storage.objects for delete to authenticated
+  using (bucket_id = 'message-files' and owner = auth.uid());
+
+-- ---------------------------------------------------------------------
+-- N° 86 · exercices : tags, demande de schéma à l'administrateur Pocket Club
+-- ---------------------------------------------------------------------
+alter table exercises add column if not exists tags text[] not null default '{}';
+do $$ begin
+  if not exists(select 1 from pg_constraint where conname = 'exercises_tags_check') then
+    alter table exercises add constraint exercises_tags_check check (cardinality(tags) <= 25);
+  end if;
+end $$;
+
+-- Administrateurs de l'application (Gaël) : reçoivent les demandes de schéma
+create table if not exists app_admins (user_id uuid primary key references auth.users(id) on delete cascade);
+alter table app_admins enable row level security;
+-- 4.8.0 : plus d'adresse personnelle dans ce dépôt public. Sur une base neuve (RESET), le premier administrateur s'ajoute à la main,
+-- une fois son compte créé : remplace l'adresse ci-dessous par la sienne et lance cette seule ligne (sans effet tant que l'adresse n'existe pas).
+insert into app_admins(user_id) select id from auth.users where lower(email) in ('ton-adresse@exemple.invalid') on conflict do nothing;
+create or replace function is_app_admin() returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from app_admins where user_id = auth.uid());
+$$;
+grant execute on function is_app_admin() to authenticated;
+drop policy if exists "admin : se voit" on app_admins;
+create policy "admin : se voit" on app_admins for select using (user_id = auth.uid());
+
+create table if not exists schema_requests (
+  id uuid primary key default gen_random_uuid(),
+  exercise_id uuid not null references exercises(id) on delete cascade,
+  requested_by uuid references auth.users(id) on delete set null,
+  status text not null default 'pending' check (status in ('pending','done','cancelled')),
+  note text not null default '' check (length(note) <= 500),
+  created_at timestamptz not null default now(),
+  done_at timestamptz
+);
+create unique index if not exists schema_requests_open on schema_requests(exercise_id) where status = 'pending';
+alter table schema_requests enable row level security;
+drop policy if exists "demandes de schéma : auteur et admin" on schema_requests;
+create policy "demandes de schéma : auteur et admin" on schema_requests for select using (requested_by = auth.uid() or is_app_admin());
+
+-- L'admin voit les exercices demandés (pour préparer le schéma)
+drop policy if exists "exercice demandé lisible par l'admin" on exercises;
+create policy "exercice demandé lisible par l'admin" on exercises for select
+  using (is_app_admin() and exists(select 1 from schema_requests r where r.exercise_id = exercises.id));
+
+create or replace function request_schema(p_exercise uuid, p_note text default '') returns uuid
+language plpgsql security definer set search_path = public as $$
+declare e exercises; rid uuid; a uuid;
+begin
+  select * into e from exercises where id = p_exercise and deleted_at is null;
+  if e.id is null or e.created_by is distinct from auth.uid() then raise exception 'Seul l''auteur peut demander un schéma'; end if;
+  select id into rid from schema_requests where exercise_id = e.id and status = 'pending';
+  if rid is not null then return rid; end if;
+  insert into schema_requests(exercise_id, requested_by, note) values (e.id, auth.uid(), left(coalesce(p_note, ''), 500)) returning id into rid;
+  for a in select user_id from app_admins loop
+    perform push_enqueue(a, 'Schéma demandé', e.title, 'schema', 'schema:' || rid::text, './');
+  end loop;
+  return rid;
+end $$;
+grant execute on function request_schema(uuid, text) to authenticated;
+
+-- L'admin a déposé la vidéo du schéma (dans son propre dossier du stockage des vidéos) : l'exercice est mis à jour,
+-- le coach est prévenu. Une vidéo désignée par l'exercice est lisible même hors du dossier de l'exercice (3.2.2).
+create or replace function finish_schema(p_request uuid, p_video text, p_poster text default '') returns void
+language plpgsql security definer set search_path = public as $$
+declare r schema_requests; t text;
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  select * into r from schema_requests where id = p_request and status = 'pending';
+  if r.id is null then raise exception 'Demande introuvable ou déjà traitée'; end if;
+  if coalesce(p_video, '') = '' or length(p_video) > 200 or length(coalesce(p_poster, '')) > 200 then raise exception 'Vidéo manquante'; end if;
+  update exercises set video_path = p_video, poster_path = coalesce(p_poster, ''), updated_at = now() where id = r.exercise_id returning title into t;
+  update schema_requests set status = 'done', done_at = now() where id = r.id;
+  if r.requested_by is not null then perform push_enqueue(r.requested_by, 'Ton schéma est prêt', t, 'schema', 'schema-ok:' || r.id::text, './'); end if;
+end $$;
+grant execute on function finish_schema(uuid, text, text) to authenticated;
+
+create or replace function cancel_schema(p_request uuid) returns void language sql security definer set search_path = public as $$
+  update schema_requests set status = 'cancelled', done_at = now() where id = p_request and status = 'pending' and (requested_by = auth.uid() or is_app_admin());
+$$;
+grant execute on function cancel_schema(uuid) to authenticated;
+
+-- L'admin dépose les vidéos de schéma dans le dossier « admin/ » du stockage des vidéos
+drop policy if exists "video de schéma déposée par l'admin" on storage.objects;
+create policy "video de schéma déposée par l'admin" on storage.objects for insert to authenticated
+  with check (bucket_id = 'exercise-videos' and split_part(name, '/', 1) = 'admin' and is_app_admin());
+drop policy if exists "video de schéma lue par l'admin" on storage.objects;
+create policy "video de schéma lue par l'admin" on storage.objects for select to authenticated
+  using (bucket_id = 'exercise-videos' and split_part(name, '/', 1) = 'admin' and is_app_admin());
+
+-- ===== alpha_3_7_0.sql =====
+-- mypocketclub · alpha 3.7.0 · n° 93 (top 5 des équipes les plus suivies) et n° 96 (demandes d'ajout d'un club, version test).
+-- Les n° 94, 95 et 97 ne touchent pas à la base. Sans perte de données, relançable sans risque.
+
+-- ---------------------------------------------------------------------
+-- N° 93 · top 5 des équipes les plus suivies sur l'application
+-- Rien tant que l'application compte moins de 10 équipes visibles (ni fantômes, ni archivées, ni à la corbeille)
+-- de clubs qui apparaissent dans la recherche des clubs. Seulement : équipe, club, nombre de personnes qui la suivent ;
+-- aucun nom de personne (les équipes et les clubs sont déjà visibles dans la recherche publique).
+-- ---------------------------------------------------------------------
+create or replace function top_followed_teams()
+returns table(team_id uuid, team_name text, category text, club_id uuid, club_name text, city text, sport text, logo text, crest_bg text, color1 text, crest_outline text, followers int)
+language plpgsql stable security definer set search_path = public as $$
+#variable_conflict use_column
+begin
+  if auth.uid() is null then return; end if;
+  if (select count(*) from teams t join clubs c on c.id = t.club_id
+      where t.state = 'Visible' and t.deleted_at is null and c.public_listed) < 10 then return; end if;
+  return query
+    select t.id, t.name, t.category, c.id, c.name, c.city, c.sport, c.logo, c.crest_bg, c.color1, c.crest_outline, count(f.user_id)::int
+    from teams t join clubs c on c.id = t.club_id join team_follows f on f.team_id = t.id
+    where t.state = 'Visible' and t.deleted_at is null and c.public_listed
+    group by t.id, t.name, t.category, c.id, c.name, c.city, c.sport, c.logo, c.crest_bg, c.color1, c.crest_outline
+    order by count(f.user_id) desc, c.name, t.name
+    limit 5;
+end $$;
+revoke execute on function top_followed_teams() from public, anon;
+grant execute on function top_followed_teams() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- N° 96 · « Mon club n'est pas dans la liste » : demandes d'ajout d'un club (version test, aucun e-mail envoyé)
+-- Écrites seulement par request_club (visiteur non connecté compris), lues seulement par l'administrateur (Gaël).
+-- L'adresse IP n'est pas gardée : seulement son empreinte, pour limiter le nombre de demandes.
+-- ---------------------------------------------------------------------
+create table if not exists club_requests (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  first_name text not null check (length(first_name) between 1 and 60),
+  last_name text not null check (length(last_name) between 1 and 60),
+  email text not null check (length(email) between 5 and 160),
+  club_name text not null check (length(club_name) between 2 and 120),
+  city text not null default '' check (length(city) <= 80),
+  sport text not null default '' check (length(sport) <= 40),
+  age_ok boolean not null default false,
+  consent boolean not null default false,
+  user_id uuid references auth.users(id) on delete set null,
+  ip_hash text not null default '',
+  status text not null default 'new' check (status in ('new','done')),
+  done_at timestamptz
+);
+create index if not exists club_requests_ip on club_requests(ip_hash, created_at);
+create index if not exists club_requests_email on club_requests(lower(email), created_at);
+alter table club_requests enable row level security;
+drop policy if exists "demandes de clubs : administrateur" on club_requests;
+create policy "demandes de clubs : administrateur" on club_requests for select using (is_app_admin());
+
+create or replace function request_club(p_first text, p_last text, p_email text, p_club text, p_city text, p_sport text, p_age_ok boolean, p_consent boolean)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_ip text := md5(request_ip()); v_email text := lower(trim(coalesce(p_email, '')));
+  v_first text := left(trim(coalesce(p_first, '')), 60); v_last text := left(trim(coalesce(p_last, '')), 60);
+  v_club text := left(trim(coalesce(p_club, '')), 120); v_city text := left(trim(coalesce(p_city, '')), 80); v_sport text := left(trim(coalesce(p_sport, '')), 40);
+  rid uuid; a uuid;
+begin
+  if v_first = '' or v_last = '' then raise exception 'Prénom et nom obligatoires'; end if;
+  if v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(v_email) > 160 then raise exception 'Adresse e-mail à vérifier'; end if;
+  if length(v_club) < 2 then raise exception 'Nom du club obligatoire'; end if;
+  if v_city = '' or v_sport = '' then raise exception 'Ville et sport du club obligatoires'; end if;
+  if not coalesce(p_age_ok, false) then raise exception 'Moins de 15 ans : un parent fait la demande'; end if;
+  if not coalesce(p_consent, false) then raise exception 'L''accord pour transmettre ton nom au club est obligatoire'; end if;
+  -- limites : 10 demandes par jour et par adresse IP, 3 par jour et par e-mail
+  if (select count(*) from club_requests where ip_hash = v_ip and created_at > now() - interval '1 day') >= 10
+     or (select count(*) from club_requests where lower(email) = v_email and created_at > now() - interval '1 day') >= 3 then
+    raise exception 'Trop de demandes aujourd''hui. Réessaie demain.';
+  end if;
+  -- même personne, même club, moins de 30 jours : la demande existe déjà
+  select id into rid from club_requests
+    where lower(email) = v_email and norm_name(club_name) = norm_name(v_club) and norm_name(city) = norm_name(v_city) and created_at > now() - interval '30 days'
+    order by created_at desc limit 1;
+  if rid is not null then return rid; end if;
+  insert into club_requests(first_name, last_name, email, club_name, city, sport, age_ok, consent, user_id, ip_hash)
+    values (v_first, v_last, v_email, v_club, v_city, v_sport, true, true, auth.uid(), v_ip) returning id into rid;
+  -- notification à l'administrateur (Gaël), avec toutes les informations
+  for a in select user_id from app_admins loop
+    perform push_enqueue(a, 'Club demandé : ' || left(v_club, 50),
+      v_club || ' (' || v_city || ', ' || v_sport || ') · ' || v_first || ' ' || v_last || ' · ' || v_email || ' · simulation',
+      'clubreq', 'clubreq:' || rid::text, './');
+  end loop;
+  return rid;
+end $$;
+revoke execute on function request_club(text, text, text, text, text, text, boolean, boolean) from public;
+grant execute on function request_club(text, text, text, text, text, text, boolean, boolean) to anon, authenticated;
+
+create or replace function set_club_request(p_id uuid, p_status text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if p_status not in ('new', 'done') then raise exception 'État inconnu'; end if;
+  update club_requests set status = p_status, done_at = case when p_status = 'done' then now() end where id = p_id;
+end $$;
+revoke execute on function set_club_request(uuid, text) from public, anon;
+grant execute on function set_club_request(uuid, text) to authenticated;
+
+-- ===== alpha_3_8_0.sql =====
+-- mypocketclub · alpha 3.8.0 · n° 103 (supprimer une équipe en doublon : président ou bureau qui a la rubrique Technique).
+-- Les autres points de la 3.8.0 (n° 98 à 102, 104, 106, 107, contact et site) ne touchent pas à la base.
+-- Sans perte de données, relançable sans risque.
+
+-- ---------------------------------------------------------------------
+-- N° 103 · une équipe part à la corbeille (30 jours, restaurable par le président et le bureau) :
+-- avant, seul le président pouvait le faire ; désormais aussi le bureau qui a la rubrique Technique
+-- (has_area donne toutes les rubriques au président). Joueurs et fiches : inchangé (président et secrétariat).
+-- ---------------------------------------------------------------------
+create or replace function trash_item(p_kind text, p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  perform set_config('pc.trash', 'on', true);
+  if p_kind = 'team' then
+    select club_id into c from teams where id = p_id and deleted_at is null;
+    if c is null or not (is_president(c) or has_area(c, 'technique')) then raise exception 'Seuls le président et le bureau (rubrique Technique) suppriment une équipe'; end if;
+    update teams set deleted_at = now(), deleted_by = auth.uid() where id = p_id;
+  elsif p_kind = 'player' then
+    select club_id into c from players where id = p_id and deleted_at is null;
+    if c is null or not has_area(c, 'secretariat') then raise exception 'Seuls le président et le secrétariat suppriment une fiche'; end if;
+    update players set deleted_at = now(), deleted_by = auth.uid() where id = p_id;
+  elsif p_kind = 'poll' then
+    perform delete_poll(p_id);
+  else raise exception 'Élément inconnu';
+  end if;
+  perform set_config('pc.trash', 'off', true);
+end $$;
+
+-- ===== alpha_3_9_0.sql =====
+-- mypocketclub · alpha 3.9.0 · n° 108 (le coordinateur est prévenu d'un match à domicile créé par un coach).
+-- Les autres points de la 3.9.0 (n° 109 nom du club en expéditeur, n° 111 titre automatique) ne touchent pas à la base.
+-- La purge des messages et des rendez-vous (n° 110) est un script à part : PURGE_MESSAGES_RENDEZ_VOUS.sql.
+-- Sans perte de données, relançable sans risque.
+
+-- ---------------------------------------------------------------------
+-- N° 108 · un coach (ou toute personne sans la rubrique Événements) crée un match, un plateau ou un tournoi
+-- à domicile pour une équipe, ou coche « Match à domicile » après coup : les personnes qui ont la rubrique
+-- Événements (coordinateur, vice-président, président) reçoivent une notification pour préparer la convocation
+-- des clubs reçus. Une seule notification par rendez-vous et par personne (clé convhome:<id>).
+-- ---------------------------------------------------------------------
+create or replace function push_on_home_match() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; actor uuid := coalesce(auth.uid(), new.created_by); b text;
+begin
+  if new.cancelled or not new.at_home or new.audience <> 'team' or new.type not in ('Match','Plateau','Tournoi') or new.starts_at < now() then return null; end if;
+  if tg_op = 'UPDATE' and old.at_home and old.type in ('Match','Plateau','Tournoi') then return null; end if;
+  if actor is not null and 'evenements' = any(areas_of(new.club_id, actor)) then return null; end if;
+  b := push_ev_line(new);
+  for u in select distinct m.user_id from memberships m
+           where m.club_id = new.club_id and m.status = 'active' and m.role in ('president','bureau')
+             and m.user_id is distinct from actor and 'evenements' = any(areas_of(new.club_id, m.user_id)) loop
+    perform push_enqueue(u, left('Match à domicile à convoquer : ' || coalesce(nullif(new.opponents, ''), lower(new.type)), 80), b, 'conv:' || new.id, 'convhome:' || new.id);
+  end loop;
+  return null;
+end $$;
+drop trigger if exists push_home_match on events;
+create trigger push_home_match after insert or update of at_home, type on events for each row execute function push_on_home_match();
+
+-- ===== alpha_3_10_0.sql =====
+-- mypocketclub · alpha 3.10.0 · n° 114 (président et bureau : fonctions renommées et attribuables, « Qui s'occupe de quoi »,
+-- transfert de la présidence accepté par le nouveau président, suppression du club en corbeille de 30 jours).
+-- Le n° 113 (espace coach en deux niveaux) et le n° 115 (« Payer · Bientôt disponible ») ne touchent pas à la base.
+-- Sans perte de données, relançable sans risque.
+
+-- ---------------------------------------------------------------------
+-- 1. Renommages (décision de Gaël du 4 novembre 2026)
+--    « Coordinateur » → « Correspondant rencontres » : matchs, plateaux, tournois, convocations, bénévoles ;
+--    la rubrique Technique lui est retirée par défaut (le président peut la rouvrir en plus).
+--    « Directeur sportif » → « Directeur technique ».
+--    « Correspondant licences » : les licences seulement (rubrique « licences »), plus tout le Secrétariat.
+-- ---------------------------------------------------------------------
+alter table memberships drop constraint if exists memberships_fonction;
+update memberships set fonction = 'Correspondant rencontres' where fonction = 'Coordinateur';
+update memberships set fonction = 'Directeur technique' where fonction = 'Directeur sportif';
+alter table memberships add constraint memberships_fonction check (fonction is null or fonction in (
+  'Vice-président','Secrétaire','Secrétaire adjoint','Trésorier','Trésorier adjoint','Directeur technique','Correspondant rencontres',
+  'Correspondant licences','Chargé de communication','Responsable sponsoring','Membre du bureau'));
+
+-- « licences » = sous-rubrique du Secrétariat : état, numéro et certificat (fourni ou non) des licences
+create or replace function fonction_areas(f text) returns text[] language sql immutable as $$
+  select case f
+    when 'Vice-président' then array['tresorerie','secretariat','technique','communication','evenements']
+    when 'Trésorier' then array['tresorerie'] when 'Trésorier adjoint' then array['tresorerie']
+    when 'Secrétaire' then array['secretariat'] when 'Secrétaire adjoint' then array['secretariat']
+    when 'Correspondant licences' then array['licences']
+    when 'Directeur technique' then array['technique']
+    when 'Correspondant rencontres' then array['evenements']
+    when 'Chargé de communication' then array['communication'] when 'Responsable sponsoring' then '{}'::text[]
+    when 'Membre du bureau' then '{}'::text[]
+    -- anciens noms (téléphone pas encore mis à jour) : mêmes droits que les nouveaux
+    when 'Directeur sportif' then array['technique'] when 'Coordinateur' then array['evenements']
+    else '{}'::text[] end;
+$$;
+-- Un téléphone resté en 3.9.0 envoie encore les anciens noms : on les traduit
+create or replace function memberships_fonction_rename() returns trigger language plpgsql as $$
+begin
+  if new.fonction = 'Coordinateur' then new.fonction := 'Correspondant rencontres'; end if;
+  if new.fonction = 'Directeur sportif' then new.fonction := 'Directeur technique'; end if;
+  return new;
+end $$;
+drop trigger if exists a_memberships_fonction_rename on memberships;
+create trigger a_memberships_fonction_rename before insert or update on memberships for each row execute function memberships_fonction_rename();
+
+-- ---------------------------------------------------------------------
+-- 2. Adultes seulement au bureau et à la présidence (garde-fou du n° 114)
+--    Une personne dont le compte est relié à une fiche joueur mineure (ou sans date de naissance) ne reçoit pas de fonction.
+-- ---------------------------------------------------------------------
+create or replace function account_is_adult(c uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select not exists(select 1 from players p where p.club_id = c and p.user_id = u and p.deleted_at is null
+                    and (p.birth_date is null or p.birth_date > current_date - interval '18 years'));
+$$;
+revoke execute on function account_is_adult(uuid, uuid) from public, anon;
+
+create or replace function memberships_fonction_check() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'active' and new.fonction in ('Vice-président','Secrétaire','Trésorier')
+     and exists(select 1 from memberships m where m.club_id = new.club_id and m.fonction = new.fonction and m.status = 'active' and m.id <> new.id) then
+    raise exception 'La fonction « % » est déjà tenue : le président doit d''abord la retirer', new.fonction;
+  end if;
+  if new.status = 'active' and new.role in ('bureau','president')
+     and (tg_op = 'INSERT' or old.status <> 'active' or old.role <> new.role or old.fonction is distinct from new.fonction)
+     and not account_is_adult(new.club_id, new.user_id) then
+    raise exception 'Les fonctions du bureau sont réservées aux adultes (fiche joueur mineure ou sans date de naissance)';
+  end if;
+  return new;
+end $$;
+
+-- Prévenir la personne quand une fonction lui est attribuée ou retirée (n° 114)
+create or replace function memberships_fonction_notify() returns trigger language plpgsql security definer set search_path = public as $$
+declare cn text;
+begin
+  if tg_op = 'DELETE' then
+    if old.role = 'bureau' and old.status = 'active' and old.user_id is distinct from auth.uid() then
+      select name into cn from clubs where id = old.club_id;
+      perform push_enqueue(old.user_id, 'Fonction retirée', coalesce(old.fonction, 'Membre du bureau') || ' · ' || coalesce(cn, ''), 'fonction', 'fonction-retiree:' || old.id);
+    end if;
+    return old;
+  end if;
+  if new.role = 'bureau' and new.status = 'active' and new.user_id is distinct from auth.uid()
+     and (tg_op = 'INSERT' or old.status <> 'active' or old.fonction is distinct from new.fonction) then
+    select name into cn from clubs where id = new.club_id;
+    perform push_enqueue(new.user_id, 'Nouvelle fonction', coalesce(new.fonction, 'Membre du bureau') || ' · ' || coalesce(cn, ''), 'fonction', 'fonction:' || new.id || ':' || coalesce(new.fonction, ''));
+  end if;
+  return new;
+end $$;
+drop trigger if exists memberships_fonction_notify on memberships;
+create trigger memberships_fonction_notify after insert or update or delete on memberships for each row execute function memberships_fonction_notify();
+
+-- ---------------------------------------------------------------------
+-- 3. « Qui s'occupe de quoi » (n° 114) : le président désigne une personne adulte du club pour chaque responsabilité.
+--    Sans désignation : licences = le secrétaire (sinon le président), rencontres = le président et le vice-président,
+--    événements = le président, communication = le président.
+--    Une personne qui n'est pas au bureau y entre (fonction correspondante), pour garder un seul modèle de droits.
+-- ---------------------------------------------------------------------
+create table if not exists club_designations (
+  club_id uuid not null references clubs(id) on delete cascade,
+  resp text not null check (resp in ('licences','rencontres','evenements','communication')),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  set_by uuid references auth.users(id) on delete set null,
+  set_at timestamptz not null default now(),
+  primary key (club_id, resp)
+);
+alter table club_designations enable row level security;
+drop policy if exists "désignations lues par les membres" on club_designations;
+create policy "désignations lues par les membres" on club_designations for select using (is_member(club_id));
+
+create or replace function designation_area(r text) returns text language sql immutable as $$
+  select case r when 'licences' then 'licences' when 'rencontres' then 'evenements' when 'evenements' then 'evenements' when 'communication' then 'communication' end;
+$$;
+
+create or replace function areas_of(c uuid, u uuid) returns text[] language sql stable security definer set search_path = public as $$
+  select case
+    when exists(select 1 from memberships where club_id = c and user_id = u and status = 'active' and role = 'president')
+      then array['tresorerie','secretariat','technique','communication','evenements','licences']
+    when not exists(select 1 from memberships where club_id = c and user_id = u and status = 'active' and role = 'bureau') then '{}'::text[]
+    else coalesce((select array_agg(distinct a order by a) from (
+        select unnest(fonction_areas(m.fonction)) a from memberships m where m.club_id = c and m.user_id = u and m.status = 'active' and m.role = 'bureau'
+        union select b.area from board_areas b where b.club_id = c and b.user_id = u
+        union select designation_area(d.resp) from club_designations d where d.club_id = c and d.user_id = u
+        -- le Secrétariat comprend les licences
+        union select 'licences' where exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active' and m.role = 'bureau' and 'secretariat' = any(fonction_areas(m.fonction)))
+           or exists(select 1 from board_areas b where b.club_id = c and b.user_id = u and b.area = 'secretariat')) x), '{}'::text[]) end;
+$$;
+
+create or replace function set_designation(p_club uuid, p_resp text, p_user uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare f text; cn text;
+begin
+  if not is_president(p_club) then raise exception 'Seul le président désigne qui s''occupe de quoi'; end if;
+  if p_resp not in ('licences','rencontres','evenements','communication') then raise exception 'Responsabilité inconnue'; end if;
+  if p_user is null then
+    delete from club_designations where club_id = p_club and resp = p_resp;
+    perform log_action(p_club, null, null, 'désignation retirée', jsonb_build_object('responsabilite', p_resp));
+    return;
+  end if;
+  if not exists(select 1 from memberships where club_id = p_club and user_id = p_user and status = 'active') then raise exception 'Cette personne n''est pas membre du club'; end if;
+  if not account_is_adult(p_club, p_user) then raise exception 'Seule une personne adulte peut être désignée'; end if;
+  if not exists(select 1 from memberships where club_id = p_club and user_id = p_user and status = 'active' and role in ('bureau','president')) then
+    f := case p_resp when 'licences' then 'Correspondant licences' when 'rencontres' then 'Correspondant rencontres'
+                     when 'communication' then 'Chargé de communication' else 'Membre du bureau' end;
+    insert into memberships(club_id, user_id, role, fonction, status) values (p_club, p_user, 'bureau', f, 'active');
+  end if;
+  insert into club_designations(club_id, resp, user_id, set_by) values (p_club, p_resp, p_user, auth.uid())
+    on conflict (club_id, resp) do update set user_id = excluded.user_id, set_by = excluded.set_by, set_at = now();
+  perform log_action(p_club, p_user, null, 'désignation', jsonb_build_object('responsabilite', p_resp));
+  if p_user <> auth.uid() then
+    select name into cn from clubs where id = p_club;
+    perform push_enqueue(p_user, 'Le président compte sur toi', (case p_resp when 'licences' then 'Correspondant licences' when 'rencontres' then 'Correspondant rencontres'
+      when 'evenements' then 'Événements' else 'Communication' end) || ' · ' || coalesce(cn, ''), 'fonction', 'designation:' || p_club || ':' || p_resp || ':' || p_user);
+  end if;
+end $$;
+revoke execute on function set_designation(uuid, text, uuid) from public, anon;
+
+-- Une désignation disparaît quand la personne quitte le club ou le bureau
+create or replace function designations_cleanup() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if not exists(select 1 from memberships where club_id = old.club_id and user_id = old.user_id and status = 'active' and role in ('bureau','president') and id <> old.id) then
+    delete from club_designations where club_id = old.club_id and user_id = old.user_id;
+  end if;
+  return old;
+end $$;
+drop trigger if exists designations_cleanup on memberships;
+create trigger designations_cleanup after delete on memberships for each row execute function designations_cleanup();
+
+-- ---------------------------------------------------------------------
+-- 4. Licences (n° 114) : le trésorier change l'état de la licence sur la ligne de la cotisation ;
+--    numéro et certificat restent au Secrétariat et au correspondant licences.
+-- ---------------------------------------------------------------------
+create or replace function can_see_fees(p uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from players x join clubs c on c.id = x.club_id where x.id = p and x.deleted_at is null and (
+    x.user_id = auth.uid() or is_parent_of(x.id) or has_area(x.club_id, 'tresorerie') or has_area(x.club_id, 'secretariat') or has_area(x.club_id, 'licences')
+    or (c.coach_sees_fees and (coaches_team(x.team_id) or exists(select 1 from player_teams pt where pt.player_id = x.id and coaches_team(pt.team_id))))));
+$$;
+drop policy if exists "dossier saisi par le bureau" on player_admin;
+create policy "dossier saisi par le bureau" on player_admin for update
+  using (can_admin_player(player_id) and (has_area((select club_id from players where id = player_id), 'tresorerie')
+    or has_area((select club_id from players where id = player_id), 'secretariat') or has_area((select club_id from players where id = player_id), 'licences')))
+  with check (can_admin_player(player_id));
+create or replace function player_admin_area_guard() returns trigger language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  if auth.uid() is null then return new; end if;
+  select club_id into c from players where id = new.player_id;
+  if (new.licence_number, new.health_doc) is distinct from (old.licence_number, old.health_doc) and not has_area(c, 'licences') then
+    raise exception 'La licence se règle dans la rubrique Secrétariat';
+  end if;
+  if new.licence_state is distinct from old.licence_state and not (has_area(c, 'licences') or has_area(c, 'tresorerie')) then
+    raise exception 'L''état de la licence se règle au Secrétariat ou à la Trésorerie';
+  end if;
+  if new.fee_method is distinct from old.fee_method and not has_area(c, 'tresorerie') then
+    raise exception 'La cotisation se règle dans la rubrique Trésorerie';
+  end if;
+  -- le correspondant licences seul ne touche pas aux montants (les recalculs faits par la base restent possibles)
+  if pg_trigger_depth() = 1 and (new.fee_amount, new.fee_paid) is distinct from (old.fee_amount, old.fee_paid)
+     and not has_area(c, 'tresorerie') and not has_area(c, 'secretariat') and not has_area(c, 'technique') then
+    raise exception 'La cotisation se règle dans la rubrique Trésorerie';
+  end if;
+  return new;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 5. Informations du club (nom, blason, couleurs) : président et vice-président seulement (n° 114)
+-- ---------------------------------------------------------------------
+create or replace function is_vice_president(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from memberships where club_id = c and user_id = auth.uid() and status = 'active' and role = 'bureau' and fonction = 'Vice-président');
+$$;
+create or replace function clubs_guard_310() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return new; end if;
+  if (new.name, new.city, new.postal_code, new.sport, new.color1, new.color2, new.crest_bg, new.logo, new.crest_outline)
+     is distinct from (old.name, old.city, old.postal_code, old.sport, old.color1, old.color2, old.crest_bg, old.logo, old.crest_outline)
+     and not (is_president(old.id) or is_vice_president(old.id)) then
+    raise exception 'Le blason et les informations du club sont réglés par le président';
+  end if;
+  if (new.deleted_at, new.deleted_by) is distinct from (old.deleted_at, old.deleted_by) and coalesce(current_setting('pc.club_delete', true), '') <> 'on' then
+    raise exception 'La suppression du club passe par « Supprimer le club »';
+  end if;
+  return new;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 6. Transfert de la présidence : le nouveau président doit accepter (n° 114)
+-- ---------------------------------------------------------------------
+create table if not exists president_offers (
+  club_id uuid primary key references clubs(id) on delete cascade,
+  from_user uuid not null references auth.users(id) on delete cascade,
+  to_user uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table president_offers enable row level security;
+drop policy if exists "proposition lue par les deux personnes" on president_offers;
+create policy "proposition lue par les deux personnes" on president_offers for select using (from_user = auth.uid() or to_user = auth.uid());
+
+create or replace function offer_presidency(p_club uuid, p_user uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare cn text;
+begin
+  if not is_president(p_club) then raise exception 'Seul le président transfère la présidence'; end if;
+  if p_user is null then delete from president_offers where club_id = p_club; perform log_action(p_club, null, null, 'transfert de la présidence annulé', '{}'::jsonb); return; end if;
+  if p_user = auth.uid() then raise exception 'Choisis une autre personne'; end if;
+  if not exists(select 1 from memberships where club_id = p_club and user_id = p_user and status = 'active') then raise exception 'Cette personne n''est pas membre du club'; end if;
+  if not account_is_adult(p_club, p_user) then raise exception 'La présidence revient à une personne adulte'; end if;
+  insert into president_offers(club_id, from_user, to_user) values (p_club, auth.uid(), p_user)
+    on conflict (club_id) do update set from_user = excluded.from_user, to_user = excluded.to_user, created_at = now();
+  perform log_action(p_club, p_user, null, 'présidence proposée', '{}'::jsonb);
+  select name into cn from clubs where id = p_club;
+  perform push_enqueue(p_user, 'Présidence du club', 'On te propose de devenir président de ' || coalesce(cn, 'ton club') || ' : accepte ou refuse dans Mon compte', 'presidence', 'presidence:' || p_club || ':' || p_user);
+end $$;
+revoke execute on function offer_presidency(uuid, uuid) from public, anon;
+
+create or replace function answer_presidency(p_club uuid, p_accept boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare o president_offers;
+begin
+  select * into o from president_offers where club_id = p_club and to_user = auth.uid();
+  if o.club_id is null then raise exception 'Aucune proposition de présidence pour toi'; end if;
+  if o.created_at < now() - interval '14 days' then delete from president_offers where club_id = p_club; raise exception 'La proposition a expiré (14 jours) : demande au président de la refaire'; end if;
+  delete from president_offers where club_id = p_club;
+  if not p_accept then
+    perform log_action(p_club, o.from_user, null, 'présidence refusée', '{}'::jsonb);
+    perform push_enqueue(o.from_user, 'Présidence refusée', 'La personne a refusé la présidence du club', 'presidence', 'presidence-refus:' || p_club || ':' || now());
+    return;
+  end if;
+  if not exists(select 1 from memberships where club_id = p_club and user_id = o.from_user and role = 'president' and status = 'active') then raise exception 'La proposition n''est plus valable'; end if;
+  if not account_is_adult(p_club, auth.uid()) then raise exception 'La présidence revient à une personne adulte'; end if;
+  -- l'ancien président reste au bureau, comme membre ; le président le règle ensuite
+  update memberships set role = 'bureau', fonction = 'Membre du bureau' where club_id = p_club and user_id = o.from_user and role = 'president';
+  if exists(select 1 from memberships where club_id = p_club and user_id = auth.uid() and role = 'president') then
+    update memberships set status = 'active' where club_id = p_club and user_id = auth.uid() and role = 'president';
+  else
+    insert into memberships(club_id, user_id, role, status) values (p_club, auth.uid(), 'president', 'active');
+  end if;
+  perform log_action(p_club, o.from_user, null, 'présidence transférée', '{}'::jsonb);
+  perform push_enqueue(o.from_user, 'Présidence transférée', 'Ta proposition est acceptée : tu restes au bureau', 'presidence', 'presidence-ok:' || p_club || ':' || now());
+end $$;
+revoke execute on function answer_presidency(uuid, boolean) from public, anon;
+
+-- ---------------------------------------------------------------------
+-- 7. Supprimer le club : corbeille de 30 jours, nom du club à taper (n° 114)
+--    Pendant 30 jours, seul le président voit encore le club et peut le restaurer ; ensuite tout est effacé.
+-- ---------------------------------------------------------------------
+alter table clubs add column if not exists deleted_at timestamptz;
+alter table clubs add column if not exists deleted_by uuid references auth.users(id) on delete set null;
+alter table clubs add column if not exists listed_before_delete boolean;
+drop trigger if exists clubs_guard_310 on clubs;
+create trigger clubs_guard_310 before update on clubs for each row execute function clubs_guard_310();
+drop policy if exists "club supprimé par le président" on clubs;   -- plus d'effacement direct : la corbeille d'abord
+
+create or replace function club_alive(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from clubs where id = c and deleted_at is null);
+$$;
+create or replace function is_member(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from memberships where club_id = c and user_id = auth.uid() and status = 'active' and (role = 'president' or club_alive(c)));
+$$;
+create or replace function is_board(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from memberships where club_id = c and user_id = auth.uid() and status = 'active' and (role = 'president' or (role = 'bureau' and club_alive(c))));
+$$;
+create or replace function is_coach_in(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select club_alive(c) and exists(select 1 from memberships where club_id = c and user_id = auth.uid() and status = 'active' and role = 'coach');
+$$;
+
+create or replace function delete_club(p_club uuid, p_name text) returns timestamptz
+language plpgsql security definer set search_path = public as $$
+declare c clubs;
+begin
+  if not is_president(p_club) then raise exception 'Seul le président supprime le club'; end if;
+  select * into c from clubs where id = p_club;
+  if c.deleted_at is not null then raise exception 'Le club est déjà dans la corbeille'; end if;
+  if lower(trim(coalesce(p_name, ''))) <> lower(trim(c.name)) then raise exception 'Tape exactement le nom du club pour confirmer'; end if;
+  perform set_config('pc.club_delete', 'on', true);
+  update clubs set deleted_at = now(), deleted_by = auth.uid(), listed_before_delete = public_listed, public_listed = false where id = p_club;
+  perform set_config('pc.club_delete', '', true);
+  delete from president_offers where club_id = p_club;
+  perform log_action(p_club, null, null, 'club envoyé à la corbeille', '{}'::jsonb);
+  return now() + interval '30 days';
+end $$;
+revoke execute on function delete_club(uuid, text) from public, anon;
+
+create or replace function restore_club(p_club uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_president(p_club) then raise exception 'Seul le président restaure le club'; end if;
+  perform set_config('pc.club_delete', 'on', true);
+  update clubs set deleted_at = null, deleted_by = null, public_listed = coalesce(listed_before_delete, public_listed), listed_before_delete = null where id = p_club and deleted_at is not null;
+  perform set_config('pc.club_delete', '', true);
+  perform log_action(p_club, null, null, 'club restauré', '{}'::jsonb);
+end $$;
+revoke execute on function restore_club(uuid) from public, anon;
+
+-- Personne ne rejoint un club dans la corbeille
+create or replace function memberships_club_alive() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if not club_alive(new.club_id) and new.role <> 'president' then raise exception 'Ce club a été supprimé'; end if;
+  return new;
+end $$;
+drop trigger if exists memberships_club_alive on memberships;
+create trigger memberships_club_alive before insert on memberships for each row execute function memberships_club_alive();
+
+-- La corbeille efface aussi les clubs supprimés depuis plus de 30 jours (suite de la purge habituelle)
+create or replace function purge_trash() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; k int; u uuid; lim timestamptz := now() - interval '30 days';
+begin
+  delete from clubs where deleted_at < lim; get diagnostics k = row_count; n := n + k;
+  delete from memberships where role = 'coach' and team_id in (select id from teams where deleted_at < lim);
+  update events set team_ids = (select coalesce(array_agg(t), '{}') from unnest(team_ids) t where t not in (select id from teams where deleted_at < lim))
+    where team_ids && array(select id from teams where deleted_at < lim);
+  delete from events where audience = 'team' and cardinality(team_ids) = 0;
+  delete from teams where deleted_at < lim; get diagnostics k = row_count; n := n + k;
+  delete from players where deleted_at < lim; get diagnostics k = row_count; n := n + k;
+  delete from poll_votes where poll_id in (select id from polls where deleted_at < lim);
+  delete from exercises where deleted_at < lim; get diagnostics k = row_count; n := n + k;
+  delete from training_plans where deleted_at < lim;
+  delete from join_attempts where at < now() - interval '1 day';
+  for u in select id from profiles where deleted_at < lim loop
+    begin
+      delete from auth.users where id = u;
+    exception when others then
+      update profiles set first_name = 'Compte', last_name = 'supprimé', nickname = null, phone = null, deleted_snapshot = null where id = u;
+      delete from player_parents where user_id = u; delete from group_members where user_id = u; delete from memberships where user_id = u;
+    end;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+-- ===== alpha_4_2_0.sql =====
+-- mypocketclub · alpha 4.2.0 · mise à jour d'une base 4.1.0 (= 3.10.0 pour la base), sans perte de données, relançable.
+-- N° 117 : masquer l'invitation « Équipe en entente ? » (par équipe, pour tous ses coachs, réversible).
+-- N° 122 : contact du club selon la fonction attribuée par le président (licences : désigné, sinon le secrétaire, sinon le président ;
+--          rencontres : désigné, sinon le président) ; coordonnées montrées seulement si la personne les a confirmées pour ses fonctions
+--          du moment ; « Écrire au correspondant » par l'application, avec une limite d'envois ; qui voit quoi (membres, supporteurs,
+--          visiteurs connectés, clubs du même sport) ; cases « Contact pour… » abandonnées.
+-- N° 114 : compteur des touchers sur « Payer · Bientôt disponible ».
+-- N° 80  : « Ajouter mes séances du mois » reprend la durée de chaque rendez-vous.
+-- N° 112, 109, 107 : suivi des envois de convocations (e-mail et dans mypocketclub), versions -v2, accusé de lecture, échec signalé.
+
+-- ---------------------------------------------------------------------
+-- 1. N° 117 · masquer l'invitation à l'entente
+-- ---------------------------------------------------------------------
+alter table teams add column if not exists partner_hidden boolean not null default false;
+
+create or replace function set_partner_hidden(p_team uuid, p_hidden boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare t teams;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null then raise exception 'Équipe introuvable'; end if;
+  if not (coaches_team(p_team) or has_area(t.club_id, 'technique') or is_president(t.club_id)) then raise exception 'Réservé au coach de l''équipe, à la Technique et au président'; end if;
+  update teams set partner_hidden = coalesce(p_hidden, false) where id = p_team;
+  perform log_action(t.club_id, null, null, case when p_hidden then 'Invitation à l''entente masquée' else 'Invitation à l''entente réaffichée' end, jsonb_build_object('équipe', t.name));
+end $$;
+revoke execute on function set_partner_hidden(uuid, boolean) from public, anon;
+grant execute on function set_partner_hidden(uuid, boolean) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 2. N° 122 · contact du club
+-- ---------------------------------------------------------------------
+alter table club_contacts add column if not exists confirmed_for text;
+alter table club_contacts add column if not exists confirmed_at timestamptz;
+
+-- Qui tient la responsabilité : la personne désignée par le président ; sinon la personne qui a la fonction (« Correspondant licences »,
+-- « Correspondant rencontres ») ; sinon, pour les licences, le secrétaire (titulaire, pas l'adjoint) ; sinon le président.
+create or replace function contact_holder(c uuid, r text) returns uuid language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select d.user_id from club_designations d join memberships m on m.club_id = d.club_id and m.user_id = d.user_id and m.status = 'active' and m.role in ('bureau','president')
+      where d.club_id = c and d.resp = r limit 1),
+    -- la personne qui a reçu la fonction du président (« Correspondant licences » ou « Correspondant rencontres »)
+    (select m.user_id from memberships m where m.club_id = c and m.status = 'active' and m.role = 'bureau'
+      and m.fonction = case r when 'licences' then 'Correspondant licences' when 'rencontres' then 'Correspondant rencontres' end order by m.created_at limit 1),
+    case when r = 'licences' then (select m.user_id from memberships m where m.club_id = c and m.status = 'active' and m.role = 'bureau' and m.fonction = 'Secrétaire' order by m.created_at limit 1) end,
+    (select m.user_id from memberships m where m.club_id = c and m.status = 'active' and m.role = 'president' order by m.created_at limit 1));
+$$;
+revoke execute on function contact_holder(uuid, text) from public, anon;
+
+-- Fonctions d'une personne qui font d'elle un contact (le choix des coordonnées est attaché à cette liste)
+create or replace function contact_roles(c uuid, u uuid) returns text[] language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(distinct x order by x), '{}'::text[]) from (
+    select 'Président' x from memberships where club_id = c and user_id = u and status = 'active' and role = 'president'
+    union select coalesce(nullif(fonction, ''), 'Membre du bureau') from memberships where club_id = c and user_id = u and status = 'active' and role = 'bureau'
+    union select 'Correspondant licences' where contact_holder(c, 'licences') = u
+    union select 'Correspondant rencontres' where contact_holder(c, 'rencontres') = u) z;
+$$;
+revoke execute on function contact_roles(uuid, uuid) from public, anon;
+create or replace function contact_sig(c uuid, u uuid) returns text language sql stable security definer set search_path = public as $$
+  select array_to_string(contact_roles(c, u), '|');
+$$;
+revoke execute on function contact_sig(uuid, uuid) from public, anon;
+
+-- Fiche d'un contact : coordonnées seulement si la personne les a confirmées pour ses fonctions du moment
+create or replace function contact_person(c uuid, u uuid, f text) returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('user_id', u, 'name', trim(p.first_name || ' ' || p.last_name), 'fonction', coalesce(f, array_to_string(contact_roles(c, u), ', ')),
+    'phone', case when k.confirmed_for = contact_sig(c, u) and k.show_phone then nullif(p.phone, '') end,
+    'email', case when k.confirmed_for = contact_sig(c, u) and k.show_email then us.email::text end,
+    'confirmed', coalesce(k.confirmed_for = contact_sig(c, u), false))
+  from profiles p join auth.users us on us.id = p.id left join club_contacts k on k.club_id = c and k.user_id = u
+  where p.id = u and p.deleted_at is null;
+$$;
+revoke execute on function contact_person(uuid, uuid, text) from public, anon;
+
+-- Ce que je vois dans « Contacter le club » (tableau validé par Gaël le 4 novembre 2026 à 23 h 13)
+create or replace function contact_card(p_club uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare me uuid := auth.uid(); cl clubs; inside boolean; supp boolean; same boolean; res jsonb := '{}'::jsonb; lic uuid; ren uuid;
+begin
+  if me is null then return null; end if;                                         -- visiteur non connecté : aucun contact
+  select * into cl from clubs where id = p_club;
+  if cl.id is null or cl.deleted_at is not null then return null; end if;
+  inside := exists(select 1 from memberships where club_id = p_club and user_id = me and status = 'active' and role <> 'supporteur');
+  supp := not inside and exists(select 1 from memberships where club_id = p_club and user_id = me);   -- supporteur, ou membre en attente de validation
+  if not inside and not supp and not cl.public_listed then return null; end if;   -- club hors recherche : rien pour l'extérieur
+  same := not inside and exists(select 1 from memberships m join clubs o on o.id = m.club_id
+    where m.user_id = me and m.status = 'active' and m.role in ('president','bureau','coach') and m.club_id <> p_club and o.deleted_at is null and o.sport = cl.sport);
+  lic := contact_holder(p_club, 'licences'); ren := contact_holder(p_club, 'rencontres');
+  res := jsonb_build_object('view', case when inside then 'membre' when supp then 'supporteur' when same then 'club' else 'visiteur' end,
+    'can_write', is_member(p_club));
+  if lic is not null then res := res || jsonb_build_object('licences', contact_person(p_club, lic, 'Correspondant licences')); end if;
+  if (inside or same) and ren is not null then res := res || jsonb_build_object('rencontres', contact_person(p_club, ren, 'Correspondant rencontres')); end if;
+  if inside then
+    res := res || jsonb_build_object('bureau', coalesce((select jsonb_agg(contact_person(p_club, u, null) order by r desc, n)
+      from (select distinct m.user_id u, member_rank(p_club, m.user_id) r, (select full_name from profiles where id = m.user_id) n
+            from memberships m where m.club_id = p_club and m.status = 'active' and m.role in ('president','bureau')) z), '[]'::jsonb));
+  end if;
+  return res;
+end $$;
+revoke execute on function contact_card(uuid) from public, anon;
+grant execute on function contact_card(uuid) to authenticated;
+
+-- Mon état : mes fonctions du moment et mon choix (encart jaune de l'Accueil tant que ce n'est pas confirmé)
+create or replace function my_contact_state(p_club uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when cardinality(contact_roles(p_club, auth.uid())) = 0 then null else jsonb_build_object(
+    'roles', to_jsonb(contact_roles(p_club, auth.uid())),
+    'confirmed', coalesce((select k.confirmed_for = contact_sig(p_club, auth.uid()) from club_contacts k where k.club_id = p_club and k.user_id = auth.uid()), false),
+    'show_phone', coalesce((select k.show_phone from club_contacts k where k.club_id = p_club and k.user_id = auth.uid()), false),
+    'show_email', coalesce((select k.show_email from club_contacts k where k.club_id = p_club and k.user_id = auth.uid()), false)) end;
+$$;
+revoke execute on function my_contact_state(uuid) from public, anon;
+grant execute on function my_contact_state(uuid) to authenticated;
+
+-- Je confirme ce que je montre (téléphone, e-mail, les deux ou rien) pour toutes mes fonctions du moment
+create or replace function confirm_contact(p_club uuid, p_phone boolean, p_email boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare s text := contact_sig(p_club, auth.uid());
+begin
+  if auth.uid() is null or s = '' then raise exception 'Réservé aux personnes qui ont une fonction au club'; end if;
+  insert into club_contacts(club_id, user_id, show_phone, show_email, confirmed_for, confirmed_at, updated_at, for_licence, for_matches)
+    values (p_club, auth.uid(), coalesce(p_phone, false), coalesce(p_email, false), s, now(), now(), false, false)
+    on conflict (club_id, user_id) do update set show_phone = excluded.show_phone, show_email = excluded.show_email,
+      confirmed_for = excluded.confirmed_for, confirmed_at = now(), updated_at = now(), for_licence = false, for_matches = false;
+  perform log_action(p_club, auth.uid(), null, 'coordonnées du contact confirmées', jsonb_build_object('téléphone', coalesce(p_phone, false), 'e-mail', coalesce(p_email, false), 'fonctions', s));
+end $$;
+revoke execute on function confirm_contact(uuid, boolean, boolean) from public, anon;
+grant execute on function confirm_contact(uuid, boolean, boolean) to authenticated;
+
+-- « Écrire au correspondant » : un groupe d'échange à deux, réutilisé ; au plus 5 nouvelles conversations par personne et par jour
+create or replace function message_contact(p_club uuid, p_resp text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare who uuid; gid uuid; me_name text; lab text;
+begin
+  if not is_member(p_club) then raise exception 'Rejoins le club (même comme supporteur) pour lui écrire'; end if;
+  if p_resp not in ('licences','rencontres','president') then raise exception 'Contact inconnu'; end if;
+  who := case when p_resp = 'president' then (select m.user_id from memberships m where m.club_id = p_club and m.status = 'active' and m.role = 'president' order by m.created_at limit 1)
+              else contact_holder(p_club, p_resp) end;
+  if who is null then raise exception 'Ce club n''a pas encore de contact'; end if;
+  if who = auth.uid() then raise exception 'C''est toi le contact'; end if;
+  lab := case p_resp when 'licences' then 'Message au correspondant licences' when 'rencontres' then 'Message au correspondant rencontres' else 'Message au président' end;
+  select g.id into gid from groups g where g.club_id = p_club and g.created_by = auth.uid() and g.name like lab || '%'
+    and exists(select 1 from group_members x where x.group_id = g.id and x.user_id = who) limit 1;
+  if gid is not null then return gid; end if;
+  if (select count(*) from groups g where g.created_by = auth.uid() and g.name like 'Message au %' and g.created_at > now() - interval '1 day') >= 5 then
+    raise exception 'Tu as déjà ouvert 5 conversations aujourd''hui : réessaie demain';
+  end if;
+  select full_name into me_name from profiles where id = auth.uid();
+  insert into groups(club_id, name, created_by) values (p_club, lab || ' · ' || coalesce(me_name, 'membre'), auth.uid()) returning id into gid;
+  insert into group_members(group_id, user_id) values (gid, auth.uid()), (gid, who) on conflict do nothing;
+  perform push_enqueue(who, lab, coalesce(me_name, 'Un membre') || ' t''écrit', 'message', 'contact:' || gid);
+  return gid;
+end $$;
+revoke execute on function message_contact(uuid, text) from public, anon;
+grant execute on function message_contact(uuid, text) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 3. N° 114 · compteur des touchers sur « Payer · Bientôt disponible » (un par personne, par jour)
+-- ---------------------------------------------------------------------
+create table if not exists feature_taps (
+  feature text not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  club_id uuid references clubs(id) on delete cascade,
+  day date not null default current_date,
+  primary key (feature, user_id, day)
+);
+alter table feature_taps enable row level security;
+create or replace function tap_feature(p_feature text, p_club uuid) returns void
+language sql security definer set search_path = public as $$
+  insert into feature_taps(feature, user_id, club_id) select left(p_feature, 40), auth.uid(), p_club where auth.uid() is not null on conflict do nothing;
+$$;
+revoke execute on function tap_feature(text, uuid) from public, anon;
+grant execute on function tap_feature(text, uuid) to authenticated;
+create or replace function feature_tap_counts() returns table(feature text, people bigint, clubs bigint, last_day date)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  return query select f.feature, count(distinct f.user_id), count(distinct f.club_id), max(f.day) from feature_taps f group by f.feature order by 2 desc;
+end $$;
+revoke execute on function feature_tap_counts() from public, anon;
+grant execute on function feature_tap_counts() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 4. N° 80 · « Ajouter mes séances du mois » avec la durée de chaque rendez-vous
+-- ---------------------------------------------------------------------
+create or replace function fill_coach_hours(p_club uuid, p_month date) returns int
+language plpgsql security definer set search_path = public as $$
+declare m date := date_trunc('month', p_month)::date; n int;
+begin
+  if not is_coach_in(p_club) then raise exception 'Réservé aux coachs'; end if;
+  if month_locked(p_club, auth.uid(), m) then raise exception 'Ce mois est envoyé au bureau : il ne se modifie plus'; end if;
+  insert into coach_hours(club_id, user_id, team_id, event_id, day, minutes, kind)
+    select p_club, auth.uid(), (select t from unnest(e.team_ids) t where coaches_team(t) limit 1), e.id, (e.starts_at at time zone 'Europe/Paris')::date,
+      coalesce(case when e.all_day then null else e.duration_min end, case e.type when 'Entraînement' then 90 when 'Match' then 120 when 'Plateau' then 180 else 240 end), e.type
+    from events e
+    where e.club_id = p_club and not e.cancelled and e.type in ('Entraînement','Match','Plateau','Tournoi') and coaches_any(e.team_ids)
+      and e.starts_at >= m and e.starts_at < (m + interval '1 month') and e.starts_at < now()
+      and not exists(select 1 from coach_hours h where h.user_id = auth.uid() and h.event_id = e.id);
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 5. N° 112, 109, 107 · envoi des convocations et suivi dans le rendez-vous
+-- ---------------------------------------------------------------------
+-- Le correspondant affiché sur la convocation = le correspondant rencontres (n° 122), avec ses coordonnées confirmées
+create or replace function convocation_data(p_event uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare e events; c clubs; d date; d0 date; d1 date; dw int; ren uuid;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null then raise exception 'Rendez-vous introuvable'; end if;
+  if not has_area(e.club_id, 'evenements') then raise exception 'La convocation est réservée au correspondant rencontres, au vice-président et au président'; end if;
+  if e.type not in ('Match','Plateau','Tournoi') then raise exception 'La convocation vaut pour un match, un plateau ou un tournoi'; end if;
+  d := (e.starts_at at time zone 'Europe/Paris')::date; dw := extract(isodow from d)::int;
+  if dw >= 6 then d0 := d - (dw - 6); d1 := d0 + 1; else d0 := d; d1 := d; end if;
+  select * into c from clubs where id = e.club_id;
+  ren := contact_holder(c.id, 'rencontres');
+  return jsonb_build_object(
+    'club', jsonb_build_object('id', c.id, 'name', c.name, 'city', c.city, 'sport', c.sport, 'color1', c.color1, 'color2', c.color2, 'logo', c.logo, 'crest_bg', c.crest_bg),
+    'from', d0, 'to', d1,
+    'correspondent', case when ren is null then null else (select jsonb_build_object('name', x->>'name', 'phone', x->>'phone', 'email', x->>'email') from (select contact_person(c.id, ren, 'Correspondant rencontres') x) z) end,
+    'sender', (select jsonb_build_object('name', trim(p.first_name || ' ' || p.last_name), 'email', u.email) from profiles p join auth.users u on u.id = p.id where p.id = auth.uid()),
+    'events', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', x.id, 'type', x.type, 'title', x.title, 'starts_at', x.starts_at, 'place', x.place, 'opponents', x.opponents, 'cancelled', x.cancelled,
+        'team', (select jsonb_build_object('name', t.name, 'category', t.category, 'gender', t.gender) from teams t where t.id = any(x.team_ids) and t.deleted_at is null order by t.name limit 1),
+        'coach', (select jsonb_build_object('name', p.full_name, 'phone', nullif(p.phone, ''), 'email', u.email)
+                  from memberships m join profiles p on p.id = m.user_id join auth.users u on u.id = m.user_id
+                  where m.club_id = x.club_id and m.role = 'coach' and m.status = 'active' and m.team_id = any(x.team_ids) order by p.full_name limit 1))
+        order by x.starts_at, x.title)
+      from events x where x.club_id = e.club_id and x.at_home and x.type in ('Match','Plateau','Tournoi') and x.audience = 'team'
+        and (x.starts_at at time zone 'Europe/Paris')::date between d0 and d1), '[]'::jsonb));
+end $$;
+revoke execute on function convocation_data(uuid) from public, anon;
+grant execute on function convocation_data(uuid) to authenticated;
+
+create table if not exists convocation_sends (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  event_id uuid references events(id) on delete set null,
+  ref text not null,                      -- référence du week-end (« BB-20261114-C »), sans le -v2
+  step text not null check (step in ('P','C')),
+  version int not null default 1,         -- 1, puis 2 (-v2) quand le document a changé depuis le dernier envoi
+  doc_hash text not null default '',
+  channel text not null check (channel in ('email','app')),
+  target_club_id uuid references clubs(id) on delete set null,
+  target_name text not null default '',   -- nom du club reçu
+  target_hint text not null default '',   -- adresse masquée (j***@exemple.fr) : le contact saisi n'est pas gardé (décision du 5 novembre 2026)
+  status text not null default 'envoye' check (status in ('envoye','echec','lu')),
+  error text not null default '',
+  payload jsonb,                          -- envoi dans mypocketclub : le document tel qu'il a été envoyé
+  sent_by uuid references auth.users(id) on delete set null,
+  sent_at timestamptz not null default now(),
+  read_at timestamptz,
+  read_by uuid references auth.users(id) on delete set null
+);
+create index if not exists convocation_sends_ref on convocation_sends(club_id, ref, step);
+create index if not exists convocation_sends_target on convocation_sends(target_club_id) where target_club_id is not null;
+alter table convocation_sends enable row level security;   -- lecture et écriture seulement par les fonctions ci-dessous
+
+-- Peut recevoir les convocations d'un club dans mypocketclub : rubrique Événements, ou correspondant rencontres
+create or replace function receives_convocations(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select has_area(c, 'evenements') or contact_holder(c, 'rencontres') = auth.uid();
+$$;
+revoke execute on function receives_convocations(uuid) from public, anon;
+
+-- Avant l'envoi : numéro de version du document et limites du jour (Resend gratuit : 100 e-mails par jour pour tout mypocketclub)
+create or replace function convocation_prepare(p_event uuid, p_step text, p_ref text, p_hash text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare e events; v int; h text; today_club int; today_all int;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not has_area(e.club_id, 'evenements') then raise exception 'Réservé au correspondant rencontres, au vice-président et au président'; end if;
+  select version, doc_hash into v, h from convocation_sends where club_id = e.club_id and ref = p_ref and step = p_step and status <> 'echec' order by version desc, sent_at desc limit 1;
+  select count(*) into today_club from convocation_sends where club_id = e.club_id and channel = 'email' and status <> 'echec' and sent_at > now() - interval '1 day';
+  select count(*) into today_all from convocation_sends where channel = 'email' and status <> 'echec' and sent_at > now() - interval '1 day';
+  return jsonb_build_object('version', case when v is null then 1 when h is distinct from coalesce(p_hash, '') then v + 1 else v end,
+    'email_left', greatest(0, least(20 - today_club, 80 - today_all)));
+end $$;
+revoke execute on function convocation_prepare(uuid, text, text, text) from public, anon;
+grant execute on function convocation_prepare(uuid, text, text, text) to authenticated;
+
+-- Après l'envoi (ou l'échec) : une ligne dans le suivi du rendez-vous ; l'échec prévient la personne ; l'envoi dans mypocketclub prévient le club reçu
+create or replace function convocation_record(p_event uuid, p_step text, p_ref text, p_version int, p_hash text, p_channel text,
+  p_target_club uuid, p_target_name text, p_target_hint text, p_status text, p_error text, p_payload jsonb) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare e events; sid uuid; cn text; u uuid; lab text;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not has_area(e.club_id, 'evenements') then raise exception 'Réservé au correspondant rencontres, au vice-président et au président'; end if;
+  if p_channel not in ('email','app') or p_status not in ('envoye','echec') or p_step not in ('P','C') then raise exception 'Envoi inconnu'; end if;
+  if p_channel = 'app' then
+    if p_target_club is null or p_target_club = e.club_id or not exists(select 1 from clubs where id = p_target_club and deleted_at is null) then raise exception 'Choisis un autre club inscrit'; end if;
+    if p_payload is null then raise exception 'Document manquant'; end if;
+  end if;
+  if p_channel = 'email' and p_status = 'envoye' and (select count(*) from convocation_sends where channel = 'email' and status <> 'echec' and sent_at > now() - interval '1 day') >= 80 then
+    raise exception 'Limite d''envois du jour atteinte : réessaie demain';
+  end if;
+  select name into cn from clubs where id = e.club_id;
+  insert into convocation_sends(club_id, event_id, ref, step, version, doc_hash, channel, target_club_id, target_name, target_hint, status, error, payload, sent_by)
+    values (e.club_id, p_event, left(p_ref, 40), p_step, greatest(1, coalesce(p_version, 1)), left(coalesce(p_hash, ''), 64), p_channel,
+      case when p_channel = 'app' then p_target_club end,
+      left(coalesce(case when p_channel = 'app' then (select name from clubs where id = p_target_club) end, p_target_name, ''), 80),
+      left(coalesce(p_target_hint, ''), 80), p_status, left(coalesce(p_error, ''), 200), case when p_channel = 'app' then p_payload end, auth.uid())
+    returning id into sid;
+  lab := case when p_step = 'P' then 'Pré-convocation' else 'Convocation' end || case when coalesce(p_version, 1) > 1 then ' (mise à jour)' else '' end;
+  perform log_action(e.club_id, null, null, case when p_status = 'echec' then 'convocation non envoyée' else 'convocation envoyée' end,
+    jsonb_build_object('document', lab, 'référence', p_ref || case when coalesce(p_version, 1) > 1 then '-v' || p_version else '' end, 'canal', p_channel, 'club', p_target_name));
+  if p_status = 'echec' then
+    perform push_enqueue(auth.uid(), lab || ' non envoyée', 'L''e-mail n''est pas parti. Ouvre le rendez-vous et touche « Renvoyer ».', 'convocation', 'convfail:' || sid);
+  elsif p_channel = 'app' then
+    for u in select distinct m.user_id from memberships m where m.club_id = p_target_club and m.status = 'active' and m.role in ('president','bureau')
+      and ('evenements' = any(areas_of(p_target_club, m.user_id)) or contact_holder(p_target_club, 'rencontres') = m.user_id) loop
+      perform push_enqueue(u, lab || ' reçue', coalesce(cn, 'Un club') || ' vous a envoyé un document', 'convocation', 'convin:' || sid || ':' || u);
+    end loop;
+  end if;
+  return sid;
+end $$;
+revoke execute on function convocation_record(uuid, text, text, int, text, text, uuid, text, text, text, text, jsonb) from public, anon;
+grant execute on function convocation_record(uuid, text, text, int, text, text, uuid, text, text, text, text, jsonb) to authenticated;
+
+-- Suivi dans le rendez-vous (côté club qui envoie) : tous les envois du week-end
+create or replace function convocation_sends_of(p_event uuid) returns table(id uuid, step text, version int, channel text, target_name text, target_hint text,
+  status text, error text, sent_at timestamptz, read_at timestamptz, sender text, ref text)
+language plpgsql stable security definer set search_path = public as $$
+declare e events; d date; d0 date; d1 date; dw int;
+begin
+  select * into e from events where events.id = p_event;
+  if e.id is null or not has_area(e.club_id, 'evenements') then return; end if;
+  d := (e.starts_at at time zone 'Europe/Paris')::date; dw := extract(isodow from d)::int;
+  if dw >= 6 then d0 := d - (dw - 6); d1 := d0 + 1; else d0 := d; d1 := d; end if;
+  return query select s.id, s.step, s.version, s.channel, s.target_name, s.target_hint, s.status, s.error, s.sent_at, s.read_at,
+      (select trim(p.first_name || ' ' || p.last_name) from profiles p where p.id = s.sent_by), s.ref
+    from convocation_sends s where s.club_id = e.club_id
+      and (s.event_id = e.id or s.event_id in (select x.id from events x where x.club_id = e.club_id and (x.starts_at at time zone 'Europe/Paris')::date between d0 and d1))
+    order by s.sent_at desc;
+end $$;
+revoke execute on function convocation_sends_of(uuid) from public, anon;
+grant execute on function convocation_sends_of(uuid) to authenticated;
+
+-- Convocations reçues dans mypocketclub (côté club reçu)
+create or replace function convocations_received(p_club uuid) returns table(id uuid, from_club text, step text, version int, ref text, sent_at timestamptz, read_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not receives_convocations(p_club) then return; end if;
+  return query select s.id, (select c.name from clubs c where c.id = s.club_id), s.step, s.version, s.ref, s.sent_at, s.read_at
+    from convocation_sends s where s.target_club_id = p_club and s.channel = 'app' and s.sent_at > now() - interval '120 days' order by s.sent_at desc limit 30;
+end $$;
+revoke execute on function convocations_received(uuid) from public, anon;
+grant execute on function convocations_received(uuid) to authenticated;
+
+-- Ouvrir une convocation reçue : le document, et l'accusé de lecture pour le club qui l'a envoyée (une fois)
+create or replace function convocation_open(p_send uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare s convocation_sends; cn text;
+begin
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.channel <> 'app' then raise exception 'Document introuvable'; end if;
+  if not receives_convocations(s.target_club_id) then
+    if has_area(s.club_id, 'evenements') then return jsonb_build_object('step', s.step, 'version', s.version, 'data', s.payload); end if;
+    raise exception 'Document réservé au correspondant rencontres du club reçu';
+  end if;
+  if s.read_at is null then
+    update convocation_sends set read_at = now(), read_by = auth.uid(), status = 'lu' where id = s.id;
+    select name into cn from clubs where id = s.target_club_id;
+    if s.sent_by is not null then
+      perform push_enqueue(s.sent_by, 'Convocation lue', coalesce(cn, 'Le club reçu') || ' a ouvert ' || case when s.step = 'P' then 'la pré-convocation' else 'la convocation' end, 'convocation', 'convread:' || s.id);
+    end if;
+  end if;
+  return jsonb_build_object('step', s.step, 'version', s.version, 'data', s.payload);
+end $$;
+revoke execute on function convocation_open(uuid) from public, anon;
+grant execute on function convocation_open(uuid) to authenticated;
+
+-- L'envoi échoué ou ancien peut être supprimé du suivi par la personne qui l'a fait (rien d'autre ne s'efface)
+create or replace function convocation_forget(p_send uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  delete from convocation_sends where id = p_send and sent_by = auth.uid() and status = 'echec';
+end $$;
+revoke execute on function convocation_forget(uuid) from public, anon;
+grant execute on function convocation_forget(uuid) to authenticated;
+
+-- ===== alpha_4_3_0.sql =====
+-- mypocketclub · alpha 4.3.0 · mise à jour d'une base 4.2.0, sans perte de données, relançable.
+-- Audit de sécurité du 5 novembre 2026 (document « 09 audit securite 2026 11 05 » du projet) :
+-- N° 123 (S2) : delete_announcement, trash_exercise, remind_event refusent le visiteur et l'inconnu (correctif du 5 novembre repris ici,
+--               pour qu'une mise à jour ne le défasse jamais).
+-- N° 124 (S1) : envoi des convocations (e-mail et dans mypocketclub) réservé aux personnes validées : le président est validé par
+--               l'administrateur (décision de Gaël, 5 novembre 2026, 13 h 26 : la validation porte sur la personne et son rôle) ;
+--               une autre fonction (correspondant rencontres…) est validée par l'attribution d'un président validé ;
+--               chaque e-mail est réservé dans la base avant de partir (limite de 20 par club et 80 en tout par jour, enfin contraignante) ;
+--               fin d'une année payée ou d'une gratuité : pas de blocage, un encart rouge (my_send_state) ; écran « Clubs à valider ».
+-- N° 129 : plusieurs destinataires ; « PDF » = envoyé à la main, noté dans le suivi.
+-- N° 126 (S4) : fonctions fermées au visiteur non connecté (sauf la recherche, la page publique, la demande de club, et les
+--               fonctions dont les règles d'accès ont besoin) ; liste des profils de test rangée dans la base (plus dans config.js).
+-- À LA FIN DE CHAQUE FUTURE MISE À JOUR : « select close_visitor_functions(); » (une nouvelle fonction est ouverte au visiteur par Supabase).
+
+-- ---------------------------------------------------------------------
+-- 1. N° 123 · S2 · trois fonctions refusent le visiteur et l'inconnu
+--    Avant : « not (auteur = moi or …) » donnait « inconnu » sans connexion (ou quand l'auteur avait supprimé son compte),
+--    et le refus ne se déclenchait pas.
+-- ---------------------------------------------------------------------
+create or replace function delete_announcement(p_id uuid) returns void language plpgsql security definer set search_path = public as $$
+declare a announcements;
+begin
+  if auth.uid() is null then raise exception 'Connexion demandée'; end if;
+  select * into a from announcements where id = p_id and deleted_at is null;
+  if a.id is null or not coalesce(a.created_by = auth.uid() or has_area(a.club_id, 'communication'), false) then raise exception 'Suppression impossible'; end if;
+  update announcements set deleted_at = now() where id = p_id;
+end $$;
+revoke execute on function delete_announcement(uuid) from public, anon;
+grant execute on function delete_announcement(uuid) to authenticated;
+
+create or replace function trash_exercise(p_id uuid, p_restore boolean default false) returns void
+language plpgsql security definer set search_path = public as $$
+declare e exercises;
+begin
+  if auth.uid() is null then raise exception 'Connexion demandée'; end if;
+  select * into e from exercises where id = p_id;
+  if e.id is null or not coalesce(e.created_by = auth.uid() or (e.sharing <> 'me' and is_board(e.club_id)), false) then raise exception 'Suppression impossible'; end if;
+  perform set_config('pc.exsys', 'on', true);
+  if p_restore then update exercises set deleted_at = null, deleted_by = null where id = p_id;
+  else update exercises set deleted_at = now(), deleted_by = auth.uid() where id = p_id and deleted_at is null; end if;
+  perform set_config('pc.exsys', 'off', true);
+end $$;
+revoke execute on function trash_exercise(uuid, boolean) from public, anon;
+grant execute on function trash_exercise(uuid, boolean) to authenticated;
+
+create or replace function remind_event(p_event uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare e events; who uuid[];
+begin
+  if auth.uid() is null then raise exception 'Connexion demandée'; end if;
+  select * into e from events where id = p_event;
+  if e.id is null or not coalesce(can_manage_event(p_event) or e.created_by = auth.uid(), false) then raise exception 'Seul l''organisateur relance'; end if;
+  if e.cancelled or e.starts_at < now() then raise exception 'Ce rendez-vous est passé ou annulé'; end if;
+  if e.reminded_at > now() - interval '12 hours' then raise exception 'Relance déjà faite il y a moins de 12 heures'; end if;
+  who := event_missing(p_event);
+  if cardinality(who) = 0 then return 0; end if;
+  perform set_config('pc.announce', 'on', true);
+  insert into announcements(club_id, audience, people, kind, event_id, title, body)
+    values (e.club_id, 'people', who, 'relance', e.id, 'Rappel : ta réponse est attendue',
+            e.title || ' · ' || to_char(e.starts_at at time zone 'Europe/Paris', 'DD/MM à HH24"h"MI') || '. Réponds « Je viens » ou « Je ne viens pas ».');
+  perform set_config('pc.remind', 'on', true);
+  update events set reminded_at = now() where id = p_event;
+  perform set_config('pc.announce', 'off', true); perform set_config('pc.remind', 'off', true);
+  return cardinality(who);
+end $$;
+revoke execute on function remind_event(uuid) from public, anon;
+grant execute on function remind_event(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 2. N° 124 · validation des personnes qui envoient
+-- ---------------------------------------------------------------------
+-- Une ligne = un président validé par l'administrateur, pour un club. Motif : payé, devis accepté, gratuité (avec sa date de fin), test.
+create table if not exists sender_validations (
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  reason text not null check (reason in ('paye','devis','gratuite','test')),
+  ends_at date,                          -- fin de l'année payée ou de la gratuité : encart rouge à partir de ce jour (pas de blocage)
+  note text not null default '' check (length(note) <= 300),
+  validated_by uuid references auth.users(id) on delete set null,
+  validated_at timestamptz not null default now(),
+  primary key (club_id, user_id)
+);
+alter table sender_validations enable row level security;   -- aucune règle : lecture et écriture seulement par les fonctions ci-dessous
+
+create or replace function president_validated(c uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from sender_validations v join memberships m on m.club_id = v.club_id and m.user_id = v.user_id and m.role = 'president' and m.status = 'active'
+    where v.club_id = c and v.user_id = u);
+$$;
+revoke execute on function president_validated(uuid, uuid) from public, anon, authenticated;
+
+-- Peut envoyer les convocations (par e-mail ou dans mypocketclub) : rubrique Événements, et
+--   président : validé par l'administrateur ;
+--   autre personne (vice-président, correspondant rencontres…) : sa fonction vient d'un président validé (le président du club l'est).
+create or replace function can_send_convocations(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select auth.uid() is not null and has_area(c, 'evenements') and case
+    when is_president(c) then president_validated(c, auth.uid())
+    else exists(select 1 from memberships m where m.club_id = c and m.role = 'president' and m.status = 'active' and president_validated(c, m.user_id)) end;
+$$;
+revoke execute on function can_send_convocations(uuid) from public, anon;
+grant execute on function can_send_convocations(uuid) to authenticated;
+
+-- Mon état d'envoi (boutons grisés, encart rouge) : seulement pour le président et les personnes qui ont la rubrique Événements
+create or replace function my_send_state(p_club uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare pres uuid; v sender_validations;
+begin
+  if auth.uid() is null or not (is_president(p_club) or has_area(p_club, 'evenements')) then return null; end if;
+  select m.user_id into pres from memberships m where m.club_id = p_club and m.role = 'president' and m.status = 'active' order by m.created_at limit 1;
+  select * into v from sender_validations where club_id = p_club and user_id = pres;
+  return jsonb_build_object('can_send', can_send_convocations(p_club), 'validated', v.user_id is not null, 'me_president', pres is not distinct from auth.uid(),
+    'reason', v.reason, 'ends_at', v.ends_at, 'period_over', coalesce(v.ends_at <= current_date, false));
+end $$;
+revoke execute on function my_send_state(uuid) from public, anon;
+grant execute on function my_send_state(uuid) to authenticated;
+
+-- Écran « Clubs à valider » (administrateur) : chaque club, son président et sa validation
+create or replace function admin_clubs() returns table(club_id uuid, name text, city text, sport text, color1 text, color2 text, logo text, crest_bg text,
+  created_at timestamptz, president_id uuid, president_name text, president_email text, members bigint, reason text, ends_at date, note text, validated_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  return query select c.id, c.name, c.city, c.sport, c.color1, c.color2, c.logo, c.crest_bg, c.created_at, p.user_id,
+      nullif(trim(coalesce(pr.first_name, '') || ' ' || coalesce(pr.last_name, '')), ''), u.email::text,
+      (select count(distinct m.user_id) from memberships m where m.club_id = c.id and m.status = 'active'), v.reason, v.ends_at, v.note, v.validated_at
+    from clubs c
+    left join lateral (select m.user_id from memberships m where m.club_id = c.id and m.role = 'president' and m.status = 'active' order by m.created_at limit 1) p on true
+    left join profiles pr on pr.id = p.user_id
+    left join auth.users u on u.id = p.user_id
+    left join sender_validations v on v.club_id = c.id and v.user_id = p.user_id
+    where c.deleted_at is null
+    order by (v.user_id is null) desc, c.created_at desc;
+end $$;
+revoke execute on function admin_clubs() from public, anon;
+grant execute on function admin_clubs() to authenticated;
+
+create or replace function admin_validate_sender(p_club uuid, p_user uuid, p_reason text, p_ends date, p_note text) returns void
+language plpgsql security definer set search_path = public as $$
+declare cn text;
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if p_reason not in ('paye','devis','gratuite','test') then raise exception 'Motif inconnu'; end if;
+  if p_reason = 'gratuite' and p_ends is null then raise exception 'Indique la date de fin de la gratuité'; end if;
+  if not exists(select 1 from memberships where club_id = p_club and user_id = p_user and role = 'president' and status = 'active') then raise exception 'Cette personne n''est pas présidente de ce club'; end if;
+  insert into sender_validations(club_id, user_id, reason, ends_at, note, validated_by, validated_at)
+    values (p_club, p_user, p_reason, p_ends, left(coalesce(p_note, ''), 300), auth.uid(), now())
+    on conflict (club_id, user_id) do update set reason = excluded.reason, ends_at = excluded.ends_at, note = excluded.note, validated_by = excluded.validated_by, validated_at = now();
+  select name into cn from clubs where id = p_club;
+  perform log_action(p_club, p_user, null, 'envoi des convocations ouvert par mypocketclub', jsonb_build_object('motif', p_reason, 'fin', p_ends));
+  perform push_enqueue(p_user, 'Envoi des convocations ouvert', coalesce(cn, 'Ton club') || ' peut envoyer ses convocations par e-mail et dans mypocketclub', 'admin', 'presok:' || p_club || ':' || p_user);
+end $$;
+revoke execute on function admin_validate_sender(uuid, uuid, text, date, text) from public, anon;
+grant execute on function admin_validate_sender(uuid, uuid, text, date, text) to authenticated;
+
+create or replace function admin_unvalidate_sender(p_club uuid, p_user uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  delete from sender_validations where club_id = p_club and user_id = p_user;
+  if found then perform log_action(p_club, p_user, null, 'envoi des convocations fermé par mypocketclub', '{}'::jsonb); end if;
+end $$;
+revoke execute on function admin_unvalidate_sender(uuid, uuid) from public, anon;
+grant execute on function admin_unvalidate_sender(uuid, uuid) to authenticated;
+
+-- Nouveau président (club créé, présidence transférée) : l'administrateur est prévenu s'il n'est pas validé.
+-- La validation suit la personne dans son rôle : elle s'efface quand la personne n'est plus présidente.
+create or replace function memberships_president_watch() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare a uuid; cn text; nm text;
+begin
+  if tg_op in ('UPDATE','DELETE') and old.role = 'president' and old.status = 'active'
+     and (tg_op = 'DELETE' or new.role <> 'president' or new.status <> 'active' or new.user_id <> old.user_id) then
+    delete from sender_validations where club_id = old.club_id and user_id = old.user_id;
+  end if;
+  if tg_op in ('INSERT','UPDATE') and new.role = 'president' and new.status = 'active'
+     and (tg_op = 'INSERT' or old.role <> 'president' or old.status <> 'active')
+     and not exists(select 1 from sender_validations where club_id = new.club_id and user_id = new.user_id) then
+    select name into cn from clubs where id = new.club_id;
+    select full_name into nm from profiles where id = new.user_id;
+    for a in select user_id from app_admins loop
+      perform push_enqueue(a, 'Président à valider', coalesce(cn, 'Un club') || ' · ' || coalesce(nm, 'nouveau président'), 'admin', 'presval:' || new.club_id || ':' || new.user_id, './');
+    end loop;
+  end if;
+  return null;
+end $$;
+drop trigger if exists memberships_president_watch on memberships;
+create trigger memberships_president_watch after insert or update of role, status, user_id or delete on memberships for each row execute function memberships_president_watch();
+
+-- ---------------------------------------------------------------------
+-- 3. N° 124 · chaque e-mail est réservé dans la base avant de partir
+--    La fonction envoyer-email appelle convocation_reserve (vérification et réservation en une seule opération), puis Resend,
+--    puis convocation_finish. Toutes les tentatives d'e-mail comptent dans la limite, même ratées : un envoi déclaré « raté »
+--    ne libère pas de place (sinon la limite se contournerait).
+-- ---------------------------------------------------------------------
+alter table convocation_sends drop constraint if exists convocation_sends_status_check;
+alter table convocation_sends add constraint convocation_sends_status_check check (status in ('en_cours','envoye','echec','lu'));
+alter table convocation_sends drop constraint if exists convocation_sends_channel_check;
+alter table convocation_sends add constraint convocation_sends_channel_check check (channel in ('email','app','pdf'));
+create index if not exists convocation_sends_mail_day on convocation_sends(sent_at) where channel = 'email';
+
+-- E-mails encore possibles aujourd'hui pour ce club (20 par club, 80 en tout : Resend gratuit = 100 par jour)
+create or replace function email_left(c uuid) returns int language sql stable security definer set search_path = public as $$
+  select greatest(0, least(
+    20 - (select count(*) from convocation_sends where club_id = c and channel = 'email' and sent_at > now() - interval '1 day'),
+    80 - (select count(*) from convocation_sends where channel = 'email' and sent_at > now() - interval '1 day')))::int;
+$$;
+revoke execute on function email_left(uuid) from public, anon, authenticated;
+
+create or replace function convocation_prepare(p_event uuid, p_step text, p_ref text, p_hash text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare e events; v int; h text;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not has_area(e.club_id, 'evenements') then raise exception 'Réservé au correspondant rencontres, au vice-président et au président'; end if;
+  select version, doc_hash into v, h from convocation_sends where club_id = e.club_id and ref = p_ref and step = p_step and status in ('envoye','lu') order by version desc, sent_at desc limit 1;
+  return jsonb_build_object('version', case when v is null then 1 when h is distinct from coalesce(p_hash, '') then v + 1 else v end,
+    'email_left', email_left(e.club_id), 'can_send', can_send_convocations(e.club_id));
+end $$;
+revoke execute on function convocation_prepare(uuid, text, text, text) from public, anon;
+grant execute on function convocation_prepare(uuid, text, text, text) to authenticated;
+
+create or replace function convocation_reserve(p_event uuid, p_step text, p_ref text, p_version int, p_hash text, p_hint text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare e events; sid uuid;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not has_area(e.club_id, 'evenements') then raise exception 'Réservé au correspondant rencontres, au vice-président et au président'; end if;
+  if e.type not in ('Match','Plateau','Tournoi') then raise exception 'La convocation vaut pour un match, un plateau ou un tournoi'; end if;
+  if p_step not in ('P','C') then raise exception 'Envoi inconnu'; end if;
+  if not can_send_convocations(e.club_id) then raise exception 'Envoi réservé aux comptes validés par mypocketclub'; end if;
+  perform pg_advisory_xact_lock(hashtext('mypocketclub:convocation_sends'));   -- deux envois en même temps ne dépassent pas la limite
+  if email_left(e.club_id) <= 0 then raise exception 'Limite d''envois du jour atteinte : réessaie demain'; end if;
+  insert into convocation_sends(club_id, event_id, ref, step, version, doc_hash, channel, target_name, target_hint, status, sent_by)
+    values (e.club_id, p_event, left(coalesce(p_ref, ''), 40), p_step, greatest(1, coalesce(p_version, 1)), left(coalesce(p_hash, ''), 64), 'email', '', left(coalesce(p_hint, ''), 80), 'en_cours', auth.uid())
+    returning id into sid;
+  return sid;
+end $$;
+revoke execute on function convocation_reserve(uuid, text, text, int, text, text) from public, anon;
+grant execute on function convocation_reserve(uuid, text, text, int, text, text) to authenticated;
+
+create or replace function convocation_finish(p_send uuid, p_ok boolean, p_error text) returns void
+language plpgsql security definer set search_path = public as $$
+declare s convocation_sends; lab text;
+begin
+  select * into s from convocation_sends where id = p_send for update;
+  if s.id is null or s.sent_by is distinct from auth.uid() or s.channel <> 'email' or s.status <> 'en_cours' then raise exception 'Envoi introuvable'; end if;
+  update convocation_sends set status = case when p_ok then 'envoye' else 'echec' end,
+    error = case when p_ok then '' else left(coalesce(nullif(p_error, ''), 'e-mail non parti'), 200) end where id = s.id;
+  lab := case when s.step = 'P' then 'Pré-convocation' else 'Convocation' end || case when s.version > 1 then ' (mise à jour)' else '' end;
+  perform log_action(s.club_id, null, null, case when p_ok then 'convocation envoyée' else 'convocation non envoyée' end,
+    jsonb_build_object('document', lab, 'référence', s.ref || case when s.version > 1 then '-v' || s.version else '' end, 'canal', 'email', 'contact', s.target_hint));
+  if not p_ok then
+    perform push_enqueue(s.sent_by, lab || ' non envoyée', 'L''e-mail n''est pas parti. Ouvre le rendez-vous et touche « Renvoyer ».', 'convocation', 'convfail:' || s.id);
+  end if;
+end $$;
+revoke execute on function convocation_finish(uuid, boolean, text) from public, anon;
+grant execute on function convocation_finish(uuid, boolean, text) to authenticated;
+
+-- Envoi dans mypocketclub (réservé aux personnes validées) et PDF envoyé à la main (n° 129, libre : simple trace dans le suivi).
+-- Les e-mails ne passent plus par ici (convocation_reserve et convocation_finish).
+create or replace function convocation_record(p_event uuid, p_step text, p_ref text, p_version int, p_hash text, p_channel text,
+  p_target_club uuid, p_target_name text, p_target_hint text, p_status text, p_error text, p_payload jsonb) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare e events; sid uuid; cn text; u uuid; lab text;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not has_area(e.club_id, 'evenements') then raise exception 'Réservé au correspondant rencontres, au vice-président et au président'; end if;
+  if p_channel = 'email' then raise exception 'Les e-mails passent par la fonction d''envoi'; end if;
+  if p_channel not in ('app','pdf') or p_status <> 'envoye' or p_step not in ('P','C') then raise exception 'Envoi inconnu'; end if;
+  if p_channel = 'app' then
+    if not can_send_convocations(e.club_id) then raise exception 'Envoi réservé aux comptes validés par mypocketclub'; end if;
+    if p_target_club is null or p_target_club = e.club_id or not exists(select 1 from clubs where id = p_target_club and deleted_at is null) then raise exception 'Choisis un autre club inscrit'; end if;
+    if p_payload is null then raise exception 'Document manquant'; end if;
+  end if;
+  select name into cn from clubs where id = e.club_id;
+  insert into convocation_sends(club_id, event_id, ref, step, version, doc_hash, channel, target_club_id, target_name, target_hint, status, error, payload, sent_by)
+    values (e.club_id, p_event, left(p_ref, 40), p_step, greatest(1, coalesce(p_version, 1)), left(coalesce(p_hash, ''), 64), p_channel,
+      case when p_channel = 'app' then p_target_club end,
+      left(coalesce(case when p_channel = 'app' then (select name from clubs where id = p_target_club) end, p_target_name, ''), 80),
+      left(coalesce(p_target_hint, ''), 80), 'envoye', '', case when p_channel = 'app' then p_payload end, auth.uid())
+    returning id into sid;
+  lab := case when p_step = 'P' then 'Pré-convocation' else 'Convocation' end || case when coalesce(p_version, 1) > 1 then ' (mise à jour)' else '' end;
+  perform log_action(e.club_id, null, null, case when p_channel = 'pdf' then 'convocation envoyée à la main (PDF)' else 'convocation envoyée' end,
+    jsonb_build_object('document', lab, 'référence', p_ref || case when coalesce(p_version, 1) > 1 then '-v' || p_version else '' end, 'canal', p_channel, 'club', coalesce(cn, '')));
+  if p_channel = 'app' then
+    for u in select distinct m.user_id from memberships m where m.club_id = p_target_club and m.status = 'active' and m.role in ('president','bureau')
+      and ('evenements' = any(areas_of(p_target_club, m.user_id)) or contact_holder(p_target_club, 'rencontres') = m.user_id) loop
+      perform push_enqueue(u, lab || ' reçue', coalesce(cn, 'Un club') || ' vous a envoyé un document', 'convocation', 'convin:' || sid || ':' || u);
+    end loop;
+  end if;
+  return sid;
+end $$;
+revoke execute on function convocation_record(uuid, text, text, int, text, text, uuid, text, text, text, text, jsonb) from public, anon;
+grant execute on function convocation_record(uuid, text, text, int, text, text, uuid, text, text, text, text, jsonb) to authenticated;
+
+-- Les tentatives d'e-mail restent dans le suivi (elles comptent dans la limite) : on ne les efface plus
+create or replace function convocation_forget(p_send uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  delete from convocation_sends where id = p_send and sent_by = auth.uid() and status = 'echec' and channel <> 'email';
+end $$;
+revoke execute on function convocation_forget(uuid) from public, anon;
+grant execute on function convocation_forget(uuid) to authenticated;
+
+-- N° 128 : le contour du blason (réglage du club) part avec les données de la convocation, pour un blason identique à l'application dans le PDF
+create or replace function convocation_data(p_event uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare e events; c clubs; d date; d0 date; d1 date; dw int; ren uuid;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null then raise exception 'Rendez-vous introuvable'; end if;
+  if not has_area(e.club_id, 'evenements') then raise exception 'La convocation est réservée au correspondant rencontres, au vice-président et au président'; end if;
+  if e.type not in ('Match','Plateau','Tournoi') then raise exception 'La convocation vaut pour un match, un plateau ou un tournoi'; end if;
+  d := (e.starts_at at time zone 'Europe/Paris')::date; dw := extract(isodow from d)::int;
+  if dw >= 6 then d0 := d - (dw - 6); d1 := d0 + 1; else d0 := d; d1 := d; end if;
+  select * into c from clubs where id = e.club_id;
+  ren := contact_holder(c.id, 'rencontres');
+  return jsonb_build_object(
+    'club', jsonb_build_object('id', c.id, 'name', c.name, 'city', c.city, 'sport', c.sport, 'color1', c.color1, 'color2', c.color2, 'logo', c.logo, 'crest_bg', c.crest_bg, 'crest_outline', c.crest_outline),
+    'from', d0, 'to', d1,
+    'correspondent', case when ren is null then null else (select jsonb_build_object('name', x->>'name', 'phone', x->>'phone', 'email', x->>'email') from (select contact_person(c.id, ren, 'Correspondant rencontres') x) z) end,
+    'sender', (select jsonb_build_object('name', trim(p.first_name || ' ' || p.last_name), 'email', u.email) from profiles p join auth.users u on u.id = p.id where p.id = auth.uid()),
+    'events', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', x.id, 'type', x.type, 'title', x.title, 'starts_at', x.starts_at, 'place', x.place, 'opponents', x.opponents, 'cancelled', x.cancelled,
+        'team', (select jsonb_build_object('name', t.name, 'category', t.category, 'gender', t.gender) from teams t where t.id = any(x.team_ids) and t.deleted_at is null order by t.name limit 1),
+        'coach', (select jsonb_build_object('name', p.full_name, 'phone', nullif(p.phone, ''), 'email', u.email)
+                  from memberships m join profiles p on p.id = m.user_id join auth.users u on u.id = m.user_id
+                  where m.club_id = x.club_id and m.role = 'coach' and m.status = 'active' and m.team_id = any(x.team_ids) order by p.full_name limit 1))
+        order by x.starts_at, x.title)
+      from events x where x.club_id = e.club_id and x.at_home and x.type in ('Match','Plateau','Tournoi') and x.audience = 'team'
+        and (x.starts_at at time zone 'Europe/Paris')::date between d0 and d1), '[]'::jsonb));
+end $$;
+revoke execute on function convocation_data(uuid) from public, anon;
+grant execute on function convocation_data(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 4. N° 126 · liste des profils de test : dans la base, plus dans config.js (dépôt public)
+--    Remplie à part par Gaël (script privé du projet, jamais dans le dépôt) ; lue seulement par un compte de la liste.
+-- ---------------------------------------------------------------------
+create table if not exists test_profiles (
+  email text primary key check (email = lower(email)),
+  label text not null check (length(label) between 1 and 40),
+  position int not null default 0
+);
+alter table test_profiles enable row level security;
+create or replace function my_test_profiles() returns table(label text, email text)
+language sql stable security definer set search_path = public as $$
+  select t.label, t.email from test_profiles t
+  where exists(select 1 from auth.users u join test_profiles x on x.email = lower(u.email) where u.id = auth.uid())
+  order by t.position, t.label;
+$$;
+revoke execute on function my_test_profiles() from public, anon;
+grant execute on function my_test_profiles() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 5. N° 126 · S4 · fonctions fermées au visiteur non connecté
+--    Supabase ouvre chaque nouvelle fonction au visiteur. On ne lui laisse que la recherche des clubs, la page publique,
+--    la demande d'ajout d'un club, et les fonctions appelées par les règles d'accès (sans elles, une lecture par un visiteur
+--    échouerait au lieu de ne rien renvoyer). due_for, grid_for et member_rank sont fermées dans tous les cas.
+--    Les personnes connectées gardent exactement les mêmes droits.
+-- ---------------------------------------------------------------------
+create or replace function close_visitor_functions() returns int
+language plpgsql security definer set search_path = public, pg_catalog as $$
+declare f record; n int := 0; pol text; svc boolean := exists(select 1 from pg_roles where rolname = 'service_role');
+  keep text[] := array['public_search_clubs', 'public_club', 'request_club'];
+  shut text[] := array['due_for', 'grid_for', 'member_rank'];
+begin
+  select coalesce(string_agg(coalesce(qual, '') || ' ' || coalesce(with_check, ''), ' '), '') into pol from pg_policies;
+  for f in select p.oid, p.proname from pg_proc p join pg_namespace s on s.oid = p.pronamespace
+           where s.nspname = 'public' and p.prokind = 'f' and p.prorettype not in ('trigger'::regtype, 'event_trigger'::regtype) loop
+    continue when not has_function_privilege('anon', f.oid, 'execute');
+    continue when f.proname = any(keep);
+    continue when not (f.proname = any(shut)) and pol ~ ('\m' || f.proname || '\(');
+    if has_function_privilege('authenticated', f.oid, 'execute') then execute format('grant execute on function %s to authenticated', f.oid::regprocedure); end if;
+    if svc and has_function_privilege('service_role', f.oid, 'execute') then execute format('grant execute on function %s to service_role', f.oid::regprocedure); end if;
+    execute format('revoke execute on function %s from public, anon', f.oid::regprocedure);
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+revoke execute on function close_visitor_functions() from public, anon, authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_4_4_0.sql =====
+-- mypocketclub · alpha 4.4.0 · mise à jour d'une base 4.3.0, sans perte de données, relançable.
+-- N° 114 (suite, revue du 4 novembre 2026, « oui pour tout » de Gaël le 5 novembre, 13 h 26) :
+-- 1. Cotisations : le Secrétariat et le correspondant licences ne lisent plus les montants ; ils lisent les licences par
+--    club_licences() et les modifient par set_licence() ; « cotisation à jour » (oui / non, jamais un montant) seulement
+--    si le président l'active (clubs.secretary_sees_fees, non par défaut).
+-- 2. Directeur technique : coordonnées des parents et des joueurs visibles par défaut ; le président peut les masquer
+--    (clubs.tech_sees_contacts). Les coordonnées des fiches (contact du parent importé, contact d'urgence) ne sont plus
+--    lisibles dans la table : player_contacts() les donne à ceux qui voient la fiche, sauf ce cas.
+-- 3. Exports journalisés : export_members() (coordonnées : président, secrétaire et secrétaire adjoint seulement) et
+--    log_export() (liste des cotisations du trésorier) écrivent au journal des actions.
+-- 4. Relance des cotisations non réglées en un geste (remind_fees).
+-- 5. Passage de saison pour tout le club (renew_club_season) : chaque équipe est archivée et recréée, et la case
+--    « Je participe au bénévolat du club » repart cochée pour les membres du club.
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- ---------------------------------------------------------------------
+-- 1. Réglages du président
+-- ---------------------------------------------------------------------
+alter table clubs add column if not exists secretary_sees_fees boolean not null default false;
+alter table clubs add column if not exists tech_sees_contacts boolean not null default true;
+
+create or replace function clubs_guard_440() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return new; end if;
+  if (new.secretary_sees_fees, new.tech_sees_contacts) is distinct from (old.secretary_sees_fees, old.tech_sees_contacts) and not is_president(old.id) then
+    raise exception 'Réglage réservé au président';
+  end if;
+  return new;
+end $$;
+drop trigger if exists clubs_guard_440 on clubs;
+create trigger clubs_guard_440 before update on clubs for each row execute function clubs_guard_440();
+
+-- ---------------------------------------------------------------------
+-- 2. Cotisations : plus de montants pour le Secrétariat et le correspondant licences
+-- ---------------------------------------------------------------------
+create or replace function can_see_fees(p uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from players x join clubs c on c.id = x.club_id where x.id = p and x.deleted_at is null and (
+    x.user_id = auth.uid() or is_parent_of(x.id) or has_area(x.club_id, 'tresorerie')
+    or (c.coach_sees_fees and (coaches_team(x.team_id) or exists(select 1 from player_teams pt where pt.player_id = x.id and coaches_team(pt.team_id))))));
+$$;
+
+-- Licences du club pour le Secrétariat et le correspondant licences ; fee_ok = « cotisation à jour » (oui / non) si le président
+-- l'a activé, sinon null ; jamais un montant
+create or replace function club_licences(p_club uuid) returns table(player_id uuid, licence_state text, licence_number text, health_doc boolean, fee_ok boolean)
+language sql stable security definer set search_path = public as $$
+  select x.id, coalesce(a.licence_state, 'Préinscrit club'), a.licence_number, coalesce(a.health_doc, false),
+    case when c.secretary_sees_fees or has_area(p_club, 'tresorerie') then (a.fee_amount is not null and coalesce(a.fee_paid, 0) >= a.fee_amount) end
+  from players x join clubs c on c.id = x.club_id left join player_admin a on a.player_id = x.id
+  where x.club_id = p_club and x.deleted_at is null and auth.uid() is not null
+    and (has_area(p_club, 'secretariat') or has_area(p_club, 'licences'));
+$$;
+
+-- Modifier la licence sans lire la cotisation : état (Secrétariat, licences ou Trésorerie), numéro et certificat (licences)
+create or replace function set_licence(p_player uuid, p_state text, p_number text, p_health boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  select club_id into c from players where id = p_player and deleted_at is null;
+  if c is null or not can_admin_player(p_player) or not (has_area(c, 'licences') or has_area(c, 'tresorerie')) then raise exception 'Droit insuffisant'; end if;
+  if p_state not in ('Préinscrit club', 'Préinscrit fédé', 'Licencié') then raise exception 'État de licence inconnu'; end if;
+  insert into player_admin(player_id, licence_state, licence_number, health_doc, updated_by, updated_at)
+    values (p_player, p_state, nullif(trim(coalesce(p_number, '')), ''), coalesce(p_health, false), auth.uid(), now())
+    on conflict (player_id) do update set licence_state = excluded.licence_state, licence_number = excluded.licence_number,
+      health_doc = excluded.health_doc, updated_by = excluded.updated_by, updated_at = excluded.updated_at;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 3. Coordonnées des fiches et réglage du président pour le Directeur technique
+-- ---------------------------------------------------------------------
+-- Vrai seulement pour un Directeur technique (sans Secrétariat, Trésorerie ni licences) quand le président a masqué les coordonnées
+create or replace function contacts_hidden_for_me(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select auth.uid() is not null
+    and exists(select 1 from clubs where id = c and not tech_sees_contacts)
+    and not is_president(c)
+    and exists(select 1 from memberships where club_id = c and user_id = auth.uid() and status = 'active' and role = 'bureau' and fonction = 'Directeur technique')
+    and not (areas_of(c, auth.uid()) && array['secretariat', 'tresorerie', 'licences']);
+$$;
+
+-- La table ne donne plus les coordonnées : une lecture « select * » est remplacée par la liste des colonnes dans l'application
+revoke select on players from anon, authenticated;
+grant select (id, club_id, team_id, user_id, first_name, last_name, birth_date, consents, deleted_at, deleted_by, created_by, created_at, from_partner) on players to authenticated;
+
+create or replace function player_contacts(p_club uuid) returns table(id uuid, parent_email text, parent_phone text, emergency_name text, emergency_phone text)
+language sql stable security definer set search_path = public as $$
+  select x.id, x.parent_email, x.parent_phone, x.emergency_name, x.emergency_phone
+  from players x
+  where x.club_id = p_club and x.deleted_at is null and auth.uid() is not null and (
+    x.user_id = auth.uid() or is_parent_of(x.id) or coaches_team(x.team_id)
+    or exists(select 1 from player_teams pt where pt.player_id = x.id and coaches_team(pt.team_id))
+    or (is_board(x.club_id) and not contacts_hidden_for_me(x.club_id)));
+$$;
+
+-- Téléphones des comptes : l'encadrement (président, bureau, coachs) reste joignable ; les familles ne le sont plus
+-- pour un Directeur technique quand le président a masqué les coordonnées (sauf les familles de ses propres équipes)
+create or replace function phones_for(p_ids uuid[]) returns table(id uuid, phone text)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.phone from profiles p where p.id = any(p_ids) and p.phone is not null and p.deleted_at is null and (
+    p.id = auth.uid()
+    or exists(select 1 from memberships a join memberships b on a.club_id = b.club_id
+      where a.user_id = auth.uid() and a.status = 'active' and a.role in ('president','bureau') and b.user_id = p.id and not contacts_hidden_for_me(a.club_id))
+    or exists(select 1 from memberships a join memberships b on a.club_id = b.club_id
+      where b.user_id = p.id and b.status = 'active' and b.role in ('president','bureau','coach') and a.user_id = auth.uid() and a.status = 'active' and a.role <> 'supporteur')
+    or exists(select 1 from players x left join player_parents pp on pp.player_id = x.id
+      where x.deleted_at is null and (pp.user_id = p.id or x.user_id = p.id)
+        and (coaches_team(x.team_id) or exists(select 1 from player_teams pt where pt.player_id = x.id and coaches_team(pt.team_id)))));
+$$;
+
+-- ---------------------------------------------------------------------
+-- 4. Exports journalisés
+-- ---------------------------------------------------------------------
+create or replace function is_secretary_or_president(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select is_president(c) or exists(select 1 from memberships where club_id = c and user_id = auth.uid() and status = 'active'
+    and role = 'bureau' and fonction in ('Secrétaire', 'Secrétaire adjoint') and club_alive(c));
+$$;
+
+-- Liste des membres avec coordonnées (Secrétariat › Import / export) : président, secrétaire et secrétaire adjoint ; inscrite au journal
+create or replace function export_members(p_club uuid) returns table(team text, first_name text, last_name text, birth_date date,
+  licence_state text, licence_number text, health_doc boolean, parents text, emails text, phones text, emergency text)
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  if auth.uid() is null or not is_secretary_or_president(p_club) then raise exception 'Export réservé au président, au secrétaire et au secrétaire adjoint'; end if;
+  select count(*) into n from players where club_id = p_club and deleted_at is null and not from_partner;
+  perform log_action(p_club, null, null, 'export des membres (coordonnées)', jsonb_build_object('lignes', n));
+  return query
+    select coalesce(t.name, ''), x.first_name, coalesce(x.last_name, ''), x.birth_date,
+      coalesce(a.licence_state, 'Préinscrit club'), coalesce(a.licence_number, ''), coalesce(a.health_doc, false),
+      coalesce((select string_agg(coalesce(pr.full_name, ''), ', ' order by pr.full_name) from player_parents pp join profiles pr on pr.id = pp.user_id where pp.player_id = x.id), ''),
+      concat_ws(', ', nullif((select string_agg(u.email::text, ', ' order by u.email) from player_parents pp join auth.users u on u.id = pp.user_id where pp.player_id = x.id), ''),
+        (select u.email::text from auth.users u where u.id = x.user_id), x.parent_email),
+      concat_ws(', ', nullif((select string_agg(pr.phone, ', ') from player_parents pp join profiles pr on pr.id = pp.user_id where pp.player_id = x.id and coalesce(pr.phone, '') <> ''), ''),
+        (select nullif(pr.phone, '') from profiles pr where pr.id = x.user_id), x.parent_phone),
+      trim(concat_ws(' ', x.emergency_name, x.emergency_phone))
+    from players x left join teams t on t.id = x.team_id left join player_admin a on a.player_id = x.id
+    where x.club_id = p_club and x.deleted_at is null and not x.from_partner
+    order by t.name nulls last, x.last_name, x.first_name;
+end $$;
+
+-- Autres exports faits dans l'application (liste des cotisations du trésorier) : inscrits au journal avant le fichier
+create or replace function log_export(p_club uuid, p_kind text, p_rows int) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  if p_kind = 'cotisations' then
+    if not has_area(p_club, 'tresorerie') then raise exception 'Export réservé à la trésorerie'; end if;
+  else raise exception 'Export inconnu'; end if;
+  perform log_action(p_club, null, null, 'export des cotisations', jsonb_build_object('lignes', greatest(coalesce(p_rows, 0), 0)));
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 5. Relance des cotisations non réglées en un geste (trésorerie) : chaque joueur une fois par semaine au plus
+-- ---------------------------------------------------------------------
+create or replace function remind_fees(p_club uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare x record; sent int := 0; people int := 0; skipped int := 0; k int;
+begin
+  if auth.uid() is null or not has_area(p_club, 'tresorerie') then raise exception 'Réservé à la trésorerie'; end if;
+  for x in select p.id from players p join player_admin a on a.player_id = p.id
+           where p.club_id = p_club and p.deleted_at is null and not p.from_partner and a.fee_amount is not null and a.fee_paid < a.fee_amount loop
+    begin
+      k := remind_fee(x.id); sent := sent + 1; people := people + k;
+    exception when others then skipped := skipped + 1;
+    end;
+  end loop;
+  if sent > 0 then perform log_action(p_club, null, null, 'relance des cotisations', jsonb_build_object('joueurs', sent)); end if;
+  return jsonb_build_object('sent', sent, 'people', people, 'skipped', skipped);
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 6. Passage de saison pour tout le club (président)
+--    Chaque équipe d'une autre saison est archivée et recréée pour la nouvelle saison, en mode fantôme, avec ses coachs
+--    (comme « Archiver et reconduire » équipe par équipe). Une équipe déjà recréée n'est pas recréée une deuxième fois.
+--    Les joueurs restent dans l'équipe archivée (comme aujourd'hui). La case « Je participe au bénévolat du club » repart cochée.
+-- ---------------------------------------------------------------------
+create or replace function renew_club_season(p_club uuid, p_season text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare t teams; nid uuid; made int := 0; kept int := 0; vol int;
+begin
+  if auth.uid() is null or not is_president(p_club) then raise exception 'Seul le président fait le passage de saison du club'; end if;
+  if coalesce(p_season, '') !~ '^\d{4}-\d{4}$' then raise exception 'Saison illisible (ex. 2027-2028)'; end if;
+  for t in select * from teams where club_id = p_club and deleted_at is null and state <> 'Archivée' and coalesce(season, '') <> p_season order by name loop
+    if exists(select 1 from teams n where n.club_id = p_club and n.deleted_at is null and n.season = p_season and n.name = t.name
+              and n.category is not distinct from t.category and n.gender is not distinct from t.gender) then
+      kept := kept + 1;
+    else
+      insert into teams(club_id, name, category, gender, state, season, slots) values (t.club_id, t.name, t.category, t.gender, 'Fantôme', p_season, t.slots) returning id into nid;
+      insert into memberships(club_id, user_id, role, team_id, status, assistant)
+        select club_id, user_id, 'coach', nid, 'active', assistant from memberships where team_id = t.id and role = 'coach' and status = 'active';
+      made := made + 1;
+    end if;
+    update teams set state = 'Archivée' where id = t.id;
+  end loop;
+  update profiles set volunteer = true where volunteer = false
+    and id in (select user_id from memberships where club_id = p_club and status = 'active' and role <> 'supporteur');
+  get diagnostics vol = row_count;
+  perform log_action(p_club, null, null, 'passage de saison du club', jsonb_build_object('saison', p_season, 'equipes', made, 'deja_creees', kept, 'benevoles', vol));
+  return jsonb_build_object('teams', made, 'kept', kept, 'volunteers', vol);
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 7. Droits d'exécution, puis fermeture au visiteur (règle de la 4.3.0)
+-- ---------------------------------------------------------------------
+revoke execute on function contacts_hidden_for_me(uuid) from public, anon;
+revoke execute on function is_secretary_or_president(uuid) from public, anon;
+revoke execute on function clubs_guard_440() from public, anon, authenticated;
+grant execute on function club_licences(uuid), set_licence(uuid, text, text, boolean), player_contacts(uuid), export_members(uuid),
+  log_export(uuid, text, int), remind_fees(uuid), renew_club_season(uuid, text) to authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_4_5_0.sql =====
+-- mypocketclub · alpha 4.5.0 · mise à jour d'une base 4.4.0, sans perte de données, relançable.
+-- Relecture de la 4.4.0 par Gaël (5 novembre 2026, 16 h 22 à 18 h 16), « lance la maj » à 18 h 21 :
+-- 1. N° 136 : coach et coach assistant réservés aux adultes ; la liste proposée au coach est celle de tous les adultes du
+--    club (coach_candidates), et plus seulement les membres que le coach voit déjà.
+-- 2. N° 142 (a) : le correspondant rencontres (rubrique Événements) relance l'encart « Souhaites-tu être bénévole ? »
+--    auprès des membres du bureau qui n'ont pas encore répondu et des supporteurs sans réponse (si le club leur ouvre le
+--    bénévolat) : ask_volunteers, une fois toutes les 12 heures.
+-- 3. N° 142 (b) : missions ouvertes aux jeunes à partir de U13 : case « jeunes dès U13 » sur une mission (cochée seulement
+--    par la rubrique Événements : président, correspondant rencontres) ; jamais pour la buvette ; c'est le parent qui
+--    inscrit son enfant (volunteer_youth) ; un adulte du club est présent (rappel à l'écran).
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- ---------------------------------------------------------------------
+-- 1. N° 136 · coachs et coachs assistants : adultes seulement, liste de tous les adultes du club
+-- ---------------------------------------------------------------------
+create or replace function coach_candidates(p_team uuid) returns table(uid uuid, label text)
+language plpgsql stable security definer set search_path = public as $$
+declare c uuid;
+begin
+  select club_id into c from teams where id = p_team and deleted_at is null;
+  if c is null or not (has_area(c, 'technique') or coaches_team(p_team)) then raise exception 'Droit insuffisant'; end if;
+  return query
+    select z.uid, z.label from (
+      select distinct m.user_id as uid, coalesce(nullif(trim(p.full_name), ''), 'Membre') as label
+      from memberships m join profiles p on p.id = m.user_id
+      where m.club_id = c and m.status = 'active' and p.deleted_at is null and account_is_adult(c, m.user_id)
+        and not exists(select 1 from memberships x where x.club_id = c and x.user_id = m.user_id and x.role = 'coach' and x.team_id = p_team and x.status = 'active')
+    ) z order by z.label;
+end $$;
+
+create or replace function set_team_coach(p_team uuid, p_user uuid, p_assistant boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  select club_id into c from teams where id = p_team and deleted_at is null;
+  if c is null or not (has_area(c, 'technique') or (p_assistant and coaches_team(p_team))) then raise exception 'Droit insuffisant'; end if;
+  if not exists(select 1 from memberships where club_id = c and user_id = p_user and status = 'active') then raise exception 'Cette personne n''est pas membre du club'; end if;
+  -- n° 136 (décision de Gaël, 5 novembre 2026) : coach et coach assistant réservés aux adultes
+  if not account_is_adult(c, p_user) then raise exception 'Coach et coach assistant : réservé aux adultes (fiche joueur mineure ou sans date de naissance)'; end if;
+  if exists(select 1 from memberships where club_id = c and user_id = p_user and role = 'coach' and team_id = p_team) then
+    update memberships set assistant = p_assistant, status = 'active' where club_id = c and user_id = p_user and role = 'coach' and team_id = p_team;
+  else
+    insert into memberships(club_id, user_id, role, team_id, status, assistant) values (c, p_user, 'coach', p_team, 'active', p_assistant);
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 2. N° 142 (a) · relance de l'encart bénévole
+-- ---------------------------------------------------------------------
+alter table profiles add column if not exists volunteer_asked_at timestamptz;     -- dernière relance reçue (affiche l'encart)
+alter table profiles add column if not exists volunteer_answered_at timestamptz;  -- dernière réponse (Oui, Non, ou la case de Mon compte)
+create table if not exists club_volunteer_asks (
+  club_id uuid primary key references clubs(id) on delete cascade,
+  asked_at timestamptz not null default now(),
+  asked_by uuid references auth.users(id) on delete set null
+);
+alter table club_volunteer_asks enable row level security;   -- lu seulement par volunteer_ask_state()
+
+create or replace function set_volunteer(p_on boolean) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  update profiles set volunteer = coalesce(p_on, true), volunteer_answered_at = now() where id = auth.uid();
+end $$;
+create or replace function set_supporter_volunteer(p_on boolean) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  update profiles set supporter_volunteer = p_on, volunteer_answered_at = now() where id = auth.uid();
+end $$;
+
+-- Personnes à relancer : membres du bureau (et président) adultes qui n'ont jamais répondu ; supporteurs majeurs sans réponse,
+-- quand le club ouvre le bénévolat aux supporteurs. Jamais un mineur. Jamais la personne qui relance.
+create or replace function volunteer_ask_targets(c uuid) returns setof uuid language sql stable security definer set search_path = public as $$
+  select distinct m.user_id from memberships m join profiles p on p.id = m.user_id
+  where m.club_id = c and m.status = 'active' and p.deleted_at is null and m.user_id is distinct from auth.uid() and not is_minor_in(c, m.user_id)
+    and (
+      (exists(select 1 from memberships x where x.club_id = c and x.user_id = m.user_id and x.status = 'active' and x.role in ('president', 'bureau'))
+       and p.volunteer_answered_at is null)
+      or ((select supporters_volunteer from clubs where id = c) and not has_real_role(c, m.user_id) and p.supporter_volunteer is null));
+$$;
+create or replace function volunteer_ask_state(p_club uuid) returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  if not has_area(p_club, 'evenements') then raise exception 'Réservé au président et au correspondant rencontres'; end if;
+  return jsonb_build_object(
+    'bureau', (select count(*) from volunteer_ask_targets(p_club) t where has_real_role(p_club, t)),
+    'supporters', (select count(*) from volunteer_ask_targets(p_club) t where not has_real_role(p_club, t)),
+    'asked_at', (select asked_at from club_volunteer_asks where club_id = p_club));
+end $$;
+create or replace function ask_volunteers(p_club uuid) returns int language plpgsql security definer set search_path = public as $$
+declare n int := 0; u uuid; cname text;
+begin
+  if not has_area(p_club, 'evenements') then raise exception 'Réservé au président et au correspondant rencontres'; end if;
+  if exists(select 1 from club_volunteer_asks where club_id = p_club and asked_at > now() - interval '12 hours') then
+    raise exception 'Relance de l''encart déjà faite il y a moins de 12 heures';
+  end if;
+  select name into cname from clubs where id = p_club;
+  for u in select * from volunteer_ask_targets(p_club) loop
+    update profiles set volunteer_asked_at = now() where id = u;
+    perform push_enqueue(u, 'Bénévolat', coalesce(cname, 'Ton club') || ' te demande si tu veux être bénévole : réponds sur l''Accueil.', 'vask:' || p_club, 'vask:' || p_club || ':' || to_char(now(), 'YYYYMMDDHH24'));
+    n := n + 1;
+  end loop;
+  if n = 0 then raise exception 'Personne à relancer : tout le monde a déjà répondu'; end if;
+  insert into club_volunteer_asks(club_id, asked_at, asked_by) values (p_club, now(), auth.uid())
+    on conflict (club_id) do update set asked_at = excluded.asked_at, asked_by = excluded.asked_by;
+  perform log_action(p_club, null, null, 'relance de l''encart bénévole', jsonb_build_object('personnes', n));
+  return n;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 3. N° 142 (b) · missions ouvertes aux jeunes à partir de U13 (jamais la buvette), le parent inscrit son enfant
+-- ---------------------------------------------------------------------
+alter table event_missions add column if not exists youth boolean not null default false;
+create table if not exists mission_youth_signups (
+  mission_id uuid not null references event_missions(id) on delete cascade,
+  player_id uuid not null references players(id) on delete cascade,
+  added_by uuid references auth.users(id) on delete set null,
+  at timestamptz not null default now(),
+  primary key (mission_id, player_id)
+);
+create index if not exists mission_youth_signups_player on mission_youth_signups(player_id);
+alter table mission_youth_signups enable row level security;
+drop policy if exists "jeunes bénévoles lisibles par les destinataires" on mission_youth_signups;
+create policy "jeunes bénévoles lisibles par les destinataires" on mission_youth_signups for select
+  using (exists(select 1 from event_missions mi where mi.id = mission_id and sees_event(mi.event_id)));
+-- écriture seulement par volunteer_youth() et unassign_youth()
+
+create or replace function is_buvette(l text) returns boolean language sql immutable as $$
+  select coalesce(lower(l), '') like '%buvette%';
+$$;
+-- Catégorie U13 et plus (U13, U15, U17…, ou les noms : benjamins de 2e année exclus, minimes, cadets, juniors, seniors, loisirs)
+create or replace function youth_category_ok(cat text) returns boolean language sql immutable as $$
+  select case when coalesce(cat, '') ~* '^\s*u\s*[0-9]+' then substring(cat from '(?i)^\s*u\s*([0-9]+)')::int >= 13
+              else coalesce(cat, '') ~* '(minime|cadet|junior|senior|loisir|adulte|espoir)' end;
+$$;
+-- Jeune qui peut aider sur ce rendez-vous : mineur du club, d'une équipe U13 et plus, concerné par le rendez-vous
+create or replace function youth_can_help(eid uuid, pid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e join players x on x.club_id = e.club_id
+    where e.id = eid and x.id = pid and x.deleted_at is null and not e.cancelled
+      and (x.birth_date is null or x.birth_date > current_date - interval '18 years')
+      and exists(select 1 from teams t where t.deleted_at is null and youth_category_ok(coalesce(nullif(t.category, ''), t.name))
+                 and (t.id = x.team_id or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = t.id)))
+      and (e.audience <> 'team' or x.team_id = any(e.team_ids) or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = any(e.team_ids))));
+$$;
+revoke execute on function youth_can_help(uuid, uuid), volunteer_ask_targets(uuid) from public, anon, authenticated;
+
+-- Places prises sur une mission (adultes et jeunes)
+create or replace function mission_taken(mid uuid) returns int language sql stable security definer set search_path = public as $$
+  select ((select count(*) from mission_signups where mission_id = mid) + (select count(*) from mission_youth_signups where mission_id = mid))::int;
+$$;
+revoke execute on function mission_taken(uuid) from public, anon, authenticated;
+
+create or replace function volunteer(p_mission uuid, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare mi event_missions; e events;
+begin
+  select * into mi from event_missions where id = p_mission;
+  select * into e from events where id = mi.event_id;
+  if mi.id is null or not sees_event(e.id) then raise exception 'Mission introuvable'; end if;
+  if not p_on then delete from mission_signups where mission_id = p_mission and user_id = auth.uid(); return; end if;
+  if e.starts_at < now() then raise exception 'Ce rendez-vous est passé'; end if;
+  if not can_volunteer(e.id, auth.uid()) then raise exception 'Les missions sont ouvertes aux parents, joueurs majeurs, coachs et au bureau concernés'; end if;
+  if exists(select 1 from mission_signups s join event_missions m2 on m2.id = s.mission_id where m2.event_id = e.id and s.user_id = auth.uid()) then
+    raise exception 'Tu as déjà une mission sur ce rendez-vous : l''organisateur peut t''en ajouter une autre';
+  end if;
+  perform 1 from event_missions where id = p_mission for update;
+  if mission_taken(p_mission) >= mi.slots then raise exception 'Complet'; end if;
+  insert into mission_signups(mission_id, user_id, added_by) values (p_mission, auth.uid(), auth.uid());
+end $$;
+create or replace function assign_volunteer(p_mission uuid, p_user uuid, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare mi event_missions;
+begin
+  select * into mi from event_missions where id = p_mission;
+  if mi.id is null or not can_manage_missions(mi.event_id) then raise exception 'Seul l''organisateur inscrit ou retire un bénévole'; end if;
+  if not p_on then delete from mission_signups where mission_id = p_mission and user_id = p_user; return; end if;
+  if not exists(select 1 from memberships m join events e on e.club_id = m.club_id where e.id = mi.event_id and m.user_id = p_user and m.status = 'active') then raise exception 'Cette personne n''est pas membre du club'; end if;
+  perform 1 from event_missions where id = p_mission for update;
+  if mission_taken(p_mission) >= mi.slots then raise exception 'Complet'; end if;
+  insert into mission_signups(mission_id, user_id, added_by) values (p_mission, p_user, auth.uid()) on conflict do nothing;
+end $$;
+
+-- Le parent inscrit (ou retire) son enfant de U13 et plus sur une mission ouverte aux jeunes
+create or replace function volunteer_youth(p_mission uuid, p_player uuid, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare mi event_missions; e events;
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  if not exists(select 1 from player_parents where player_id = p_player and user_id = auth.uid()) then raise exception 'Seul un parent inscrit son enfant'; end if;
+  select * into mi from event_missions where id = p_mission;
+  select * into e from events where id = mi.event_id;
+  if mi.id is null or not sees_event(e.id) then raise exception 'Mission introuvable'; end if;
+  if not p_on then delete from mission_youth_signups where mission_id = p_mission and player_id = p_player; return; end if;
+  if not mi.youth or is_buvette(mi.label) then raise exception 'Cette mission n''est pas ouverte aux jeunes'; end if;
+  if e.cancelled or e.starts_at < now() then raise exception 'Ce rendez-vous est passé ou annulé'; end if;
+  if not youth_can_help(e.id, p_player) then raise exception 'Mission ouverte aux jeunes du club à partir de U13, concernés par ce rendez-vous'; end if;
+  if exists(select 1 from mission_youth_signups s join event_missions m2 on m2.id = s.mission_id where m2.event_id = e.id and s.player_id = p_player) then
+    raise exception 'Ton enfant a déjà une mission sur ce rendez-vous';
+  end if;
+  perform 1 from event_missions where id = p_mission for update;
+  if mission_taken(p_mission) >= mi.slots then raise exception 'Complet'; end if;
+  insert into mission_youth_signups(mission_id, player_id, added_by) values (p_mission, p_player, auth.uid());
+end $$;
+-- L'organisateur retire un jeune d'une mission
+create or replace function unassign_youth(p_mission uuid, p_player uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare mi event_missions;
+begin
+  select * into mi from event_missions where id = p_mission;
+  if mi.id is null or not can_manage_missions(mi.event_id) then raise exception 'Seul l''organisateur retire un bénévole'; end if;
+  delete from mission_youth_signups where mission_id = p_mission and player_id = p_player;
+end $$;
+
+-- Missions par défaut : la case « jeunes dès U13 » est reprise, jamais pour la buvette
+create or replace function add_default_missions(p_event uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare e events; n int;
+begin
+  select * into e from events where id = p_event;
+  if e.id is null or not can_manage_missions(p_event) then raise exception 'Seul l''organisateur ajoute des missions'; end if;
+  perform set_config('pc.mdefault', 'on', true);
+  insert into event_missions(event_id, label, slots, position, youth)
+    select p_event, x->>'label', greatest(1, least(20, coalesce((x->>'slots')::int, 1))), (row_number() over ())::int,
+           coalesce((x->>'youth')::boolean, false) and not is_buvette(x->>'label')
+    from clubs c, jsonb_array_elements(c.default_missions) x where c.id = e.club_id
+      and not exists(select 1 from event_missions m where m.event_id = p_event and lower(m.label) = lower(x->>'label'));
+  get diagnostics n = row_count;
+  perform set_config('pc.mdefault', 'off', true);
+  return n;
+end $$;
+-- Garde-fou des missions : le choix « jeunes » des missions par défaut a été fait par la rubrique Événements (seule à régler
+-- les missions du club) : il est accepté quand il vient de add_default_missions, même si c'est un coach qui ajoute.
+create or replace function event_missions_guard() returns trigger language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  select club_id into c from events where id = new.event_id and type in ('Match','Plateau','Tournoi','Événement','AG');
+  if c is null then
+    raise exception 'Les missions de bénévoles valent pour un match, un plateau, un tournoi, un événement ou une AG';
+  end if;
+  if tg_op = 'UPDATE' and new.event_id <> old.event_id then raise exception 'Mission d''un autre rendez-vous'; end if;
+  if tg_op = 'UPDATE' and new.slots < mission_taken(new.id) then
+    raise exception 'Des bénévoles sont déjà inscrits : retire-les avant de réduire le nombre de places';
+  end if;
+  -- n° 142 : « jeunes dès U13 » coché seulement par la rubrique Événements (président, correspondant rencontres), jamais pour la buvette
+  if new.youth and is_buvette(new.label) then raise exception 'La buvette reste fermée aux jeunes'; end if;
+  if new.youth is distinct from (case when tg_op = 'UPDATE' then old.youth else false end)
+     and auth.uid() is not null and not has_area(c, 'evenements')
+     and not (tg_op = 'INSERT' and coalesce(current_setting('pc.mdefault', true), '') = 'on') then
+    raise exception 'Ouvrir une mission aux jeunes : réservé au président et au correspondant rencontres';
+  end if;
+  if tg_op = 'UPDATE' and old.youth and not new.youth then delete from mission_youth_signups where mission_id = new.id; end if;
+  return new;
+end $$;
+drop trigger if exists event_missions_guard on event_missions;
+create trigger event_missions_guard before insert or update on event_missions for each row execute function event_missions_guard();
+
+-- Missions par défaut : « youth » accepté dans la liste (au plus 12 missions, comme avant)
+-- (la liste est déjà réservée à la rubrique Événements par le garde-fou des clubs de la 3.2)
+
+-- ---------------------------------------------------------------------
+-- 4. Droits d'exécution, puis fermeture au visiteur (règle de la 4.3.0)
+-- ---------------------------------------------------------------------
+revoke execute on function set_volunteer(boolean), set_supporter_volunteer(boolean) from public, anon;
+revoke execute on function event_missions_guard() from public, anon, authenticated;
+grant execute on function coach_candidates(uuid), set_team_coach(uuid, uuid, boolean), set_volunteer(boolean), set_supporter_volunteer(boolean),
+  volunteer_ask_state(uuid), ask_volunteers(uuid), volunteer(uuid, boolean), assign_volunteer(uuid, uuid, boolean),
+  volunteer_youth(uuid, uuid, boolean), unassign_youth(uuid, uuid), add_default_missions(uuid) to authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_4_6_0.sql =====
+-- mypocketclub · alpha 4.6.0 · mise à jour d'une base 4.5.0, sans perte de données, relançable.
+-- Récapitulatif de Gaël du 9 novembre 2026, première mise à jour du soir (« lance la première maj », 18 h 34) :
+-- 1. N° 143 : une personne entrée au bureau par « Qui s'occupe de quoi » (désignation) en sort quand la désignation
+--    est retirée ou donnée à quelqu'un d'autre (elle gardait la fonction « Correspondant licences »).
+-- 2. N° 166 : intitulé libre d'un « Membre du bureau » (« Responsable maillots »), choisi par le président.
+-- 3. N° 148 : administrateur principal ; lui seul ajoute ou retire un administrateur (admin_list, admin_add, admin_remove).
+-- 4. N° 79 : « + accompagnants » (personnes sans compte) sur sa propre réponse « oui » à un événement.
+-- 5. N° 160 : séances types (nommées, sans date) et durée visée d'une séance.
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- ---------------------------------------------------------------------
+-- 1. N° 143 · fonction créée par une désignation, retirée avec elle
+-- ---------------------------------------------------------------------
+alter table memberships add column if not exists designated_for text;
+-- reprise : une fonction de correspondant qui correspond à une désignation en cours est marquée comme venue d'elle
+update memberships m set designated_for = d.resp
+  from club_designations d
+  where m.designated_for is null and m.club_id = d.club_id and m.user_id = d.user_id and m.role = 'bureau' and m.status = 'active'
+    and m.fonction = case d.resp when 'licences' then 'Correspondant licences' when 'rencontres' then 'Correspondant rencontres'
+                                 when 'communication' then 'Chargé de communication' else 'Membre du bureau' end;
+
+-- une fonction changée à la main par le président n'est plus « venue d'une désignation »
+create or replace function memberships_designation_keep() returns trigger language plpgsql as $$
+begin
+  if tg_op = 'UPDATE' and new.designated_for is not null and old.fonction is distinct from new.fonction then new.designated_for := null; end if;
+  return new;
+end $$;
+drop trigger if exists memberships_designation_keep on memberships;
+create trigger memberships_designation_keep before update on memberships for each row execute function memberships_designation_keep();
+
+create or replace function set_designation(p_club uuid, p_resp text, p_user uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare f text; cn text; prev uuid;
+begin
+  if not is_president(p_club) then raise exception 'Seul le président désigne qui s''occupe de quoi'; end if;
+  if p_resp not in ('licences','rencontres','evenements','communication') then raise exception 'Responsabilité inconnue'; end if;
+  select user_id into prev from club_designations where club_id = p_club and resp = p_resp;
+  if p_user is null then
+    delete from club_designations where club_id = p_club and resp = p_resp;
+  else
+    if not exists(select 1 from memberships where club_id = p_club and user_id = p_user and status = 'active') then raise exception 'Cette personne n''est pas membre du club'; end if;
+    if not account_is_adult(p_club, p_user) then raise exception 'Seule une personne adulte peut être désignée'; end if;
+  end if;
+  -- n° 143 : l'ancienne personne quitte la fonction que la désignation lui avait donnée
+  if prev is not null and prev is distinct from p_user then
+    delete from memberships where club_id = p_club and user_id = prev and role = 'bureau' and designated_for = p_resp;
+  end if;
+  if p_user is null then
+    perform log_action(p_club, null, null, 'désignation retirée', jsonb_build_object('responsabilite', p_resp));
+    return;
+  end if;
+  if not exists(select 1 from memberships where club_id = p_club and user_id = p_user and status = 'active' and role in ('bureau','president')) then
+    f := case p_resp when 'licences' then 'Correspondant licences' when 'rencontres' then 'Correspondant rencontres'
+                     when 'communication' then 'Chargé de communication' else 'Membre du bureau' end;
+    insert into memberships(club_id, user_id, role, fonction, status, designated_for) values (p_club, p_user, 'bureau', f, 'active', p_resp);
+  end if;
+  insert into club_designations(club_id, resp, user_id, set_by) values (p_club, p_resp, p_user, auth.uid())
+    on conflict (club_id, resp) do update set user_id = excluded.user_id, set_by = excluded.set_by, set_at = now();
+  perform log_action(p_club, p_user, null, 'désignation', jsonb_build_object('responsabilite', p_resp));
+  if p_user <> auth.uid() then
+    select name into cn from clubs where id = p_club;
+    perform push_enqueue(p_user, 'Le président compte sur toi', (case p_resp when 'licences' then 'Correspondant licences' when 'rencontres' then 'Correspondant rencontres'
+      when 'evenements' then 'Événements' else 'Communication' end) || ' · ' || coalesce(cn, ''), 'fonction', 'designation:' || p_club || ':' || p_resp || ':' || p_user);
+  end if;
+end $$;
+revoke execute on function set_designation(uuid, text, uuid) from public, anon;
+
+-- ---------------------------------------------------------------------
+-- 2. N° 166 · intitulé libre d'un « Membre du bureau »
+-- ---------------------------------------------------------------------
+alter table memberships add column if not exists title text;
+alter table memberships drop constraint if exists memberships_title_len;
+alter table memberships add constraint memberships_title_len check (title is null or length(title) between 1 and 40);
+
+create or replace function set_bureau_title(p_membership uuid, p_title text) returns void
+language plpgsql security definer set search_path = public as $$
+declare m memberships; t text := nullif(left(trim(regexp_replace(coalesce(p_title, ''), '[<>]', '', 'g')), 40), '');
+begin
+  select * into m from memberships where id = p_membership;
+  if m.id is null or not is_president(m.club_id) then raise exception 'Seul le président choisit l''intitulé'; end if;
+  if m.role <> 'bureau' or coalesce(m.fonction, 'Membre du bureau') <> 'Membre du bureau' then raise exception 'Intitulé libre : seulement pour un « Membre du bureau »'; end if;
+  update memberships set title = t where id = p_membership;
+  perform log_action(m.club_id, m.user_id, null, 'intitulé du bureau', jsonb_build_object('intitule', coalesce(t, '—')));
+end $$;
+-- l'intitulé disparaît si la fonction change
+create or replace function memberships_title_keep() returns trigger language plpgsql as $$
+begin
+  if coalesce(new.fonction, 'Membre du bureau') <> 'Membre du bureau' or new.role <> 'bureau' then new.title := null; end if;
+  return new;
+end $$;
+drop trigger if exists memberships_title_keep on memberships;
+create trigger memberships_title_keep before insert or update on memberships for each row execute function memberships_title_keep();
+
+-- ---------------------------------------------------------------------
+-- 3. N° 148 · administrateur principal
+-- ---------------------------------------------------------------------
+alter table app_admins add column if not exists principal boolean not null default false;
+-- première installation : les administrateurs déjà en place (les deux comptes de Gaël) deviennent principaux
+update app_admins set principal = true where not exists(select 1 from app_admins where principal);
+
+create or replace function is_principal_admin() returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from app_admins where user_id = auth.uid() and principal);
+$$;
+create or replace function admin_list() returns table(user_id uuid, email text, name text, principal boolean)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  return query select a.user_id, u.email::text, coalesce(nullif(trim(p.full_name), ''), '')::text, a.principal
+    from app_admins a join auth.users u on u.id = a.user_id left join profiles p on p.id = a.user_id
+    order by a.principal desc, 3;
+end $$;
+create or replace function admin_add(p_email text) returns void
+language plpgsql security definer set search_path = public as $$
+declare u uuid;
+begin
+  if not is_principal_admin() then raise exception 'Seul l''administrateur principal ajoute un administrateur'; end if;
+  select id into u from auth.users where lower(email) = lower(trim(p_email));
+  if u is null then raise exception 'Aucun compte avec cette adresse : la personne doit d''abord créer son compte'; end if;
+  insert into app_admins(user_id, principal) values (u, false) on conflict (user_id) do nothing;
+end $$;
+create or replace function admin_remove(p_user uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_principal_admin() then raise exception 'Seul l''administrateur principal retire un administrateur'; end if;
+  if exists(select 1 from app_admins where user_id = p_user and principal) then raise exception 'Un administrateur principal ne se retire pas depuis l''application'; end if;
+  delete from app_admins where user_id = p_user;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 4. N° 79 · accompagnants sans compte
+-- ---------------------------------------------------------------------
+alter table event_responses add column if not exists guests smallint not null default 0;
+alter table event_responses drop constraint if exists event_responses_guests;
+alter table event_responses add constraint event_responses_guests check (guests between 0 and 20);
+create or replace function event_responses_guests_reset() returns trigger language plpgsql as $$
+begin
+  if new.answer <> 'oui' or new.player_id is not null then new.guests := 0; end if;
+  return new;
+end $$;
+drop trigger if exists event_responses_guests_reset on event_responses;
+create trigger event_responses_guests_reset before insert or update on event_responses for each row execute function event_responses_guests_reset();
+
+create or replace function set_event_guests(p_event uuid, p_n int) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi'; end if;
+  if p_n < 0 or p_n > 20 then raise exception 'Entre 0 et 20 accompagnants'; end if;
+  update event_responses set guests = p_n, updated_at = now()
+    where event_id = p_event and user_id = auth.uid() and player_id is null and answer = 'oui';
+  if not found then raise exception 'Réponds d''abord « Je participe »'; end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 5. N° 160 · séances types et durée visée
+-- ---------------------------------------------------------------------
+alter table training_plans add column if not exists is_template boolean not null default false;
+alter table training_plans add column if not exists target_min smallint;
+alter table training_plans drop constraint if exists training_plans_target;
+alter table training_plans add constraint training_plans_target check (target_min is null or target_min between 10 and 600);
+-- une séance type n'est reliée à aucun rendez-vous
+alter table training_plans drop constraint if exists training_plans_template_noevent;
+alter table training_plans add constraint training_plans_template_noevent check (not is_template or event_id is null);
+
+-- ---------------------------------------------------------------------
+-- 6. Droits d'exécution, puis fermeture au visiteur (règle de la 4.3.0)
+-- ---------------------------------------------------------------------
+revoke execute on function memberships_designation_keep(), memberships_title_keep(), event_responses_guests_reset() from public, anon, authenticated;
+revoke execute on function is_principal_admin() from public, anon;
+grant execute on function set_designation(uuid, text, uuid), set_bureau_title(uuid, text), is_principal_admin(), admin_list(), admin_add(text),
+  admin_remove(uuid), set_event_guests(uuid, int) to authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_4_7_0.sql =====
+-- mypocketclub · alpha 4.7.0 · mise à jour d'une base 4.6.0, sans perte de données, relançable.
+-- Récapitulatif de Gaël du 9 novembre 2026, seconde mise à jour du soir (« go pour tous les numéros + 147 », 20 h 05) :
+-- 1. N° 165 : un rendez-vous masqué avec la réponse « oui » prévient quand même d'une annulation, d'une suppression
+--    ou d'un changement de date ou d'heure (masqué sans réponse ou avec « non » : rien, comme avant).
+-- 2. N° 154 : état des pré-convocations et convocations des rencontres à domicile des 7 prochains jours (convocation_todo).
+-- 3. N° 147 : appareils connus de chaque compte ; un appareil nouveau prépare une alerte (e-mail « Nouvel appareil »
+--    envoyé par la fonction envoyer-email) ; « Ce n'était pas moi » coupe toutes les connexions du compte (not_me_device).
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0) ; not_me_device reste ouverte au visiteur
+-- (la personne qui touche le lien de l'e-mail n'est pas forcément connectée ; elle n'agit qu'avec le jeton de l'e-mail).
+
+-- ---------------------------------------------------------------------
+-- 1. N° 165 · rendez-vous masqué : « oui » garde l'annulation et le changement d'horaire
+-- ---------------------------------------------------------------------
+create or replace function push_event_targets(eid uuid, actor uuid, important boolean) returns setof uuid
+language plpgsql security definer set search_path = public as $$
+declare e events; u uuid; sub0 text := current_setting('request.jwt.claim.sub', true); uid0 text := current_setting('request.uid', true);
+begin
+  select * into e from events where id = eid; if e.id is null then return; end if;
+  for u in select distinct m.user_id from memberships m join push_subscriptions s on s.user_id = m.user_id
+           where m.club_id = e.club_id and m.status = 'active' and m.user_id is distinct from actor loop
+    perform push_as(u);
+    if sees_event(eid)
+       and (has_real_role(e.club_id, u) or e.audience = 'club' or (e.type in ('Match','Plateau','Tournoi') and follows_any(e.team_ids)) or u = any(e.people))
+       and (not exists(select 1 from event_hidden h where h.event_id = eid and h.user_id = u)
+            or (important and exists(select 1 from event_responses r where r.event_id = eid and r.answer = 'oui'
+                  and (r.user_id = u or exists(select 1 from player_parents pp where pp.player_id = r.player_id and pp.user_id = u)))))
+       and (cardinality(e.convoked) = 0 or is_board(e.club_id) or coaches_any(e.team_ids) or e.created_by = u
+            or exists(select 1 from players p where p.id = any(e.convoked) and p.deleted_at is null
+                      and (p.user_id = u or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = u)))
+            or not exists(select 1 from players p where p.deleted_at is null and p.club_id = e.club_id
+                      and (p.team_id = any(e.team_ids) or exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = any(e.team_ids)))
+                      and (p.user_id = u or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = u)))) then
+      return next u;
+    end if;
+  end loop;
+  perform push_restore(sub0, uid0);
+end $$;
+create or replace function push_event_targets(eid uuid, actor uuid) returns setof uuid
+language sql security definer set search_path = public as $$ select * from push_event_targets(eid, actor, false) $$;
+
+create or replace function push_on_event_update() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; k text; t text; b text; imp boolean := false;
+begin
+  if new.starts_at < now() - interval '1 hour' then return null; end if;
+  if new.cancelled and not old.cancelled then
+    k := 'evcancel:' || coalesce(new.series_id::text || ':' || to_char(now(), 'YYYYMMDDHH24MI'), new.id::text);
+    t := 'Annulé'; b := push_ev_line(new); imp := true;
+  elsif not new.cancelled and old.cancelled then
+    k := 'evback:' || new.id || ':' || to_char(now(), 'YYYYMMDDHH24MI');
+    t := 'De nouveau prévu'; b := push_ev_line(new);
+  elsif not new.cancelled and (new.starts_at is distinct from old.starts_at or new.place is distinct from old.place
+        or new.duration_min is distinct from old.duration_min or new.all_day is distinct from old.all_day) then
+    k := 'evmod:' || coalesce(new.series_id::text, new.id::text) || ':' || to_char(now(), 'YYYYMMDDHH24MI');
+    imp := new.starts_at is distinct from old.starts_at or new.duration_min is distinct from old.duration_min or new.all_day is distinct from old.all_day;
+    t := case when imp then 'Nouvel horaire' else 'Nouveau lieu' end;
+    b := push_ev_line(new);
+  else return null; end if;
+  if new.series_id is not null and exists(select 1 from push_queue where dedupe_key = k) then return null; end if;
+  for u in select * from push_event_targets(new.id, auth.uid(), imp) loop
+    perform push_enqueue(u, t, b, 'ev:' || new.id, k);
+  end loop;
+  return null;
+end $$;
+
+create or replace function push_on_event_delete() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; k text := 'evdel:' || coalesce(old.series_id::text || ':' || to_char(now(), 'YYYYMMDDHH24MI'), old.id::text);
+begin
+  if old.cancelled or old.starts_at < now() then return old; end if;
+  if old.series_id is not null and exists(select 1 from push_queue where dedupe_key = k) then return old; end if;
+  for u in select * from push_event_targets(old.id, auth.uid(), true) loop
+    perform push_enqueue(u, case when old.series_id is not null then 'Séances supprimées' else 'Annulé' end, push_ev_line(old), 'ev:' || old.id, k);
+  end loop;
+  return old;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 2. N° 154 · rencontres à domicile des 7 prochains jours : pré-convocation et convocation envoyées ?
+--    Une convocation vaut pour toutes les rencontres à domicile de la même semaine (référence du week-end).
+-- ---------------------------------------------------------------------
+create or replace function convocation_todo(p_club uuid) returns table(event_id uuid, p_sent boolean, c_sent boolean)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not has_area(p_club, 'evenements') then raise exception 'Réservé au correspondant rencontres et au président'; end if;
+  return query
+    select e.id,
+      exists(select 1 from convocation_sends s join events x on x.id = s.event_id where s.club_id = p_club and s.step = 'P' and s.status <> 'echec'
+             and date_trunc('week', x.starts_at at time zone 'Europe/Paris') = date_trunc('week', e.starts_at at time zone 'Europe/Paris')),
+      exists(select 1 from convocation_sends s join events x on x.id = s.event_id where s.club_id = p_club and s.step = 'C' and s.status <> 'echec'
+             and date_trunc('week', x.starts_at at time zone 'Europe/Paris') = date_trunc('week', e.starts_at at time zone 'Europe/Paris'))
+    from events e
+    where e.club_id = p_club and not e.cancelled and e.at_home and e.audience = 'team' and e.type in ('Match','Plateau','Tournoi')
+      and e.starts_at >= now() - interval '2 hours' and e.starts_at < now() + interval '7 days';
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 3. N° 147 · appareils connus et alerte « Nouvel appareil »
+-- ---------------------------------------------------------------------
+create table if not exists user_devices (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  device_id text not null check (length(device_id) between 8 and 64),
+  label text not null default '' check (length(label) <= 80),
+  first_seen timestamptz not null default now(),
+  last_seen timestamptz not null default now(),
+  primary key (user_id, device_id)
+);
+alter table user_devices enable row level security;
+drop policy if exists "appareils : les siens" on user_devices;
+create policy "appareils : les siens" on user_devices for select using (user_id = auth.uid());
+
+create table if not exists device_alerts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  device_label text not null default '',
+  token text not null unique,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  used_at timestamptz
+);
+alter table device_alerts enable row level security;   -- lecture et écriture seulement par les fonctions ci-dessous
+
+-- Appelée à chaque ouverture connectée. Premier appareil d'un compte : enregistré sans alerte.
+-- Appareil nouveau d'un compte qui en a déjà un : alerte préparée (5 au plus par jour et par compte).
+create or replace function register_device(p_device text, p_label text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u uuid := auth.uid(); had boolean; a uuid;
+begin
+  if u is null then raise exception 'Connecte-toi'; end if;
+  if p_device is null or length(p_device) not between 8 and 64 then raise exception 'Appareil inconnu'; end if;
+  if exists(select 1 from user_devices where user_id = u and device_id = p_device) then
+    update user_devices set last_seen = now() where user_id = u and device_id = p_device;
+    return jsonb_build_object('new', false);
+  end if;
+  had := exists(select 1 from user_devices where user_id = u);
+  insert into user_devices(user_id, device_id, label) values (u, p_device, left(coalesce(p_label, ''), 80));
+  if not had or (select count(*) from device_alerts where user_id = u and created_at > now() - interval '1 day') >= 5 then
+    return jsonb_build_object('new', had, 'alert', null);
+  end if;
+  insert into device_alerts(user_id, device_label, token) values (u, left(coalesce(p_label, ''), 80), replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '')) returning id into a;
+  return jsonb_build_object('new', true, 'alert', a);
+end $$;
+
+-- Lue une seule fois, par la fonction envoyer-email, au nom du compte concerné : de quoi écrire l'e-mail
+create or replace function device_alert_take(p_alert uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r device_alerts;
+begin
+  update device_alerts set sent_at = now() where id = p_alert and user_id = auth.uid() and sent_at is null and created_at > now() - interval '1 hour' returning * into r;
+  if r.id is null then return null; end if;
+  return jsonb_build_object('token', r.token, 'label', r.device_label, 'at', r.created_at);
+end $$;
+
+-- « Ce n'était pas moi » : coupe toutes les connexions du compte, oublie ses appareils connus.
+-- Ensuite, la personne choisit un nouveau mot de passe (« Mot de passe oublié ? »).
+create or replace function not_me_device(p_token text) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare r device_alerts;
+begin
+  select * into r from device_alerts where token = p_token and used_at is null and created_at > now() - interval '7 days';
+  if r.id is null then return false; end if;
+  update device_alerts set used_at = now() where id = r.id;
+  delete from user_devices where user_id = r.user_id;
+  begin
+    delete from auth.sessions where user_id = r.user_id;
+    delete from auth.refresh_tokens where user_id = r.user_id::text;
+  exception when others then
+    raise warning 'not_me_device : connexions non coupées (%)', sqlerrm;
+  end;
+  return true;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 4. Droits d'exécution, puis fermeture au visiteur (not_me_device reste ouverte : lien de l'e-mail)
+-- ---------------------------------------------------------------------
+create or replace function close_visitor_functions() returns int
+language plpgsql security definer set search_path = public, pg_catalog as $$
+declare f record; n int := 0; pol text; svc boolean := exists(select 1 from pg_roles where rolname = 'service_role');
+  keep text[] := array['public_search_clubs', 'public_club', 'request_club', 'not_me_device'];
+  shut text[] := array['due_for', 'grid_for', 'member_rank'];
+begin
+  select coalesce(string_agg(coalesce(qual, '') || ' ' || coalesce(with_check, ''), ' '), '') into pol from pg_policies;
+  for f in select p.oid, p.proname from pg_proc p join pg_namespace s on s.oid = p.pronamespace
+           where s.nspname = 'public' and p.prokind = 'f' and p.prorettype not in ('trigger'::regtype, 'event_trigger'::regtype) loop
+    continue when not has_function_privilege('anon', f.oid, 'execute');
+    continue when f.proname = any(keep);
+    continue when not (f.proname = any(shut)) and pol ~ ('\m' || f.proname || '\(');
+    if has_function_privilege('authenticated', f.oid, 'execute') then execute format('grant execute on function %s to authenticated', f.oid::regprocedure); end if;
+    if svc and has_function_privilege('service_role', f.oid, 'execute') then execute format('grant execute on function %s to service_role', f.oid::regprocedure); end if;
+    execute format('revoke execute on function %s from public, anon', f.oid::regprocedure);
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+revoke execute on function close_visitor_functions() from public, anon, authenticated;
+
+revoke execute on function push_event_targets(uuid, uuid, boolean), push_event_targets(uuid, uuid) from public, anon, authenticated;
+grant execute on function convocation_todo(uuid), register_device(text, text), device_alert_take(uuid) to authenticated;
+grant execute on function not_me_device(text) to anon, authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_4_8_0.sql =====
+-- mypocketclub · alpha 4.8.0 · mise à jour d'une base 4.7.0, sans perte de données, relançable.
+-- Mise à jour d'avant la bêta (« go » de Gaël, 10 novembre 2026) :
+-- 1. N° 170 : « Contact licences » et « Contact rencontres » (en base : « Correspondant licences », « Correspondant rencontres »)
+--    sont des rôles comme les autres. Ils s'attribuent seulement dans « Fonctions du bureau » ; la désignation de
+--    « Qui s'occupe de quoi » ne sert plus pour eux (elle reste pour Événements et Communication, voir n° 172).
+--    Une seule personne par rôle de contact. Sans personne : le secrétaire, sinon le président (licences) ; le président (rencontres).
+--    Reprise : la personne qui est le contact aujourd'hui le reste ; les rôles en trop (cause du n° 170) sont retirés.
+-- 2. Notification à la création d'un match : toute l'équipe reçoit « Nouveau match prévu » ;
+--    les joueurs convoqués (et leurs parents) reçoivent en plus « Convocation : match ».
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- ---------------------------------------------------------------------
+-- 1. N° 170 · un seul endroit pour attribuer les deux rôles de contact
+-- ---------------------------------------------------------------------
+
+-- Reprise des données. Pour chaque club et chaque rôle de contact :
+--   a) la personne qui tient le rôle aujourd'hui est celle que la base donnait jusqu'ici (désignation, sinon la plus ancienne fonction) ;
+--   b) les autres fonctions identiques sont retirées (la ligne part si la personne a un autre rôle au bureau ou la présidence,
+--      sinon elle devient « Membre du bureau » : personne ne sort du bureau sans décision du président) ;
+--   c) si la personne désignée n'avait pas la fonction et n'est pas la personne par défaut, elle la reçoit ;
+--   d) la désignation est retirée (elle ne sert plus).
+do $$
+declare c record; r text; f text; des uuid; cur uuid; def uuid; m record;
+begin
+  for c in select id from clubs loop
+    foreach r in array array['licences','rencontres'] loop
+      f := case r when 'licences' then 'Correspondant licences' else 'Correspondant rencontres' end;
+      select d.user_id into des from club_designations d
+        join memberships x on x.club_id = d.club_id and x.user_id = d.user_id and x.status = 'active' and x.role in ('bureau','president')
+        where d.club_id = c.id and d.resp = r limit 1;
+      if not found then des := null; end if;
+      cur := coalesce(des, (select x.user_id from memberships x where x.club_id = c.id and x.status = 'active' and x.role = 'bureau' and x.fonction = f order by x.created_at limit 1));
+      -- b) fonctions en trop
+      for m in select x.id, x.user_id from memberships x where x.club_id = c.id and x.status = 'active' and x.role = 'bureau' and x.fonction = f
+                 and (cur is null or x.user_id <> cur
+                      or x.id <> (select y.id from memberships y where y.club_id = c.id and y.status = 'active' and y.role = 'bureau' and y.fonction = f and y.user_id = cur order by y.created_at limit 1)) loop
+        if exists(select 1 from memberships y where y.club_id = c.id and y.user_id = m.user_id and y.status = 'active' and y.role in ('bureau','president') and y.id <> m.id) then
+          delete from memberships where id = m.id;
+        else
+          update memberships set fonction = 'Membre du bureau' where id = m.id;
+        end if;
+      end loop;
+      -- c) la personne désignée reçoit la fonction, sauf si elle est déjà la personne par défaut
+      if des is not null and not exists(select 1 from memberships x where x.club_id = c.id and x.user_id = des and x.status = 'active' and x.role = 'bureau' and x.fonction = f) then
+        def := coalesce(
+          case when r = 'licences' then (select x.user_id from memberships x where x.club_id = c.id and x.status = 'active' and x.role = 'bureau' and x.fonction = 'Secrétaire' order by x.created_at limit 1) end,
+          (select x.user_id from memberships x where x.club_id = c.id and x.status = 'active' and x.role = 'president' order by x.created_at limit 1));
+        if des is distinct from def then
+          begin
+            insert into memberships(club_id, user_id, role, fonction, status) values (c.id, des, 'bureau', f, 'active');
+          exception when others then
+            raise notice 'n° 170 : rôle « % » non repris pour le club % (%). Le contact revient à la personne par défaut.', f, c.id, sqlerrm;
+          end;
+        end if;
+      end if;
+      -- d)
+      delete from club_designations where club_id = c.id and resp = r;
+    end loop;
+  end loop;
+  update memberships set designated_for = null where designated_for in ('licences','rencontres');
+end $$;
+
+-- Une seule personne aussi pour les deux rôles de contact (comme la vice-présidence, le secrétariat et la trésorerie)
+create or replace function memberships_fonction_check() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'active' and new.fonction in ('Vice-président','Secrétaire','Trésorier','Correspondant licences','Correspondant rencontres')
+     and exists(select 1 from memberships m where m.club_id = new.club_id and m.fonction = new.fonction and m.status = 'active' and m.id <> new.id) then
+    raise exception 'La fonction « % » est déjà tenue : le président doit d''abord la retirer',
+      case new.fonction when 'Correspondant licences' then 'Contact licences' when 'Correspondant rencontres' then 'Contact rencontres' else new.fonction end;
+  end if;
+  if new.status = 'active' and new.role in ('bureau','president')
+     and (tg_op = 'INSERT' or old.status <> 'active' or old.role <> new.role or old.fonction is distinct from new.fonction)
+     and not account_is_adult(new.club_id, new.user_id) then
+    raise exception 'Les fonctions du bureau sont réservées aux adultes (fiche joueur mineure ou sans date de naissance)';
+  end if;
+  return new;
+end $$;
+
+-- Qui tient le contact : la personne qui a le rôle ; sinon, pour les licences, le secrétaire (titulaire) ; sinon le président.
+create or replace function contact_holder(c uuid, r text) returns uuid language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select m.user_id from memberships m where m.club_id = c and m.status = 'active' and m.role = 'bureau'
+      and m.fonction = case r when 'licences' then 'Correspondant licences' when 'rencontres' then 'Correspondant rencontres' end order by m.created_at limit 1),
+    case when r = 'licences' then (select m.user_id from memberships m where m.club_id = c and m.status = 'active' and m.role = 'bureau' and m.fonction = 'Secrétaire' order by m.created_at limit 1) end,
+    (select m.user_id from memberships m where m.club_id = c and m.status = 'active' and m.role = 'president' order by m.created_at limit 1));
+$$;
+revoke execute on function contact_holder(uuid, text) from public, anon;
+
+-- « Qui s'occupe de quoi » ne désigne plus que pour Événements et Communication
+create or replace function set_designation(p_club uuid, p_resp text, p_user uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare f text; cn text; prev uuid;
+begin
+  if not is_president(p_club) then raise exception 'Seul le président désigne qui s''occupe de quoi'; end if;
+  if p_resp in ('licences','rencontres') then raise exception 'Ce rôle s''attribue dans « Fonctions du bureau »'; end if;
+  if p_resp not in ('evenements','communication') then raise exception 'Responsabilité inconnue'; end if;
+  select user_id into prev from club_designations where club_id = p_club and resp = p_resp;
+  if p_user is null then
+    delete from club_designations where club_id = p_club and resp = p_resp;
+  else
+    if not exists(select 1 from memberships where club_id = p_club and user_id = p_user and status = 'active') then raise exception 'Cette personne n''est pas membre du club'; end if;
+    if not account_is_adult(p_club, p_user) then raise exception 'Seule une personne adulte peut être désignée'; end if;
+  end if;
+  -- n° 143 : l'ancienne personne quitte la fonction que la désignation lui avait donnée
+  if prev is not null and prev is distinct from p_user then
+    delete from memberships where club_id = p_club and user_id = prev and role = 'bureau' and designated_for = p_resp;
+  end if;
+  if p_user is null then
+    perform log_action(p_club, null, null, 'désignation retirée', jsonb_build_object('responsabilite', p_resp));
+    return;
+  end if;
+  if not exists(select 1 from memberships where club_id = p_club and user_id = p_user and status = 'active' and role in ('bureau','president')) then
+    f := case p_resp when 'communication' then 'Chargé de communication' else 'Membre du bureau' end;
+    insert into memberships(club_id, user_id, role, fonction, status, designated_for) values (p_club, p_user, 'bureau', f, 'active', p_resp);
+  end if;
+  insert into club_designations(club_id, resp, user_id, set_by) values (p_club, p_resp, p_user, auth.uid())
+    on conflict (club_id, resp) do update set user_id = excluded.user_id, set_by = excluded.set_by, set_at = now();
+  perform log_action(p_club, p_user, null, 'désignation', jsonb_build_object('responsabilite', p_resp));
+  if p_user <> auth.uid() then
+    select name into cn from clubs where id = p_club;
+    perform push_enqueue(p_user, 'Le président compte sur toi', (case p_resp when 'evenements' then 'Événements' else 'Communication' end) || ' · ' || coalesce(cn, ''),
+      'fonction', 'designation:' || p_club || ':' || p_resp || ':' || p_user);
+  end if;
+end $$;
+revoke execute on function set_designation(uuid, text, uuid) from public, anon;
+
+-- ---------------------------------------------------------------------
+-- 2. Notification à la création d'un match : toute l'équipe, puis les convoqués
+-- ---------------------------------------------------------------------
+-- « everyone » : sans tenir compte de la liste des convoqués (toutes les personnes qui voient le rendez-vous)
+create or replace function push_event_targets(eid uuid, actor uuid, important boolean, everyone boolean) returns setof uuid
+language plpgsql security definer set search_path = public as $$
+declare e events; u uuid; sub0 text := current_setting('request.jwt.claim.sub', true); uid0 text := current_setting('request.uid', true);
+begin
+  select * into e from events where id = eid; if e.id is null then return; end if;
+  for u in select distinct m.user_id from memberships m join push_subscriptions s on s.user_id = m.user_id
+           where m.club_id = e.club_id and m.status = 'active' and m.user_id is distinct from actor loop
+    perform push_as(u);
+    if sees_event(eid)
+       and (has_real_role(e.club_id, u) or e.audience = 'club' or (e.type in ('Match','Plateau','Tournoi') and follows_any(e.team_ids)) or u = any(e.people))
+       and (not exists(select 1 from event_hidden h where h.event_id = eid and h.user_id = u)
+            or (important and exists(select 1 from event_responses r where r.event_id = eid and r.answer = 'oui'
+                  and (r.user_id = u or exists(select 1 from player_parents pp where pp.player_id = r.player_id and pp.user_id = u)))))
+       and (everyone or cardinality(e.convoked) = 0 or is_board(e.club_id) or coaches_any(e.team_ids) or e.created_by = u
+            or exists(select 1 from players p where p.id = any(e.convoked) and p.deleted_at is null
+                      and (p.user_id = u or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = u)))
+            or not exists(select 1 from players p where p.deleted_at is null and p.club_id = e.club_id
+                      and (p.team_id = any(e.team_ids) or exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = any(e.team_ids)))
+                      and (p.user_id = u or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = u)))) then
+      return next u;
+    end if;
+  end loop;
+  perform push_restore(sub0, uid0);
+end $$;
+create or replace function push_event_targets(eid uuid, actor uuid, important boolean) returns setof uuid
+language sql security definer set search_path = public as $$ select * from push_event_targets(eid, actor, important, false) $$;
+
+create or replace function push_on_event_insert() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; k text := 'evnew:' || coalesce(new.series_id::text, new.id::text); t text; b text;
+  game boolean := new.type in ('Match','Plateau','Tournoi'); conv boolean := cardinality(new.convoked) > 0;
+begin
+  if new.cancelled or new.starts_at < now() then return null; end if;
+  if new.series_id is not null and exists(select 1 from push_queue where dedupe_key = k) then return null; end if;
+  if new.series_id is not null then
+    t := 'Nouveaux entraînements';
+    b := new.title || ' · chaque ' || (array['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'])[extract(dow from new.starts_at at time zone 'Europe/Paris')::int + 1]
+         || ' à ' || to_char(new.starts_at at time zone 'Europe/Paris', 'HH24"h"MI') || ', dès le ' || to_char(new.starts_at at time zone 'Europe/Paris', 'DD/MM')
+         || ' (' || coalesce((select name from clubs where id = new.club_id), '') || ')';
+  else
+    t := case when game then 'Nouveau ' || lower(new.type) || ' prévu' else 'Nouveau : ' || lower(new.type) end;
+    b := push_ev_line(new);
+  end if;
+  -- un match prévient toute l'équipe, même quand une liste de convoqués existe déjà
+  for u in select * from push_event_targets(new.id, auth.uid(), false, game and new.series_id is null) loop
+    perform push_enqueue(u, t, b, 'ev:' || new.id, k);
+  end loop;
+  -- les joueurs convoqués et leurs parents reçoivent en plus la convocation
+  if game and conv and new.series_id is null then
+    for u in select x from push_event_targets(new.id, auth.uid(), false, false) x
+             where exists(select 1 from players p where p.id = any(new.convoked) and p.deleted_at is null
+                          and (p.user_id = x or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = x))) loop
+      perform push_enqueue(u, 'Convocation : ' || lower(new.type), b, 'evconv:' || new.id, 'evconv:' || new.id);
+    end loop;
+  end if;
+  return null;
+end $$;
+
+revoke execute on function push_event_targets(uuid, uuid, boolean, boolean), push_event_targets(uuid, uuid, boolean), push_event_targets(uuid, uuid) from public, anon, authenticated;
+revoke execute on function memberships_fonction_check() from public, anon, authenticated;
+grant execute on function set_designation(uuid, text, uuid) to authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_4_9_0.sql =====
+-- mypocketclub · alpha 4.9.0 · mise à jour d'une base 4.8.0, sans perte de données, relançable.
+-- Mise à jour « Légal » d'avant la bêta (« go » de Gaël, 10 novembre 2026) :
+-- 1. N° 173 : nouveau message quand un rôle à une seule personne est déjà tenu.
+-- 2. N° 180 : accords du compte. Droit à l'image (facultatif, jamais coché d'avance) et e-mails d'information,
+--    avec leur date ; version des conditions acceptée et date déjà gardées (cgu_version, cgu_at).
+--    Le droit à l'image du compte s'applique aussi à la fiche joueur de la personne (pas à celle de ses enfants :
+--    il se règle sur la fiche de l'enfant, par le parent).
+-- 3. N° 177 : trace datée quand une mission est ouverte aux jeunes dès U13 (engagement du club lu par la personne).
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- ---------------------------------------------------------------------
+-- 1. N° 173 · « Rôle déjà attribué : retire-le avant le changement. »
+-- ---------------------------------------------------------------------
+create or replace function memberships_fonction_check() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'active' and new.fonction in ('Vice-président','Secrétaire','Trésorier','Correspondant licences','Correspondant rencontres')
+     and exists(select 1 from memberships m where m.club_id = new.club_id and m.fonction = new.fonction and m.status = 'active' and m.id <> new.id) then
+    raise exception 'Rôle déjà attribué : retire-le avant le changement.';
+  end if;
+  if new.status = 'active' and new.role in ('bureau','president')
+     and (tg_op = 'INSERT' or old.status <> 'active' or old.role <> new.role or old.fonction is distinct from new.fonction)
+     and not account_is_adult(new.club_id, new.user_id) then
+    raise exception 'Les fonctions du bureau sont réservées aux adultes (fiche joueur mineure ou sans date de naissance)';
+  end if;
+  return new;
+end $$;
+revoke execute on function memberships_fonction_check() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- 2. N° 180 · accords du compte (droit à l'image, e-mails d'information), datés
+-- ---------------------------------------------------------------------
+alter table profiles add column if not exists image_ok boolean not null default false;
+alter table profiles add column if not exists image_at timestamptz;
+alter table profiles add column if not exists optin_at timestamptz;
+
+-- Inscription : version des conditions, date, et les deux accords facultatifs (non cochés par défaut)
+create or replace function handle_new_user() returns trigger language plpgsql security definer set search_path = public as $$
+declare optin boolean := coalesce((new.raw_user_meta_data->>'optin_emails')::boolean, false);
+        img boolean := coalesce((new.raw_user_meta_data->>'image_ok')::boolean, false);
+begin
+  insert into profiles(id, first_name, last_name, cgu_version, cgu_at, optin_emails, optin_at, image_ok, image_at) values (new.id,
+    coalesce(new.raw_user_meta_data->>'first_name', split_part(coalesce(new.raw_user_meta_data->>'full_name', ''), ' ', 1)),
+    coalesce(new.raw_user_meta_data->>'last_name', ''),
+    new.raw_user_meta_data->>'cgu_version',
+    case when new.raw_user_meta_data->>'cgu_version' is not null then now() end,
+    optin, case when optin then now() end,
+    img, case when img then now() end);
+  return new;
+end $$;
+revoke execute on function handle_new_user() from public, anon, authenticated;
+
+-- Changer ses accords (Mon compte, ou au moment d'accepter une nouvelle version des conditions).
+-- null = ne pas changer. La date change seulement quand le choix change.
+create or replace function set_my_consents(p_image boolean, p_optin boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); cur profiles;
+begin
+  if me is null then raise exception 'Connecte-toi d''abord'; end if;
+  select * into cur from profiles where id = me;
+  if not found then raise exception 'Compte introuvable'; end if;
+  update profiles set
+    image_ok = coalesce(p_image, image_ok),
+    image_at = case when p_image is not null and p_image is distinct from image_ok then now() else image_at end,
+    optin_emails = coalesce(p_optin, optin_emails),
+    optin_at = case when p_optin is not null and p_optin is distinct from optin_emails then now() else optin_at end
+  where id = me;
+  -- La fiche joueur de la personne elle-même suit son choix (jamais celle d'un enfant)
+  if p_image is not null and p_image is distinct from cur.image_ok then
+    update players set consents = consents || jsonb_build_object('image', jsonb_build_object('ok', p_image, 'at', now(), 'by', me))
+      where user_id = me and deleted_at is null;
+  end if;
+end $$;
+revoke execute on function set_my_consents(boolean, boolean) from public, anon;
+grant execute on function set_my_consents(boolean, boolean) to authenticated;
+
+-- Accepter une nouvelle version des conditions, avec les deux accords
+drop function if exists accept_cgu(text, boolean, boolean);
+create function accept_cgu(p_version text, p_optin boolean, p_image boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi d''abord'; end if;
+  if coalesce(trim(p_version), '') = '' then raise exception 'Version des conditions manquante'; end if;
+  update profiles set cgu_version = left(trim(p_version), 40), cgu_at = now() where id = auth.uid();
+  perform set_my_consents(p_image, p_optin);
+end $$;
+revoke execute on function accept_cgu(text, boolean, boolean) from public, anon;
+grant execute on function accept_cgu(text, boolean, boolean) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 3. N° 177 · trace datée de l'ouverture d'une mission aux jeunes dès U13
+-- ---------------------------------------------------------------------
+create or replace function log_youth_mission() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.youth and not coalesce(old.youth, false) then
+    perform log_action((select club_id from events where id = new.event_id), null, null, 'mission ouverte aux jeunes dès U13',
+      jsonb_build_object('mission', new.label, 'rendez-vous', (select title from events where id = new.event_id),
+        'engagement', 'Le club s''engage à ce qu''un adulte (parent ou membre du bureau) soit présent.'));
+  end if;
+  return null;
+end $$;
+revoke execute on function log_youth_mission() from public, anon, authenticated;
+drop trigger if exists log_youth_mission on event_missions;
+create trigger log_youth_mission after update of youth on event_missions for each row execute function log_youth_mission();
+
+-- Missions par défaut du club : trace quand une mission « jeunes » apparaît dans la liste
+create or replace function log_youth_defaults() returns trigger language plpgsql security definer set search_path = public as $$
+declare added text;
+begin
+  select string_agg(x->>'label', ', ') into added
+    from jsonb_array_elements(coalesce(new.default_missions, '[]'::jsonb)) x
+    where coalesce((x->>'youth')::boolean, false)
+      and not exists(select 1 from jsonb_array_elements(coalesce(old.default_missions, '[]'::jsonb)) y
+                     where y->>'label' = x->>'label' and coalesce((y->>'youth')::boolean, false));
+  if added is not null then
+    perform log_action(new.id, null, null, 'missions par défaut ouvertes aux jeunes dès U13',
+      jsonb_build_object('missions', added, 'engagement', 'Le club s''engage à ce qu''un adulte (parent ou membre du bureau) soit présent.'));
+  end if;
+  return null;
+end $$;
+revoke execute on function log_youth_defaults() from public, anon, authenticated;
+drop trigger if exists log_youth_defaults on clubs;
+create trigger log_youth_defaults after update of default_missions on clubs for each row execute function log_youth_defaults();
+
+select close_visitor_functions();
+
+-- ===== alpha_4_10_0.sql =====
+-- mypocketclub · alpha 4.10.0 · mise à jour d'une base 4.9.0, sans perte de données, relançable.
+-- Suite de la revue « Légal » du 10 novembre 2026 (décisions dans claude/06b-decisions-legal.md) :
+-- 1. N° 181 : un club supprimé reste 90 jours à la corbeille (au lieu de 30). Données gelées, seul le président peut annuler,
+--    les membres sont prévenus le premier jour. La suppression d'un compte par la personne reste à 30 jours.
+-- 2. N° 182 : un club dont le président n'est pas validé a 30 jours pour l'être (date limite affichée). Rappel au président
+--    7 jours avant (notification ; l'e-mail de rappel demande une tâche planifiée, voir 05b). À la date, le club part à la
+--    corbeille de 90 jours : rien n'est effacé d'un coup.
+-- 3. N° 183 : droit à l'image d'un enfant, désaccord entre parents : dès qu'un parent refuse, le refus s'applique ; le président
+--    est prévenu du désaccord, sans motif ni échange. Chaque choix est daté et rangé par personne.
+-- 4. N° 184 : appareils connus : « Retirer » un appareil ; un appareil sans connexion depuis 12 mois est effacé.
+-- 5. N° 185 : e-mails d'information : lien de désinscription (jeton propre à chaque compte, jamais lisible par les autres).
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- ---------------------------------------------------------------------
+-- 1. N° 181 · corbeille de 90 jours pour un club supprimé
+-- ---------------------------------------------------------------------
+create or replace function delete_club(p_club uuid, p_name text) returns timestamptz
+language plpgsql security definer set search_path = public as $$
+declare c clubs; u uuid; fin timestamptz := now() + interval '90 days';
+begin
+  if not is_president(p_club) then raise exception 'Seul le président supprime le club'; end if;
+  select * into c from clubs where id = p_club;
+  if c.deleted_at is not null then raise exception 'Le club est déjà dans la corbeille'; end if;
+  if lower(trim(coalesce(p_name, ''))) <> lower(trim(c.name)) then raise exception 'Tape exactement le nom du club pour confirmer'; end if;
+  perform set_config('pc.club_delete', 'on', true);
+  update clubs set deleted_at = now(), deleted_by = auth.uid(), listed_before_delete = public_listed, public_listed = false where id = p_club;
+  perform set_config('pc.club_delete', '', true);
+  delete from president_offers where club_id = p_club;
+  perform log_action(p_club, null, null, 'club envoyé à la corbeille', jsonb_build_object('effacé_le', fin));
+  -- les membres sont prévenus le premier jour
+  for u in select distinct m.user_id from memberships m where m.club_id = p_club and m.status = 'active' and m.user_id is distinct from auth.uid() loop
+    perform push_enqueue(u, 'Club supprimé', c.name || ' est à la corbeille. Il sera effacé le ' || to_char(fin at time zone 'Europe/Paris', 'DD/MM/YYYY')
+      || ', sauf si le président le restaure.', 'clubdel:' || p_club, 'clubdel:' || p_club || ':' || floor(extract(epoch from now()))::text);
+  end loop;
+  return fin;
+end $$;
+revoke execute on function delete_club(uuid, text) from public, anon;
+
+-- ---------------------------------------------------------------------
+-- 2. N° 182 · date limite de validation du président
+-- ---------------------------------------------------------------------
+-- Pour les clubs déjà là, le délai part de la mise à jour (30 jours pour se faire valider) : aucun club n'est envoyé à la corbeille d'un coup.
+alter table clubs add column if not exists valid_by timestamptz default (now() + interval '30 days');
+alter table clubs add column if not exists valid_reminded_at timestamptz;
+update clubs set valid_by = now() + interval '30 days' where valid_by is null;
+
+-- Un nouveau président non validé reçoit un nouveau délai de 30 jours (sinon un club ancien partirait à la corbeille au transfert)
+create or replace function memberships_president_watch() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare a uuid; cn text; nm text;
+begin
+  if tg_op in ('UPDATE','DELETE') and old.role = 'president' and old.status = 'active'
+     and (tg_op = 'DELETE' or new.role <> 'president' or new.status <> 'active' or new.user_id <> old.user_id) then
+    delete from sender_validations where club_id = old.club_id and user_id = old.user_id;
+  end if;
+  if tg_op in ('INSERT','UPDATE') and new.role = 'president' and new.status = 'active'
+     and (tg_op = 'INSERT' or old.role <> 'president' or old.status <> 'active')
+     and not exists(select 1 from sender_validations where club_id = new.club_id and user_id = new.user_id) then
+    select name into cn from clubs where id = new.club_id;
+    select full_name into nm from profiles where id = new.user_id;
+    update clubs set valid_by = greatest(coalesce(valid_by, now()), now() + interval '30 days'), valid_reminded_at = null where id = new.club_id;
+    for a in select user_id from app_admins loop
+      perform push_enqueue(a, 'Président à valider', coalesce(cn, 'Un club') || ' · ' || coalesce(nm, 'nouveau président'), 'admin', 'presval:' || new.club_id || ':' || new.user_id, './');
+    end loop;
+  end if;
+  return null;
+end $$;
+drop trigger if exists memberships_president_watch on memberships;
+create trigger memberships_president_watch after insert or update of role, status, user_id or delete on memberships for each row execute function memberships_president_watch();
+
+-- Retirer une validation donne aussi 30 jours (un club ancien ne part pas à la corbeille au même instant)
+create or replace function admin_unvalidate_sender(p_club uuid, p_user uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  delete from sender_validations where club_id = p_club and user_id = p_user;
+  if found then
+    update clubs set valid_by = greatest(coalesce(valid_by, now()), now() + interval '30 days'), valid_reminded_at = null where id = p_club;
+    perform log_action(p_club, p_user, null, 'envoi des convocations fermé par mypocketclub', '{}'::jsonb);
+  end if;
+end $$;
+revoke execute on function admin_unvalidate_sender(uuid, uuid) from public, anon;
+grant execute on function admin_unvalidate_sender(uuid, uuid) to authenticated;
+
+-- Le président et les personnes qui envoient voient la date limite (encart rouge)
+create or replace function my_send_state(p_club uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare pres uuid; v sender_validations; cl clubs;
+begin
+  if auth.uid() is null or not (is_president(p_club) or has_area(p_club, 'evenements')) then return null; end if;
+  select m.user_id into pres from memberships m where m.club_id = p_club and m.role = 'president' and m.status = 'active' order by m.created_at limit 1;
+  select * into v from sender_validations where club_id = p_club and user_id = pres;
+  select * into cl from clubs where id = p_club;
+  return jsonb_build_object('can_send', can_send_convocations(p_club), 'validated', v.user_id is not null, 'me_president', pres is not distinct from auth.uid(),
+    'reason', v.reason, 'ends_at', v.ends_at, 'period_over', coalesce(v.ends_at <= current_date, false),
+    'valid_by', case when v.user_id is null then cl.valid_by end);
+end $$;
+revoke execute on function my_send_state(uuid) from public, anon;
+grant execute on function my_send_state(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 3. N° 183 · droit à l'image : un refus d'un parent s'applique
+-- ---------------------------------------------------------------------
+-- Fiche : consents.image = {ok, at, by, conflict, votes:{personne:{ok, at}}}. « ok » = personne n'a refusé et quelqu'un a accepté.
+create or replace function apply_image_vote(p_player uuid, p_user uuid, p_ok boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare pl players; cur jsonb; votes jsonb; eff boolean; yes boolean; no boolean; was boolean; u uuid;
+begin
+  select * into pl from players where id = p_player;
+  if not found then return; end if;
+  cur := coalesce(pl.consents->'image', '{}'::jsonb);
+  votes := coalesce(cur->'votes', '{}'::jsonb) || jsonb_build_object(p_user::text, jsonb_build_object('ok', p_ok, 'at', now()));
+  yes := exists(select 1 from jsonb_each(votes) v where (v.value->>'ok')::boolean);
+  no := exists(select 1 from jsonb_each(votes) v where not (v.value->>'ok')::boolean);
+  eff := yes and not no;
+  was := coalesce((cur->>'conflict')::boolean, false);
+  perform set_config('pc.consent_rpc', 'on', true);
+  update players set consents = consents || jsonb_build_object('image',
+    jsonb_build_object('ok', eff, 'at', now(), 'by', p_user, 'votes', votes, 'conflict', yes and no)) where id = p_player;
+  perform set_config('pc.consent_rpc', '', true);
+  -- le président est prévenu d'un désaccord, sans motif ni échange
+  if yes and no and not was then
+    perform log_action(pl.club_id, null, p_player, 'désaccord sur le droit à l''image', '{}'::jsonb);
+    for u in select m.user_id from memberships m where m.club_id = pl.club_id and m.role = 'president' and m.status = 'active' loop
+      perform push_enqueue(u, 'Droit à l''image : désaccord', 'Les parents de ' || pl.first_name || ' ne sont pas d''accord. Le refus s''applique.',
+        'imgdis', 'imgdis:' || p_player || ':' || floor(extract(epoch from now()))::text);
+    end loop;
+  end if;
+end $$;
+revoke execute on function apply_image_vote(uuid, uuid, boolean) from public, anon, authenticated;
+
+create or replace function set_player_image(p_player uuid, p_ok boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare pl players; major boolean;
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi d''abord'; end if;
+  select * into pl from players where id = p_player and deleted_at is null;
+  if not found then raise exception 'Fiche introuvable'; end if;
+  major := pl.birth_date is not null and pl.birth_date <= (current_date - interval '18 years')::date;
+  if not (is_board(pl.club_id)
+          or (major and pl.user_id = auth.uid())
+          or (not major and exists(select 1 from player_parents pp where pp.player_id = p_player and pp.user_id = auth.uid()))) then
+    raise exception 'Tu ne peux pas régler cet accord';
+  end if;
+  perform apply_image_vote(p_player, auth.uid(), p_ok);
+end $$;
+revoke execute on function set_player_image(uuid, boolean) from public, anon;
+grant execute on function set_player_image(uuid, boolean) to authenticated;
+
+-- Le droit à l'image d'une fiche ne change plus que par set_player_image (ou l'accord du compte, ci-dessous)
+create or replace function players_image_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is not null and coalesce(current_setting('pc.consent_rpc', true), '') <> 'on'
+     and (new.consents->'image') is distinct from (old.consents->'image') then
+    raise exception 'Le droit à l''image se règle avec le bouton d''accord de la fiche.';
+  end if;
+  return new;
+end $$;
+revoke execute on function players_image_guard() from public, anon, authenticated;
+drop trigger if exists players_image_guard on players;
+create trigger players_image_guard before update of consents on players for each row execute function players_image_guard();
+
+-- L'accord du compte (Mon compte) suit sur la fiche joueur de la personne, comme un choix de plus (jamais sur celle d'un enfant)
+create or replace function set_my_consents(p_image boolean, p_optin boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); cur profiles; pid uuid;
+begin
+  if me is null then raise exception 'Connecte-toi d''abord'; end if;
+  select * into cur from profiles where id = me;
+  if not found then raise exception 'Compte introuvable'; end if;
+  update profiles set
+    image_ok = coalesce(p_image, image_ok),
+    image_at = case when p_image is not null and p_image is distinct from image_ok then now() else image_at end,
+    optin_emails = coalesce(p_optin, optin_emails),
+    optin_at = case when p_optin is not null and p_optin is distinct from optin_emails then now() else optin_at end
+  where id = me;
+  if p_image is not null and p_image is distinct from cur.image_ok then
+    for pid in select id from players where user_id = me and deleted_at is null loop
+      perform apply_image_vote(pid, me, p_image);
+    end loop;
+  end if;
+end $$;
+revoke execute on function set_my_consents(boolean, boolean) from public, anon;
+grant execute on function set_my_consents(boolean, boolean) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 4. N° 184 · appareils connus : Retirer
+-- ---------------------------------------------------------------------
+create or replace function remove_my_device(p_device text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi d''abord'; end if;
+  delete from user_devices where user_id = auth.uid() and device_id = p_device;
+end $$;
+revoke execute on function remove_my_device(text) from public, anon;
+grant execute on function remove_my_device(text) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 5. N° 185 · désinscription des e-mails d'information
+-- ---------------------------------------------------------------------
+-- Un jeton par compte, dans une table fermée (aucune règle de lecture) : seul le serveur le lit pour fabriquer le lien.
+create table if not exists mail_unsub (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  token text not null unique default replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '')
+);
+alter table mail_unsub enable row level security;
+insert into mail_unsub(user_id) select id from profiles on conflict do nothing;
+
+-- Réservé au serveur (fonction envoyer-email) : donne le jeton d'une personne, en le créant au besoin
+create or replace function mail_unsub_token(p_user uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare t text;
+begin
+  insert into mail_unsub(user_id) values (p_user) on conflict do nothing;
+  select token into t from mail_unsub where user_id = p_user;
+  return t;
+end $$;
+revoke execute on function mail_unsub_token(uuid) from public, anon, authenticated;
+
+-- Le lien de désinscription (ouvert au visiteur : on clique depuis un e-mail, connecté ou non)
+create or replace function unsubscribe_info(p_token text) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare u uuid;
+begin
+  if p_token is null or length(p_token) < 32 then return false; end if;
+  select user_id into u from mail_unsub where token = p_token;
+  if u is null then return false; end if;
+  update profiles set optin_emails = false, optin_at = now() where id = u and optin_emails;
+  return true;
+end $$;
+grant execute on function unsubscribe_info(text) to anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- 5 bis. La corbeille automatique d'un club (purge_trash) est faite par la base, pas par le président :
+--        clubs_guard laisse passer la mise à la corbeille et la restauration (réglage « pc.club_delete », posé seulement
+--        par delete_club, restore_club et purge_trash ; le contrôle de deleted_at reste dans clubs_guard_310).
+-- ---------------------------------------------------------------------
+create or replace function clubs_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.join_code <> old.join_code then raise exception 'Le code du club ne se modifie pas ainsi'; end if;
+  if auth.uid() is null then return new; end if;
+  if coalesce(current_setting('pc.club_delete', true), '') = 'on' then return new; end if;
+  if new.custom_header is distinct from old.custom_header and not is_president(old.id) then raise exception 'Seul le président choisit l''en-tête aux couleurs du club'; end if;
+  if new.public_listed is distinct from old.public_listed and not is_president(old.id) then raise exception 'Seul le président choisit si le club apparaît dans la recherche'; end if;
+  if new.coach_sees_fees is distinct from old.coach_sees_fees and not is_president(old.id) then raise exception 'Réglage réservé au président'; end if;
+  if new.default_missions is distinct from old.default_missions and not has_area(old.id, 'evenements') then raise exception 'Les missions par défaut se règlent dans la rubrique Événements'; end if;
+  if (new.name, new.city, new.postal_code, new.sport, new.color1, new.color2, new.crest_bg, new.logo, new.crest_outline)
+     is distinct from (old.name, old.city, old.postal_code, old.sport, old.color1, old.color2, old.crest_bg, old.logo, old.crest_outline)
+     and not has_area(old.id, 'communication') then raise exception 'Le blason et les informations du club se règlent dans la rubrique Communication'; end if;
+  if jsonb_typeof(new.default_missions) <> 'array' or jsonb_array_length(new.default_missions) > 12 then raise exception 'Liste de missions invalide'; end if;
+  return new;
+end $$;
+revoke execute on function clubs_guard() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- 6. Corbeille : 90 jours pour un club, 12 mois pour un appareil, club non validé à temps
+-- ---------------------------------------------------------------------
+create or replace function purge_trash() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; k int; u uuid; lim timestamptz := now() - interval '30 days'; lim90 timestamptz := now() - interval '90 days'; cc record; fin timestamptz;
+begin
+  -- N° 182 : club dont le président n'a pas été validé à temps : corbeille de 90 jours (rien n'est effacé d'un coup)
+  for cc in select c.id, c.name from clubs c
+            where c.deleted_at is null and c.valid_by is not null and c.valid_by < now()
+              and exists(select 1 from memberships m where m.club_id = c.id and m.role = 'president' and m.status = 'active')
+              and not exists(select 1 from memberships m where m.club_id = c.id and m.role = 'president' and m.status = 'active' and president_validated(c.id, m.user_id)) loop
+    fin := now() + interval '90 days';
+    perform set_config('pc.club_delete', 'on', true);
+    update clubs set deleted_at = now(), deleted_by = null, listed_before_delete = public_listed, public_listed = false where id = cc.id;
+    perform set_config('pc.club_delete', '', true);
+    insert into action_log(club_id, actor, action, detail) values (cc.id, null, 'club envoyé à la corbeille (président non validé à temps)', jsonb_build_object('effacé_le', fin));
+    for u in select distinct m.user_id from memberships m where m.club_id = cc.id and m.status = 'active' loop
+      perform push_enqueue(u, 'Club supprimé', cc.name || ' est à la corbeille faute de validation. Il sera effacé le ' || to_char(fin at time zone 'Europe/Paris', 'DD/MM/YYYY')
+        || ', sauf si le président le restaure.', 'clubdel:' || cc.id, 'clubdel:' || cc.id || ':' || floor(extract(epoch from now()))::text);
+    end loop;
+    n := n + 1;
+  end loop;
+  -- N° 182 : rappel au président, 7 jours avant la date limite (une seule fois)
+  for cc in select c.id, c.name, c.valid_by from clubs c
+            where c.deleted_at is null and c.valid_reminded_at is null and c.valid_by between now() and now() + interval '7 days'
+              and not exists(select 1 from memberships m where m.club_id = c.id and m.role = 'president' and m.status = 'active' and president_validated(c.id, m.user_id)) loop
+    for u in select m.user_id from memberships m where m.club_id = cc.id and m.role = 'president' and m.status = 'active' loop
+      perform push_enqueue(u, 'Club à valider', cc.name || ' doit être validé avant le ' || to_char(cc.valid_by at time zone 'Europe/Paris', 'DD/MM/YYYY')
+        || '. Sinon il part à la corbeille.', 'clubval', 'clubval:' || cc.id);
+    end loop;
+    update clubs set valid_reminded_at = now() where id = cc.id;
+  end loop;
+  -- N° 181 : un club supprimé est effacé après 90 jours
+  delete from clubs where deleted_at < lim90; get diagnostics k = row_count; n := n + k;
+  delete from memberships where role = 'coach' and team_id in (select id from teams where deleted_at < lim);
+  update events set team_ids = (select coalesce(array_agg(t), '{}') from unnest(team_ids) t where t not in (select id from teams where deleted_at < lim))
+    where team_ids && array(select id from teams where deleted_at < lim);
+  delete from events where audience = 'team' and cardinality(team_ids) = 0;
+  delete from teams where deleted_at < lim; get diagnostics k = row_count; n := n + k;
+  delete from players where deleted_at < lim; get diagnostics k = row_count; n := n + k;
+  delete from poll_votes where poll_id in (select id from polls where deleted_at < lim);
+  delete from exercises where deleted_at < lim; get diagnostics k = row_count; n := n + k;
+  delete from training_plans where deleted_at < lim;
+  delete from join_attempts where at < now() - interval '1 day';
+  -- N° 184 : un appareil sans connexion depuis 12 mois est effacé
+  delete from user_devices where last_seen < now() - interval '12 months';
+  for u in select id from profiles where deleted_at < lim loop
+    begin
+      delete from auth.users where id = u;
+    exception when others then
+      update profiles set first_name = 'Compte', last_name = 'supprimé', nickname = null, phone = null, deleted_snapshot = null where id = u;
+      delete from player_parents where user_id = u; delete from group_members where user_id = u; delete from memberships where user_id = u;
+    end;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+revoke execute on function purge_trash() from public, anon;
+grant execute on function purge_trash() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 6 bis. n° 84 : créer le rendez-vous depuis une convocation reçue
+-- ---------------------------------------------------------------------
+create table if not exists convocation_links (
+  id uuid primary key default gen_random_uuid(),
+  send_id uuid not null references convocation_sends(id) on delete cascade,
+  source_event_id uuid not null,                       -- le match dans le document du club qui reçoit chez lui
+  club_id uuid not null references clubs(id) on delete cascade,   -- le club reçu (celui qui crée le rendez-vous)
+  event_id uuid references events(id) on delete set null,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (send_id, source_event_id, club_id)
+);
+alter table convocation_links enable row level security;   -- lecture et écriture seulement par les fonctions ci-dessous
+
+-- Les matchs d'une convocation reçue, avec le rendez-vous déjà créé (s'il existe)
+create or replace function convocation_received_events(p_send uuid) returns table(source_event_id uuid, title text, starts_at timestamptz, place text, team text, linked_event uuid)
+language plpgsql stable security definer set search_path = public as $$
+declare s convocation_sends;
+begin
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.channel <> 'app' or s.target_club_id is null or not receives_convocations(s.target_club_id) then return; end if;
+  return query
+    select (x->>'id')::uuid, coalesce(x->>'title', ''), (x->>'starts_at')::timestamptz, coalesce(x->>'place', ''),
+           coalesce(x->'team'->>'name', ''),
+           (select l.event_id from convocation_links l join events e on e.id = l.event_id
+             where l.send_id = s.id and l.source_event_id = (x->>'id')::uuid and l.club_id = s.target_club_id)
+    from jsonb_array_elements(coalesce(s.payload->'data'->'events', s.payload->'events', '[]'::jsonb)) x
+    where coalesce((x->>'cancelled')::boolean, false) = false and x->>'id' is not null
+    order by 3, 2;
+end $$;
+revoke execute on function convocation_received_events(uuid) from public, anon;
+grant execute on function convocation_received_events(uuid) to authenticated;
+
+-- Relie le rendez-vous créé (ou un rendez-vous existant du même club) au match de la convocation
+create or replace function link_convocation(p_send uuid, p_source uuid, p_event uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare s convocation_sends; e events;
+begin
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.channel <> 'app' or s.target_club_id is null or not receives_convocations(s.target_club_id) then raise exception 'Convocation introuvable'; end if;
+  select * into e from events where id = p_event;
+  if e.id is null or e.club_id <> s.target_club_id or not has_area(e.club_id, 'evenements') then raise exception 'Rendez-vous introuvable dans ton club'; end if;
+  insert into convocation_links(send_id, source_event_id, club_id, event_id, created_by) values (p_send, p_source, s.target_club_id, p_event, auth.uid())
+    on conflict (send_id, source_event_id, club_id) do update set event_id = excluded.event_id, created_by = excluded.created_by, created_at = now();
+end $$;
+revoke execute on function link_convocation(uuid, uuid, uuid) from public, anon;
+grant execute on function link_convocation(uuid, uuid, uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 6 ter. n° 167 : doublons d'exercices (signalement, puis décision)
+-- ---------------------------------------------------------------------
+create table if not exists exercise_duplicates (
+  id uuid primary key default gen_random_uuid(),
+  exercise_id uuid not null references exercises(id) on delete cascade,   -- l'exercice qui ferait doublon (il partirait à la corbeille)
+  other_id uuid not null references exercises(id) on delete cascade,      -- celui qui resterait
+  reported_by uuid references auth.users(id) on delete set null,
+  reported_at timestamptz not null default now(),
+  status text not null default 'signale' check (status in ('signale', 'fusionne', 'refuse')),   -- Signalé, Fusionné, Pas un doublon
+  decided_by uuid references auth.users(id) on delete set null,
+  decided_at timestamptz,
+  check (exercise_id <> other_id)
+);
+create unique index if not exists exercise_duplicates_open on exercise_duplicates(least(exercise_id, other_id), greatest(exercise_id, other_id)) where status = 'signale';
+alter table exercise_duplicates enable row level security;   -- lecture et écriture seulement par les fonctions ci-dessous
+
+-- Qui décide : l'administrateur de mypocketclub pour un exercice public ; sinon le Directeur technique ou le président du club de l'exercice
+create or replace function can_decide_duplicate(p_ex uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists(select 1 from exercises e where e.id = p_ex and (
+    case when e.sharing = 'public' and e.public_state = 'validated' then is_app_admin() else (is_president(e.club_id) or has_area(e.club_id, 'technique')) end));
+$$;
+revoke execute on function can_decide_duplicate(uuid) from public, anon;
+grant execute on function can_decide_duplicate(uuid) to authenticated;
+
+create or replace function report_duplicate(p_exercise uuid, p_other uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare a exercises; b exercises; r exercise_duplicates;
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi'; end if;
+  if p_exercise = p_other then raise exception 'Choisis un autre exercice'; end if;
+  select * into a from exercises where id = p_exercise and deleted_at is null;
+  select * into b from exercises where id = p_other and deleted_at is null;
+  if a.id is null or b.id is null or not can_see_exercise(a.id) or not can_see_exercise(b.id) then raise exception 'Exercice introuvable'; end if;
+  if not exists(select 1 from memberships m where m.user_id = auth.uid() and m.status = 'active' and m.role in ('coach', 'president', 'bureau')) then
+    raise exception 'Seuls les coachs et le bureau signalent un doublon';
+  end if;
+  if exists(select 1 from exercise_duplicates d where d.status = 'signale' and least(d.exercise_id, d.other_id) = least(p_exercise, p_other) and greatest(d.exercise_id, d.other_id) = greatest(p_exercise, p_other)) then
+    raise exception 'Ce doublon est déjà signalé';
+  end if;
+  insert into exercise_duplicates(exercise_id, other_id, reported_by) values (p_exercise, p_other, auth.uid());
+  perform log_action(a.club_id, null, null, 'doublon d''exercice signalé', jsonb_build_object('exercice', a.title, 'autre', b.title));
+end $$;
+revoke execute on function report_duplicate(uuid, uuid) from public, anon;
+grant execute on function report_duplicate(uuid, uuid) to authenticated;
+
+-- La liste : ce que j'ai signalé, et ce que je peux trancher
+create or replace function duplicates_list() returns table(id uuid, exercise_id uuid, other_id uuid, title text, other_title text, status text, reported_by_name text, reported_at timestamptz, decided_at timestamptz, mine boolean, can_decide boolean)
+language sql stable security definer set search_path = public as $$
+  select d.id, d.exercise_id, d.other_id, a.title, b.title, d.status,
+         (select p.full_name from profiles p where p.id = d.reported_by), d.reported_at, d.decided_at,
+         d.reported_by = auth.uid(), d.status = 'signale' and can_decide_duplicate(d.exercise_id)
+  from exercise_duplicates d join exercises a on a.id = d.exercise_id join exercises b on b.id = d.other_id
+  where auth.uid() is not null and (d.reported_by = auth.uid() or can_decide_duplicate(d.exercise_id))
+    and d.reported_at > now() - interval '180 days'
+  order by (d.status = 'signale') desc, d.reported_at desc limit 50;
+$$;
+revoke execute on function duplicates_list() from public, anon;
+grant execute on function duplicates_list() to authenticated;
+
+create or replace function decide_duplicate(p_id uuid, p_merge boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare d exercise_duplicates; a exercises; b exercises; t text;
+begin
+  select * into d from exercise_duplicates where id = p_id;
+  if d.id is null or d.status <> 'signale' then raise exception 'Signalement introuvable ou déjà traité'; end if;
+  if not can_decide_duplicate(d.exercise_id) then raise exception 'Seul le Directeur technique ou le président décide (un administrateur de mypocketclub pour un exercice public)'; end if;
+  select * into a from exercises where id = d.exercise_id;
+  select * into b from exercises where id = d.other_id;
+  if p_merge then
+    if a.deleted_at is not null or b.deleted_at is not null then raise exception 'Un des deux exercices a déjà été supprimé'; end if;
+    -- l'exercice qui reste doit être visible partout où l'autre l'était
+    if a.sharing = 'public' and not (b.sharing = 'public' and b.public_state = 'validated') then raise exception 'L''exercice public ne peut être fusionné que dans un exercice public validé'; end if;
+    if a.sharing <> 'public' and not (b.club_id = a.club_id or (b.sharing = 'public' and b.public_state = 'validated')) then raise exception 'L''exercice qui reste doit être de ce club ou public'; end if;
+    perform set_config('pc.exsys', 'on', true);
+    update training_plans set items = (select coalesce(jsonb_agg(case when x->>'exercise_id' = a.id::text then jsonb_set(x, '{exercise_id}', to_jsonb(b.id::text)) else x end), '[]'::jsonb) from jsonb_array_elements(items) x)
+      where items::text like '%' || a.id::text || '%';
+    update exercise_reports set exercise_id = b.id where exercise_id = a.id;
+    update exercises set deleted_at = now(), deleted_by = auth.uid() where id = a.id;
+    perform set_config('pc.exsys', 'off', true);
+    update exercise_duplicates set status = 'fusionne', decided_by = auth.uid(), decided_at = now() where id = d.id;
+    -- les autres signalements ouverts qui touchent l'exercice parti n'ont plus d'objet
+    update exercise_duplicates set status = 'refuse', decided_by = auth.uid(), decided_at = now() where status = 'signale' and id <> d.id and (exercise_id = a.id or other_id = a.id);
+  else
+    update exercise_duplicates set status = 'refuse', decided_by = auth.uid(), decided_at = now() where id = d.id;
+  end if;
+  if d.reported_by is not null and d.reported_by <> auth.uid() then
+    perform push_enqueue(d.reported_by, case when p_merge then 'Doublon fusionné' else 'Pas un doublon' end,
+      '« ' || a.title || ' » : ' || case when p_merge then 'fusionné avec « ' || b.title || ' ».' else 'les deux exercices restent.' end, 'exercice', 'dupdec:' || d.id);
+  end if;
+  perform log_action(a.club_id, null, null, case when p_merge then 'doublon d''exercice fusionné' else 'doublon d''exercice écarté' end, jsonb_build_object('exercice', a.title, 'autre', b.title));
+end $$;
+revoke execute on function decide_duplicate(uuid, boolean) from public, anon;
+grant execute on function decide_duplicate(uuid, boolean) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 7. Fermeture au visiteur : unsubscribe_info reste ouverte (lien de l'e-mail)
+-- ---------------------------------------------------------------------
+create or replace function close_visitor_functions() returns int
+language plpgsql security definer set search_path = public, pg_catalog as $$
+declare f record; n int := 0; pol text; svc boolean := exists(select 1 from pg_roles where rolname = 'service_role');
+  keep text[] := array['public_search_clubs', 'public_club', 'request_club', 'not_me_device', 'unsubscribe_info'];
+  shut text[] := array['due_for', 'grid_for', 'member_rank'];
+begin
+  select coalesce(string_agg(coalesce(qual, '') || ' ' || coalesce(with_check, ''), ' '), '') into pol from pg_policies;
+  for f in select p.oid, p.proname from pg_proc p join pg_namespace s on s.oid = p.pronamespace
+           where s.nspname = 'public' and p.prokind = 'f' and p.prorettype not in ('trigger'::regtype, 'event_trigger'::regtype) loop
+    continue when not has_function_privilege('anon', f.oid, 'execute');
+    continue when f.proname = any(keep);
+    continue when not (f.proname = any(shut)) and pol ~ ('\m' || f.proname || '\(');
+    if has_function_privilege('authenticated', f.oid, 'execute') then execute format('grant execute on function %s to authenticated', f.oid::regprocedure); end if;
+    if svc and has_function_privilege('service_role', f.oid, 'execute') then execute format('grant execute on function %s to service_role', f.oid::regprocedure); end if;
+    execute format('revoke execute on function %s from public, anon', f.oid::regprocedure);
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+revoke execute on function close_visitor_functions() from public, anon, authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_5_1_0.sql =====
+-- mypocketclub · alpha 5.1.0 · mise à jour d'une base 4.10.0, sans perte de données, relançable.
+-- Lot « navigation figée » (« go » de Gaël, 11 novembre 2026). Côté base, un seul point :
+-- N° 198 : le coach choisit ou change les convoqués APRÈS la création du match.
+--   - Les joueurs ajoutés à la liste (et leurs parents) reçoivent « Convocation : match ».
+--   - Les joueurs retirés de la liste (et leurs parents) reçoivent « Convocation retirée : match », avec le prénom.
+--   - Une liste créée sur un match qui n'en avait pas : seuls les joueurs choisis sont prévenus (les autres
+--     n'avaient jamais été convoqués nommément). Une liste vidée (retour à « toute l'équipe ») : rien ne part.
+--   - Seulement pour un match, un plateau ou un tournoi à venir, hors série, non annulé.
+-- Le reste du lot (n° 189, 190, 191, 194, 195, 196) est dans le code de l'application.
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+create or replace function push_on_event_update() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; k text; t text; b text; imp boolean := false; stamp text := to_char(now(), 'YYYYMMDDHH24MI');
+  added uuid[]; removed uuid[]; x record;
+begin
+  -- n° 198 : liste des convoqués changée après la création
+  if new.type in ('Match','Plateau','Tournoi') and new.series_id is null and not new.cancelled and new.starts_at > now()
+     and new.convoked is distinct from old.convoked and cardinality(new.convoked) > 0 then
+    added := array(select p from unnest(new.convoked) p where not (p = any(old.convoked)));
+    removed := case when cardinality(old.convoked) = 0 then '{}'::uuid[]
+                    else array(select p from unnest(old.convoked) p where not (p = any(new.convoked))) end;
+    b := push_ev_line(new);
+    if cardinality(added) > 0 then
+      for u in select y from push_event_targets(new.id, auth.uid(), false, false) y
+               where exists(select 1 from players p where p.id = any(added) and p.deleted_at is null
+                            and (p.user_id = y or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = y))) loop
+        perform push_enqueue(u, 'Convocation : ' || lower(new.type), b, 'evconv:' || new.id, 'evconv:' || new.id || ':' || stamp);
+      end loop;
+    end if;
+    if cardinality(removed) > 0 then
+      -- « toutes les personnes qui voient le rendez-vous » : la liste ne les filtre plus, ils ne sont plus convoqués
+      for x in select y as uid, string_agg(distinct p.first_name, ', ') as who from push_event_targets(new.id, auth.uid(), false, true) y
+               join players p on p.id = any(removed) and p.deleted_at is null
+                 and (p.user_id = y or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = y))
+               group by y loop
+        perform push_enqueue(x.uid, 'Convocation retirée : ' || lower(new.type), x.who || ' · ' || b, 'evconv:' || new.id, 'evunconv:' || new.id || ':' || stamp);
+      end loop;
+    end if;
+  end if;
+
+  -- changements d'horaire, de lieu, annulation (inchangé depuis la 4.7.0)
+  if new.starts_at < now() - interval '1 hour' then return null; end if;
+  if new.cancelled and not old.cancelled then
+    k := 'evcancel:' || coalesce(new.series_id::text || ':' || stamp, new.id::text);
+    t := 'Annulé'; b := push_ev_line(new); imp := true;
+  elsif not new.cancelled and old.cancelled then
+    k := 'evback:' || new.id || ':' || stamp;
+    t := 'De nouveau prévu'; b := push_ev_line(new);
+  elsif not new.cancelled and (new.starts_at is distinct from old.starts_at or new.place is distinct from old.place
+        or new.duration_min is distinct from old.duration_min or new.all_day is distinct from old.all_day) then
+    k := 'evmod:' || coalesce(new.series_id::text, new.id::text) || ':' || stamp;
+    imp := new.starts_at is distinct from old.starts_at or new.duration_min is distinct from old.duration_min or new.all_day is distinct from old.all_day;
+    t := case when imp then 'Nouvel horaire' else 'Nouveau lieu' end;
+    b := push_ev_line(new);
+  else return null; end if;
+  if new.series_id is not null and exists(select 1 from push_queue where dedupe_key = k) then return null; end if;
+  for u in select * from push_event_targets(new.id, auth.uid(), imp) loop
+    perform push_enqueue(u, t, b, 'ev:' || new.id, k);
+  end loop;
+  return null;
+end $$;
+
+drop trigger if exists push_event_update on events;
+create trigger push_event_update after update of cancelled, starts_at, place, duration_min, all_day, convoked on events
+  for each row execute function push_on_event_update();
+revoke execute on function push_on_event_update() from public, anon, authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_5_2_0.sql =====
+-- mypocketclub · alpha 5.2.0 · mise à jour d'une base 5.1.0, sans perte de données, relançable.
+-- « Très grosse mise à jour » du 11 novembre 2026 (plan en trois mises à jour de Gaël). Cette première partie :
+--   N° 198 (reste) : liste des convoqués vidée = retour à « toute l'équipe » ; les joueurs qui n'étaient pas sur la liste, désormais
+--                    convoqués, reçoivent « Convocation : match » ; les autres restent convoqués, sans notification.
+--   N° 184 : « Retirer » un appareil coupe aussi sa session (la base retient la session de chaque appareil à sa connexion).
+--   N° 171 : les notifications de fonction disent « Contact licences / rencontres » (la valeur en base reste « Correspondant »).
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- ---------------------------------------------------------------------
+-- 1. N° 198 · liste vidée
+-- ---------------------------------------------------------------------
+create or replace function push_on_event_update() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; k text; t text; b text; imp boolean := false; stamp text := to_char(now(), 'YYYYMMDDHH24MI');
+  added uuid[]; removed uuid[]; x record;
+begin
+  -- n° 198 : liste des convoqués changée après la création
+  if new.type in ('Match','Plateau','Tournoi') and new.series_id is null and not new.cancelled and new.starts_at > now()
+     and new.convoked is distinct from old.convoked and (cardinality(new.convoked) > 0 or cardinality(old.convoked) > 0) then
+    if cardinality(new.convoked) > 0 then
+      added := array(select p from unnest(new.convoked) p where not (p = any(old.convoked)));
+      removed := case when cardinality(old.convoked) = 0 then '{}'::uuid[]
+                      else array(select p from unnest(old.convoked) p where not (p = any(new.convoked))) end;
+    else
+      -- 5.2.0 (n° 198, reste) : liste vidée = retour à « toute l'équipe » : les joueurs qui n'étaient pas sur la liste sont maintenant
+      -- convoqués ; ceux qui y étaient le restent, personne n'est « retiré »
+      added := array(select p.id from players p where p.team_id = any(new.team_ids) and p.deleted_at is null and not (p.id = any(old.convoked)));
+      removed := '{}'::uuid[];
+    end if;
+    b := push_ev_line(new);
+    if cardinality(added) > 0 then
+      for u in select y from push_event_targets(new.id, auth.uid(), false, false) y
+               where exists(select 1 from players p where p.id = any(added) and p.deleted_at is null
+                            and (p.user_id = y or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = y))) loop
+        perform push_enqueue(u, 'Convocation : ' || lower(new.type), b, 'evconv:' || new.id, 'evconv:' || new.id || ':' || stamp);
+      end loop;
+    end if;
+    if cardinality(removed) > 0 then
+      -- « toutes les personnes qui voient le rendez-vous » : la liste ne les filtre plus, ils ne sont plus convoqués
+      for x in select y as uid, string_agg(distinct p.first_name, ', ') as who from push_event_targets(new.id, auth.uid(), false, true) y
+               join players p on p.id = any(removed) and p.deleted_at is null
+                 and (p.user_id = y or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = y))
+               group by y loop
+        perform push_enqueue(x.uid, 'Convocation retirée : ' || lower(new.type), x.who || ' · ' || b, 'evconv:' || new.id, 'evunconv:' || new.id || ':' || stamp);
+      end loop;
+    end if;
+  end if;
+
+  -- changements d'horaire, de lieu, annulation (inchangé depuis la 4.7.0)
+  if new.starts_at < now() - interval '1 hour' then return null; end if;
+  if new.cancelled and not old.cancelled then
+    k := 'evcancel:' || coalesce(new.series_id::text || ':' || stamp, new.id::text);
+    t := 'Annulé'; b := push_ev_line(new); imp := true;
+  elsif not new.cancelled and old.cancelled then
+    k := 'evback:' || new.id || ':' || stamp;
+    t := 'De nouveau prévu'; b := push_ev_line(new);
+  elsif not new.cancelled and (new.starts_at is distinct from old.starts_at or new.place is distinct from old.place
+        or new.duration_min is distinct from old.duration_min or new.all_day is distinct from old.all_day) then
+    k := 'evmod:' || coalesce(new.series_id::text, new.id::text) || ':' || stamp;
+    imp := new.starts_at is distinct from old.starts_at or new.duration_min is distinct from old.duration_min or new.all_day is distinct from old.all_day;
+    t := case when imp then 'Nouvel horaire' else 'Nouveau lieu' end;
+    b := push_ev_line(new);
+  else return null; end if;
+  if new.series_id is not null and exists(select 1 from push_queue where dedupe_key = k) then return null; end if;
+  for u in select * from push_event_targets(new.id, auth.uid(), imp) loop
+    perform push_enqueue(u, t, b, 'ev:' || new.id, k);
+  end loop;
+  return null;
+end $$;
+
+drop trigger if exists push_event_update on events;
+create trigger push_event_update after update of cancelled, starts_at, place, duration_min, all_day, convoked on events
+  for each row execute function push_on_event_update();
+revoke execute on function push_on_event_update() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- 2. N° 184 · retirer un appareil coupe sa session
+--    La session (claim « session_id » du jeton) est retenue à chaque ouverture connectée. « Retirer » coupe la session de l'appareil
+--    retiré, sauf si c'est l'appareil qui retire (il resterait déconnecté en pleine action). Si la base refuse (droits sur le schéma auth),
+--    l'appareil est quand même retiré de la liste, avec un avertissement.
+-- ---------------------------------------------------------------------
+alter table user_devices add column if not exists session_id uuid;
+
+create or replace function current_session_id() returns uuid language plpgsql stable as $$
+declare c text := nullif(current_setting('request.jwt.claims', true), '');
+begin
+  if c is null then return null; end if;
+  return nullif(c::jsonb ->> 'session_id', '')::uuid;
+exception when others then return null;
+end $$;
+
+create or replace function register_device(p_device text, p_label text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u uuid := auth.uid(); had boolean; a uuid; sid uuid := current_session_id();
+begin
+  if u is null then raise exception 'Connecte-toi'; end if;
+  if p_device is null or length(p_device) not between 8 and 64 then raise exception 'Appareil inconnu'; end if;
+  if exists(select 1 from user_devices where user_id = u and device_id = p_device) then
+    update user_devices set last_seen = now(), session_id = coalesce(sid, session_id) where user_id = u and device_id = p_device;
+    return jsonb_build_object('new', false);
+  end if;
+  had := exists(select 1 from user_devices where user_id = u);
+  insert into user_devices(user_id, device_id, label, session_id) values (u, p_device, left(coalesce(p_label, ''), 80), sid);
+  if not had or (select count(*) from device_alerts where user_id = u and created_at > now() - interval '1 day') >= 5 then
+    return jsonb_build_object('new', had, 'alert', null);
+  end if;
+  insert into device_alerts(user_id, device_label, token) values (u, left(coalesce(p_label, ''), 80), replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '')) returning id into a;
+  return jsonb_build_object('new', true, 'alert', a);
+end $$;
+revoke execute on function register_device(text, text) from public, anon;
+grant execute on function register_device(text, text) to authenticated;
+
+create or replace function remove_my_device(p_device text) returns void
+language plpgsql security definer set search_path = public as $$
+declare sid uuid;
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi d''abord'; end if;
+  select session_id into sid from user_devices where user_id = auth.uid() and device_id = p_device;
+  delete from user_devices where user_id = auth.uid() and device_id = p_device;
+  if sid is not null and sid is distinct from current_session_id() then
+    begin
+      delete from auth.refresh_tokens where session_id = sid and user_id = auth.uid()::text;
+      delete from auth.sessions where id = sid and user_id = auth.uid();
+    exception when others then
+      raise warning 'remove_my_device : session non coupée (%)', sqlerrm;
+    end;
+  end if;
+end $$;
+revoke execute on function remove_my_device(text) from public, anon;
+grant execute on function remove_my_device(text) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 3. N° 171 · « Contact licences / rencontres » dans les notifications de fonction
+-- ---------------------------------------------------------------------
+create or replace function memberships_fonction_notify() returns trigger language plpgsql security definer set search_path = public as $$
+declare cn text;
+begin
+  if tg_op = 'DELETE' then
+    if old.role = 'bureau' and old.status = 'active' and old.user_id is distinct from auth.uid() then
+      select name into cn from clubs where id = old.club_id;
+      perform push_enqueue(old.user_id, 'Fonction retirée', replace(coalesce(old.title, old.fonction, 'Membre du bureau'), 'Correspondant ', 'Contact ') || ' · ' || coalesce(cn, ''), 'fonction', 'fonction-retiree:' || old.id);
+    end if;
+    return old;
+  end if;
+  if new.role = 'bureau' and new.status = 'active' and new.user_id is distinct from auth.uid()
+     and (tg_op = 'INSERT' or old.status <> 'active' or old.fonction is distinct from new.fonction) then
+    select name into cn from clubs where id = new.club_id;
+    perform push_enqueue(new.user_id, 'Nouvelle fonction', replace(coalesce(new.title, new.fonction, 'Membre du bureau'), 'Correspondant ', 'Contact ') || ' · ' || coalesce(cn, ''), 'fonction', 'fonction:' || new.id || ':' || coalesce(new.fonction, ''));
+  end if;
+  return new;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 4. N° 172 · Événements et Communication deviennent des rôles ; le président peut créer un rôle « Autre »
+--    - « Responsable événements » (accès Événements) est une fonction, comme « Chargé de communication » (accès Communication).
+--    - Reprise : la personne désignée dans « Qui s'occupe de quoi » reçoit la fonction ; les désignations sont retirées.
+--    - Rôle « Autre » : un « Membre du bureau » avec un intitulé libre (aide-trésorier, aide-secrétaire…) et des accès choisis parmi
+--      les cinq existants, par le président seul. Il ne donne jamais l'accès Président ni la modification des fonctions du bureau
+--      (ces droits n'existent que pour le président). Pas de réglage de niveau : les droits sont ceux des accès cochés.
+-- ---------------------------------------------------------------------
+alter table memberships drop constraint if exists memberships_fonction;
+alter table memberships add constraint memberships_fonction check (fonction is null or fonction in (
+  'Vice-président','Secrétaire','Secrétaire adjoint','Trésorier','Trésorier adjoint','Directeur technique','Correspondant rencontres',
+  'Correspondant licences','Chargé de communication','Responsable événements','Responsable sponsoring','Membre du bureau'));
+
+create or replace function fonction_areas(f text) returns text[] language sql immutable as $$
+  select case f
+    when 'Vice-président' then array['tresorerie','secretariat','technique','communication','evenements']
+    when 'Trésorier' then array['tresorerie'] when 'Trésorier adjoint' then array['tresorerie']
+    when 'Secrétaire' then array['secretariat'] when 'Secrétaire adjoint' then array['secretariat']
+    when 'Correspondant licences' then array['licences']
+    when 'Directeur technique' then array['technique']
+    when 'Correspondant rencontres' then array['evenements']
+    when 'Responsable événements' then array['evenements']
+    when 'Chargé de communication' then array['communication'] when 'Responsable sponsoring' then '{}'::text[]
+    when 'Membre du bureau' then '{}'::text[]
+    when 'Directeur sportif' then array['technique'] when 'Coordinateur' then array['evenements']
+    else '{}'::text[] end;
+$$;
+
+-- Reprise des désignations « événements » et « communication » : la personne désignée a la fonction correspondante
+do $$
+declare d record; f text;
+begin
+  for d in select * from club_designations where resp in ('evenements','communication') loop
+    f := case d.resp when 'evenements' then 'Responsable événements' else 'Chargé de communication' end;
+    if exists(select 1 from memberships m where m.club_id = d.club_id and m.user_id = d.user_id and m.status = 'active' and m.role = 'president') then
+      null;  -- le président a déjà tous les accès
+    elsif exists(select 1 from memberships m where m.club_id = d.club_id and m.user_id = d.user_id and m.status = 'active' and m.role = 'bureau' and m.fonction = f) then
+      null;
+    elsif exists(select 1 from memberships m where m.club_id = d.club_id and m.user_id = d.user_id and m.status = 'active' and m.role = 'bureau' and m.designated_for = d.resp) then
+      update memberships set fonction = f, designated_for = null
+        where club_id = d.club_id and user_id = d.user_id and status = 'active' and role = 'bureau' and designated_for = d.resp;
+    else
+      begin
+        insert into memberships(club_id, user_id, role, fonction, status) values (d.club_id, d.user_id, 'bureau', f, 'active');
+      exception when others then
+        raise notice 'n° 172 : rôle « % » non repris pour le club % (%).', f, d.club_id, sqlerrm;
+      end;
+    end if;
+  end loop;
+  delete from club_designations where resp in ('evenements','communication');
+  update memberships set designated_for = null where designated_for in ('evenements','communication');
+end $$;
+
+-- « Qui s'occupe de quoi » ne désigne plus personne : tout s'attribue dans « Fonctions du bureau »
+create or replace function set_designation(p_club uuid, p_resp text, p_user uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  raise exception 'Ce rôle s''attribue dans « Fonctions du bureau »';
+end $$;
+revoke execute on function set_designation(uuid, text, uuid) from public, anon;
+
+-- Création d'un rôle « Autre » : intitulé libre et accès choisis, en un seul geste, par le président
+create or replace function create_other_role(p_club uuid, p_user uuid, p_title text, p_areas text[]) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare t text := nullif(left(trim(regexp_replace(coalesce(p_title, ''), '[<>]', '', 'g')), 40), ''); a text; mid uuid;
+begin
+  if not is_president(p_club) then raise exception 'Seul le président crée un rôle'; end if;
+  if t is null or length(t) < 2 then raise exception 'Donne un nom au rôle (2 lettres au moins)'; end if;
+  if not exists(select 1 from memberships where club_id = p_club and user_id = p_user and status = 'active') then raise exception 'Cette personne n''est pas membre du club'; end if;
+  if p_areas is not null then
+    foreach a in array p_areas loop
+      if a not in ('tresorerie','secretariat','technique','communication','evenements') then raise exception 'Accès inconnu : un rôle « Autre » ne peut pas donner plus que les cinq accès du bureau'; end if;
+    end loop;
+  end if;
+  insert into memberships(club_id, user_id, role, fonction, title, status) values (p_club, p_user, 'bureau', 'Membre du bureau', t, 'active') returning id into mid;
+  if p_areas is not null then
+    foreach a in array p_areas loop
+      insert into board_areas(club_id, user_id, area, granted_by) values (p_club, p_user, a, auth.uid()) on conflict do nothing;
+    end loop;
+  end if;
+  perform log_action(p_club, p_user, null, 'rôle créé', jsonb_build_object('intitule', t, 'acces', coalesce(array_to_string(p_areas, ', '), 'aucun')));
+  return mid;
+end $$;
+revoke execute on function create_other_role(uuid, uuid, text, text[]) from public, anon;
+grant execute on function create_other_role(uuid, uuid, text, text[]) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 5. N° 174 · contact d'équipe, choisi par le coach
+--    Un adulte par équipe : le coach de l'équipe, un joueur majeur de l'équipe ou un membre du bureau (jamais un parent seul).
+--    Choisi par le coach de l'équipe, le contact rencontres du club ou le président (qui peuvent aussi le retirer).
+--    Droits, POUR SON ÉQUIPE SEULEMENT : créer, modifier et annuler les matchs, entraînements, plateaux et tournois ;
+--    recevoir et envoyer les convocations de ces rendez-vous ; voir les coordonnées des familles et des joueurs de l'équipe.
+--    Le droit se calcule à chaque usage : il tombe dès que la personne n'est plus éligible (plus coach, plus joueur, plus au bureau).
+--    L'équipe est prévenue de qui est son contact ; le journal garde la trace.
+-- ---------------------------------------------------------------------
+create table if not exists team_contacts (
+  team_id uuid primary key references teams(id) on delete cascade,
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  set_by uuid references auth.users(id) on delete set null,
+  set_at timestamptz not null default now()
+);
+alter table team_contacts enable row level security;
+drop policy if exists "contacts d'équipe lus par les membres" on team_contacts;
+create policy "contacts d'équipe lus par les membres" on team_contacts for select using (is_member(club_id));
+
+-- Éligibilité : adulte ; coach de l'équipe, joueur majeur de l'équipe (équipe principale ou en plus), ou membre du bureau / président du club
+create or replace function team_contact_eligible(t uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select t is not null and u is not null and exists(select 1 from teams x where x.id = t and x.deleted_at is null)
+    and (select account_is_adult(x.club_id, u) from teams x where x.id = t)
+    and (
+      exists(select 1 from memberships m where m.team_id = t and m.user_id = u and m.status = 'active' and m.role = 'coach')
+      or exists(select 1 from players p where p.user_id = u and p.deleted_at is null and p.birth_date is not null and p.birth_date <= current_date - interval '18 years'
+                and (p.team_id = t or exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = t)))
+      or exists(select 1 from memberships m join teams x on x.club_id = m.club_id where x.id = t and m.user_id = u and m.status = 'active' and m.role in ('bureau','president'))
+    );
+$$;
+revoke execute on function team_contact_eligible(uuid, uuid) from public, anon;
+
+-- Suis-je (encore) le contact de cette équipe ?
+create or replace function is_team_contact(t uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select auth.uid() is not null and exists(select 1 from team_contacts c where c.team_id = t and c.user_id = auth.uid()) and team_contact_eligible(t, auth.uid());
+$$;
+create or replace function is_team_contact_all(ts uuid[]) returns boolean language sql stable security definer set search_path = public as $$
+  select cardinality(coalesce(ts, '{}')) > 0 and not exists(select 1 from unnest(ts) t where not is_team_contact(t));
+$$;
+create or replace function is_team_contact_event(eid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and e.audience = 'team' and is_team_contact_all(e.team_ids));
+$$;
+revoke execute on function is_team_contact(uuid), is_team_contact_all(uuid[]), is_team_contact_event(uuid) from public, anon;
+
+-- Choisir ou retirer le contact (p_user null = retirer)
+create or replace function set_team_contact(p_team uuid, p_user uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare t teams; prev uuid; who text; tn text; cn text;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null then raise exception 'Équipe introuvable'; end if;
+  if not (coaches_team(p_team) or has_area(t.club_id, 'evenements') or is_president(t.club_id)) then
+    raise exception 'Le contact d''équipe est choisi par le coach de l''équipe, le contact rencontres ou le président';
+  end if;
+  select user_id into prev from team_contacts where team_id = p_team;
+  if p_user is null then
+    delete from team_contacts where team_id = p_team;
+    if prev is not null then perform log_action(t.club_id, prev, null, 'contact d''équipe retiré', jsonb_build_object('equipe', t.name)); end if;
+    return;
+  end if;
+  if not team_contact_eligible(p_team, p_user) then
+    raise exception 'Le contact d''équipe est un adulte : le coach de l''équipe, un joueur majeur de l''équipe ou un membre du bureau';
+  end if;
+  insert into team_contacts(team_id, club_id, user_id, set_by) values (p_team, t.club_id, p_user, auth.uid())
+    on conflict (team_id) do update set user_id = excluded.user_id, set_by = excluded.set_by, set_at = now();
+  perform log_action(t.club_id, p_user, null, 'contact d''équipe', jsonb_build_object('equipe', t.name));
+  if prev is distinct from p_user then
+    select coalesce(nullif(trim(full_name), ''), 'Quelqu''un') into who from profiles where id = p_user;
+    select name into cn from clubs where id = t.club_id;
+    if p_user is distinct from auth.uid() then
+      perform push_enqueue(p_user, 'Contact d''équipe', t.name || ' · ' || coalesce(cn, ''), 'tcontact', 'tcontact:' || p_team || ':' || p_user);
+    end if;
+    -- l'équipe est prévenue de qui est son contact
+    perform push_enqueue(u, 'Contact de l''équipe ' || t.name, who || ' est le contact de l''équipe.', 'tcontact', 'tcontactinfo:' || p_team || ':' || p_user || ':' || u)
+      from (select distinct x as u from team_people(array[p_team]) x where x is distinct from p_user and x is distinct from auth.uid()) q;
+  end if;
+end $$;
+revoke execute on function set_team_contact(uuid, uuid) from public, anon;
+grant execute on function set_team_contact(uuid, uuid) to authenticated;
+
+-- Rendez-vous : le contact crée, modifie, annule pour son équipe
+create or replace function can_create_event(c uuid, aud text, ts uuid[], ppl uuid[]) returns boolean language sql stable security definer set search_path = public as $$
+  select
+    not exists(select 1 from unnest(coalesce(ts, '{}')) t where not exists(select 1 from teams x where x.id = t and x.club_id = c and x.deleted_at is null))
+    and not exists(select 1 from unnest(coalesce(ppl, '{}')) u where not exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active'))
+    and (is_board(c) or (aud = 'team' and (coaches_all(ts) or is_team_contact_all(ts))));
+$$;
+create or replace function can_manage_event(eid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and (
+    is_board(e.club_id) or (e.audience = 'team' and (coaches_any(e.team_ids) or is_team_contact_all(e.team_ids)))));
+$$;
+-- Le droit du contact ne vaut que pour matchs, entraînements, plateaux et tournois
+create or replace function events_team_contact_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null or is_board(new.club_id) then return new; end if;
+  if new.audience = 'team' and coaches_all(new.team_ids) then return new; end if;
+  if new.audience = 'team' and is_team_contact_all(new.team_ids) and new.type not in ('Match','Entraînement','Plateau','Tournoi') then
+    raise exception 'Le contact d''équipe crée seulement des matchs, des entraînements, des plateaux et des tournois';
+  end if;
+  return new;
+end $$;
+drop trigger if exists events_team_contact_guard on events;
+create trigger events_team_contact_guard before insert or update on events for each row execute function events_team_contact_guard();
+revoke execute on function events_team_contact_guard() from public, anon, authenticated;
+
+-- Coordonnées : le contact voit celles des joueurs et des familles de son équipe
+create or replace function player_contacts(p_club uuid) returns table(id uuid, parent_email text, parent_phone text, emergency_name text, emergency_phone text)
+language sql stable security definer set search_path = public as $$
+  select x.id, x.parent_email, x.parent_phone, x.emergency_name, x.emergency_phone
+  from players x
+  where x.club_id = p_club and x.deleted_at is null and auth.uid() is not null and (
+    x.user_id = auth.uid() or is_parent_of(x.id) or coaches_team(x.team_id)
+    or exists(select 1 from player_teams pt where pt.player_id = x.id and coaches_team(pt.team_id))
+    or is_team_contact(x.team_id)
+    or exists(select 1 from player_teams pt where pt.player_id = x.id and is_team_contact(pt.team_id))
+    or (is_board(x.club_id) and not contacts_hidden_for_me(x.club_id)));
+$$;
+create or replace function phones_for(p_ids uuid[]) returns table(id uuid, phone text)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.phone from profiles p where p.id = any(p_ids) and p.phone is not null and p.deleted_at is null and (
+    p.id = auth.uid()
+    or exists(select 1 from memberships a join memberships b on a.club_id = b.club_id
+      where a.user_id = auth.uid() and a.status = 'active' and a.role in ('president','bureau') and b.user_id = p.id and not contacts_hidden_for_me(a.club_id))
+    or exists(select 1 from memberships a join memberships b on a.club_id = b.club_id
+      where b.user_id = p.id and b.status = 'active' and b.role in ('president','bureau','coach') and a.user_id = auth.uid() and a.status = 'active' and a.role <> 'supporteur')
+    or exists(select 1 from players x left join player_parents pp on pp.player_id = x.id
+      where x.deleted_at is null and (pp.user_id = p.id or x.user_id = p.id)
+        and (coaches_team(x.team_id) or exists(select 1 from player_teams pt where pt.player_id = x.id and coaches_team(pt.team_id))
+             or is_team_contact(x.team_id) or exists(select 1 from player_teams pt where pt.player_id = x.id and is_team_contact(pt.team_id)))));
+$$;
+revoke execute on function player_contacts(uuid), phones_for(uuid[]) from public, anon;
+grant execute on function player_contacts(uuid), phones_for(uuid[]) to authenticated;
+
+-- Convocations : mêmes droits que « Événements », pour les rendez-vous de l'équipe dont on est le contact.
+-- Les fonctions de convocation sont récrites à partir de leur définition en place (la condition « has_area(e.club_id, 'evenements') »
+-- reçoit « ou contact de l'équipe »). Relançable : une fonction déjà récrite est laissée telle quelle.
+do $$
+declare r record; def text; n int := 0;
+begin
+  for r in select p.oid, p.proname from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+           where ns.nspname = 'public' and p.proname like 'convocation\_%' and p.prosrc like '%has_area(e.club_id, ''evenements'')%'
+             and p.prosrc not like '%is_team_contact_all(e.team_ids)%' loop
+    def := replace(pg_get_functiondef(r.oid), 'has_area(e.club_id, ''evenements'')', '(has_area(e.club_id, ''evenements'') or is_team_contact_all(e.team_ids))');
+    execute def; n := n + 1;
+  end loop;
+  raise notice 'n° 174 : % fonction(s) de convocation étendues au contact d''équipe', n;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 6. N° 158 · renforts
+--    Le coach d'une équipe (ou le président, ou la Technique) ajoute en renfort un joueur du club : même catégorie que l'équipe,
+--    ou la catégorie juste en dessous (règles de surclassement de la fédération non vérifiées). Un renfort est un statut pour la saison.
+--    La famille (les comptes parents reliés, ou le joueur s'il est majeur) reçoit la demande ; un joueur de 15 à 17 ans est informé, ses
+--    parents valident. Sans parent relié : « en attente de la famille », jamais de validation par défaut.
+--    Le premier « oui » valide ; un « non » l'emporte, même après un « oui », et retire le renfort. Le coach est prévenu à chaque réponse.
+--    Un renfort accepté rejoint l'équipe comme un joueur en « équipe en plus » (agenda, appel, convocations) ; il ne compte dans aucune
+--    statistique de licenciés ni dans les cotisations (sa fiche reste dans son équipe d'origine). Le statut tombe quand l'équipe est archivée.
+-- ---------------------------------------------------------------------
+create table if not exists team_reinforcements (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  team_id uuid not null references teams(id) on delete cascade,
+  player_id uuid not null references players(id) on delete cascade,
+  season text not null,
+  state text not null default 'demande' check (state in ('demande','accepte','refuse')),
+  added_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  answered_by uuid references auth.users(id) on delete set null,
+  answered_at timestamptz,
+  last_reminded_at timestamptz,
+  unique (team_id, player_id)
+);
+create index if not exists team_reinforcements_player on team_reinforcements(player_id);
+alter table team_reinforcements enable row level security;
+drop policy if exists "renforts lus par l'encadrement et la famille" on team_reinforcements;
+create policy "renforts lus par l'encadrement et la famille" on team_reinforcements for select using (
+  can_see_player(player_id) or coaches_team(team_id) or is_board(club_id));
+
+-- Échelle des catégories : le renfort vient de la même catégorie ou de celle juste en dessous
+create or replace function category_rank(c text) returns int language sql immutable as $$
+  select case c when 'U7 (baby)' then 1 when 'U9' then 2 when 'U11' then 3 when 'U13' then 4 when 'U15' then 5 when 'U17' then 6
+                when 'U18' then 7 when 'U20' then 8 when 'U21' then 9 when 'Seniors' then 10 else null end;
+$$;
+create or replace function reinforcement_category_ok(team_cat text, player_cat text) returns boolean language sql immutable as $$
+  select coalesce(team_cat, '') <> '' and (team_cat = player_cat
+    or (category_rank(team_cat) is not null and category_rank(player_cat) is not null and category_rank(player_cat) = category_rank(team_cat) - 1));
+$$;
+
+-- Qui reçoit la demande : les comptes parents reliés ; le joueur lui-même s'il a un compte (majeur : il valide ; mineur : informé)
+create or replace function reinforcement_family(p_player uuid) returns setof uuid language sql stable security definer set search_path = public as $$
+  select pp.user_id from player_parents pp where pp.player_id = p_player
+  union select p.user_id from players p where p.id = p_player and p.user_id is not null;
+$$;
+revoke execute on function reinforcement_family(uuid) from public, anon, authenticated;
+
+create or replace function add_reinforcement(p_team uuid, p_player uuid) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare t teams; pl players; mt teams; rid uuid; cn text; u uuid;
+begin
+  select * into t from teams where id = p_team and deleted_at is null and state <> 'Archivée';
+  if t.id is null then raise exception 'Équipe introuvable'; end if;
+  if not (coaches_team(p_team) or is_president(t.club_id) or has_area(t.club_id, 'technique')) then
+    raise exception 'Le renfort est ajouté par le coach de l''équipe, la Technique ou le président';
+  end if;
+  select * into pl from players where id = p_player and deleted_at is null;
+  if pl.id is null or pl.club_id <> t.club_id then raise exception 'Joueur introuvable dans ce club'; end if;
+  if pl.team_id is null then raise exception 'Ce joueur n''a pas d''équipe : il ne peut pas être renfort'; end if;
+  if pl.team_id = p_team or exists(select 1 from player_teams x where x.player_id = p_player and x.team_id = p_team) then
+    raise exception 'Ce joueur fait déjà partie de cette équipe';
+  end if;
+  select * into mt from teams where id = pl.team_id;
+  if not reinforcement_category_ok(t.category, mt.category) then
+    raise exception 'Un renfort vient de la même catégorie que l''équipe ou de la catégorie juste en dessous';
+  end if;
+  if exists(select 1 from team_reinforcements where team_id = p_team and player_id = p_player and state = 'refuse') then
+    raise exception 'La famille a refusé ce renfort : pas de nouvelle demande cette saison';
+  end if;
+  insert into team_reinforcements(club_id, team_id, player_id, season, added_by) values (t.club_id, p_team, p_player, t.season, auth.uid())
+    on conflict (team_id, player_id) do nothing returning id into rid;
+  if rid is null then raise exception 'Une demande existe déjà pour ce joueur dans cette équipe'; end if;
+  select name into cn from clubs where id = t.club_id;
+  for u in select distinct x from reinforcement_family(p_player) x where x is distinct from auth.uid() loop
+    perform push_enqueue(u, 'Renfort demandé', pl.first_name || ' · renfort de ' || t.name || ' · ' || coalesce(cn, ''), 'renfort', 'renfort:' || rid || ':' || u);
+  end loop;
+  perform log_action(t.club_id, null, p_player, 'renfort demandé', jsonb_build_object('equipe', t.name));
+  return rid;
+end $$;
+revoke execute on function add_reinforcement(uuid, uuid) from public, anon;
+grant execute on function add_reinforcement(uuid, uuid) to authenticated;
+
+-- Réponse de la famille : un parent relié, ou le joueur s'il est majeur
+create or replace function answer_reinforcement(p_id uuid, p_accept boolean) returns text
+language plpgsql security definer set search_path = public as $$
+declare r team_reinforcements; pl players; t teams; u uuid; adult boolean; res text;
+begin
+  select * into r from team_reinforcements where id = p_id;
+  if r.id is null then raise exception 'Demande introuvable'; end if;
+  select * into pl from players where id = r.player_id and deleted_at is null;
+  select * into t from teams where id = r.team_id and deleted_at is null and state <> 'Archivée';
+  if pl.id is null or t.id is null then raise exception 'Demande introuvable'; end if;
+  adult := pl.birth_date is not null and pl.birth_date <= current_date - interval '18 years';
+  if not (is_parent_of(r.player_id) or (pl.user_id = auth.uid() and adult)) then
+    raise exception 'Seuls les parents du joueur (ou le joueur s''il est majeur) répondent à cette demande';
+  end if;
+  if p_accept then
+    if r.state = 'refuse' then raise exception 'Cette demande a été refusée par la famille'; end if;
+    if r.state = 'accepte' then return 'accepte'; end if;
+    update team_reinforcements set state = 'accepte', answered_by = auth.uid(), answered_at = now() where id = r.id;
+    insert into player_teams(player_id, team_id) values (r.player_id, r.team_id) on conflict do nothing;
+    res := 'accepte';
+  else
+    update team_reinforcements set state = 'refuse', answered_by = auth.uid(), answered_at = now() where id = r.id;
+    delete from player_teams where player_id = r.player_id and team_id = r.team_id;
+    res := 'refuse';
+  end if;
+  for u in select distinct m.user_id from memberships m where m.team_id = r.team_id and m.role = 'coach' and m.status = 'active' and m.user_id is distinct from auth.uid() loop
+    perform push_enqueue(u, case when p_accept then 'Renfort accepté' else 'Renfort refusé' end, pl.first_name || ' · ' || t.name, 'renfort', 'renfort-rep:' || r.id || ':' || res || ':' || u);
+  end loop;
+  perform log_action(t.club_id, null, r.player_id, case when p_accept then 'renfort accepté' else 'renfort refusé' end, jsonb_build_object('equipe', t.name));
+  return res;
+end $$;
+revoke execute on function answer_reinforcement(uuid, boolean) from public, anon;
+grant execute on function answer_reinforcement(uuid, boolean) to authenticated;
+
+-- Retirer un renfort (coach de l'équipe, Technique, président) ; la famille est informée
+create or replace function remove_reinforcement(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare r team_reinforcements; t teams; pl players; u uuid;
+begin
+  select * into r from team_reinforcements where id = p_id;
+  if r.id is null then raise exception 'Renfort introuvable'; end if;
+  select * into t from teams where id = r.team_id;
+  if not (coaches_team(r.team_id) or is_president(r.club_id) or has_area(r.club_id, 'technique')) then
+    raise exception 'Le renfort est retiré par le coach de l''équipe, la Technique ou le président';
+  end if;
+  select * into pl from players where id = r.player_id;
+  delete from player_teams where player_id = r.player_id and team_id = r.team_id;
+  delete from team_reinforcements where id = r.id;
+  if r.state = 'accepte' then
+    for u in select distinct x from reinforcement_family(r.player_id) x where x is distinct from auth.uid() loop
+      perform push_enqueue(u, 'Renfort terminé', coalesce(pl.first_name, '') || ' n''est plus renfort de ' || coalesce(t.name, ''), 'renfort', 'renfort-fin:' || r.id || ':' || u);
+    end loop;
+  end if;
+  perform log_action(r.club_id, null, r.player_id, 'renfort retiré', jsonb_build_object('equipe', coalesce(t.name, '')));
+end $$;
+revoke execute on function remove_reinforcement(uuid) from public, anon;
+grant execute on function remove_reinforcement(uuid) to authenticated;
+
+-- Relance de la famille : au plus toutes les 12 heures
+create or replace function remind_reinforcement(p_id uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare r team_reinforcements; t teams; pl players; u uuid; n int := 0;
+begin
+  select * into r from team_reinforcements where id = p_id;
+  if r.id is null then raise exception 'Demande introuvable'; end if;
+  if not (coaches_team(r.team_id) or is_president(r.club_id) or has_area(r.club_id, 'technique')) then raise exception 'Réservé au coach de l''équipe, à la Technique et au président'; end if;
+  if r.state <> 'demande' then raise exception 'Cette demande a déjà une réponse'; end if;
+  if r.last_reminded_at is not null and r.last_reminded_at > now() - interval '12 hours' then raise exception 'Relance déjà faite il y a moins de 12 heures'; end if;
+  select * into t from teams where id = r.team_id; select * into pl from players where id = r.player_id;
+  update team_reinforcements set last_reminded_at = now() where id = r.id;
+  for u in select distinct x from reinforcement_family(r.player_id) x loop
+    perform push_enqueue(u, 'Renfort : réponse attendue', pl.first_name || ' · renfort de ' || t.name, 'renfort', 'renfort-rel:' || r.id || ':' || to_char(now(), 'YYYYMMDDHH24') || ':' || u);
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+revoke execute on function remind_reinforcement(uuid) from public, anon;
+grant execute on function remind_reinforcement(uuid) to authenticated;
+
+-- Pour l'écran du coach : joueurs du club qu'il peut proposer en renfort (« Prénom N. », équipe d'origine, catégorie) et renforts de l'équipe.
+-- Le coach ne voit pas les fiches des autres équipes : la base ne donne que ce qui sert à choisir.
+create or replace function reinforcement_candidates(p_team uuid) returns table(player_id uuid, label text, team_name text, category text)
+language plpgsql stable security definer set search_path = public as $$
+declare t teams;
+begin
+  select * into t from teams where id = p_team and deleted_at is null and state <> 'Archivée';
+  if t.id is null or not (coaches_team(p_team) or is_president(t.club_id) or has_area(t.club_id, 'technique')) then raise exception 'Réservé au coach de l''équipe, à la Technique et au président'; end if;
+  return query
+    select p.id, p.first_name || ' ' || upper(left(coalesce(nullif(p.last_name, ''), ' '), 1)) || '.', x.name, x.category
+    from players p join teams x on x.id = p.team_id
+    where p.club_id = t.club_id and p.deleted_at is null and x.deleted_at is null and x.state <> 'Archivée' and x.id <> p_team
+      and reinforcement_category_ok(t.category, x.category)
+      and not exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = p_team)
+      and not exists(select 1 from team_reinforcements r where r.team_id = p_team and r.player_id = p.id)
+    order by p.first_name, p.last_name;
+end $$;
+create or replace function reinforcements_of(p_team uuid) returns table(id uuid, player_id uuid, label text, team_name text, state text, last_reminded_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+declare t teams;
+begin
+  select * into t from teams tt where tt.id = p_team and tt.deleted_at is null;
+  if t.id is null or not (coaches_team(p_team) or is_board(t.club_id) or is_team_contact(p_team)) then raise exception 'Réservé à l''encadrement de l''équipe'; end if;
+  return query
+    select r.id, r.player_id, p.first_name || ' ' || upper(left(coalesce(nullif(p.last_name, ''), ' '), 1)) || '.', x.name, r.state, r.last_reminded_at
+    from team_reinforcements r join players p on p.id = r.player_id left join teams x on x.id = p.team_id
+    where r.team_id = p_team and p.deleted_at is null order by r.created_at;
+end $$;
+revoke execute on function reinforcement_candidates(uuid), reinforcements_of(uuid) from public, anon;
+grant execute on function reinforcement_candidates(uuid), reinforcements_of(uuid) to authenticated;
+
+-- Le statut tombe quand l'équipe est archivée (fin de saison) ou supprimée
+create or replace function teams_reinforcement_end() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (new.state = 'Archivée' and old.state is distinct from 'Archivée') or (new.deleted_at is not null and old.deleted_at is null) then
+    delete from player_teams pt using team_reinforcements r where r.team_id = new.id and r.state = 'accepte' and pt.team_id = r.team_id and pt.player_id = r.player_id;
+    delete from team_reinforcements where team_id = new.id;
+  end if;
+  return null;
+end $$;
+drop trigger if exists teams_reinforcement_end on teams;
+create trigger teams_reinforcement_end after update of state, deleted_at on teams for each row execute function teams_reinforcement_end();
+revoke execute on function teams_reinforcement_end() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- 7. N° 78 · colonne « Club » à l'import : dans une équipe en entente, une ligne dont le club est celui du partenaire
+--    (même nom, sans tenir compte des majuscules) est notée « joueur du club partenaire ». Autre valeur ou vide : « Notre club ».
+-- ---------------------------------------------------------------------
+create or replace function import_players(p_club uuid, p_team uuid, p_rows jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare r record; n int := 0; pid uuid; pname text;
+begin
+  if not (has_area(p_club, 'secretariat') or coaches_team(p_team)) then raise exception 'Droit insuffisant'; end if;
+  if p_team is not null and not exists(select 1 from teams where id = p_team and club_id = p_club and deleted_at is null) then raise exception 'Équipe inconnue'; end if;
+  if jsonb_array_length(p_rows) > 300 then raise exception 'Liste trop longue (300 lignes au plus)'; end if;
+  select case when partner_state <> 'aucune' then nullif(lower(trim(partner_name)), '') end into pname from teams where id = p_team;
+  for r in select * from jsonb_to_recordset(p_rows) as t(first_name text, last_name text, birth_date date, licence text, action text, existing uuid, email text, phone text, club text) loop
+    if coalesce(r.action, 'create') = 'skip' or coalesce(trim(r.first_name), '') = '' then continue; end if;
+    r.email := nullif(lower(trim(coalesce(r.email, ''))), ''); if r.email is not null and r.email not like '%@%' then r.email := null; end if;
+    r.phone := nullif(trim(coalesce(r.phone, '')), '');
+    if r.action in ('complete', 'addteam') then
+      if not exists(select 1 from players where id = r.existing and club_id = p_club and deleted_at is null) then continue; end if;
+      update players set birth_date = coalesce(birth_date, r.birth_date), parent_email = coalesce(parent_email, r.email), parent_phone = coalesce(parent_phone, r.phone) where id = r.existing;
+      if coalesce(r.licence, '') <> '' then
+        insert into player_admin(player_id, licence_number) values (r.existing, r.licence)
+          on conflict (player_id) do update set licence_number = coalesce(player_admin.licence_number, excluded.licence_number);
+      end if;
+      if r.action = 'addteam' and p_team is not null then insert into player_teams values (r.existing, p_team) on conflict do nothing; end if;
+      n := n + 1; continue;
+    end if;
+    insert into players(club_id, team_id, first_name, last_name, birth_date, parent_email, parent_phone, created_by, from_partner)
+      values (p_club, p_team, r.first_name, coalesce(r.last_name, ''), r.birth_date, r.email, r.phone, auth.uid(),
+              pname is not null and lower(trim(coalesce(r.club, ''))) = pname) returning id into pid;
+    insert into player_admin(player_id, licence_number) values (pid, nullif(trim(coalesce(r.licence, '')), ''));
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+revoke execute on function import_players(uuid, uuid, jsonb) from public, anon;
+grant execute on function import_players(uuid, uuid, jsonb) to authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_5_2_1.sql =====
+-- mypocketclub · alpha 5.2.1 · mise à jour d'une base 5.2.0, sans perte de données, relançable.
+--   Un membre du bureau qui demande à devenir coach n'est plus validé automatiquement : la demande attend la validation
+--   du président ou du Directeur technique (le secrétariat peut aussi la valider, comme avant).
+--   Seuls restent immédiats : le supporteur, et toute demande faite par le président.
+create or replace function join_club(p_code text, p_role text, p_team uuid, p_child_first text default null, p_child_last text default null) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare cid uuid; mid uuid; auto boolean;
+begin
+  perform check_join_rate();
+  select id into cid from clubs where join_code = upper(trim(p_code));
+  if cid is null then insert into join_attempts(user_id) values (auth.uid()); return null; end if;
+  if exists(select 1 from profiles where id = auth.uid() and deleted_at is not null) then raise exception 'Ton compte est en cours de suppression'; end if;
+  if p_role not in ('bureau','coach','joueur','parent','supporteur') then raise exception 'Rôle invalide'; end if;
+  if p_team is not null and not exists(select 1 from teams where id = p_team and club_id = cid and deleted_at is null) then raise exception 'Équipe inconnue'; end if;
+  if p_role = 'parent' and coalesce(trim(p_child_first), '') = '' then raise exception 'Indique le prénom de l''enfant'; end if;
+  auto := p_role = 'supporteur' or is_president(cid);
+  insert into memberships(club_id, user_id, role, team_id, child_first, child_last, status)
+    values (cid, auth.uid(), p_role, p_team, nullif(nice_first(p_child_first), ''), nullif(nice_last(p_child_last), ''), 'pending') returning id into mid;
+  if auto then perform activate_membership(mid, null, null); end if;
+  return cid;
+end $$;
+
+select close_visitor_functions();
+
+-- ===== alpha_5_3_0.sql =====
+-- mypocketclub · alpha 5.3.0 · mise à jour d'une base 5.2.1, sans perte de données, relançable.
+--   N° 186 · groupes d'échange avec un mineur (règles vérifiées par la base) :
+--     - un mineur (compte d'un joueur de moins de 18 ans, ou sans date de naissance) n'est dans un groupe avec un adulte
+--       que si un de ses parents y est aussi (sauf groupe d'équipe) ; ce parent ne peut pas en être retiré tant que le mineur y est ;
+--     - un supporteur (sans autre profil dans le club) ne peut jamais être dans un groupe avec un mineur ;
+--     - groupe d'équipe (groups.team_id) : les parents inscrits d'un mineur y sont ajoutés d'office ;
+--     - bouton « Signaler » sur un message : le président du club est prévenu.
+
+alter table groups add column if not exists team_id uuid references teams(id) on delete set null;
+
+-- ---------- outils ----------
+-- La personne est-elle, dans ce club, un compte de mineur ? (même règle que account_is_adult)
+create or replace function minor_account(c uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select not account_is_adult(c, u);
+$$;
+-- Supporteur sans autre profil dans le club
+create or replace function supporter_only(c uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active' and m.role = 'supporteur')
+     and not exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active' and m.role <> 'supporteur');
+$$;
+-- La personne a-t-elle sa place dans le groupe d'une équipe ? (bureau, coach ou profil de l'équipe, famille d'un joueur de l'équipe, joueur ou renfort)
+create or replace function user_in_team(c uuid, t uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active' and (m.role in ('president', 'bureau') or m.team_id = t))
+      or exists(select 1 from players p where p.club_id = c and p.deleted_at is null and p.user_id = u and (p.team_id = t
+                or exists(select 1 from player_teams x where x.player_id = p.id and x.team_id = t)
+                or exists(select 1 from team_reinforcements r where r.player_id = p.id and r.team_id = t and r.state = 'accepte')))
+      or exists(select 1 from player_parents pp join players p on p.id = pp.player_id
+                where pp.user_id = u and p.club_id = c and p.deleted_at is null and (p.team_id = t
+                or exists(select 1 from player_teams x where x.player_id = p.id and x.team_id = t)
+                or exists(select 1 from team_reinforcements r where r.player_id = p.id and r.team_id = t and r.state = 'accepte')));
+$$;
+revoke execute on function minor_account(uuid, uuid), supporter_only(uuid, uuid), user_in_team(uuid, uuid, uuid) from public, anon;
+
+-- Un groupe d'équipe : l'équipe est du club, et le créateur est du bureau, coach de l'équipe ou contact d'équipe
+create or replace function groups_team_check() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' and new.team_id is distinct from old.team_id then
+    raise exception 'Le lien d''un groupe avec une équipe ne se change pas';
+  end if;
+  if new.team_id is not null then
+    if not exists(select 1 from teams t where t.id = new.team_id and t.club_id = new.club_id and t.deleted_at is null) then
+      raise exception 'Cette équipe n''est pas dans ce club';
+    end if;
+    if not (exists(select 1 from memberships m where m.club_id = new.club_id and m.user_id = new.created_by and m.status = 'active'
+                   and (m.role in ('president', 'bureau') or (m.role = 'coach' and m.team_id = new.team_id)))
+            or exists(select 1 from team_contacts c where c.team_id = new.team_id and c.user_id = new.created_by)) then
+      raise exception 'Seuls le bureau, les coachs et le contact de l''équipe créent un groupe d''équipe';
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists groups_team_check on groups;
+create trigger groups_team_check before insert or update of team_id on groups for each row execute function groups_team_check();
+
+-- Ce qui empêche un groupe (message de refus, ou null si tout va bien)
+create or replace function group_minor_problem(gid uuid) returns text language plpgsql stable security definer set search_path = public as $$
+declare g groups;
+begin
+  select * into g from groups where id = gid;
+  if not found then return null; end if;
+  if not exists(select 1 from group_members gm where gm.group_id = gid and minor_account(g.club_id, gm.user_id)) then return null; end if;
+  if exists(select 1 from group_members gm where gm.group_id = gid and supporter_only(g.club_id, gm.user_id)) then
+    return 'Un supporteur ne peut pas être dans un groupe avec un mineur.';
+  end if;
+  if g.team_id is not null then
+    if exists(select 1 from group_members gm where gm.group_id = gid and not user_in_team(g.club_id, g.team_id, gm.user_id)) then
+      return 'Un groupe d''équipe ne réunit que les personnes de cette équipe, du bureau et de ses coachs.';
+    end if;
+    return null;
+  end if;
+  -- groupe libre : si un adulte y est, chaque mineur doit avoir un de ses parents dans le groupe
+  if exists(select 1 from group_members a where a.group_id = gid and not minor_account(g.club_id, a.user_id))
+     and exists(select 1 from group_members mn where mn.group_id = gid and minor_account(g.club_id, mn.user_id)
+                and not exists(select 1 from players p join player_parents pp on pp.player_id = p.id
+                               join group_members par on par.group_id = gid and par.user_id = pp.user_id
+                               where p.user_id = mn.user_id and p.club_id = g.club_id and p.deleted_at is null)) then
+    return 'Une conversation avec un mineur n''est pas possible sans un de ses parents.';
+  end if;
+  return null;
+end $$;
+revoke execute on function group_minor_problem(uuid) from public, anon;
+
+-- Après un ajout : le groupe d'équipe reçoit d'office les parents du mineur, puis on vérifie les règles
+create or replace function group_members_minor_check() returns trigger language plpgsql security definer set search_path = public as $$
+declare g groups; msg text;
+begin
+  select * into g from groups where id = new.group_id;
+  if not found then return null; end if;
+  if g.team_id is not null and minor_account(g.club_id, new.user_id) then
+    insert into group_members(group_id, user_id)
+      select new.group_id, pp.user_id from players p join player_parents pp on pp.player_id = p.id
+      where p.user_id = new.user_id and p.club_id = g.club_id and p.deleted_at is null
+        and exists(select 1 from memberships m where m.club_id = g.club_id and m.user_id = pp.user_id and m.status = 'active')
+      on conflict do nothing;
+  end if;
+  msg := group_minor_problem(new.group_id);
+  if msg is not null then raise exception '%', msg; end if;
+  return null;
+end $$;
+drop trigger if exists group_members_minor_check on group_members;
+create trigger group_members_minor_check after insert on group_members for each row execute function group_members_minor_check();
+
+-- Après un retrait : un parent ne quitte pas un groupe où son enfant mineur reste sans autre parent
+create or replace function group_members_parent_stays() returns trigger language plpgsql security definer set search_path = public as $$
+declare g groups;
+begin
+  select * into g from groups where id = old.group_id;
+  if not found then return null; end if;   -- groupe supprimé
+  if exists(select 1 from group_members mn join players p on p.user_id = mn.user_id and p.club_id = g.club_id and p.deleted_at is null
+            join player_parents pp on pp.player_id = p.id
+            where mn.group_id = old.group_id and pp.user_id = old.user_id and minor_account(g.club_id, mn.user_id)
+              and not exists(select 1 from player_parents pp2 join group_members o on o.group_id = old.group_id and o.user_id = pp2.user_id
+                             where pp2.player_id = p.id)) then
+    raise exception 'Un parent ne peut pas quitter ce groupe tant que son enfant mineur y est.';
+  end if;
+  return null;
+end $$;
+drop trigger if exists group_members_parent_stays on group_members;
+create trigger group_members_parent_stays after delete on group_members for each row execute function group_members_parent_stays();
+
+-- ---------- Signaler un message ----------
+create table if not exists message_reports (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  group_id uuid references groups(id) on delete set null,
+  message_id bigint references messages(id) on delete set null,
+  reporter uuid references auth.users(id) on delete set null,
+  reason text check (reason is null or length(reason) <= 300),
+  created_at timestamptz not null default now(),
+  handled_at timestamptz,
+  handled_by uuid references auth.users(id) on delete set null,
+  unique (message_id, reporter)
+);
+alter table message_reports enable row level security;
+drop policy if exists "signalements lus par le président" on message_reports;
+create policy "signalements lus par le président" on message_reports for select using (is_president(club_id));
+drop policy if exists "signalements traités par le président" on message_reports;
+create policy "signalements traités par le président" on message_reports for update using (is_president(club_id)) with check (is_president(club_id));
+revoke all on message_reports from anon;
+grant select, update on message_reports to authenticated;
+
+-- Le seul moyen de signaler : cette fonction (le signalant doit être dans le groupe ; le président est prévenu ; le bureau ne lit pas le groupe)
+create or replace function report_message(p_message bigint, p_reason text default null) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare m messages; g groups; rid uuid;
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi d''abord'; end if;
+  select * into m from messages where id = p_message;
+  if not found then raise exception 'Message introuvable'; end if;
+  select * into g from groups where id = m.group_id;
+  if not exists(select 1 from group_members gm where gm.group_id = m.group_id and gm.user_id = auth.uid()) then
+    raise exception 'Tu ne fais pas partie de ce groupe';
+  end if;
+  insert into message_reports(club_id, group_id, message_id, reporter, reason)
+    values (g.club_id, g.id, m.id, auth.uid(), nullif(left(trim(coalesce(p_reason, '')), 300), ''))
+    on conflict (message_id, reporter) do update set reason = coalesce(excluded.reason, message_reports.reason)
+    returning id into rid;
+  perform push_enqueue(x.user_id, 'Message signalé', 'Un message a été signalé dans le groupe « ' || left(g.name, 60) || ' ».', 'rep:' || g.club_id, 'rep:' || rid || ':' || x.user_id, './')
+    from memberships x where x.club_id = g.club_id and x.role = 'president' and x.status = 'active';
+  return rid;
+end $$;
+revoke execute on function report_message(bigint, text) from public, anon;
+grant execute on function report_message(bigint, text) to authenticated;
+
+-- Le président lit le message signalé (et celui-là seulement), avec son auteur
+create or replace function reported_messages(p_club uuid) returns table(report_id uuid, group_name text, message_id bigint, body text, author uuid, reporter uuid, reason text, created_at timestamptz, handled_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_president(p_club) then raise exception 'Réservé au président'; end if;
+  return query select r.id, g.name, r.message_id, m.body, m.user_id, r.reporter, r.reason, r.created_at, r.handled_at
+    from message_reports r left join groups g on g.id = r.group_id left join messages m on m.id = r.message_id
+    where r.club_id = p_club order by r.created_at desc limit 100;
+end $$;
+revoke execute on function reported_messages(uuid) from public, anon;
+grant execute on function reported_messages(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- N° 200 · le contact d'équipe reçoit les convocations des autres clubs (envoyées dans mypocketclub seulement)
+--   Une convocation est adressée à un club, pas à une équipe : le contact d'une équipe reçoit les matchs de la convocation dont
+--   l'équipe de l'autre club a la même catégorie et le même genre que la sienne (genre vide ou « Mixte » : accepté).
+--   Il ne voit que ces matchs ; le contact rencontres, le vice-président et le président gardent tout.
+-- ---------------------------------------------------------------------
+create or replace function contact_matches_event(c uuid, x jsonb) returns boolean language sql stable security definer set search_path = public as $$
+  select auth.uid() is not null and coalesce((x->>'cancelled')::boolean, false) = false
+    and exists(select 1 from team_contacts tc join teams t on t.id = tc.team_id
+               where tc.club_id = c and tc.user_id = auth.uid() and t.deleted_at is null and team_contact_eligible(t.id, auth.uid())
+                 and t.category <> '' and lower(t.category) = lower(coalesce(x->'team'->>'category', ''))
+                 and (t.gender = coalesce(x->'team'->>'gender', '') or t.gender in ('', 'Mixte') or coalesce(x->'team'->>'gender', '') in ('', 'Mixte')));
+$$;
+create or replace function convocation_events_of(p jsonb) returns jsonb language sql immutable as $$
+  select coalesce(p->'data'->'events', p->'events', '[]'::jsonb);
+$$;
+create or replace function contact_gets_send(p_send uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from convocation_sends s, jsonb_array_elements(convocation_events_of(s.payload)) x
+                where s.id = p_send and s.channel = 'app' and s.target_club_id is not null and contact_matches_event(s.target_club_id, x));
+$$;
+revoke execute on function contact_matches_event(uuid, jsonb), convocation_events_of(jsonb), contact_gets_send(uuid) from public, anon;
+
+create or replace function convocations_received(p_club uuid) returns table(id uuid, from_club text, step text, version int, ref text, sent_at timestamptz, read_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+declare full_access boolean := receives_convocations(p_club);
+begin
+  return query select s.id, (select c.name from clubs c where c.id = s.club_id), s.step, s.version, s.ref, s.sent_at, s.read_at
+    from convocation_sends s where s.target_club_id = p_club and s.channel = 'app' and s.sent_at > now() - interval '120 days'
+      and (full_access or contact_gets_send(s.id)) order by s.sent_at desc limit 30;
+end $$;
+revoke execute on function convocations_received(uuid) from public, anon;
+grant execute on function convocations_received(uuid) to authenticated;
+
+create or replace function convocation_open(p_send uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare s convocation_sends; cn text; full_access boolean; pl jsonb;
+begin
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.channel <> 'app' then raise exception 'Document introuvable'; end if;
+  full_access := receives_convocations(s.target_club_id);
+  if not full_access and not contact_gets_send(p_send) then
+    if has_area(s.club_id, 'evenements') then return jsonb_build_object('step', s.step, 'version', s.version, 'data', s.payload); end if;
+    raise exception 'Document réservé au correspondant rencontres du club reçu et au contact de l''équipe concernée';
+  end if;
+  if s.read_at is null then
+    update convocation_sends set read_at = now(), read_by = auth.uid(), status = 'lu' where id = s.id;
+    select name into cn from clubs where id = s.target_club_id;
+    if s.sent_by is not null then
+      perform push_enqueue(s.sent_by, 'Convocation lue', coalesce(cn, 'Le club reçu') || ' a ouvert ' || case when s.step = 'P' then 'la pré-convocation' else 'la convocation' end, 'convocation', 'convread:' || s.id);
+    end if;
+  end if;
+  pl := s.payload;
+  if not full_access then   -- le contact d'équipe ne lit que les matchs de son équipe
+    select jsonb_agg(x order by ord) into pl from (select x, ord from jsonb_array_elements(convocation_events_of(s.payload)) with ordinality t(x, ord)) z where contact_matches_event(s.target_club_id, x);
+    pl := case when s.payload ? 'data' then jsonb_set(s.payload, '{data,events}', coalesce(pl, '[]'::jsonb)) else jsonb_set(s.payload, '{events}', coalesce(pl, '[]'::jsonb)) end;
+  end if;
+  return jsonb_build_object('step', s.step, 'version', s.version, 'data', pl);
+end $$;
+revoke execute on function convocation_open(uuid) from public, anon;
+grant execute on function convocation_open(uuid) to authenticated;
+
+create or replace function convocation_received_events(p_send uuid) returns table(source_event_id uuid, title text, starts_at timestamptz, place text, team text, linked_event uuid)
+language plpgsql stable security definer set search_path = public as $$
+declare s convocation_sends; full_access boolean;
+begin
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.channel <> 'app' or s.target_club_id is null then return; end if;
+  full_access := receives_convocations(s.target_club_id);
+  if not full_access and not contact_gets_send(p_send) then return; end if;
+  return query
+    select (x->>'id')::uuid, coalesce(x->>'title', ''), (x->>'starts_at')::timestamptz, coalesce(x->>'place', ''),
+           coalesce(x->'team'->>'name', ''),
+           (select l.event_id from convocation_links l join events e on e.id = l.event_id
+             where l.send_id = s.id and l.source_event_id = (x->>'id')::uuid and l.club_id = s.target_club_id)
+    from jsonb_array_elements(convocation_events_of(s.payload)) x
+    where coalesce((x->>'cancelled')::boolean, false) = false and x->>'id' is not null
+      and (full_access or contact_matches_event(s.target_club_id, x))
+    order by 3, 2;
+end $$;
+revoke execute on function convocation_received_events(uuid) from public, anon;
+grant execute on function convocation_received_events(uuid) to authenticated;
+
+create or replace function link_convocation(p_send uuid, p_source uuid, p_event uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare s convocation_sends; e events; full_access boolean; ok_src boolean;
+begin
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.channel <> 'app' or s.target_club_id is null then raise exception 'Convocation introuvable'; end if;
+  full_access := receives_convocations(s.target_club_id);
+  select exists(select 1 from jsonb_array_elements(convocation_events_of(s.payload)) x where (x->>'id')::uuid = p_source and (full_access or contact_matches_event(s.target_club_id, x))) into ok_src;
+  if not ok_src then raise exception 'Convocation introuvable'; end if;
+  select * into e from events where id = p_event;
+  if e.id is null or e.club_id <> s.target_club_id or not (has_area(e.club_id, 'evenements') or is_team_contact_all(e.team_ids)) then raise exception 'Rendez-vous introuvable dans ton club'; end if;
+  insert into convocation_links(send_id, source_event_id, club_id, event_id, created_by) values (p_send, p_source, s.target_club_id, p_event, auth.uid())
+    on conflict (send_id, source_event_id, club_id) do update set event_id = excluded.event_id, created_by = excluded.created_by, created_at = now();
+end $$;
+revoke execute on function link_convocation(uuid, uuid, uuid) from public, anon;
+grant execute on function link_convocation(uuid, uuid, uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- N° 136 (2) · profil « Aide coach » pour les mineurs
+--   Un joueur de 15 à 17 ans (compte à lui) est choisi par un coach de l'équipe ou le président. Il n'a AUCUN droit en plus, sauf voir les
+--   joueurs de l'équipe en « Prénom I. » (sans coordonnées ni photo) et le nom des coachs. Le droit se calcule à chaque usage : il tombe
+--   dès que la personne n'est plus mineure ou plus membre du club. Aucun accès aux rendez-vous, à l'appel, aux messages ni aux fiches.
+-- ---------------------------------------------------------------------
+create table if not exists team_helpers (
+  team_id uuid not null references teams(id) on delete cascade,
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  set_by uuid references auth.users(id) on delete set null,
+  set_at timestamptz not null default now(),
+  primary key (team_id, user_id)
+);
+alter table team_helpers enable row level security;
+drop policy if exists "aides coach lues" on team_helpers;
+create policy "aides coach lues" on team_helpers for select using (user_id = auth.uid() or is_president(club_id) or coaches_team(team_id));
+revoke all on team_helpers from anon;
+grant select on team_helpers to authenticated;
+
+create or replace function team_helper_eligible(c uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select u is not null and exists(select 1 from players p where p.club_id = c and p.user_id = u and p.deleted_at is null)
+    and not account_is_adult(c, u)
+    and exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active');
+$$;
+create or replace function can_set_team_helper(t uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from teams x where x.id = t and x.deleted_at is null) and (coaches_team(t) or is_president((select club_id from teams where id = t)));
+$$;
+revoke execute on function team_helper_eligible(uuid, uuid), can_set_team_helper(uuid) from public, anon;
+
+create or replace function team_helper_candidates(p_team uuid) returns table(uid uuid, label text)
+language plpgsql stable security definer set search_path = public as $$
+declare t teams;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null or not can_set_team_helper(p_team) then raise exception 'Réservé au coach de l''équipe et au président'; end if;
+  return query
+    select p.user_id, p.first_name || ' ' || upper(left(coalesce(nullif(p.last_name, ''), ' '), 1)) || '.'
+    from players p where p.club_id = t.club_id and p.user_id is not null and p.deleted_at is null and team_helper_eligible(t.club_id, p.user_id)
+      and not exists(select 1 from team_helpers h where h.team_id = p_team and h.user_id = p.user_id)
+    order by p.first_name;
+end $$;
+
+create or replace function team_helpers_of(p_team uuid) returns table(uid uuid, label text, set_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+declare t teams;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null or not (can_set_team_helper(p_team) or is_board(t.club_id)) then raise exception 'Réservé à l''encadrement de l''équipe'; end if;
+  return query select h.user_id, p.first_name || ' ' || upper(left(coalesce(nullif(p.last_name, ''), ' '), 1)) || '.', h.set_at
+    from team_helpers h join profiles p on p.id = h.user_id where h.team_id = p_team order by h.set_at;
+end $$;
+
+create or replace function set_team_helper(p_team uuid, p_user uuid, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare t teams; tn text;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null or not can_set_team_helper(p_team) then raise exception 'Réservé au coach de l''équipe et au président'; end if;
+  if p_on then
+    if not team_helper_eligible(t.club_id, p_user) then raise exception 'Seul un joueur mineur du club, avec son propre compte, peut être aide coach'; end if;
+    insert into team_helpers(team_id, club_id, user_id, set_by) values (p_team, t.club_id, p_user, auth.uid()) on conflict do nothing;
+    if found then
+      perform push_enqueue(x, 'Aide coach', 'Tu es aide coach de l''équipe ' || left(t.name, 40) || '. Tu vois les noms des joueurs et des coachs, rien de plus.', 'aide:' || p_team, 'aide:' || p_team || ':' || x || ':' || to_char(now(), 'YYYYMMDDHH24'), './')
+        from (select p_user x union select pp.user_id from players pl join player_parents pp on pp.player_id = pl.id where pl.user_id = p_user and pl.club_id = t.club_id) z;
+    end if;
+  else
+    delete from team_helpers where team_id = p_team and user_id = p_user;
+  end if;
+  perform log_action(t.club_id, p_user, null, case when p_on then 'aide coach ajouté' else 'aide coach retiré' end, jsonb_build_object('equipe', t.name));
+end $$;
+
+create or replace function my_helper_teams() returns table(team_id uuid, team_name text, club_id uuid)
+language sql stable security definer set search_path = public as $$
+  select h.team_id, t.name, h.club_id from team_helpers h join teams t on t.id = h.team_id
+  where h.user_id = auth.uid() and t.deleted_at is null and team_helper_eligible(h.club_id, h.user_id);
+$$;
+
+-- Ce que voit l'aide coach : les coachs (nom complet) et les joueurs (« Prénom I. »), au format de club_roster
+create or replace function helper_roster(p_team uuid) returns table(kind text, ref uuid, user_id uuid, first_name text, last_name text, role text, team_id uuid, assistant boolean, since timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+declare t teams;
+begin
+  select * into t from teams where id = p_team and deleted_at is null;
+  if t.id is null or not exists(select 1 from team_helpers h where h.team_id = p_team and h.user_id = auth.uid()) or not team_helper_eligible(t.club_id, auth.uid()) then return; end if;
+  return query
+    select 'membre'::text, m.id, m.user_id, p.first_name, p.last_name, m.role, m.team_id, m.assistant, m.created_at
+      from memberships m join profiles p on p.id = m.user_id where m.club_id = t.club_id and m.team_id = p_team and m.role = 'coach' and m.status = 'active'
+    union all
+    select 'joueur'::text, x.id, null::uuid, x.first_name, case when x.last_name = '' then '' else left(x.last_name, 1) || '.' end, 'joueur'::text, p_team, false, x.created_at
+      from players x where x.club_id = t.club_id and x.deleted_at is null and (x.team_id = p_team or exists(select 1 from player_teams pt where pt.player_id = x.id and pt.team_id = p_team));
+end $$;
+revoke execute on function team_helper_candidates(uuid), team_helpers_of(uuid), set_team_helper(uuid, uuid, boolean), my_helper_teams(), helper_roster(uuid) from public, anon;
+grant execute on function team_helper_candidates(uuid), team_helpers_of(uuid), set_team_helper(uuid, uuid, boolean), my_helper_teams(), helper_roster(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- N° 187 · durées de conservation : suppressions automatiques (temps 2)
+--   Une saison court du 1er juillet au 30 juin. Les règles sont écrites dans purge_expired(), qui NE TOURNE PAS toute seule :
+--   Gaël la lance à la main (purge_expired() = simple comptage, purge_expired(true) = suppression), puis la planifie quand il est sûr.
+--     - messages : effacés quand la 3e saison après leur saison commence (on garde la saison en cours et la précédente) ;
+--     - présences : anonymisées quand la saison suivante commence (totaux gardés par équipe et par saison, plus aucun nom) ;
+--     - journal des actions sensibles : 1 an ;
+--     - e-mail d'un responsable invité (entente) : effacé 30 jours après l'invitation s'il n'y a pas eu d'inscription ;
+--     - comptes : aucune connexion depuis 2 saisons (la saison en cours et la précédente) ; l'avertissement par e-mail se prépare avec
+--       warn_inactive_accounts() (l'envoi n'est pas branché) ;
+--       30 jours après l'avertissement, le compte entre dans la suppression habituelle (30 jours de corbeille).
+--   Pas encore codé : la fiche d'un joueur parti du club (« 2 saisons après le départ ») : l'application ne note pas encore le départ.
+-- ---------------------------------------------------------------------
+create table if not exists attendance_archive (
+  club_id uuid not null references clubs(id) on delete cascade,
+  team_id uuid references teams(id) on delete set null,
+  season text not null,
+  present int not null default 0,
+  absent int not null default 0,
+  retard int not null default 0,
+  primary key (club_id, season, team_id)
+);
+alter table attendance_archive enable row level security;
+drop policy if exists "totaux de présence lus par l'encadrement" on attendance_archive;
+create policy "totaux de présence lus par l'encadrement" on attendance_archive for select using (is_board(club_id) or coaches_team(team_id));
+revoke all on attendance_archive from anon;
+grant select on attendance_archive to authenticated;
+alter table profiles add column if not exists inactive_warned_at timestamptz;
+
+-- Premier jour de la saison qui contient la date (1er juillet)
+create or replace function season_start(ts timestamptz) returns date language sql immutable as $$
+  select make_date(extract(year from ((ts at time zone 'Europe/Paris') - interval '6 months'))::int, 7, 1);
+$$;
+create or replace function season_label(ts timestamptz) returns text language sql immutable as $$
+  select extract(year from season_start(ts))::int || '-' || (extract(year from season_start(ts))::int + 1);
+$$;
+
+create or replace function warn_inactive_accounts(p_apply boolean default false) returns table(user_id uuid, email text, first_name text)
+language plpgsql security definer set search_path = public as $$
+begin
+  return query select u.id, u.email::text, pr.first_name
+    from auth.users u join profiles pr on pr.id = u.id
+    where pr.deleted_at is null and pr.inactive_warned_at is null
+      and coalesce(u.last_sign_in_at, u.created_at) < (season_start(now()) - interval '1 year') + interval '30 days';
+  if p_apply then
+    update profiles pr set inactive_warned_at = now() from auth.users u
+      where u.id = pr.id and pr.deleted_at is null and pr.inactive_warned_at is null and coalesce(u.last_sign_in_at, u.created_at) < (season_start(now()) - interval '1 year') + interval '30 days';
+  end if;
+end $$;
+
+create or replace function purge_expired(p_apply boolean default false) returns table(item text, n bigint)
+language plpgsql security definer set search_path = public as $$
+declare cur date := season_start(now()); k bigint;
+begin
+  -- messages : saison de création + 2 saisons
+  select count(*) into k from messages m where season_start(m.created_at) + interval '2 years' <= now();
+  item := 'messages à effacer'; n := k; return next;
+  if p_apply then delete from messages m where season_start(m.created_at) + interval '2 years' <= now(); end if;
+
+  -- présences : totaux gardés, noms retirés dès la saison suivante
+  select count(*) into k from attendance a join events e on e.id = a.event_id where e.starts_at < cur;
+  item := 'présences à anonymiser'; n := k; return next;
+  if p_apply then
+    insert into attendance_archive(club_id, team_id, season, present, absent, retard)
+      select e.club_id, p.team_id, season_label(e.starts_at), count(*) filter (where a.status = 'present'), count(*) filter (where a.status = 'absent'), count(*) filter (where a.status = 'retard')
+      from attendance a join events e on e.id = a.event_id join players p on p.id = a.player_id where e.starts_at < cur
+      group by e.club_id, p.team_id, season_label(e.starts_at)
+      on conflict (club_id, season, team_id) do update set present = attendance_archive.present + excluded.present, absent = attendance_archive.absent + excluded.absent, retard = attendance_archive.retard + excluded.retard;
+    delete from attendance a using events e where e.id = a.event_id and e.starts_at < cur;
+  end if;
+
+  -- journal des actions sensibles : 1 an
+  select count(*) into k from action_log where at < now() - interval '1 year';
+  item := 'lignes du journal à effacer'; n := k; return next;
+  if p_apply then delete from action_log where at < now() - interval '1 year'; end if;
+
+  -- e-mail d'un responsable invité (entente) : 30 jours après l'invitation (date lue au journal)
+  select count(*) into k from teams t where t.partner_state = 'invitee' and coalesce(t.partner_contact->>'email', '') <> ''
+    and coalesce((select max(l.at) from action_log l where l.club_id = t.club_id and l.action = 'Entente : club invité' and l.detail->>'équipe' = t.name), t.created_at) < now() - interval '30 days';
+  item := 'e-mails de responsables invités à effacer'; n := k; return next;
+  if p_apply then
+    perform set_config('pc.partner', 'on', true);
+    update teams t set partner_contact = t.partner_contact - 'email'
+      where t.partner_state = 'invitee' and coalesce(t.partner_contact->>'email', '') <> ''
+        and coalesce((select max(l.at) from action_log l where l.club_id = t.club_id and l.action = 'Entente : club invité' and l.detail->>'équipe' = t.name), t.created_at) < now() - interval '30 days';
+    perform set_config('pc.partner', 'off', true);
+  end if;
+
+  -- comptes : aucune connexion depuis 2 saisons et prévenus depuis 30 jours : ils passent en corbeille (30 jours, comme une suppression demandée)
+  select count(*) into k from profiles pr join auth.users u on u.id = pr.id
+    where pr.deleted_at is null and pr.inactive_warned_at < now() - interval '30 days' and coalesce(u.last_sign_in_at, u.created_at) < season_start(now()) - interval '1 year';
+  item := 'comptes inactifs à mettre à la corbeille'; n := k; return next;
+  if p_apply then
+    update profiles pr set deleted_at = now() from auth.users u
+      where u.id = pr.id and pr.deleted_at is null and pr.inactive_warned_at < now() - interval '30 days' and coalesce(u.last_sign_in_at, u.created_at) < season_start(now()) - interval '1 year';
+  end if;
+
+  -- invitations de parent (adresse saisie par le joueur) : effacées 30 jours après leur création
+  select count(*) into k from parent_invitations where created_at < now() - interval '30 days';
+  item := 'invitations de parent à effacer'; n := k; return next;
+  if p_apply then delete from parent_invitations where created_at < now() - interval '30 days'; end if;
+end $$;
+revoke execute on function purge_expired(boolean), warn_inactive_accounts(boolean) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- N° 188 · vue client du président (la vue mairie / comité est repoussée, décision de Gaël du 11 novembre)
+--   Le président voit, en lecture seule : le statut de son club (test, gratuit, payant), la période d'engagement, le nombre de licenciés
+--   et, si le club est payant, le montant estimé. Gaël fixe ces valeurs à la main (table club_subscription) ; rien n'est modifiable par le club.
+-- ---------------------------------------------------------------------
+create table if not exists club_subscription (
+  club_id uuid primary key references clubs(id) on delete cascade,
+  status text not null default 'test' check (status in ('test', 'gratuit', 'payant')),
+  engaged_from date,
+  engaged_to date,
+  rate_cents int check (rate_cents is null or rate_cents between 0 and 10000),   -- prix par joueur et par an, en centimes (200 = 2,00 €)
+  free_teams int not null default 1 check (free_teams between 0 and 20),         -- équipes gratuites (la première équipe est gratuite)
+  note text not null default '' check (length(note) <= 300),
+  updated_at timestamptz not null default now()
+);
+alter table club_subscription enable row level security;
+revoke all on club_subscription from anon, authenticated;
+
+create or replace function club_client_view(p_club uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare sub club_subscription; lic int; paying int; due int;
+begin
+  if not is_president(p_club) then raise exception 'Réservé au président du club'; end if;
+  select * into sub from club_subscription where club_id = p_club;
+  select count(*) into lic from players where club_id = p_club and deleted_at is null;
+  -- joueurs payants : tous, sauf ceux des équipes gratuites (les plus nombreuses)
+  select greatest(0, lic - coalesce((select sum(c) from (select count(*) c from players x where x.club_id = p_club and x.deleted_at is null and x.team_id is not null group by x.team_id order by c desc limit coalesce(sub.free_teams, 1)) f), 0)) into paying;
+  due := case when coalesce(sub.status, 'test') = 'payant' and sub.rate_cents is not null then paying * sub.rate_cents else null end;
+  return jsonb_build_object('status', coalesce(sub.status, 'test'), 'engaged_from', sub.engaged_from, 'engaged_to', sub.engaged_to,
+    'licensees', lic, 'paying_players', paying, 'rate_cents', sub.rate_cents, 'due_cents', due, 'note', coalesce(sub.note, ''));
+end $$;
+revoke execute on function club_client_view(uuid) from public, anon;
+grant execute on function club_client_view(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 6. Supprimer le compte d'un joueur dans ce club (président seulement)
+--    Le compte global n'est pas touché (la personne peut être dans un autre club).
+--    Ici : l'accès au club est retiré et la fiche part à la corbeille 30 jours.
+--    Restaurer la fiche rend l'accès. Après 30 jours, la fiche est effacée et l'accès ne revient plus.
+-- ---------------------------------------------------------------------
+create table if not exists trashed_memberships (
+  player_id uuid not null references players(id) on delete cascade,
+  club_id uuid not null references clubs(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null,
+  team_id uuid,
+  assistant boolean not null default false,
+  created_at timestamptz not null default now(),
+  primary key (player_id, user_id)
+);
+alter table trashed_memberships enable row level security;   -- aucune lecture directe : tout passe par les fonctions
+
+create or replace function trash_player_account(p_player uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare pl players;
+begin
+  select * into pl from players where id = p_player and deleted_at is null;
+  if pl.id is null or not is_president(pl.club_id) then raise exception 'Seul le président supprime le compte d''un joueur'; end if;
+  if pl.user_id is null then raise exception 'Ce joueur n''a pas de compte : mets simplement sa fiche à la corbeille'; end if;
+  if pl.user_id = auth.uid() then raise exception 'Tu ne peux pas supprimer ton propre compte ici'; end if;
+  if exists(select 1 from memberships where club_id = pl.club_id and user_id = pl.user_id and role in ('president','bureau')) then
+    raise exception 'Cette personne a une fonction au bureau : retire-la d''abord';
+  end if;
+  insert into trashed_memberships(player_id, club_id, user_id, role, team_id, assistant)
+    select pl.id, m.club_id, m.user_id, m.role, m.team_id, m.assistant from memberships m
+     where m.club_id = pl.club_id and m.user_id = pl.user_id and m.status = 'active'
+  on conflict do nothing;
+  delete from group_members where user_id = pl.user_id and group_id in (select id from groups where club_id = pl.club_id);
+  delete from memberships where club_id = pl.club_id and user_id = pl.user_id;
+  perform set_config('pc.trash', 'on', true);
+  update players set deleted_at = now(), deleted_by = auth.uid() where id = pl.id;
+  perform set_config('pc.trash', 'off', true);
+  insert into action_log(club_id, actor, action, detail) values (pl.club_id, auth.uid(), 'compte joueur supprimé du club (corbeille 30 jours)', jsonb_build_object('player', pl.id));
+end $$;
+revoke execute on function trash_player_account(uuid) from public, anon;
+grant execute on function trash_player_account(uuid) to authenticated;
+
+-- Fiche restaurée : l'accès au club revient (sauf si la personne y est déjà revenue par une autre voie)
+create or replace function restore_trashed_memberships() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if old.deleted_at is not null and new.deleted_at is null then
+    insert into memberships(club_id, user_id, role, team_id, assistant, status)
+      select t.club_id, t.user_id, t.role, t.team_id, t.assistant, 'active' from trashed_memberships t
+       where t.player_id = new.id and not exists(select 1 from memberships m where m.club_id = t.club_id and m.user_id = t.user_id);
+    delete from trashed_memberships where player_id = new.id;
+  end if;
+  return new;
+end $$;
+drop trigger if exists players_restore_memberships on players;
+create trigger players_restore_memberships after update of deleted_at on players for each row execute function restore_trashed_memberships();
+
+
+-- ---------------------------------------------------------------------
+-- 7. Invitation du parent d'un joueur de 15 à 17 ans
+--    Le joueur (compte à lui) saisit l'e-mail d'un parent. Le parent reçoit un lien (14 jours, une seule fois),
+--    crée son compte avec CETTE adresse, et sa demande « parent » arrive chez le président, pré-remplie : la validation
+--    du président reste la règle (rien n'est relié sans lui).
+-- ---------------------------------------------------------------------
+create table if not exists parent_invitations (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  player_id uuid not null references players(id) on delete cascade,
+  email text not null,
+  token text not null unique,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  expires_at timestamptz not null default now() + interval '14 days',
+  used_at timestamptz,
+  used_by uuid references auth.users(id) on delete set null
+);
+alter table parent_invitations enable row level security;   -- aucune lecture directe : tout passe par les fonctions
+
+create or replace function invite_parent(p_player uuid, p_email text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare pl players; em text := lower(trim(coalesce(p_email, ''))); own text; k int; iid uuid;
+begin
+  select * into pl from players where id = p_player and deleted_at is null;
+  if pl.id is null or pl.user_id is distinct from auth.uid() then raise exception 'Seul le joueur invite son parent'; end if;
+  if pl.birth_date is null or pl.birth_date > current_date - interval '15 years' or pl.birth_date <= current_date - interval '18 years' then
+    raise exception 'L''invitation d''un parent concerne les joueurs de 15 à 17 ans';
+  end if;
+  if em !~ '^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$' then raise exception 'Adresse e-mail non valide'; end if;
+  select lower(email) into own from auth.users where id = auth.uid();
+  if own = em then raise exception 'Indique l''e-mail d''un parent, pas le tien'; end if;
+  select count(*) into k from parent_invitations where player_id = pl.id and created_at > now() - interval '24 hours';
+  if k >= 3 then raise exception 'Trois invitations par jour au maximum : réessaie demain'; end if;
+  insert into parent_invitations(club_id, player_id, email, token, created_by)
+    values (pl.club_id, pl.id, em, replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''), auth.uid()) returning id into iid;
+  return iid;
+end $$;
+revoke execute on function invite_parent(uuid, text) from public, anon;
+grant execute on function invite_parent(uuid, text) to authenticated;
+
+-- Lue une seule fois, au nom du joueur, par la fonction d'envoi des e-mails
+create or replace function parent_invitation_take(p_id uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare i parent_invitations; r jsonb;
+begin
+  select * into i from parent_invitations where id = p_id and created_by = auth.uid() and sent_at is null and used_at is null and expires_at > now();
+  if i.id is null then return null; end if;
+  update parent_invitations set sent_at = now() where id = i.id;
+  select jsonb_build_object('email', i.email, 'token', i.token, 'expires_at', i.expires_at,
+           'child_first', pl.first_name, 'club', c.name) into r
+    from players pl join clubs c on c.id = pl.club_id where pl.id = i.player_id;
+  return r;
+end $$;
+revoke execute on function parent_invitation_take(uuid) from public, anon;
+grant execute on function parent_invitation_take(uuid) to authenticated;
+
+-- Le parent ouvre le lien : sa demande « parent » part chez le président (adresse du compte = adresse invitée)
+create or replace function accept_parent_invitation(p_token text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare i parent_invitations; pl players; own text; code text;
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  select * into i from parent_invitations where token = p_token;
+  if i.id is null or i.used_at is not null or i.expires_at < now() then raise exception 'Cette invitation n''est plus valable'; end if;
+  select lower(email) into own from auth.users where id = auth.uid();
+  if own is distinct from i.email then raise exception 'Cette invitation est pour une autre adresse e-mail'; end if;
+  select * into pl from players where id = i.player_id and deleted_at is null;
+  if pl.id is null then raise exception 'Cette invitation n''est plus valable'; end if;
+  if exists(select 1 from memberships where club_id = i.club_id and user_id = auth.uid()) then raise exception 'Tu as déjà une demande ou un accès dans ce club'; end if;
+  select join_code into code from clubs where id = i.club_id;
+  perform join_club(code, 'parent', pl.team_id, pl.first_name, pl.last_name);
+  update parent_invitations set used_at = now(), used_by = auth.uid() where id = i.id;
+  return i.club_id;
+end $$;
+revoke execute on function accept_parent_invitation(text) from public, anon;
+grant execute on function accept_parent_invitation(text) to authenticated;
+
+
+select close_visitor_functions();
+
+-- ===== alpha_5_4_0.sql =====
+-- mypocketclub · alpha 5.4.0 · mise à jour d'une base 5.3.1, sans perte de données, relançable.
+-- Lot A du 12 novembre 2026 (« go » de Gaël, 10 h 03) :
+--   1. Saison : la valeur par défaut d'une équipe ou d'un tarif suit la date (1er juillet au 30 juin), plus « 2026-2027 » écrit en dur.
+--   2. N° 158 (suite) · renforts ciblés : un renfort accepté ne voit plus tous les rendez-vous de l'équipe qu'il renforce,
+--      seulement ceux où le coach l'invite (« avec tous les renforts », renforts choisis, ou convoqué nommément).
+--      Les annonces de l'équipe ne lui parviennent plus non plus.
+--   3. N° 167 · un doublon d'exercice signalé prévient ceux qui décident (Directeur technique et président, ou l'administrateur).
+--   4. N° 183 · droit à l'image : le choix d'un parent qui n'est plus relié à l'enfant ne compte plus.
+--   5. N° 182 · rappel par e-mail au président, 7 jours avant la date limite de validation (envoyé par la fonction envoyer-email).
+--   6. Transférer une convocation reçue à des personnes choisies du club (date, heure, lieu ; jamais le contact de l'autre club).
+--   7. N° 201 · conversation avec un mineur : l'adulte ajoute un parent (choisi ou invité par e-mail) ; la conversation
+--      n'est créée qu'une fois le parent inscrit et d'accord. Refus ou silence de 14 jours : annulée, le créateur est prévenu.
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- ---------------------------------------------------------------------
+-- 1. Saison par défaut (season_label vient de la 5.3.0)
+-- ---------------------------------------------------------------------
+alter table teams alter column season set default season_label(now());
+alter table fee_grid alter column season set default season_label(now());
+
+-- ---------------------------------------------------------------------
+-- 2. N° 158 (suite) · renforts ciblés
+-- ---------------------------------------------------------------------
+-- reinforcements : 'aucun' (l'équipe seule), 'tous' (avec tous les renforts acceptés), 'choisis' (reinforcement_players)
+alter table events add column if not exists reinforcements text not null default 'aucun';
+alter table events add column if not exists reinforcement_players uuid[] not null default '{}';
+do $$ begin
+  alter table events add constraint events_reinforcements_check check (reinforcements in ('aucun','tous','choisis'));
+exception when duplicate_object then null; end $$;
+
+create or replace function events_reinforcements_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.audience <> 'team' then new.reinforcements := 'aucun'; new.reinforcement_players := '{}'; return new; end if;
+  if new.reinforcements <> 'choisis' then new.reinforcement_players := '{}'; end if;
+  -- seuls les renforts acceptés de l'équipe restent (un renfort retiré depuis ne bloque pas une modification)
+  if tg_op = 'INSERT' or new.reinforcement_players is distinct from old.reinforcement_players then
+    if exists(select 1 from unnest(new.reinforcement_players) x
+              where (tg_op = 'INSERT' or not (x = any(old.reinforcement_players)))
+                and not exists(select 1 from team_reinforcements r where r.player_id = x and r.team_id = any(new.team_ids) and r.state = 'accepte')) then
+      raise exception 'Un renfort choisi n''est pas un renfort accepté de l''équipe';
+    end if;
+  end if;
+  new.reinforcement_players := array(select distinct x from unnest(new.reinforcement_players) x
+    where exists(select 1 from team_reinforcements r where r.player_id = x and r.team_id = any(new.team_ids) and r.state = 'accepte'));
+  if new.reinforcements = 'choisis' and cardinality(new.reinforcement_players) = 0 then new.reinforcements := 'aucun'; end if;
+  return new;
+end $$;
+drop trigger if exists events_reinforcements_guard on events;
+create trigger events_reinforcements_guard before insert or update on events for each row execute function events_reinforcements_guard();
+
+-- Comme in_team, sans le lien d'un renfort : le renfort n'est pas « dans l'équipe » pour ses rendez-vous et ses annonces
+create or replace function in_team_regular(t uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select t is not null and team_visible(t) and (
+    exists(select 1 from memberships where team_id = t and user_id = auth.uid() and status = 'active')
+    or exists(select 1 from players p where p.deleted_at is null
+              and (p.team_id = t or exists(select 1 from player_teams pt where pt.player_id = p.id and pt.team_id = t
+                                           and not exists(select 1 from team_reinforcements r where r.player_id = p.id and r.team_id = t and r.state = 'accepte')))
+              and (p.user_id = auth.uid() or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = auth.uid()))));
+$$;
+-- Le compte (joueur ou parent) est-il invité à ce rendez-vous au titre d'un renfort ?
+create or replace function reinforcement_invited(eid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e
+    join team_reinforcements r on r.team_id = any(e.team_ids) and r.state = 'accepte'
+    join players p on p.id = r.player_id and p.deleted_at is null
+    where e.id = eid and e.audience = 'team'
+      and (e.reinforcements = 'tous' or r.player_id = any(e.reinforcement_players) or r.player_id = any(e.convoked))
+      and (p.user_id = auth.uid() or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = auth.uid())));
+$$;
+revoke execute on function in_team_regular(uuid), reinforcement_invited(uuid) from public, anon;
+grant execute on function in_team_regular(uuid), reinforcement_invited(uuid) to authenticated;
+
+-- Reprise de la 3.6.0 : seule la ligne « équipe » change (in_team_regular, plus l'invitation des renforts)
+create or replace function sees_event(eid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from events e where e.id = eid and is_member(e.club_id) and (
+    e.created_by = auth.uid() or is_board(e.club_id)
+    or (e.audience = 'club' and (e.with_supporters or has_real_role(e.club_id, auth.uid())))
+    or (e.audience = 'team' and exists(select 1 from unnest(e.team_ids) t where in_team_regular(t)))
+    or (e.audience = 'team' and reinforcement_invited(e.id))
+    or (e.audience = 'team' and e.type in ('Match','Plateau','Tournoi') and follows_any(e.team_ids))
+    or (e.audience in ('coaches','board_coaches') and is_coach_in(e.club_id))
+    or (e.audience = 'people' and auth.uid() = any(e.people))
+    or exists(select 1 from announcements a where a.kind = 'missions' and a.event_id = e.id and a.deleted_at is null and auth.uid() = any(a.people))));
+$$;
+
+-- Reprise de la 3.2 : les annonces d'une équipe ne vont pas à ses renforts
+create or replace function sees_announcement(aid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from announcements a where a.id = aid and a.deleted_at is null and is_member(a.club_id) and (
+    a.created_by = auth.uid()
+    or a.audience = 'club'
+    or (a.audience = 'team' and (exists(select 1 from unnest(a.team_ids) t where in_team_regular(t)) or is_board(a.club_id)))
+    or (a.audience = 'board' and is_board(a.club_id))
+    or (a.audience in ('coaches','board_coaches') and (is_coach_in(a.club_id) or is_board(a.club_id)))
+    or (a.audience = 'people' and auth.uid() = any(a.people))));
+$$;
+
+-- Reprise de la 3.6.0, avec le choix des renforts
+create or replace function create_events(p jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare c uuid := (p->>'club_id')::uuid; aud text := coalesce(p->>'audience', 'club');
+  ts uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'team_ids', '[]'))::uuid), '{}');
+  ppl uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'people', '[]'))::uuid), '{}');
+  conv uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'convoked', '[]'))::uuid), '{}');
+  rf uuid[] := coalesce(array(select jsonb_array_elements_text(coalesce(p->'reinforcement_players', '[]'))::uuid), '{}');
+  starts timestamptz[] := array(select jsonb_array_elements_text(coalesce(p->'starts', '[]'))::timestamptz);
+  sid uuid; n int;
+begin
+  if auth.uid() is null or not is_member(c) then raise exception 'Connexion requise'; end if;
+  if aud <> 'team' then ts := '{}'; end if;
+  if aud <> 'people' then ppl := '{}'; end if;
+  if not can_create_event(c, aud, ts, ppl) then raise exception 'Tu ne peux pas créer ce rendez-vous pour ces destinataires'; end if;
+  if cardinality(starts) = 0 then raise exception 'Aucune date'; end if;
+  if cardinality(starts) > 60 then raise exception 'Trop de séances (60 au plus)'; end if;
+  if p->'series' is not null and jsonb_typeof(p->'series') = 'object' then
+    insert into event_series(club_id, title, weekday, start_time, until, skip_holidays, created_by)
+      values (c, p->>'title', (p->'series'->>'weekday')::int, p->'series'->>'start_time', (p->'series'->>'until')::date, coalesce((p->'series'->>'skip_holidays')::boolean, true), auth.uid())
+      returning id into sid;
+  end if;
+  insert into events(club_id, audience, team_ids, people, type, title, starts_at, place, opponents, series_id, created_by, convoked, at_home, duration_min, all_day, with_supporters,
+                     reinforcements, reinforcement_players)
+    select c, aud, ts, ppl, coalesce(p->>'type', 'Événement'), trim(p->>'title'), s, coalesce(p->>'place', ''), coalesce(p->>'opponents', ''), sid, auth.uid(),
+           conv, coalesce((p->>'at_home')::boolean, true),
+           case when coalesce((p->>'all_day')::boolean, false) then null else nullif(p->>'duration_min', '')::int end, coalesce((p->>'all_day')::boolean, false),
+           case when aud = 'club' then coalesce((p->>'with_supporters')::boolean, false) else true end,
+           coalesce(nullif(p->>'reinforcements', ''), 'aucun'), rf
+    from unnest(starts) s;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- Renforts ajoutés après la création : leurs familles sont prévenues (une fois par rendez-vous)
+create or replace function push_on_event_reinforcements() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid; b text; added uuid[];
+begin
+  if new.cancelled or new.starts_at < now() or new.audience <> 'team' then return null; end if;
+  added := array(select r.player_id from team_reinforcements r
+                 where r.team_id = any(new.team_ids) and r.state = 'accepte'
+                   and (new.reinforcements = 'tous' or r.player_id = any(new.reinforcement_players))
+                   and not (old.audience = 'team' and (old.reinforcements = 'tous' or r.player_id = any(old.reinforcement_players) or r.player_id = any(old.convoked))));
+  if cardinality(added) = 0 then return null; end if;
+  b := push_ev_line(new);
+  for u in select y from push_event_targets(new.id, auth.uid(), false, true) y
+           where exists(select 1 from players p where p.id = any(added) and p.deleted_at is null
+                        and (p.user_id = y or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = y))) loop
+    perform push_enqueue(u, 'Renfort : ' || lower(new.type), b, 'ev:' || new.id, 'evreinf:' || new.id || ':' || u);
+  end loop;
+  return null;
+end $$;
+drop trigger if exists push_event_reinforcements on events;
+create trigger push_event_reinforcements after update of reinforcements, reinforcement_players on events
+  for each row execute function push_on_event_reinforcements();
+revoke execute on function push_on_event_reinforcements(), events_reinforcements_guard() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- 3. N° 167 · un doublon signalé prévient ceux qui décident
+-- ---------------------------------------------------------------------
+create or replace function report_duplicate(p_exercise uuid, p_other uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare a exercises; b exercises; did uuid; u uuid;
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi'; end if;
+  if p_exercise = p_other then raise exception 'Choisis un autre exercice'; end if;
+  select * into a from exercises where id = p_exercise and deleted_at is null;
+  select * into b from exercises where id = p_other and deleted_at is null;
+  if a.id is null or b.id is null or not can_see_exercise(a.id) or not can_see_exercise(b.id) then raise exception 'Exercice introuvable'; end if;
+  if not exists(select 1 from memberships m where m.user_id = auth.uid() and m.status = 'active' and m.role in ('coach', 'president', 'bureau')) then
+    raise exception 'Seuls les coachs et le bureau signalent un doublon';
+  end if;
+  if exists(select 1 from exercise_duplicates d where d.status = 'signale' and least(d.exercise_id, d.other_id) = least(p_exercise, p_other) and greatest(d.exercise_id, d.other_id) = greatest(p_exercise, p_other)) then
+    raise exception 'Ce doublon est déjà signalé';
+  end if;
+  insert into exercise_duplicates(exercise_id, other_id, reported_by) values (p_exercise, p_other, auth.uid()) returning id into did;
+  perform log_action(a.club_id, null, null, 'doublon d''exercice signalé', jsonb_build_object('exercice', a.title, 'autre', b.title));
+  -- 5.4.0 · n° 167 : même règle que can_decide_duplicate (administrateur pour un exercice public validé, sinon DT et président du club)
+  for u in
+    select x.user_id from app_admins x where a.sharing = 'public' and a.public_state = 'validated'
+    union
+    select m.user_id from memberships m
+     where not (a.sharing = 'public' and a.public_state = 'validated') and m.club_id = a.club_id and m.status = 'active'
+       and (m.role = 'president' or 'technique' = any(areas_of(a.club_id, m.user_id)))
+  loop
+    if u is distinct from auth.uid() then
+      perform push_enqueue(u, 'Doublon d''exercice signalé', left(a.title, 60) || ' ressemble à ' || left(b.title, 60) || '. À trancher dans Exercices.', 'doublon', 'dup:' || did || ':' || u);
+    end if;
+  end loop;
+end $$;
+revoke execute on function report_duplicate(uuid, uuid) from public, anon;
+grant execute on function report_duplicate(uuid, uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 4. N° 183 · droit à l'image : seuls comptent les choix des personnes qui ont encore le droit de décider
+-- ---------------------------------------------------------------------
+-- Compte : un parent relié à l'enfant, le joueur lui-même (sa propre fiche) ou le bureau du club (réglage fait pour la famille).
+create or replace function image_voter_valid(pl players, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select u = pl.user_id
+      or exists(select 1 from player_parents pp where pp.player_id = pl.id and pp.user_id = u)
+      or exists(select 1 from memberships m where m.club_id = pl.club_id and m.user_id = u and m.status = 'active' and m.role in ('president','bureau'));
+$$;
+revoke execute on function image_voter_valid(players, uuid) from public, anon, authenticated;
+
+-- Recalcule l'accord d'une fiche à partir des choix encore valables (p_new : le choix qui vient d'être fait, ou null)
+create or replace function image_recompute(p_player uuid, p_user uuid, p_ok boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare pl players; cur jsonb; votes jsonb; eff boolean; yes boolean; no boolean; was boolean; u uuid; okv jsonb;
+begin
+  select * into pl from players where id = p_player;
+  if not found then return; end if;
+  cur := coalesce(pl.consents->'image', '{}'::jsonb);
+  votes := coalesce(cur->'votes', '{}'::jsonb);
+  if p_user is not null then votes := votes || jsonb_build_object(p_user::text, jsonb_build_object('ok', p_ok, 'at', now())); end if;
+  -- les choix des personnes qui n'ont plus le droit de décider sont retirés (parent qui a quitté la famille, n° 183)
+  select coalesce(jsonb_object_agg(v.key, v.value), '{}'::jsonb) into okv from jsonb_each(votes) v
+    where v.key ~ '^[0-9a-f-]{36}$' and image_voter_valid(pl, v.key::uuid);
+  yes := exists(select 1 from jsonb_each(okv) v where (v.value->>'ok')::boolean);
+  no := exists(select 1 from jsonb_each(okv) v where not (v.value->>'ok')::boolean);
+  eff := yes and not no;
+  was := coalesce((cur->>'conflict')::boolean, false);
+  if p_user is null and okv = votes then return; end if;   -- rien n'a changé
+  perform set_config('pc.consent_rpc', 'on', true);
+  update players set consents = consents || jsonb_build_object('image',
+    jsonb_build_object('ok', eff, 'at', now(), 'by', coalesce(p_user, (cur->>'by')::uuid), 'votes', okv, 'conflict', yes and no)) where id = p_player;
+  perform set_config('pc.consent_rpc', '', true);
+  -- le président est prévenu d'un désaccord, sans motif ni échange
+  if yes and no and not was then
+    perform log_action(pl.club_id, null, p_player, 'désaccord sur le droit à l''image', '{}'::jsonb);
+    for u in select m.user_id from memberships m where m.club_id = pl.club_id and m.role = 'president' and m.status = 'active' loop
+      perform push_enqueue(u, 'Droit à l''image : désaccord', 'Les parents de ' || pl.first_name || ' ne sont pas d''accord. Le refus s''applique.',
+        'imgdis', 'imgdis:' || p_player || ':' || floor(extract(epoch from now()))::text);
+    end loop;
+  end if;
+end $$;
+revoke execute on function image_recompute(uuid, uuid, boolean) from public, anon, authenticated;
+
+create or replace function apply_image_vote(p_player uuid, p_user uuid, p_ok boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  perform image_recompute(p_player, p_user, p_ok);
+end $$;
+revoke execute on function apply_image_vote(uuid, uuid, boolean) from public, anon, authenticated;
+
+-- Un parent qui n'est plus relié à l'enfant : son choix ne compte plus
+create or replace function player_parents_image_recompute() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  perform image_recompute(old.player_id, null, null);
+  return null;
+end $$;
+drop trigger if exists player_parents_image_recompute on player_parents;
+create trigger player_parents_image_recompute after delete on player_parents for each row execute function player_parents_image_recompute();
+revoke execute on function player_parents_image_recompute() from public, anon, authenticated;
+
+-- Reprise une seule fois : les fiches où un ancien parent avait voté
+do $$ declare r record; begin
+  for r in select p.id from players p where p.consents ? 'image' and jsonb_typeof(p.consents->'image'->'votes') = 'object' loop
+    perform image_recompute(r.id, null, null);
+  end loop;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 5. N° 182 · rappel par e-mail au président (7 jours avant la date limite)
+-- ---------------------------------------------------------------------
+-- Pas de tâche planifiée : à chaque ouverture de l'application par n'importe qui, l'écran demande s'il y a des rappels
+-- à envoyer (oui / non, rien d'autre) ; si oui, il appelle envoyer-email, qui lit les adresses avec la clé du serveur.
+alter table clubs add column if not exists valid_mailed_at timestamptz;
+-- Le président qui change reçoit un nouveau rappel
+create or replace function clubs_valid_mail_reset() returns trigger language plpgsql as $$
+begin
+  if new.valid_by is distinct from old.valid_by and new.valid_by > coalesce(old.valid_by, '-infinity'::timestamptz) then new.valid_mailed_at := null; end if;
+  return new;
+end $$;
+drop trigger if exists clubs_valid_mail_reset on clubs;
+create trigger clubs_valid_mail_reset before update of valid_by on clubs for each row execute function clubs_valid_mail_reset();
+
+create or replace function validation_reminders_due() returns table(club_id uuid) language sql stable security definer set search_path = public as $$
+  select c.id from clubs c
+  where c.deleted_at is null and c.valid_mailed_at is null and c.valid_by between now() and now() + interval '7 days'
+    and exists(select 1 from memberships m where m.club_id = c.id and m.role = 'president' and m.status = 'active')
+    and not exists(select 1 from memberships m where m.club_id = c.id and m.role = 'president' and m.status = 'active' and president_validated(c.id, m.user_id));
+$$;
+revoke execute on function validation_reminders_due() from public, anon, authenticated;
+-- Pour l'écran : oui ou non, sans aucune autre information
+create or replace function validation_reminders_pending() returns boolean language sql stable security definer set search_path = public as $$
+  select auth.uid() is not null and exists(select 1 from validation_reminders_due());
+$$;
+revoke execute on function validation_reminders_pending() from public, anon;
+grant execute on function validation_reminders_pending() to authenticated;
+-- Pour la fonction envoyer-email seulement (clé du serveur) : chaque rappel n'est remis qu'une fois
+create or replace function validation_reminders_take() returns table(club text, valid_by timestamptz, email text, first_name text)
+language plpgsql security definer set search_path = public as $$
+begin
+  return query
+    with due as (
+      update clubs c set valid_mailed_at = now() where c.id in (select d.club_id from validation_reminders_due() d)
+      returning c.id, c.name, c.valid_by)
+    select due.name, due.valid_by, lower(u.email)::text, coalesce(pr.first_name, '')::text
+    from due join memberships m on m.club_id = due.id and m.role = 'president' and m.status = 'active'
+    join auth.users u on u.id = m.user_id left join profiles pr on pr.id = m.user_id
+    where u.email is not null;
+end $$;
+revoke execute on function validation_reminders_take() from public, anon, authenticated;
+do $$ begin grant execute on function validation_reminders_take() to service_role; exception when undefined_object then null; end $$;
+
+-- ---------------------------------------------------------------------
+-- 6. Transférer une convocation reçue à des personnes choisies du club
+-- ---------------------------------------------------------------------
+-- Ceux qui reçoivent le document (contact rencontres, président, contact de l'équipe concernée) le font suivre
+-- dans le club : une annonce privée avec les matchs (titre, jour, heure, lieu). Le nom et les coordonnées du contact
+-- de l'autre club n'y sont pas : ils restent dans le document, que lisent le coach et le bureau.
+create or replace function forward_convocation(p_send uuid, p_users uuid[]) returns int
+language plpgsql security definer set search_path = public as $$
+declare s convocation_sends; full_access boolean; lines text; who text; frm text; ppl uuid[];
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.channel <> 'app' or s.target_club_id is null then raise exception 'Document introuvable'; end if;
+  full_access := receives_convocations(s.target_club_id);
+  if not full_access and not contact_gets_send(p_send) then raise exception 'Document introuvable'; end if;
+  ppl := array(select distinct u from unnest(coalesce(p_users, '{}')) u where u is distinct from auth.uid());
+  if cardinality(ppl) = 0 then raise exception 'Choisis au moins une personne'; end if;
+  if cardinality(ppl) > 100 then raise exception 'Cent personnes au plus'; end if;
+  if exists(select 1 from unnest(ppl) u where not exists(select 1 from memberships m where m.club_id = s.target_club_id and m.user_id = u and m.status = 'active')) then
+    raise exception 'Une personne choisie n''est pas membre du club';
+  end if;
+  select string_agg('• ' || coalesce(nullif(x->>'title', ''), 'Match')
+           || coalesce(' (' || nullif(x->'team'->>'name', '') || ')', '')
+           || ' · ' || push_when((x->>'starts_at')::timestamptz)
+           || coalesce(' · ' || nullif(x->>'place', ''), ''), E'\n' order by (x->>'starts_at'))
+    into lines
+    from jsonb_array_elements(convocation_events_of(s.payload)) x
+    where coalesce((x->>'cancelled')::boolean, false) = false and x->>'starts_at' is not null
+      and (full_access or contact_matches_event(s.target_club_id, x));
+  if lines is null then raise exception 'Aucun match à transmettre'; end if;
+  select coalesce(first_name, 'Un membre du club') into who from profiles where id = auth.uid();
+  select name into frm from clubs where id = s.club_id;
+  perform set_config('pc.announce', 'on', true);
+  insert into announcements(club_id, audience, people, kind, title, body)
+    values (s.target_club_id, 'people', ppl, 'annonce',
+            left((case when s.step = 'P' then 'Pré-convocation' else 'Convocation' end) || ' de ' || coalesce(frm, 'un autre club'), 120),
+            left(lines || E'\n\nTransmis par ' || coalesce(who, 'un membre du club') || '.', 3000));
+  perform set_config('pc.announce', '', true);
+  perform log_action(s.target_club_id, null, null, 'convocation transférée', jsonb_build_object('ref', s.ref, 'personnes', cardinality(ppl)));
+  return cardinality(ppl);
+end $$;
+revoke execute on function forward_convocation(uuid, uuid[]) from public, anon;
+grant execute on function forward_convocation(uuid, uuid[]) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 7. N° 201 · conversation avec un mineur : demande au parent
+-- ---------------------------------------------------------------------
+alter table parent_invitations add column if not exists purpose text not null default 'joueur';
+alter table parent_invitations add column if not exists requested_by_name text;
+
+create table if not exists group_requests (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  created_by uuid not null references auth.users(id) on delete cascade,
+  name text not null check (length(trim(name)) between 1 and 80),
+  player_id uuid not null references players(id) on delete cascade,      -- la fiche du mineur
+  minor_user uuid not null references auth.users(id) on delete cascade,  -- son compte
+  members uuid[] not null default '{}',                                   -- les autres adultes invités
+  parent_user uuid references auth.users(id) on delete set null,          -- le parent choisi (sinon : tout parent relié)
+  invitation_id uuid references parent_invitations(id) on delete set null,
+  state text not null default 'attente' check (state in ('attente','acceptee','refusee','annulee','expiree')),
+  group_id uuid references groups(id) on delete set null,
+  created_at timestamptz not null default now(),
+  answered_at timestamptz,
+  answered_by uuid references auth.users(id) on delete set null,
+  last_reminded_at timestamptz
+);
+create index if not exists group_requests_player on group_requests(player_id) where state = 'attente';
+alter table group_requests enable row level security;   -- aucune lecture directe : tout passe par les fonctions
+
+-- Le parent qui peut répondre : relié à l'enfant, membre actif du club, et le parent choisi s'il y en a un
+create or replace function group_request_answerer(r group_requests, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select (r.parent_user is null or r.parent_user = u)
+     and exists(select 1 from player_parents pp where pp.player_id = r.player_id and pp.user_id = u)
+     and exists(select 1 from memberships m where m.club_id = r.club_id and m.user_id = u and m.status = 'active');
+$$;
+revoke execute on function group_request_answerer(group_requests, uuid) from public, anon, authenticated;
+
+-- Le prénom d'un compte, pour les notifications
+create or replace function first_name_of(u uuid) returns text language sql stable security definer set search_path = public as $$
+  select coalesce(nullif((select first_name from profiles where id = u), ''), 'Un membre du club');
+$$;
+revoke execute on function first_name_of(uuid) from public, anon, authenticated;
+
+-- Pour l'écran, avant de créer un groupe : les mineurs choisis qui n'ont aucun parent dans la liste, et leurs parents inscrits
+create or replace function group_minor_check(p_club uuid, p_users uuid[]) returns table(user_id uuid, player_id uuid, first_name text, parents jsonb)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if auth.uid() is null or not is_member(p_club) then raise exception 'Connexion requise'; end if;
+  if minor_account(p_club, auth.uid()) then return; end if;   -- un mineur qui écrit : la base vérifie seule (deux mineurs : libre)
+  if supporter_only(p_club, auth.uid()) then return; end if;  -- un supporteur n'écrit jamais à un mineur : il n'apprend rien
+  if cardinality(coalesce(p_users, '{}')) > 200 then raise exception 'Deux cents personnes au plus'; end if;
+  return query
+    select p.user_id, p.id, p.first_name,
+           coalesce((select jsonb_agg(jsonb_build_object('user_id', pp.user_id, 'name', coalesce(pr.full_name, pr.first_name, 'Parent')) order by pr.first_name)
+                     from player_parents pp left join profiles pr on pr.id = pp.user_id
+                     where pp.player_id = p.id and exists(select 1 from memberships m where m.club_id = p_club and m.user_id = pp.user_id and m.status = 'active')), '[]'::jsonb)
+    from players p
+    where p.club_id = p_club and p.deleted_at is null and p.user_id = any(coalesce(p_users, '{}'))
+      and exists(select 1 from memberships m where m.club_id = p_club and m.user_id = p.user_id and m.status = 'active')
+      and minor_account(p_club, p.user_id)
+      and not exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = any(coalesce(p_users, '{}') || auth.uid()));
+end $$;
+revoke execute on function group_minor_check(uuid, uuid[]) from public, anon;
+grant execute on function group_minor_check(uuid, uuid[]) to authenticated;
+
+-- Créer la demande : un parent choisi (relié et inscrit) ou l'e-mail d'un parent à inviter
+create or replace function request_minor_group(p_club uuid, p_name text, p_player uuid, p_parent uuid, p_email text, p_members uuid[]) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare pl players; nm text := trim(coalesce(p_name, '')); em text := lower(trim(coalesce(p_email, ''))); own text; k int; rid uuid; iid uuid;
+  mem uuid[]; me text;
+begin
+  if auth.uid() is null or not exists(select 1 from memberships m where m.club_id = p_club and m.user_id = auth.uid() and m.status = 'active') then
+    raise exception 'Connexion requise';
+  end if;
+  if minor_account(p_club, auth.uid()) then raise exception 'Cette demande est faite par un adulte'; end if;
+  if supporter_only(p_club, auth.uid()) then raise exception 'Un supporteur ne peut pas échanger avec un mineur'; end if;
+  if length(nm) not between 1 and 80 then raise exception 'Donne un nom au groupe'; end if;
+  select * into pl from players where id = p_player and club_id = p_club and deleted_at is null;
+  if pl.id is null or pl.user_id is null or not minor_account(p_club, pl.user_id)
+     or not exists(select 1 from memberships m where m.club_id = p_club and m.user_id = pl.user_id and m.status = 'active') then
+    raise exception 'Ce joueur mineur n''a pas de compte dans le club';
+  end if;
+  mem := array(select distinct u from unnest(coalesce(p_members, '{}')) u where u is distinct from auth.uid() and u is distinct from pl.user_id and u is distinct from p_parent);
+  if cardinality(mem) > 50 then raise exception 'Cinquante personnes au plus'; end if;
+  if exists(select 1 from unnest(mem) u where not exists(select 1 from memberships m where m.club_id = p_club and m.user_id = u and m.status = 'active')) then
+    raise exception 'Une personne choisie n''est pas membre du club';
+  end if;
+  if exists(select 1 from unnest(mem) u where minor_account(p_club, u)) then raise exception 'Une demande concerne un seul mineur'; end if;
+  if exists(select 1 from unnest(mem) u where supporter_only(p_club, u)) then raise exception 'Un supporteur ne peut pas être dans un groupe avec un mineur.'; end if;
+  if exists(select 1 from group_requests r where r.created_by = auth.uid() and r.player_id = pl.id and r.state = 'attente') then
+    raise exception 'Une demande pour ce joueur attend déjà la réponse du parent';
+  end if;
+  select count(*) into k from group_requests r where r.created_by = auth.uid() and r.state = 'attente';
+  if k >= 10 then raise exception 'Dix demandes en attente au plus'; end if;
+  if p_parent is not null then
+    if not exists(select 1 from player_parents pp where pp.player_id = pl.id and pp.user_id = p_parent)
+       or not exists(select 1 from memberships m where m.club_id = p_club and m.user_id = p_parent and m.status = 'active') then
+      raise exception 'Ce parent n''est pas relié à ce joueur dans le club';
+    end if;
+  else
+    if em !~ '^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$' then raise exception 'Adresse e-mail non valide'; end if;
+    select lower(email) into own from auth.users where id = auth.uid();
+    if own = em then raise exception 'Indique l''e-mail d''un parent, pas le tien'; end if;
+    if exists(select 1 from auth.users u where lower(u.email) = em and u.id = pl.user_id) then raise exception 'Indique l''e-mail d''un parent, pas celui du joueur'; end if;
+    select count(*) into k from parent_invitations where player_id = pl.id and created_at > now() - interval '24 hours';
+    if k >= 3 then raise exception 'Trois invitations par jour au maximum pour ce joueur : réessaie demain'; end if;
+    me := first_name_of(auth.uid());
+    insert into parent_invitations(club_id, player_id, email, token, created_by, purpose, requested_by_name)
+      values (p_club, pl.id, em, replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''), auth.uid(), 'conversation', me)
+      returning id into iid;
+  end if;
+  insert into group_requests(club_id, created_by, name, player_id, minor_user, members, parent_user, invitation_id)
+    values (p_club, auth.uid(), nm, pl.id, pl.user_id, mem, p_parent, iid) returning id into rid;
+  if p_parent is not null then
+    perform push_enqueue(p_parent, 'Conversation avec ' || pl.first_name, first_name_of(auth.uid()) || ' souhaite échanger avec ' || pl.first_name
+      || ' dans « ' || left(nm, 40) || ' ». Ton accord est demandé (onglet Messages).', 'grpreq', 'grpreq:' || rid);
+  end if;
+  perform log_action(p_club, p_parent, pl.id, 'conversation avec un mineur demandée', jsonb_build_object('groupe', nm, 'invitation', iid is not null));
+  return jsonb_build_object('id', rid, 'invitation_id', iid);
+end $$;
+revoke execute on function request_minor_group(uuid, text, uuid, uuid, text, uuid[]) from public, anon;
+grant execute on function request_minor_group(uuid, text, uuid, uuid, text, uuid[]) to authenticated;
+
+-- Demandes sans réponse depuis 14 jours (durée du lien d'invitation) : annulées, le créateur est prévenu.
+-- Les demandes finies sont effacées 30 jours après (comme l'adresse d'un parent invité).
+create or replace function group_requests_tidy() returns void
+language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in update group_requests g set state = 'expiree', answered_at = now()
+           where g.state = 'attente' and g.created_at < now() - interval '14 days'
+           returning g.id, g.created_by, (select first_name from players where id = g.player_id) as child loop
+    perform push_enqueue(r.created_by, 'Conversation annulée', 'Le parent de ' || coalesce(r.child, 'ce joueur') || ' n''a pas répondu sous 14 jours.', 'grpreq', 'grpexp:' || r.id);
+  end loop;
+  delete from group_requests where state <> 'attente' and coalesce(answered_at, created_at) < now() - interval '30 days';
+end $$;
+revoke execute on function group_requests_tidy() from public, anon, authenticated;
+
+-- Ce que je vois : mes demandes (envoyées) et celles qui attendent ma réponse de parent
+create or replace function my_group_requests(p_club uuid) returns table(id uuid, mine boolean, to_answer boolean, name text, child_first text, creator text,
+  members text[], state text, created_at timestamptz, parent_label text, waiting_signup boolean, group_id uuid)
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null or not is_member(p_club) then return; end if;
+  perform group_requests_tidy();
+  return query
+    select r.id, r.created_by = auth.uid(), r.state = 'attente' and group_request_answerer(r, auth.uid()), r.name, pl.first_name, first_name_of(r.created_by),
+           array(select coalesce(pr.full_name, pr.first_name, '') from unnest(r.members) u left join profiles pr on pr.id = u),
+           r.state, r.created_at,
+           case when r.parent_user is not null then (select coalesce(pr.full_name, pr.first_name) from profiles pr where pr.id = r.parent_user)
+                when r.invitation_id is not null then 'parent invité par e-mail' end,
+           r.state = 'attente' and not exists(select 1 from player_parents pp join memberships m on m.user_id = pp.user_id and m.club_id = r.club_id and m.status = 'active'
+                                               where pp.player_id = r.player_id and (r.parent_user is null or pp.user_id = r.parent_user)),
+           r.group_id
+    from group_requests r join players pl on pl.id = r.player_id
+    where r.club_id = p_club and (r.created_by = auth.uid() or (r.state = 'attente' and group_request_answerer(r, auth.uid())))
+    order by r.created_at desc;
+end $$;
+revoke execute on function my_group_requests(uuid) from public, anon;
+grant execute on function my_group_requests(uuid) to authenticated;
+
+-- Le parent répond. Oui : le groupe est créé avec le créateur, le parent, le mineur et les autres adultes.
+create or replace function answer_group_request(p_id uuid, p_accept boolean) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare r group_requests; gid uuid; child text;
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  perform group_requests_tidy();
+  select * into r from group_requests where id = p_id for update;
+  if r.id is null or r.state <> 'attente' then raise exception 'Cette demande n''attend plus de réponse'; end if;
+  if not group_request_answerer(r, auth.uid()) then raise exception 'Seul un parent du joueur répond à cette demande'; end if;
+  select first_name into child from players where id = r.player_id;
+  if not coalesce(p_accept, false) then
+    update group_requests set state = 'refusee', answered_at = now(), answered_by = auth.uid() where id = r.id;
+    perform push_enqueue(r.created_by, 'Conversation annulée', 'Le parent de ' || coalesce(child, 'ce joueur') || ' a refusé la conversation « ' || left(r.name, 40) || ' ».', 'grpreq', 'grpno:' || r.id);
+    perform log_action(r.club_id, r.created_by, r.player_id, 'conversation avec un mineur refusée par le parent', jsonb_build_object('groupe', r.name));
+    return null;
+  end if;
+  if not exists(select 1 from memberships m where m.club_id = r.club_id and m.user_id = r.created_by and m.status = 'active') then
+    update group_requests set state = 'annulee', answered_at = now(), answered_by = auth.uid() where id = r.id;
+    raise exception 'La personne qui a fait la demande n''est plus dans le club';
+  end if;
+  insert into groups(club_id, name, created_by) values (r.club_id, r.name, r.created_by) returning id into gid;
+  -- une seule requête : les règles du n° 186 sont vérifiées une fois tout le monde ajouté (parent compris)
+  insert into group_members(group_id, user_id)
+    select gid, u from (select distinct u from unnest(array[r.created_by, auth.uid(), r.minor_user] || array(
+        select x from unnest(r.members) x where exists(select 1 from memberships m where m.club_id = r.club_id and m.user_id = x and m.status = 'active'))) u) z;
+  update group_requests set state = 'acceptee', answered_at = now(), answered_by = auth.uid(), group_id = gid where id = r.id;
+  perform push_enqueue(r.created_by, 'Conversation ouverte', 'Le parent de ' || coalesce(child, 'ce joueur') || ' a accepté : « ' || left(r.name, 40) || ' » est ouverte.', 'grpreq', 'grpyes:' || r.id);
+  perform log_action(r.club_id, r.created_by, r.player_id, 'conversation avec un mineur acceptée par le parent', jsonb_build_object('groupe', r.name));
+  return gid;
+end $$;
+revoke execute on function answer_group_request(uuid, boolean) from public, anon;
+grant execute on function answer_group_request(uuid, boolean) to authenticated;
+
+create or replace function cancel_group_request(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  update group_requests set state = 'annulee', answered_at = now(), answered_by = auth.uid() where id = p_id and created_by = auth.uid() and state = 'attente';
+  if not found then raise exception 'Cette demande n''attend plus de réponse'; end if;
+end $$;
+revoke execute on function cancel_group_request(uuid) from public, anon;
+grant execute on function cancel_group_request(uuid) to authenticated;
+
+-- Relance : notification au parent relié (au plus toutes les 12 heures)
+create or replace function remind_group_request(p_id uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare r group_requests; child text; u uuid; n int := 0;
+begin
+  select * into r from group_requests where id = p_id and created_by = auth.uid();
+  if r.id is null or r.state <> 'attente' then raise exception 'Cette demande n''attend plus de réponse'; end if;
+  if r.last_reminded_at > now() - interval '12 hours' then raise exception 'Relance déjà faite : réessaie dans quelques heures'; end if;
+  select first_name into child from players where id = r.player_id;
+  for u in select pp.user_id from player_parents pp where pp.player_id = r.player_id and group_request_answerer(r, pp.user_id) loop
+    perform push_enqueue(u, 'Conversation avec ' || coalesce(child, 'ton enfant'), first_name_of(r.created_by) || ' attend ta réponse pour « ' || left(r.name, 40) || ' » (onglet Messages).',
+      'grpreq', 'grprem:' || r.id || ':' || floor(extract(epoch from now()))::text);
+    n := n + 1;
+  end loop;
+  if n = 0 then raise exception 'Le parent n''est pas encore inscrit dans le club : il a reçu l''invitation par e-mail'; end if;
+  update group_requests set last_reminded_at = now() where id = r.id;
+  return n;
+end $$;
+revoke execute on function remind_group_request(uuid) from public, anon;
+grant execute on function remind_group_request(uuid) to authenticated;
+
+-- Un parent relié à l'enfant après coup (invitation acceptée, validée par le président) : il est prévenu des demandes en attente
+create or replace function player_parents_group_requests() returns trigger language plpgsql security definer set search_path = public as $$
+declare r group_requests;
+begin
+  for r in select * from group_requests g where g.player_id = new.player_id and g.state = 'attente' and (g.parent_user is null or g.parent_user = new.user_id) loop
+    perform push_enqueue(new.user_id, 'Conversation avec ' || coalesce((select first_name from players where id = r.player_id), 'ton enfant'),
+      first_name_of(r.created_by) || ' souhaite échanger avec ton enfant dans « ' || left(r.name, 40) || ' ». Ton accord est demandé (onglet Messages).', 'grpreq', 'grpreq:' || r.id || ':' || new.user_id);
+  end loop;
+  return null;
+end $$;
+drop trigger if exists player_parents_group_requests on player_parents;
+create trigger player_parents_group_requests after insert on player_parents for each row execute function player_parents_group_requests();
+revoke execute on function player_parents_group_requests() from public, anon, authenticated;
+
+-- L'invitation par e-mail (5.3.0) sait maintenant dire pourquoi : joueur de 15 à 17 ans, ou conversation demandée par un adulte du club
+create or replace function parent_invitation_take(p_id uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare i parent_invitations; r jsonb;
+begin
+  select * into i from parent_invitations where id = p_id and created_by = auth.uid() and sent_at is null and used_at is null and expires_at > now();
+  if i.id is null then return null; end if;
+  update parent_invitations set sent_at = now() where id = i.id;
+  select jsonb_build_object('email', i.email, 'token', i.token, 'expires_at', i.expires_at,
+           'child_first', pl.first_name, 'club', c.name, 'purpose', i.purpose, 'requested_by', i.requested_by_name) into r
+    from players pl join clubs c on c.id = pl.club_id where pl.id = i.player_id;
+  return r;
+end $$;
+revoke execute on function parent_invitation_take(uuid) from public, anon;
+grant execute on function parent_invitation_take(uuid) to authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_5_5_0.sql =====
+-- mypocketclub · alpha 5.5.0 · mise à jour d'une base 5.4.0, sans perte de données, relançable.
+--   N° 164 · justificatif d'adhésion (pour un comité d'entreprise) : délivré par le président ou la trésorerie, pour les
+--   versements réellement notés dans le club ; chaque justificatif délivré est inscrit au journal du président.
+--   (L'onboarding de la 5.5.0 n'a besoin d'aucun script : sa progression est gardée dans les métadonnées du compte.)
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+create or replace function membership_attestation(p_player uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare pl players; c clubs; t teams; paid numeric; pays jsonb; fn text; me text;
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  select * into pl from players where id = p_player and deleted_at is null;
+  if pl.id is null then raise exception 'Fiche introuvable'; end if;
+  if not (is_president(pl.club_id) or has_area(pl.club_id, 'tresorerie')) then raise exception 'Réservé au président et à la trésorerie'; end if;
+  if pl.from_partner then raise exception 'Ce joueur est licencié dans le club partenaire'; end if;
+  select coalesce(sum(amount), 0), coalesce(jsonb_agg(jsonb_build_object('amount', amount, 'paid_at', paid_at, 'method', method) order by paid_at), '[]'::jsonb)
+    into paid, pays from player_payments where player_id = pl.id;
+  if paid <= 0 then raise exception 'Aucun versement noté pour ce joueur : pas de justificatif possible'; end if;
+  select * into c from clubs where id = pl.club_id;
+  select * into t from teams where id = pl.team_id;
+  fn := case when is_president(pl.club_id) then 'Président' else 'Trésorier' end;
+  select coalesce(nullif(trim(coalesce(first_name, '') || ' ' || coalesce(last_name, '')), ''), 'Le responsable du club') into me from profiles where id = auth.uid();
+  perform log_action(pl.club_id, null, pl.id, 'justificatif d''adhésion délivré', jsonb_build_object('montant', paid));
+  return jsonb_build_object('club', c.name, 'city', c.city, 'sport', c.sport, 'first_name', pl.first_name, 'last_name', pl.last_name,
+    'birth_date', pl.birth_date, 'team', coalesce(t.name, ''), 'season', coalesce(t.season, season_label(now())), 'paid', paid, 'payments', pays,
+    'signer', me, 'signer_role', fn);
+end $$;
+revoke execute on function membership_attestation(uuid) from public, anon;
+grant execute on function membership_attestation(uuid) to authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_5_6_0.sql =====
+-- mypocketclub · alpha 5.6.0 · mise à jour d'une base 5.5.0, sans perte de données, relançable.
+--   N° 202 · compte administrateur, v1 pour la bêta (maquette https://claude.ai/artifact/GsSnKxT5cdMKoTAnwbnEEv) :
+--   1. double vérification : toute action d'administration demande une session confirmée par un code à 6 chiffres
+--      (application d'authentification, « aal2 » de Supabase) ; sans code, le compte reste un compte ordinaire ;
+--   2. journal admin (ce que fait un administrateur, lu dans l'onglet Entretien) ;
+--   3. accueil admin (chiffres du parc), liste des clubs avec validation et abonnement, abonnement modifiable,
+--      délai de validation prolongé ;
+--   4. signalements : le président transmet un message signalé à mypocketclub ; l'administrateur voit ce message seul ;
+--   5. Entretien : aperçu puis lancement à la main des suppressions automatiques.
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- ---------------------------------------------------------------------
+-- 1. Double vérification
+--   is_app_admin() reste la seule porte des fonctions d'administration (et de la lecture des demandes de clubs) :
+--   elle exige maintenant une session « aal2 » (code à 6 chiffres saisi sur cet appareil).
+--   admin_account() dit seulement si le compte est administrateur, pour afficher l'écran du code.
+-- ---------------------------------------------------------------------
+create or replace function is_app_admin() returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from app_admins where user_id = auth.uid()) and coalesce(auth.jwt() ->> 'aal', '') = 'aal2';
+$$;
+grant execute on function is_app_admin() to authenticated;
+create or replace function is_principal_admin() returns boolean language sql stable security definer set search_path = public as $$
+  select is_app_admin() and exists(select 1 from app_admins where user_id = auth.uid() and principal);
+$$;
+create or replace function admin_account() returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from app_admins where user_id = auth.uid());
+$$;
+revoke execute on function admin_account() from public, anon;
+grant execute on function admin_account() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 2. Journal admin (lu seulement par admin_log_list)
+-- ---------------------------------------------------------------------
+create table if not exists admin_log (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  admin_id uuid references auth.users(id) on delete set null,
+  action text not null check (length(action) <= 120),
+  club_id uuid references clubs(id) on delete set null,
+  detail jsonb not null default '{}'::jsonb
+);
+create index if not exists admin_log_at on admin_log(at desc);
+alter table admin_log enable row level security;
+revoke all on admin_log from anon, authenticated;
+
+create or replace function admin_note(p_action text, p_club uuid, p_detail jsonb default '{}'::jsonb) returns void
+language sql security definer set search_path = public as $$
+  insert into admin_log(admin_id, action, club_id, detail) values (auth.uid(), left(p_action, 120), p_club, coalesce(p_detail, '{}'::jsonb));
+$$;
+revoke execute on function admin_note(text, uuid, jsonb) from public, anon, authenticated;
+
+-- Validation d'un président (fonctions de la 4.3.0) : notée au journal admin
+create or replace function sender_validations_admin_log() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then return null; end if;
+  if tg_op = 'DELETE' then perform admin_note('validation retirée', old.club_id, jsonb_build_object('président', old.user_id));
+  else perform admin_note('président validé', new.club_id, jsonb_build_object('président', new.user_id, 'motif', new.reason, 'fin', new.ends_at)); end if;
+  return null;
+end $$;
+revoke execute on function sender_validations_admin_log() from public, anon, authenticated;
+drop trigger if exists sender_validations_admin_log on sender_validations;
+create trigger sender_validations_admin_log after insert or update or delete on sender_validations for each row execute function sender_validations_admin_log();
+
+create or replace function admin_log_list() returns table(at timestamptz, admin_name text, action text, club_name text, detail jsonb)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  return query select l.at, coalesce(nullif(trim(coalesce(p.first_name, '') || ' ' || coalesce(p.last_name, '')), ''), 'Administrateur'), l.action, c.name, l.detail
+    from admin_log l left join profiles p on p.id = l.admin_id left join clubs c on c.id = l.club_id
+    order by l.at desc limit 40;
+end $$;
+revoke execute on function admin_log_list() from public, anon;
+grant execute on function admin_log_list() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 3. Accueil admin, clubs, abonnements
+-- ---------------------------------------------------------------------
+-- Joueurs facturés : tous, sauf ceux des équipes gratuites (les plus nombreuses) ; même calcul que club_client_view (5.3.0)
+create or replace function paying_players(p_club uuid, p_free int) returns int
+language sql stable security definer set search_path = public as $$
+  select greatest(0, (select count(*) from players where club_id = p_club and deleted_at is null)::int
+    - coalesce((select sum(c) from (select count(*) c from players x where x.club_id = p_club and x.deleted_at is null and x.team_id is not null
+        group by x.team_id order by c desc limit greatest(coalesce(p_free, 1), 0)) f), 0)::int);
+$$;
+revoke execute on function paying_players(uuid, int) from public, anon, authenticated;
+
+create or replace function admin_overview() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r jsonb; due bigint;
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  select coalesce(sum(paying_players(s.club_id, s.free_teams)::bigint * s.rate_cents), 0) into due
+    from club_subscription s join clubs c on c.id = s.club_id where c.deleted_at is null and s.status = 'payant' and s.rate_cents is not null;
+  select jsonb_build_object(
+    'clubs', (select count(*) from clubs where deleted_at is null),
+    'accounts', (select count(*) from profiles where deleted_at is null),
+    'players', (select count(*) from players p join clubs c on c.id = p.club_id where p.deleted_at is null and c.deleted_at is null),
+    'active7', (select count(*) from auth.users u where u.last_sign_in_at > now() - interval '7 days'),
+    'to_validate', (select count(*) from clubs c where c.deleted_at is null
+        and exists(select 1 from memberships m where m.club_id = c.id and m.role = 'president' and m.status = 'active')
+        and not exists(select 1 from memberships m join sender_validations v on v.club_id = m.club_id and v.user_id = m.user_id
+                       where m.club_id = c.id and m.role = 'president' and m.status = 'active')),
+    'club_requests', (select count(*) from club_requests where status = 'new'),
+    'schemas', (select count(*) from schema_requests where status = 'pending'),
+    'duplicates', (select count(*) from exercise_duplicates d join exercises e on e.id = d.exercise_id
+        where d.status = 'signale' and e.sharing = 'public' and e.public_state = 'validated'),
+    'reports', (select count(*) from message_reports where forwarded_at is not null and admin_done_at is null),
+    'sub_test', (select count(*) from clubs c left join club_subscription s on s.club_id = c.id where c.deleted_at is null and coalesce(s.status, 'test') = 'test'),
+    'sub_free', (select count(*) from club_subscription s join clubs c on c.id = s.club_id where c.deleted_at is null and s.status = 'gratuit'),
+    'sub_paid', (select count(*) from club_subscription s join clubs c on c.id = s.club_id where c.deleted_at is null and s.status = 'payant'),
+    'due_cents', due,
+    'last_purge', (select max(at) from admin_log where action = 'suppressions automatiques lancées')) into r;
+  return r;
+end $$;
+revoke execute on function admin_overview() from public, anon;
+grant execute on function admin_overview() to authenticated;
+
+-- Tous les clubs (corbeille comprise), avec le président, sa validation et l'abonnement ; e-mail du président toujours visible
+create or replace function admin_club_list() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r jsonb;
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  select coalesce(jsonb_agg(x order by (x->>'deleted_at') is not null, (x->>'reason') is not null, x->>'created_at' desc), '[]'::jsonb) into r from (
+    select jsonb_build_object(
+      'id', c.id, 'name', c.name, 'city', c.city, 'sport', c.sport, 'color1', c.color1, 'logo', c.logo, 'crest_bg', c.crest_bg,
+      'created_at', c.created_at, 'deleted_at', c.deleted_at, 'valid_by', c.valid_by,
+      'president_id', p.user_id, 'president_name', nullif(trim(coalesce(pr.first_name, '') || ' ' || coalesce(pr.last_name, '')), ''), 'president_email', u.email::text,
+      'members', (select count(distinct m.user_id) from memberships m where m.club_id = c.id and m.status = 'active'),
+      'teams', (select count(*) from teams t where t.club_id = c.id),
+      'players', (select count(*) from players x where x.club_id = c.id and x.deleted_at is null),
+      'reason', v.reason, 'ends_at', v.ends_at, 'vnote', v.note, 'validated_at', v.validated_at,
+      'status', coalesce(s.status, 'test'), 'engaged_from', s.engaged_from, 'engaged_to', s.engaged_to, 'rate_cents', s.rate_cents,
+      'free_teams', coalesce(s.free_teams, 1), 'snote', coalesce(s.note, ''),
+      'paying', paying_players(c.id, coalesce(s.free_teams, 1)),
+      'due_cents', case when s.status = 'payant' and s.rate_cents is not null then paying_players(c.id, s.free_teams) * s.rate_cents end) x
+    from clubs c
+    left join lateral (select m.user_id from memberships m where m.club_id = c.id and m.role = 'president' and m.status = 'active' order by m.created_at limit 1) p on true
+    left join profiles pr on pr.id = p.user_id
+    left join auth.users u on u.id = p.user_id
+    left join sender_validations v on v.club_id = c.id and v.user_id = p.user_id
+    left join club_subscription s on s.club_id = c.id) q;
+  return r;
+end $$;
+revoke execute on function admin_club_list() from public, anon;
+grant execute on function admin_club_list() to authenticated;
+
+create or replace function admin_set_subscription(p_club uuid, p_status text, p_from date, p_to date, p_rate_cents int, p_free_teams int, p_note text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if not exists(select 1 from clubs where id = p_club) then raise exception 'Club introuvable'; end if;
+  if p_status not in ('test', 'gratuit', 'payant') then raise exception 'Statut inconnu'; end if;
+  if p_from is not null and p_to is not null and p_to < p_from then raise exception 'La fin est avant le début'; end if;
+  if p_rate_cents is not null and (p_rate_cents < 0 or p_rate_cents > 10000) then raise exception 'Prix par joueur entre 0 et 100 €'; end if;
+  if p_status = 'payant' and p_rate_cents is null then raise exception 'Indique le prix par joueur'; end if;
+  if coalesce(p_free_teams, 1) not between 0 and 20 then raise exception 'Équipes gratuites : entre 0 et 20'; end if;
+  insert into club_subscription(club_id, status, engaged_from, engaged_to, rate_cents, free_teams, note, updated_at)
+    values (p_club, p_status, p_from, p_to, p_rate_cents, coalesce(p_free_teams, 1), left(coalesce(p_note, ''), 300), now())
+    on conflict (club_id) do update set status = excluded.status, engaged_from = excluded.engaged_from, engaged_to = excluded.engaged_to,
+      rate_cents = excluded.rate_cents, free_teams = excluded.free_teams, note = excluded.note, updated_at = now();
+  perform admin_note('abonnement modifié', p_club, jsonb_build_object('statut', p_status, 'du', p_from, 'au', p_to, 'prix', p_rate_cents, 'gratuites', coalesce(p_free_teams, 1)));
+end $$;
+revoke execute on function admin_set_subscription(uuid, text, date, date, int, int, text) from public, anon;
+grant execute on function admin_set_subscription(uuid, text, date, date, int, int, text) to authenticated;
+
+-- Club pas encore validé : repousser la date limite (n° 182) de 7 à 90 jours
+create or replace function admin_extend_validation(p_club uuid, p_days int) returns date
+language plpgsql security definer set search_path = public as $$
+declare c clubs; d timestamptz;
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if p_days is null or p_days not between 7 and 90 then raise exception 'Entre 7 et 90 jours'; end if;
+  select * into c from clubs where id = p_club;
+  if c.id is null then raise exception 'Club introuvable'; end if;
+  if c.deleted_at is not null then raise exception 'Ce club est dans la corbeille'; end if;
+  d := greatest(coalesce(c.valid_by, now()), now()) + make_interval(days => p_days);
+  update clubs set valid_by = d, valid_reminded_at = null where id = p_club;
+  perform admin_note('délai de validation prolongé', p_club, jsonb_build_object('jours', p_days, 'jusqu''au', d::date));
+  return d::date;
+end $$;
+revoke execute on function admin_extend_validation(uuid, int) from public, anon;
+grant execute on function admin_extend_validation(uuid, int) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 4. Signalements transmis par le président (décision de Gaël, 12 novembre, 13 h 57 : le message seul)
+-- ---------------------------------------------------------------------
+alter table message_reports add column if not exists forwarded_at timestamptz;
+alter table message_reports add column if not exists forwarded_by uuid references auth.users(id) on delete set null;
+alter table message_reports add column if not exists admin_done_at timestamptz;
+alter table message_reports add column if not exists admin_note text check (admin_note is null or length(admin_note) <= 300);
+
+create or replace function forward_report(p_report uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare r message_reports; a uuid; cn text;
+begin
+  select * into r from message_reports where id = p_report;
+  if r.id is null then raise exception 'Signalement introuvable'; end if;
+  if not is_president(r.club_id) then raise exception 'Réservé au président'; end if;
+  if r.forwarded_at is not null then return; end if;
+  update message_reports set forwarded_at = now(), forwarded_by = auth.uid() where id = p_report;
+  perform log_action(r.club_id, null, null, 'message signalé transmis à mypocketclub', '{}'::jsonb);
+  select name into cn from clubs where id = r.club_id;
+  for a in select user_id from app_admins loop
+    perform push_enqueue(a, 'Signalement transmis', coalesce(cn, 'Un club') || ' te transmet un message signalé', 'admin', 'repfwd:' || p_report || ':' || a, './');
+  end loop;
+end $$;
+revoke execute on function forward_report(uuid) from public, anon;
+grant execute on function forward_report(uuid) to authenticated;
+
+-- Le président voit aussi s'il a déjà transmis (nouvelle colonne : la fonction est recréée)
+drop function if exists reported_messages(uuid);
+create function reported_messages(p_club uuid) returns table(report_id uuid, group_name text, message_id bigint, body text, author uuid, reporter uuid, reason text, created_at timestamptz, handled_at timestamptz, forwarded_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_president(p_club) then raise exception 'Réservé au président'; end if;
+  return query select r.id, g.name, r.message_id, m.body, m.user_id, r.reporter, r.reason, r.created_at, r.handled_at, r.forwarded_at
+    from message_reports r left join groups g on g.id = r.group_id left join messages m on m.id = r.message_id
+    where r.club_id = p_club order by r.created_at desc limit 100;
+end $$;
+revoke execute on function reported_messages(uuid) from public, anon;
+grant execute on function reported_messages(uuid) to authenticated;
+
+-- L'administrateur : les signalements transmis seulement, le message signalé seul (jamais la conversation)
+create or replace function admin_reports() returns table(report_id uuid, club_id uuid, club_name text, group_name text, body text, author_name text, reason text,
+  created_at timestamptz, forwarded_at timestamptz, president_email text, admin_done_at timestamptz, admin_note text)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  return query select r.id, r.club_id, c.name, g.name, m.body,
+      coalesce(nullif(trim(coalesce(pa.first_name, '') || ' ' || coalesce(pa.last_name, '')), ''), 'Membre'), r.reason, r.created_at, r.forwarded_at,
+      (select u.email::text from auth.users u where u.id = r.forwarded_by), r.admin_done_at, r.admin_note
+    from message_reports r join clubs c on c.id = r.club_id left join groups g on g.id = r.group_id
+      left join messages m on m.id = r.message_id left join profiles pa on pa.id = m.user_id
+    where r.forwarded_at is not null
+    order by (r.admin_done_at is null) desc, r.forwarded_at desc limit 100;
+end $$;
+revoke execute on function admin_reports() from public, anon;
+grant execute on function admin_reports() to authenticated;
+
+create or replace function admin_report_done(p_report uuid, p_note text) returns void
+language plpgsql security definer set search_path = public as $$
+declare cid uuid;
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  update message_reports set admin_done_at = now(), admin_note = nullif(left(trim(coalesce(p_note, '')), 300), '')
+    where id = p_report and forwarded_at is not null returning club_id into cid;
+  if cid is null then raise exception 'Signalement introuvable'; end if;
+  perform admin_note('signalement traité', cid, '{}'::jsonb);
+end $$;
+revoke execute on function admin_report_done(uuid, text) from public, anon;
+grant execute on function admin_report_done(uuid, text) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 5. Entretien : suppressions automatiques lancées à la main, avec aperçu (décision de Gaël, 12 novembre, 13 h 57)
+--   Les comptes inactifs ne sont pas marqués « prévenus » tant que l'e-mail de prévenance n'existe pas (lot e-mails,
+--   après la bêta) : sans marque, aucun compte inactif ne part à la corbeille.
+-- ---------------------------------------------------------------------
+create or replace function admin_purge_preview() returns table(item text, n bigint)
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  return query select x.item, x.n from purge_expired(false) x;
+  item := 'comptes inactifs à prévenir (e-mail pas encore en place)'; n := (select count(*) from warn_inactive_accounts(false)); return next;
+end $$;
+revoke execute on function admin_purge_preview() from public, anon;
+grant execute on function admin_purge_preview() to authenticated;
+
+create or replace function admin_purge_run() returns table(item text, n bigint)
+language plpgsql security definer set search_path = public as $$
+declare d jsonb := '{}'::jsonb; x record;
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  for x in select * from purge_expired(true) loop
+    item := x.item; n := x.n; d := d || jsonb_build_object(x.item, x.n); return next;
+  end loop;
+  perform admin_note('suppressions automatiques lancées', null, d);
+end $$;
+revoke execute on function admin_purge_run() from public, anon;
+grant execute on function admin_purge_run() to authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_5_7_0.sql =====
+-- mypocketclub · alpha 5.7.0 · mise à jour d'une base 5.6.0, sans perte de données, relançable.
+--   N° 204 · justificatif d'adhésion sur le modèle de Boissy : coordonnées et identifiant du club (SIRET ou RNA), pied de page,
+--            image du cachet (président) ; signature en image de chaque personne qui délivre (gardée avec son compte) ;
+--            demandeur choisi avant le PDF et inscrit au journal.
+--   N° 207 · « Demander une attestation » depuis Mon compte : le parent (ou le joueur majeur) demande ; la trésorerie ou le président
+--            délivre (PDF gardé jusqu'à la fin de la saison) ou refuse avec un motif ; une demande en attente par joueur et par saison.
+--   (N° 205 et 206 : application seulement.)
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- ---------------------------------------------------------------------
+-- 1. Coordonnées du club pour les attestations (président : écrit ; président et trésorerie : lu)
+-- ---------------------------------------------------------------------
+create table if not exists club_legal (
+  club_id uuid primary key references clubs(id) on delete cascade,
+  legal_id text not null default '' check (length(legal_id) <= 30),
+  address text not null default '' check (length(address) <= 200),
+  phone text not null default '' check (length(phone) <= 30),
+  email text not null default '' check (length(email) <= 120),
+  footer text not null default '' check (length(footer) <= 400),
+  stamp text check (stamp is null or (stamp like 'data:image/jpeg;base64,%' and length(stamp) <= 400000)),
+  updated_at timestamptz not null default now()
+);
+alter table club_legal enable row level security;
+revoke all on club_legal from anon, authenticated;
+
+create or replace function attestation_settings(p_club uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare l club_legal; c clubs;
+begin
+  if not (is_president(p_club) or has_area(p_club, 'tresorerie')) then raise exception 'Réservé au président et à la trésorerie'; end if;
+  select * into c from clubs where id = p_club;
+  select * into l from club_legal where club_id = p_club;
+  return jsonb_build_object('legal_id', coalesce(l.legal_id, ''), 'address', coalesce(l.address, ''), 'phone', coalesce(l.phone, ''),
+    'email', coalesce(l.email, ''), 'footer', coalesce(l.footer, ''), 'stamp', l.stamp, 'city', coalesce(c.city, ''));
+end $$;
+revoke execute on function attestation_settings(uuid) from public, anon;
+grant execute on function attestation_settings(uuid) to authenticated;
+
+create or replace function set_attestation_settings(p_club uuid, p_legal_id text, p_address text, p_phone text, p_email text, p_footer text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_president(p_club) then raise exception 'Réservé au président'; end if;
+  insert into club_legal(club_id, legal_id, address, phone, email, footer, updated_at)
+    values (p_club, left(trim(coalesce(p_legal_id, '')), 30), left(trim(coalesce(p_address, '')), 200), left(trim(coalesce(p_phone, '')), 30),
+            left(trim(coalesce(p_email, '')), 120), left(trim(coalesce(p_footer, '')), 400), now())
+    on conflict (club_id) do update set legal_id = excluded.legal_id, address = excluded.address, phone = excluded.phone,
+      email = excluded.email, footer = excluded.footer, updated_at = now();
+  perform log_action(p_club, null, null, 'coordonnées des attestations modifiées', '{}'::jsonb);
+end $$;
+revoke execute on function set_attestation_settings(uuid, text, text, text, text, text) from public, anon;
+grant execute on function set_attestation_settings(uuid, text, text, text, text, text) to authenticated;
+
+-- Cachet du club (image JPEG convertie dans l'application) ; null = retiré
+create or replace function set_club_stamp(p_club uuid, p_img text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_president(p_club) then raise exception 'Réservé au président'; end if;
+  if p_img is not null and (p_img not like 'data:image/jpeg;base64,%' or length(p_img) > 400000) then raise exception 'Image du cachet trop lourde ou illisible'; end if;
+  insert into club_legal(club_id, stamp, updated_at) values (p_club, p_img, now())
+    on conflict (club_id) do update set stamp = excluded.stamp, updated_at = now();
+  perform log_action(p_club, null, null, case when p_img is null then 'cachet du club retiré' else 'cachet du club déposé' end, '{}'::jsonb);
+end $$;
+revoke execute on function set_club_stamp(uuid, text) from public, anon;
+grant execute on function set_club_stamp(uuid, text) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 2. Signature en image, gardée avec le compte de la personne (jamais visible des autres membres)
+-- ---------------------------------------------------------------------
+create table if not exists user_signatures (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  img text not null check (img like 'data:image/jpeg;base64,%' and length(img) <= 300000),
+  updated_at timestamptz not null default now()
+);
+alter table user_signatures enable row level security;
+revoke all on user_signatures from anon, authenticated;
+
+create or replace function my_signature() returns text
+language sql stable security definer set search_path = public as $$
+  select img from user_signatures where user_id = auth.uid();
+$$;
+revoke execute on function my_signature() from public, anon;
+grant execute on function my_signature() to authenticated;
+
+create or replace function set_my_signature(p_img text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi d''abord'; end if;
+  if p_img is null then delete from user_signatures where user_id = auth.uid(); return; end if;
+  if p_img not like 'data:image/jpeg;base64,%' or length(p_img) > 300000 then raise exception 'Image de la signature trop lourde ou illisible'; end if;
+  insert into user_signatures(user_id, img, updated_at) values (auth.uid(), p_img, now())
+    on conflict (user_id) do update set img = excluded.img, updated_at = now();
+end $$;
+revoke execute on function set_my_signature(text) from public, anon;
+grant execute on function set_my_signature(text) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 3. Données du justificatif (remplace l'usage de membership_attestation, gardée pour les anciennes versions de l'application)
+-- ---------------------------------------------------------------------
+create or replace function attestation_data(p_player uuid, p_requester text, p_legal_id text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare pl players; c clubs; t teams; l club_legal; paid numeric; pays jsonb; fn text; me text; who text;
+begin
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  select * into pl from players where id = p_player and deleted_at is null;
+  if pl.id is null then raise exception 'Fiche introuvable'; end if;
+  if not (is_president(pl.club_id) or has_area(pl.club_id, 'tresorerie')) then raise exception 'Réservé au président et à la trésorerie'; end if;
+  if pl.from_partner then raise exception 'Ce joueur est licencié dans le club partenaire'; end if;
+  select coalesce(sum(amount), 0), coalesce(jsonb_agg(jsonb_build_object('amount', amount, 'paid_at', paid_at, 'method', method) order by paid_at), '[]'::jsonb)
+    into paid, pays from player_payments where player_id = pl.id;
+  if paid <= 0 then raise exception 'Aucun versement noté pour ce joueur : pas de justificatif possible'; end if;
+  who := nullif(left(trim(coalesce(p_requester, '')), 120), '');
+  if who is null then raise exception 'Choisis la personne qui demande le justificatif'; end if;
+  select * into c from clubs where id = pl.club_id;
+  select * into t from teams where id = pl.team_id;
+  select * into l from club_legal where club_id = pl.club_id;
+  fn := case when is_president(pl.club_id) then 'Président' else 'Trésorier' end;
+  select coalesce(nullif(trim(coalesce(first_name, '') || ' ' || coalesce(last_name, '')), ''), 'Le responsable du club') into me from profiles where id = auth.uid();
+  perform log_action(pl.club_id, null, pl.id, 'justificatif d''adhésion délivré', jsonb_build_object('montant', paid, 'demandeur', who));
+  return jsonb_build_object('club', c.name, 'city', c.city, 'sport', c.sport, 'first_name', pl.first_name, 'last_name', pl.last_name,
+    'birth_date', pl.birth_date, 'team', coalesce(t.name, ''), 'category', coalesce(t.category, t.name, ''), 'season', coalesce(t.season, season_label(now())),
+    'paid', paid, 'payments', pays, 'signer', me, 'signer_role', fn, 'requester', who,
+    'legal_id', coalesce(nullif(left(trim(coalesce(p_legal_id, '')), 30), ''), l.legal_id, ''),
+    'address', coalesce(l.address, ''), 'phone', coalesce(l.phone, ''), 'email', coalesce(l.email, ''), 'footer', coalesce(l.footer, ''),
+    'stamp', l.stamp, 'signature', (select img from user_signatures where user_id = auth.uid()));
+end $$;
+revoke execute on function attestation_data(uuid, text, text) from public, anon;
+grant execute on function attestation_data(uuid, text, text) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 4. N° 207 · demandes d'attestation
+-- ---------------------------------------------------------------------
+create table if not exists attestation_requests (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  player_id uuid not null references players(id) on delete cascade,
+  requested_by uuid references auth.users(id) on delete cascade,
+  season text not null,
+  status text not null default 'attente' check (status in ('attente', 'delivree', 'refusee')),
+  created_at timestamptz not null default now(),
+  decided_by uuid references auth.users(id) on delete set null,
+  decided_at timestamptz,
+  reason text check (reason is null or length(reason) <= 200),
+  pdf text check (pdf is null or length(pdf) <= 2000000)
+);
+create unique index if not exists attestation_requests_open on attestation_requests(player_id, season) where status = 'attente';
+create index if not exists attestation_requests_club on attestation_requests(club_id, status);
+alter table attestation_requests enable row level security;   -- lecture et écriture seulement par les fonctions ci-dessous
+revoke all on attestation_requests from anon, authenticated;
+
+-- Qui peut demander pour ce joueur : un parent relié, ou le joueur lui-même s'il est majeur (date de naissance connue)
+create or replace function can_request_attestation(p_player uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists(select 1 from players p where p.id = p_player and p.deleted_at is null and not p.from_partner and (
+    exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = auth.uid())
+    or (p.user_id = auth.uid() and p.birth_date is not null and p.birth_date <= current_date - interval '18 years')));
+$$;
+revoke execute on function can_request_attestation(uuid) from public, anon, authenticated;
+
+-- Les demandes des saisons passées sont effacées (le PDF reste disponible jusqu'à la fin de la saison)
+create or replace function attestation_tidy() returns void
+language sql security definer set search_path = public as $$
+  delete from attestation_requests where season <> season_label(now()) and created_at < season_start(now());
+$$;
+revoke execute on function attestation_tidy() from public, anon, authenticated;
+
+-- Joueurs pour qui je peux demander : avec au moins un versement noté, et l'état de la demande de la saison
+create or replace function my_attestation_players() returns table(player_id uuid, club_id uuid, club_name text, first_name text, last_name text, request_id uuid, status text, reason text, decided_at timestamptz)
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return; end if;
+  perform attestation_tidy();
+  return query select p.id, p.club_id, c.name, p.first_name, p.last_name, r.id, r.status, r.reason, r.decided_at
+    from players p join clubs c on c.id = p.club_id
+    left join lateral (select * from attestation_requests x where x.player_id = p.id and x.season = season_label(now()) and x.requested_by = auth.uid()
+                       order by x.created_at desc limit 1) r on true
+    where can_request_attestation(p.id) and c.deleted_at is null and exists(select 1 from player_payments y where y.player_id = p.id)
+    order by c.name, p.first_name;
+end $$;
+revoke execute on function my_attestation_players() from public, anon;
+grant execute on function my_attestation_players() to authenticated;
+
+create or replace function request_attestation(p_player uuid) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare pl players; rid uuid; who text; u uuid;
+begin
+  if auth.uid() is null then raise exception 'Connecte-toi d''abord'; end if;
+  if not can_request_attestation(p_player) then raise exception 'Seul un parent relié, ou le joueur majeur, demande une attestation'; end if;
+  select * into pl from players where id = p_player;
+  if not exists(select 1 from player_payments where player_id = p_player) then raise exception 'Aucun versement noté pour ce joueur : le club ne peut pas encore délivrer d''attestation'; end if;
+  perform attestation_tidy();
+  if exists(select 1 from attestation_requests where player_id = p_player and season = season_label(now()) and status = 'attente') then
+    raise exception 'Une demande est déjà en attente pour ce joueur';
+  end if;
+  insert into attestation_requests(club_id, player_id, requested_by, season) values (pl.club_id, p_player, auth.uid(), season_label(now())) returning id into rid;
+  select coalesce(nullif(trim(coalesce(first_name, '') || ' ' || coalesce(last_name, '')), ''), 'Un membre') into who from profiles where id = auth.uid();
+  for u in select distinct m.user_id from memberships m where m.club_id = pl.club_id and m.status = 'active' and m.user_id is not null
+             and (m.role = 'president' or 'tresorerie' = any(areas_of(pl.club_id, m.user_id))) loop
+    perform push_enqueue(u, 'Attestation demandée', who || ' demande une attestation de paiement pour ' || pl.first_name || '.', 'attest', 'attreq:' || rid || ':' || u, './');
+  end loop;
+  return rid;
+end $$;
+revoke execute on function request_attestation(uuid) from public, anon;
+grant execute on function request_attestation(uuid) to authenticated;
+
+-- Pour la trésorerie et le président : les demandes de la saison
+create or replace function club_attestation_requests(p_club uuid) returns table(id uuid, player_id uuid, first_name text, last_name text, requested_by uuid, requester_name text, status text, reason text, created_at timestamptz, decided_at timestamptz)
+language plpgsql security definer set search_path = public as $$
+begin
+  if not (is_president(p_club) or has_area(p_club, 'tresorerie')) then raise exception 'Réservé au président et à la trésorerie'; end if;
+  perform attestation_tidy();
+  return query select r.id, r.player_id, p.first_name, p.last_name, r.requested_by,
+      coalesce(nullif(trim(coalesce(pr.first_name, '') || ' ' || coalesce(pr.last_name, '')), ''), 'Membre'), r.status, r.reason, r.created_at, r.decided_at
+    from attestation_requests r join players p on p.id = r.player_id left join profiles pr on pr.id = r.requested_by
+    where r.club_id = p_club and r.season = season_label(now())
+    order by (r.status = 'attente') desc, r.created_at desc limit 100;
+end $$;
+revoke execute on function club_attestation_requests(uuid) from public, anon;
+grant execute on function club_attestation_requests(uuid) to authenticated;
+
+create or replace function deliver_attestation(p_id uuid, p_pdf text) returns void
+language plpgsql security definer set search_path = public as $$
+declare r attestation_requests; pn text;
+begin
+  select * into r from attestation_requests where id = p_id;
+  if r.id is null then raise exception 'Demande introuvable'; end if;
+  if not (is_president(r.club_id) or has_area(r.club_id, 'tresorerie')) then raise exception 'Réservé au président et à la trésorerie'; end if;
+  if r.status <> 'attente' then raise exception 'Demande déjà traitée'; end if;
+  if p_pdf is null or p_pdf not like 'JVBERi0%' or length(p_pdf) > 2000000 then raise exception 'PDF illisible ou trop lourd'; end if;   -- « %PDF- » en base64
+  update attestation_requests set status = 'delivree', pdf = p_pdf, decided_by = auth.uid(), decided_at = now(), reason = null where id = p_id;
+  select first_name into pn from players where id = r.player_id;
+  perform log_action(r.club_id, r.requested_by, r.player_id, 'attestation de paiement délivrée sur demande', '{}'::jsonb);
+  if r.requested_by is not null then
+    perform push_enqueue(r.requested_by, 'Attestation prête', 'L''attestation de paiement de ' || coalesce(pn, 'ton enfant') || ' est dans Mon compte.', 'attest', 'attok:' || p_id, './');
+  end if;
+end $$;
+revoke execute on function deliver_attestation(uuid, text) from public, anon;
+grant execute on function deliver_attestation(uuid, text) to authenticated;
+
+create or replace function refuse_attestation(p_id uuid, p_reason text) returns void
+language plpgsql security definer set search_path = public as $$
+declare r attestation_requests; why text := nullif(left(trim(coalesce(p_reason, '')), 200), '');
+begin
+  select * into r from attestation_requests where id = p_id;
+  if r.id is null then raise exception 'Demande introuvable'; end if;
+  if not (is_president(r.club_id) or has_area(r.club_id, 'tresorerie')) then raise exception 'Réservé au président et à la trésorerie'; end if;
+  if r.status <> 'attente' then raise exception 'Demande déjà traitée'; end if;
+  if why is null then raise exception 'Indique un motif court'; end if;
+  update attestation_requests set status = 'refusee', reason = why, decided_by = auth.uid(), decided_at = now() where id = p_id;
+  perform log_action(r.club_id, r.requested_by, r.player_id, 'demande d''attestation refusée', jsonb_build_object('motif', why));
+  if r.requested_by is not null then
+    perform push_enqueue(r.requested_by, 'Attestation refusée', why, 'attest', 'attno:' || p_id, './');
+  end if;
+end $$;
+revoke execute on function refuse_attestation(uuid, text) from public, anon;
+grant execute on function refuse_attestation(uuid, text) to authenticated;
+
+-- Le PDF : pour la personne qui a demandé, et pour la trésorerie et le président du club
+create or replace function attestation_pdf(p_id uuid) returns text
+language plpgsql stable security definer set search_path = public as $$
+declare r attestation_requests;
+begin
+  select * into r from attestation_requests where id = p_id;
+  if r.id is null or r.status <> 'delivree' then raise exception 'Attestation introuvable'; end if;
+  if not (r.requested_by = auth.uid() or is_president(r.club_id) or has_area(r.club_id, 'tresorerie')) then raise exception 'Attestation introuvable'; end if;
+  return r.pdf;
+end $$;
+revoke execute on function attestation_pdf(uuid) from public, anon;
+grant execute on function attestation_pdf(uuid) to authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_5_9_0.sql =====
+-- mypocketclub · alpha 5.9.0 · mise à jour d'une base 5.7.0 ou 5.8.0, sans perte de données, relançable.
+--   N° 226 · catégories du basket (décision de Gaël du 13 novembre 2026) : U17 devient U18 et U20 devient U21.
+--            Équipes (catégorie, et nom automatique « U17 M » → « U18 M » ; un nom choisi par le club ne change pas),
+--            tarifs par catégorie, tag d'âge des exercices (U17 → U18).
+--            Les catégories du volley (M7 à M21, Seniors, Masters) sont dans l'application : rien à changer en base.
+--   (N° 221 à 225 : application seulement.)
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+update teams set category = 'U18' where category = 'U17';
+update teams set category = 'U21' where category = 'U20';
+update teams set name = 'U18' || substr(name, 4) where name ~ '^U17( [FM])?$';
+update teams set name = 'U21' || substr(name, 4) where name ~ '^U20( [FM])?$';
+
+-- un tarif n'est renommé que si la catégorie d'arrivée n'a pas déjà son tarif (sinon il resterait deux tarifs pour la même catégorie)
+update fee_grid f set category = 'U18' where f.category = 'U17'
+  and not exists (select 1 from fee_grid g where g.club_id = f.club_id and g.season = f.season and g.category = 'U18');
+update fee_grid f set category = 'U21' where f.category = 'U20'
+  and not exists (select 1 from fee_grid g where g.club_id = f.club_id and g.season = f.season and g.category = 'U21');
+
+update exercises set tags = array_replace(tags, 'U17', 'U18') where 'U17' = any(tags) and not 'U18' = any(tags);
+update exercises set tags = array_remove(tags, 'U17') where 'U17' = any(tags);
+
+select close_visitor_functions();
+
+-- ===== alpha_5_10_0.sql =====
+-- mypocketclub · alpha 5.10.0 · mise à jour d'une base 5.9.0, sans perte de données, relançable.
+--   N° 161 · exercices avec l'IA (décision de Gaël du 13 novembre 2026, doc claude/05f) :
+--     1. exercises.steps : le schéma animé, par étapes (éléments, positions de chaque étape, texte de l'étape).
+--        L'ancien schéma fixe (exercises.diagram) reste lu tel quel.
+--     2. ai_usage : chaque appel à l'IA (date, club, compte, modèle, jetons, coût estimé). Jamais le texte de l'exercice ni un nom.
+--     3. ai_credit et ai_settings : crédit acheté (saisi par l'administrateur à chaque achat), seuil d'alerte, budget par club, pause.
+--     4. ai_state(club) : la fonction Edge « generer-exercice » demande, au nom du coach, s'il peut lancer l'IA.
+--        Refus : IA en pause, solde épuisé, budget du club atteint pour la saison, 20 schémas par jour et par compte.
+--     5. ai_log_usage(...) : réservée à la fonction Edge (clé de service), note l'appel.
+--     6. admin_ai_stats(), admin_ai_credit(), admin_ai_settings() : vue du solde dans l'espace admin (double vérification).
+--   Budget par club et par saison (1er juillet) : 11 $ (environ 10 €) pour un club en test ou gratuit ;
+--   un club payant a 10 % de son abonnement estimé, et jamais moins que ce budget.
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- 1. Schéma animé ----------------------------------------------------------------
+alter table exercises add column if not exists steps jsonb not null default '{}'::jsonb;
+alter table exercises drop constraint if exists exercises_steps_ok;
+alter table exercises add constraint exercises_steps_ok check (jsonb_typeof(steps) = 'object' and pg_column_size(steps) <= 60000);
+
+-- un schéma modifié repasse aussi par la validation du bureau (partage public)
+create or replace function exercises_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    new.created_by := auth.uid();
+    if auth.uid() is not null and not (is_coach_in(new.club_id) or is_board(new.club_id)) then
+      raise exception 'Seuls les coachs et le bureau ajoutent des exercices';
+    end if;
+    new.up_count := 0; new.down_count := 0; new.validated_by := null; new.validated_at := null; new.deleted_at := null; new.deleted_by := null;
+  else
+    new.created_by := old.created_by; new.club_id := old.club_id; new.created_at := old.created_at;
+    if coalesce(current_setting('pc.exsys', true), '') <> 'on' then
+      new.up_count := old.up_count; new.down_count := old.down_count;
+      new.validated_by := old.validated_by; new.validated_at := old.validated_at;
+      new.deleted_at := old.deleted_at; new.deleted_by := old.deleted_by;
+    end if;
+  end if;
+  if not (exercise_text_ok(new.title) and exercise_text_ok(new.description) and exercise_text_ok(new.source) and exercise_text_ok(new.steps::text)) then
+    raise exception 'Texte refusé : il contient une mention de droits d''auteur (©, « tous droits réservés »…). Écris l''exercice avec tes propres mots.';
+  end if;
+  if coalesce(current_setting('pc.exsys', true), '') <> 'on' then
+    if new.sharing <> 'public' then new.public_state := 'none';
+    elsif tg_op = 'INSERT' or old.sharing <> 'public' or old.public_state = 'none'
+      or (new.title, new.description, new.diagram, new.steps, new.source, new.origin) is distinct from (old.title, old.description, old.diagram, old.steps, old.source, old.origin) then
+      new.public_state := 'pending'; new.validated_by := null; new.validated_at := null;
+    else new.public_state := old.public_state;
+    end if;
+  end if;
+  new.updated_at := now();
+  return new;
+end $$;
+
+-- 2 et 3. Suivi des appels, crédit, réglages ----------------------------------------
+create table if not exists ai_usage (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  club_id uuid references clubs(id) on delete set null,
+  user_id uuid references auth.users(id) on delete set null,
+  model text not null default '' check (length(model) <= 60),
+  tokens_in int not null default 0 check (tokens_in >= 0),
+  tokens_out int not null default 0 check (tokens_out >= 0),
+  cost_usd numeric(10, 5) not null default 0 check (cost_usd >= 0),
+  ok boolean not null default true          -- faux : l'IA a répondu, mais le schéma n'était pas utilisable (coût quand même compté)
+);
+create index if not exists ai_usage_at on ai_usage(at desc);
+create index if not exists ai_usage_club on ai_usage(club_id, at);
+create index if not exists ai_usage_user on ai_usage(user_id, at);
+alter table ai_usage enable row level security;
+revoke all on ai_usage from anon, authenticated;
+
+create table if not exists ai_credit (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  amount_usd numeric(10, 2) not null check (amount_usd > 0 and amount_usd <= 1000),
+  note text not null default '' check (length(note) <= 200),
+  admin_id uuid references auth.users(id) on delete set null
+);
+alter table ai_credit enable row level security;
+revoke all on ai_credit from anon, authenticated;
+
+create table if not exists ai_settings (
+  id int primary key default 1 check (id = 1),
+  enabled boolean not null default true,
+  alert_usd numeric(10, 2) not null default 2 check (alert_usd >= 0),
+  club_cap_usd numeric(10, 2) not null default 11 check (club_cap_usd >= 0),
+  per_day int not null default 20 check (per_day between 1 and 200)
+);
+insert into ai_settings(id) values (1) on conflict (id) do nothing;
+alter table ai_settings enable row level security;
+revoke all on ai_settings from anon, authenticated;
+
+-- début de la saison en cours (1er juillet), comme seasonOf() dans l'application
+create or replace function ai_season_start() returns timestamptz language sql stable as $$
+  select make_timestamptz(case when extract(month from now()) >= 7 then extract(year from now())::int else extract(year from now())::int - 1 end, 7, 1, 0, 0, 0, 'Europe/Paris');
+$$;
+
+create or replace function ai_balance() returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce((select sum(amount_usd) from ai_credit), 0) - coalesce((select sum(cost_usd) from ai_usage), 0);
+$$;
+revoke execute on function ai_balance() from public, anon, authenticated;
+
+create or replace function ai_club_cap(p_club uuid) returns numeric language sql stable security definer set search_path = public as $$
+  select greatest(
+    (select club_cap_usd from ai_settings where id = 1),
+    coalesce((select case when s.status = 'payant' and s.rate_cents is not null
+      then 0.10 * s.rate_cents / 100.0 * 1.1 * (select count(*) from players p where p.club_id = p_club and p.deleted_at is null) end
+      from club_subscription s where s.club_id = p_club), 0));
+$$;
+revoke execute on function ai_club_cap(uuid) from public, anon, authenticated;
+
+-- 4. Le coach peut-il lancer l'IA ? (appelée par la fonction Edge avec la session du coach)
+create or replace function ai_state(p_club uuid) returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare st ai_settings; spent numeric; cap numeric; today int;
+begin
+  if auth.uid() is null or not (is_coach_in(p_club) or is_board(p_club)) then
+    return jsonb_build_object('ok', false, 'reason', 'droits');
+  end if;
+  select * into st from ai_settings where id = 1;
+  spent := coalesce((select sum(cost_usd) from ai_usage where club_id = p_club and at >= ai_season_start()), 0);
+  cap := ai_club_cap(p_club);
+  today := (select count(*) from ai_usage where user_id = auth.uid() and at >= date_trunc('day', now()));
+  return jsonb_build_object(
+    'ok', st.enabled and ai_balance() > 0 and spent < cap and today < st.per_day,
+    'reason', case when not st.enabled then 'pause' when ai_balance() <= 0 then 'solde' when spent >= cap then 'club' when today >= st.per_day then 'jour' end,
+    'uid', auth.uid(), 'left_today', greatest(st.per_day - today, 0));
+end $$;
+revoke execute on function ai_state(uuid) from public, anon;
+grant execute on function ai_state(uuid) to authenticated;
+
+-- 5. Note d'un appel (clé de service seulement)
+create or replace function ai_log_usage(p_club uuid, p_user uuid, p_model text, p_in int, p_out int, p_cost numeric, p_ok boolean) returns void
+language sql security definer set search_path = public as $$
+  insert into ai_usage(club_id, user_id, model, tokens_in, tokens_out, cost_usd, ok)
+  values (p_club, p_user, left(coalesce(p_model, ''), 60), greatest(coalesce(p_in, 0), 0), greatest(coalesce(p_out, 0), 0), greatest(coalesce(p_cost, 0), 0), coalesce(p_ok, true));
+$$;
+revoke execute on function ai_log_usage(uuid, uuid, text, int, int, numeric, boolean) from public, anon, authenticated;
+do $$ begin
+  if exists(select 1 from pg_roles where rolname = 'service_role') then
+    execute 'grant execute on function ai_log_usage(uuid, uuid, text, int, int, numeric, boolean) to service_role';
+    execute 'grant execute on function ai_state(uuid) to service_role';
+  end if;
+end $$;
+
+-- 6. Espace admin ---------------------------------------------------------------------
+create or replace function admin_ai_stats() returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare st ai_settings; r jsonb;
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  select * into st from ai_settings where id = 1;
+  select jsonb_build_object(
+    'enabled', st.enabled, 'alert_usd', st.alert_usd, 'club_cap_usd', st.club_cap_usd, 'per_day', st.per_day,
+    'credit', coalesce((select sum(amount_usd) from ai_credit), 0),
+    'spent_total', coalesce((select sum(cost_usd) from ai_usage), 0),
+    'spent_month', coalesce((select sum(cost_usd) from ai_usage where at >= date_trunc('month', now())), 0),
+    'count_total', (select count(*) from ai_usage where ok),
+    'count_month', (select count(*) from ai_usage where ok and at >= date_trunc('month', now())),
+    'fails', (select count(*) from ai_usage where not ok),
+    'balance', ai_balance(),
+    'credits', coalesce((select jsonb_agg(jsonb_build_object('at', at, 'amount', amount_usd, 'note', note) order by at desc) from (select * from ai_credit order by at desc limit 5) c), '[]'::jsonb),
+    'clubs', coalesce((select jsonb_agg(x order by x->>'spent' desc) from (
+      select jsonb_build_object('name', coalesce(c.name, 'Club supprimé'), 'spent', round(sum(u.cost_usd), 4), 'n', count(*) filter (where u.ok), 'cap', round(ai_club_cap(u.club_id), 2)) x
+      from ai_usage u left join clubs c on c.id = u.club_id where u.at >= ai_season_start() group by u.club_id, c.name order by sum(u.cost_usd) desc limit 10) t), '[]'::jsonb)
+  ) into r;
+  return r;
+end $$;
+revoke execute on function admin_ai_stats() from public, anon;
+grant execute on function admin_ai_stats() to authenticated;
+
+create or replace function admin_ai_credit(p_amount numeric, p_note text default '') returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if p_amount is null or p_amount <= 0 or p_amount > 1000 then raise exception 'Montant entre 0,01 et 1 000 $'; end if;
+  insert into ai_credit(amount_usd, note, admin_id) values (round(p_amount, 2), left(coalesce(p_note, ''), 200), auth.uid());
+  perform admin_note('crédit IA ajouté', null, jsonb_build_object('montant_usd', round(p_amount, 2)));
+end $$;
+revoke execute on function admin_ai_credit(numeric, text) from public, anon;
+grant execute on function admin_ai_credit(numeric, text) to authenticated;
+
+create or replace function admin_ai_settings(p_enabled boolean, p_alert numeric, p_cap numeric, p_per_day int) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  update ai_settings set enabled = coalesce(p_enabled, enabled), alert_usd = coalesce(p_alert, alert_usd),
+    club_cap_usd = coalesce(p_cap, club_cap_usd), per_day = coalesce(p_per_day, per_day) where id = 1;
+  perform admin_note('réglages IA', null, jsonb_build_object('actif', p_enabled, 'alerte', p_alert, 'budget_club', p_cap, 'par_jour', p_per_day));
+end $$;
+revoke execute on function admin_ai_settings(boolean, numeric, numeric, int) from public, anon;
+grant execute on function admin_ai_settings(boolean, numeric, numeric, int) to authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_5_11_0.sql =====
+-- mypocketclub · alpha 5.11.0 · mise à jour d'une base 5.10.0, sans perte de données utiles, relançable.
+--   N° 229 · mise en conformité (décisions de Gaël du 13 novembre 2026, transparence) :
+--     1. les touchers sur « Payer · Bientôt disponible » ne sont plus comptés (table et fonctions retirées) ;
+--     2. l'adresse IP des recherches de club n'est plus gardée en clair : seulement son empreinte (anciennes lignes effacées).
+--   N° 230 · coordonnées des familles visibles seulement du président, du secrétariat, de la trésorerie, du directeur technique
+--            (si le président ne les a pas masquées), du contact licences et du contact rencontres ; les coachs et le contact
+--            d'équipe gardent celles de leur équipe. Plus pour le vice-président, la communication, le sponsoring, les événements
+--            ni le rôle « Autre ».
+--   Lot e-mails 1 :
+--     n° 185 · liste noire : une désinscription est définitive (empreinte de l'adresse, jamais l'adresse en clair) ;
+--             jeton de désinscription pour une adresse qui n'a pas de compte (servira au n° 96, lot 2) ;
+--     n° 207 · l'attestation délivrée peut aussi partir par e-mail au demandeur (choix du trésorier, une seule fois) ;
+--     n° 187 · e-mail de prévenance des comptes inactifs (lancé par l'administrateur, 40 au plus par passage) ;
+--     n° 228 · compteur des e-mails (journal sans adresse ni contenu) et vue dans l'espace admin.
+--   Lot e-mails 2 · n° 96 (décision de Gaël du 13 novembre 2026, 15 h 44) : e-mail au dirigeant d'un club absent.
+--     La demande d'un membre fait une notification à l'administrateur (« prise de contact demandée ») ;
+--     l'administrateur saisit l'adresse PUBLIÉE du club et d'où elle vient, puis envoie (info.mypocketclub.fr) ;
+--     une relance au plus, 14 jours après ; jamais une adresse de la liste noire ; 10 e-mails de ce type par jour au plus.
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- ---------------------------------------------------------------------
+-- 1. N° 229 · plus de comptage des touchers sur « Payer »
+-- ---------------------------------------------------------------------
+drop function if exists feature_tap_counts();
+drop function if exists tap_feature(text, uuid);
+drop table if exists feature_taps;
+
+-- ---------------------------------------------------------------------
+-- 2. N° 229 · adresse IP des recherches : empreinte seulement
+-- ---------------------------------------------------------------------
+create or replace function check_search_rate() returns void language plpgsql security definer set search_path = public as $$
+declare v_ip text := md5('pc-recherche:' || request_ip());
+begin
+  if (select count(*) from search_attempts s where s.ip = v_ip and s.at > now() - interval '1 minute') >= 30 then
+    raise exception 'Trop de recherches. Réessaie dans une minute.';
+  end if;
+  insert into search_attempts(ip) values (v_ip);
+  if random() < 0.02 then delete from search_attempts where at < now() - interval '1 hour'; end if;
+end $$;
+revoke execute on function check_search_rate() from public, anon, authenticated;
+delete from search_attempts where length(ip) <> 32 or ip !~ '^[0-9a-f]{32}$';   -- les adresses gardées en clair
+
+-- ---------------------------------------------------------------------
+-- 3. N° 230 · qui voit les coordonnées des familles
+-- ---------------------------------------------------------------------
+create or replace function sees_family_contacts(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select auth.uid() is not null and (
+    is_president(c)
+    or exists(select 1 from memberships m where m.club_id = c and m.user_id = auth.uid() and m.status = 'active' and m.role = 'bureau'
+      and (m.fonction in ('Secrétaire', 'Secrétaire adjoint', 'Trésorier', 'Trésorier adjoint', 'Correspondant licences', 'Correspondant rencontres')
+           or (m.fonction in ('Directeur technique', 'Directeur sportif') and exists(select 1 from clubs k where k.id = c and k.tech_sees_contacts))))
+    or exists(select 1 from club_designations d join memberships m on m.club_id = d.club_id and m.user_id = d.user_id and m.status = 'active'
+      where d.club_id = c and d.user_id = auth.uid() and d.resp in ('licences', 'rencontres')));
+$$;
+revoke execute on function sees_family_contacts(uuid) from public, anon, authenticated;
+
+create or replace function player_contacts(p_club uuid) returns table(id uuid, parent_email text, parent_phone text, emergency_name text, emergency_phone text)
+language sql stable security definer set search_path = public as $$
+  select x.id, x.parent_email, x.parent_phone, x.emergency_name, x.emergency_phone
+  from players x
+  where x.club_id = p_club and x.deleted_at is null and auth.uid() is not null and (
+    x.user_id = auth.uid() or is_parent_of(x.id) or coaches_team(x.team_id)
+    or exists(select 1 from player_teams pt where pt.player_id = x.id and coaches_team(pt.team_id))
+    or is_team_contact(x.team_id)
+    or exists(select 1 from player_teams pt where pt.player_id = x.id and is_team_contact(pt.team_id))
+    or sees_family_contacts(x.club_id));
+$$;
+-- Téléphones : l'encadrement (président, bureau, coachs) reste joignable par les membres ;
+-- les familles ne le sont que des fonctions ci-dessus, de leurs coachs et du contact de leur équipe
+create or replace function phones_for(p_ids uuid[]) returns table(id uuid, phone text)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.phone from profiles p where p.id = any(p_ids) and p.phone is not null and p.deleted_at is null and (
+    p.id = auth.uid()
+    or exists(select 1 from memberships a join memberships b on a.club_id = b.club_id
+      where a.user_id = auth.uid() and a.status = 'active' and a.role in ('president','bureau') and b.user_id = p.id and sees_family_contacts(a.club_id))
+    or exists(select 1 from memberships a join memberships b on a.club_id = b.club_id
+      where b.user_id = p.id and b.status = 'active' and b.role in ('president','bureau','coach') and a.user_id = auth.uid() and a.status = 'active' and a.role <> 'supporteur')
+    or exists(select 1 from players x left join player_parents pp on pp.player_id = x.id
+      where x.deleted_at is null and (pp.user_id = p.id or x.user_id = p.id)
+        and (coaches_team(x.team_id) or exists(select 1 from player_teams pt where pt.player_id = x.id and coaches_team(pt.team_id))
+             or is_team_contact(x.team_id) or exists(select 1 from player_teams pt where pt.player_id = x.id and is_team_contact(pt.team_id)))));
+$$;
+revoke execute on function player_contacts(uuid), phones_for(uuid[]) from public, anon;
+grant execute on function player_contacts(uuid), phones_for(uuid[]) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 4. N° 228 · journal des e-mails (type, club, réussite ; jamais l'adresse ni le contenu)
+-- ---------------------------------------------------------------------
+create table if not exists mail_log (
+  id bigserial primary key,
+  kind text not null check (kind in ('test', 'nouvel_appareil', 'invitation_parent', 'rappel_validation', 'attestation', 'prevenance_inactif', 'information')),
+  club_id uuid references clubs(id) on delete set null,
+  ok boolean not null default true,
+  at timestamptz not null default now()
+);
+create index if not exists mail_log_at on mail_log(at);
+alter table mail_log enable row level security;   -- aucune règle : seulement par les fonctions
+
+-- Réservée à la fonction envoyer-email (clé du serveur)
+create or replace function mail_log_add(p_kind text, p_club uuid, p_ok boolean) returns void
+language sql security definer set search_path = public as $$
+  insert into mail_log(kind, club_id, ok) values (p_kind, p_club, coalesce(p_ok, true));
+  delete from mail_log where at < now() - interval '400 days' and random() < 0.05;
+$$;
+revoke execute on function mail_log_add(text, uuid, boolean) from public, anon, authenticated;
+do $$ begin
+  if exists(select 1 from pg_roles where rolname = 'service_role') then
+    execute 'grant execute on function mail_log_add(text, uuid, boolean) to service_role';
+  end if;
+end $$;
+
+-- Nombre d'e-mails partis aujourd'hui (journal + convocations), pour les limites
+create or replace function mails_today(p_club uuid default null) returns int language sql stable security definer set search_path = public as $$
+  select ((select count(*) from mail_log l where l.at >= date_trunc('day', now()) and (p_club is null or l.club_id = p_club))
+        + (select count(*) from convocation_sends s where s.channel = 'email' and s.sent_at >= date_trunc('day', now()) and (p_club is null or s.club_id = p_club)))::int;
+$$;
+revoke execute on function mails_today(uuid) from public, anon, authenticated;
+
+-- Espace admin : e-mails du jour et du mois, par type, face aux limites de Resend (100 par jour, 3 000 par mois)
+create or replace function admin_mail_stats() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare d timestamptz := date_trunc('day', now()); m timestamptz := date_trunc('month', now()); k jsonb;
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  select coalesce(jsonb_object_agg(kind, jsonb_build_object('jour', jour, 'mois', mois, 'echecs', echecs)), '{}'::jsonb) into k from (
+    select kind, count(*) filter (where at >= d) jour, count(*) mois, count(*) filter (where not ok) echecs from mail_log where at >= m group by kind
+    union all
+    select 'convocation', count(*) filter (where sent_at >= d), count(*), count(*) filter (where status = 'echec') from convocation_sends where channel = 'email' and sent_at >= m having count(*) > 0
+  ) q;
+  return jsonb_build_object('jour', mails_today(null),
+    'mois', (select count(*) from mail_log where at >= m) + (select count(*) from convocation_sends where channel = 'email' and sent_at >= m),
+    'limite_jour', 100, 'limite_mois', 3000, 'types', k);
+end $$;
+revoke execute on function admin_mail_stats() from public, anon;
+grant execute on function admin_mail_stats() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 5. N° 185 · liste noire : une désinscription est définitive (empreinte de l'adresse)
+-- ---------------------------------------------------------------------
+create table if not exists mail_blocklist (
+  email_hash text primary key,
+  at timestamptz not null default now()
+);
+alter table mail_blocklist enable row level security;
+create or replace function mail_hash(p_email text) returns text language sql immutable as $$
+  select md5('pc-liste-noire:' || lower(trim(coalesce(p_email, ''))));
+$$;
+-- Jetons de désinscription pour une adresse sans compte (e-mail au dirigeant d'un club absent, lot 2)
+create table if not exists mail_info_tokens (
+  email_hash text primary key,
+  token text not null unique default replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''),
+  created_at timestamptz not null default now()
+);
+alter table mail_info_tokens enable row level security;
+
+-- Réservées au serveur : le jeton d'une adresse, et « cette adresse a-t-elle refusé ? »
+create or replace function mail_info_token(p_email text) returns text
+language plpgsql security definer set search_path = public as $$
+declare t text; h text := mail_hash(p_email);
+begin
+  insert into mail_info_tokens(email_hash) values (h) on conflict do nothing;
+  select token into t from mail_info_tokens where email_hash = h;
+  return t;
+end $$;
+create or replace function mail_blocked(p_email text) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from mail_blocklist where email_hash = mail_hash(p_email));
+$$;
+revoke execute on function mail_info_token(text), mail_blocked(text), mail_hash(text) from public, anon, authenticated;
+do $$ begin
+  if exists(select 1 from pg_roles where rolname = 'service_role') then
+    execute 'grant execute on function mail_info_token(text), mail_blocked(text) to service_role';
+  end if;
+end $$;
+
+-- Le lien de désinscription (ouvert au visiteur) : compte ou adresse seule ; l'adresse entre dans la liste noire
+create or replace function unsubscribe_info(p_token text) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare u uuid; h text;
+begin
+  if p_token is null or length(p_token) < 32 then return false; end if;
+  select user_id into u from mail_unsub where token = p_token;
+  if u is not null then
+    update profiles set optin_emails = false, optin_at = now() where id = u and optin_emails;
+    select mail_hash(email) into h from auth.users where id = u;
+  else
+    select email_hash into h from mail_info_tokens where token = p_token;
+    if h is null then return false; end if;
+  end if;
+  if h is not null then insert into mail_blocklist(email_hash) values (h) on conflict do nothing; end if;
+  return true;
+end $$;
+grant execute on function unsubscribe_info(text) to anon, authenticated;
+
+-- Une personne qui se réinscrit elle-même dans Mon compte sort de la liste noire (son choix explicite)
+create or replace function profiles_optin_unblock() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.optin_emails and not coalesce(old.optin_emails, false) then
+    delete from mail_blocklist where email_hash = (select mail_hash(email) from auth.users where id = new.id);
+  end if;
+  return new;
+end $$;
+revoke execute on function profiles_optin_unblock() from public, anon, authenticated;
+drop trigger if exists profiles_optin_unblock on profiles;
+create trigger profiles_optin_unblock after update of optin_emails on profiles for each row execute function profiles_optin_unblock();
+
+-- ---------------------------------------------------------------------
+-- 6. N° 207 · l'attestation délivrée envoyée aussi par e-mail (choix du trésorier, une seule fois)
+-- ---------------------------------------------------------------------
+alter table attestation_requests add column if not exists mailed_at timestamptz;
+
+-- La fonction envoyer-email la demande au nom du trésorier (ou du président) : adresse du demandeur lue ici, jamais par l'application
+create or replace function attestation_mail_take(p_id uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r attestation_requests; mail text; pn text; cn text; rn text;
+begin
+  select * into r from attestation_requests where id = p_id for update;
+  if r.id is null then raise exception 'Demande introuvable'; end if;
+  if not (is_president(r.club_id) or has_area(r.club_id, 'tresorerie')) then raise exception 'Réservé au président et à la trésorerie'; end if;
+  if r.status <> 'delivree' or r.pdf is null then raise exception 'Attestation pas encore délivrée'; end if;
+  if r.mailed_at is not null then raise exception 'Attestation déjà envoyée par e-mail'; end if;
+  if r.requested_by is null then raise exception 'Le demandeur n''a plus de compte'; end if;
+  if mails_today(r.club_id) >= 20 or mails_today(null) >= 80 then raise exception 'Limite d''e-mails du jour atteinte : le demandeur la trouve dans Mon compte'; end if;
+  select email::text into mail from auth.users where id = r.requested_by;
+  if mail is null then raise exception 'Adresse du demandeur introuvable'; end if;
+  update attestation_requests set mailed_at = now() where id = p_id;
+  select first_name into pn from players where id = r.player_id;
+  select name into cn from clubs where id = r.club_id;
+  select first_name into rn from profiles where id = r.requested_by;
+  perform log_action(r.club_id, r.requested_by, r.player_id, 'attestation de paiement envoyée par e-mail au demandeur', '{}'::jsonb);
+  return jsonb_build_object('email', mail, 'first_name', coalesce(rn, ''), 'player', coalesce(pn, ''), 'club', coalesce(cn, ''), 'club_id', r.club_id,
+    'season', r.season, 'pdf', r.pdf);
+end $$;
+revoke execute on function attestation_mail_take(uuid) from public, anon;
+grant execute on function attestation_mail_take(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 7. N° 187 · prévenance des comptes inactifs (e-mail de service, lancé par l'administrateur)
+-- ---------------------------------------------------------------------
+-- Réservée au serveur : remet au plus p_limit comptes à prévenir et les marque « prévenus » (corbeille 30 jours plus tard)
+create or replace function inactive_warnings_take(p_limit int) returns table(email text, first_name text, until date)
+language plpgsql security definer set search_path = public as $$
+begin
+  return query with pick as (
+      select u.id from auth.users u join profiles pr on pr.id = u.id
+      where pr.deleted_at is null and pr.inactive_warned_at is null
+        and coalesce(u.last_sign_in_at, u.created_at) < (season_start(now()) - interval '1 year') + interval '30 days'
+      order by coalesce(u.last_sign_in_at, u.created_at) limit greatest(0, least(coalesce(p_limit, 0), 40)))
+    , done as (update profiles pr set inactive_warned_at = now() from pick where pr.id = pick.id returning pr.id, pr.first_name)
+    select u.email::text, d.first_name, (now() + interval '30 days')::date from done d join auth.users u on u.id = d.id;
+end $$;
+revoke execute on function inactive_warnings_take(int) from public, anon, authenticated;
+do $$ begin
+  if exists(select 1 from pg_roles where rolname = 'service_role') then
+    execute 'grant execute on function inactive_warnings_take(int) to service_role';
+  end if;
+end $$;
+
+-- L'aperçu de l'Entretien dit combien de comptes seront prévenus par e-mail
+create or replace function admin_purge_preview() returns table(item text, n bigint)
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  return query select x.item, x.n from purge_expired(false) x;
+  item := 'comptes inactifs à prévenir par e-mail'; n := (select count(*) from warn_inactive_accounts(false)); return next;
+end $$;
+revoke execute on function admin_purge_preview() from public, anon;
+grant execute on function admin_purge_preview() to authenticated;
+
+-- Une trace au journal admin quand l'administrateur lance la prévenance (la fonction d'envoi l'appelle à son nom)
+create or replace function admin_inactive_warn_note(p_sent int) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  perform admin_note('comptes inactifs prévenus par e-mail', null, jsonb_build_object('e-mails', greatest(coalesce(p_sent, 0), 0)));
+end $$;
+revoke execute on function admin_inactive_warn_note(int) from public, anon;
+grant execute on function admin_inactive_warn_note(int) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 8. N° 96 · e-mail au dirigeant d'un club absent (envoyé par l'administrateur)
+-- ---------------------------------------------------------------------
+-- Un suivi par club demandé (nom et ville) : adresse publiée du club, d'où elle vient, envoi, relance, refus
+create table if not exists club_outreach (
+  id uuid primary key default gen_random_uuid(),
+  club_key text not null unique,
+  club_name text not null,
+  city text not null default '',
+  email text not null check (length(email) between 5 and 160),
+  source text not null check (length(source) between 2 and 80),
+  source_url text not null default '' check (length(source_url) <= 300),
+  sent_at timestamptz,
+  relance_at timestamptz,
+  status text not null default 'pret' check (status in ('pret', 'envoye', 'relance', 'refuse', 'echec')),
+  created_at timestamptz not null default now()
+);
+alter table club_outreach enable row level security;
+drop policy if exists "démarchage : administrateur" on club_outreach;
+create policy "démarchage : administrateur" on club_outreach for select using (is_app_admin());
+
+create or replace function outreach_key(p_club text, p_city text) returns text language sql immutable as $$
+  select norm_name(coalesce(p_club, '')) || '|' || norm_name(coalesce(p_city, ''));
+$$;
+
+-- La fonction envoyer-email la demande au nom de l'administrateur (double vérification) : contrôle, réserve et donne le contenu
+create or replace function admin_outreach_prepare(p_request uuid, p_email text, p_source text, p_url text, p_relance boolean) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r club_requests; k text; o club_outreach; em text := lower(trim(coalesce(p_email, ''))); n int; req record;
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  select * into r from club_requests where id = p_request;
+  if r.id is null then raise exception 'Demande introuvable'; end if;
+  k := outreach_key(r.club_name, r.city);
+  select * into o from club_outreach where club_key = k for update;
+  if coalesce(p_relance, false) then
+    if o.id is null or o.status <> 'envoye' then raise exception 'Relance possible seulement après un premier envoi, et une seule fois'; end if;
+    if o.sent_at > now() - interval '14 days' then raise exception 'Relance possible à partir du %', to_char(o.sent_at + interval '14 days', 'DD/MM/YYYY'); end if;
+    em := o.email;
+  else
+    if o.id is not null and o.status in ('envoye', 'relance', 'refuse') then raise exception 'Ce club a déjà été contacté : une relance au plus'; end if;
+    if em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(em) > 160 then raise exception 'Adresse e-mail du club à vérifier'; end if;
+    if length(trim(coalesce(p_source, ''))) < 2 then raise exception 'Indique d''où vient l''adresse (site du club, fédération…)'; end if;
+  end if;
+  if exists(select 1 from mail_blocklist where email_hash = mail_hash(em)) then
+    if o.id is not null then update club_outreach set status = 'refuse' where id = o.id; end if;
+    raise exception 'Cette adresse a refusé tout envoi : on ne lui écrit plus';
+  end if;
+  if exists(select 1 from clubs c where c.deleted_at is null and outreach_key(c.name, c.city) = k) then raise exception 'Ce club est déjà inscrit sur mypocketclub'; end if;
+  if (select count(*) from mail_log where kind = 'information' and at >= date_trunc('day', now())) >= 10 then raise exception 'Limite du jour atteinte (10 e-mails aux clubs) : réessaie demain'; end if;
+  if mails_today(null) >= 80 then raise exception 'Limite d''e-mails du jour atteinte : réessaie demain'; end if;
+  -- la dernière demande dont l'auteur a accepté que son nom soit transmis ; et le nombre de demandeurs pour ce club
+  select * into req from club_requests x where outreach_key(x.club_name, x.city) = k and x.consent order by x.created_at desc limit 1;
+  select count(distinct lower(x.email)) into n from club_requests x where outreach_key(x.club_name, x.city) = k and x.consent;
+  if coalesce(p_relance, false) then
+    update club_outreach set status = 'relance', relance_at = now() where id = o.id returning * into o;
+  else
+    insert into club_outreach(club_key, club_name, city, email, source, source_url, sent_at, status)
+      values (k, r.club_name, r.city, em, left(trim(p_source), 80), left(trim(coalesce(p_url, '')), 300), now(), 'envoye')
+      on conflict (club_key) do update set email = excluded.email, source = excluded.source, source_url = excluded.source_url, sent_at = now(), status = 'envoye'
+      returning * into o;
+  end if;
+  update club_requests set status = 'done', done_at = now() where outreach_key(club_name, city) = k and status = 'new';
+  perform admin_note(case when coalesce(p_relance, false) then 'club absent relancé par e-mail' else 'club absent contacté par e-mail' end, null,
+    jsonb_build_object('club', r.club_name, 'ville', r.city, 'source', o.source));
+  return jsonb_build_object('outreach', o.id, 'email', em, 'token', mail_info_token(em), 'club', r.club_name, 'city', r.city,
+    'first_name', coalesce(req.first_name, ''), 'last_name', coalesce(req.last_name, ''), 'count', greatest(n, 1), 'relance', coalesce(p_relance, false), 'source', o.source);
+end $$;
+revoke execute on function admin_outreach_prepare(uuid, text, text, text, boolean) from public, anon;
+grant execute on function admin_outreach_prepare(uuid, text, text, text, boolean) to authenticated;
+
+-- Resend a refusé : l'envoi est annulé (on peut réessayer), noté « échec »
+create or replace function admin_outreach_failed(p_outreach uuid, p_relance boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if coalesce(p_relance, false) then update club_outreach set status = 'envoye', relance_at = null where id = p_outreach;
+  else update club_outreach set status = 'echec', sent_at = null where id = p_outreach; end if;
+end $$;
+revoke execute on function admin_outreach_failed(uuid, boolean) from public, anon;
+grant execute on function admin_outreach_failed(uuid, boolean) to authenticated;
+
+-- La demande d'un membre ou d'un visiteur : notification « prise de contact demandée » à l'administrateur (plus de « simulation »)
+create or replace function request_club(p_first text, p_last text, p_email text, p_club text, p_city text, p_sport text, p_age_ok boolean, p_consent boolean)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_ip text := md5(request_ip()); v_email text := lower(trim(coalesce(p_email, '')));
+  v_first text := left(trim(coalesce(p_first, '')), 60); v_last text := left(trim(coalesce(p_last, '')), 60);
+  v_club text := left(trim(coalesce(p_club, '')), 120); v_city text := left(trim(coalesce(p_city, '')), 80); v_sport text := left(trim(coalesce(p_sport, '')), 40);
+  rid uuid; a uuid; who text;
+begin
+  if v_first = '' or v_last = '' then raise exception 'Prénom et nom obligatoires'; end if;
+  if v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(v_email) > 160 then raise exception 'Adresse e-mail à vérifier'; end if;
+  if length(v_club) < 2 then raise exception 'Nom du club obligatoire'; end if;
+  if v_city = '' or v_sport = '' then raise exception 'Ville et sport du club obligatoires'; end if;
+  if not coalesce(p_age_ok, false) then raise exception 'Moins de 15 ans : un parent fait la demande'; end if;
+  if not coalesce(p_consent, false) then raise exception 'L''accord pour transmettre ton nom au club est obligatoire'; end if;
+  if (select count(*) from club_requests where ip_hash = v_ip and created_at > now() - interval '1 day') >= 10
+     or (select count(*) from club_requests where lower(email) = v_email and created_at > now() - interval '1 day') >= 3 then
+    raise exception 'Trop de demandes aujourd''hui. Réessaie demain.';
+  end if;
+  select id into rid from club_requests
+    where lower(email) = v_email and norm_name(club_name) = norm_name(v_club) and norm_name(city) = norm_name(v_city) and created_at > now() - interval '30 days'
+    order by created_at desc limit 1;
+  if rid is not null then return rid; end if;
+  insert into club_requests(first_name, last_name, email, club_name, city, sport, age_ok, consent, user_id, ip_hash)
+    values (v_first, v_last, v_email, v_club, v_city, v_sport, true, true, auth.uid(), v_ip) returning id into rid;
+  who := v_first || ' ' || v_last || case when auth.uid() is not null then ' (adhérent)' else ' (visiteur)' end;
+  for a in select user_id from app_admins loop
+    perform push_enqueue(a, 'Prise de contact demandée : ' || left(v_club, 50),
+      v_club || ' (' || v_city || ', ' || v_sport || ') · demandée par ' || who || '. À toi de contacter le club.',
+      'clubreq', 'clubreq:' || rid::text, './');
+  end loop;
+  return rid;
+end $$;
+revoke execute on function request_club(text, text, text, text, text, text, boolean, boolean) from public;
+grant execute on function request_club(text, text, text, text, text, text, boolean, boolean) to anon, authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_5_12_0.sql =====
+-- mypocketclub · alpha 5.12.0 · mise à jour d'une base 5.11.0, sans perte de données, relançable.
+--   N° 124 (décision de Gaël du 13 novembre 2026) : un envoi de convocation n'est plus refusé parce que le président du club
+--            n'est pas encore validé par mypocketclub. Il faut seulement l'accès Événements du club. Les plafonds restent
+--            (20 e-mails par club, 80 par jour, compteur n° 228) ; la validation sert encore à l'espace admin et à la corbeille (n° 182).
+--   N° 162 (lot e-mails 3, décisions de Gaël du 13 novembre 2026) : recommander mypocketclub à un club qui ne l'utilise pas.
+--     Façon 1 · convocation par e-mail : la base dit si un P.-S. peut être ajouté (club destinataire absent de mypocketclub,
+--               adresse pas dans la liste noire). Une seule question par e-mail réservé ; l'adresse n'est pas gardée.
+--     Façon 2 · écran d'ouverture : un visiteur saisit l'adresse d'un dirigeant de son club ; la fonction « recommander-club »
+--               (anti-robots Turnstile) demande l'accord de la base : une recommandation par adresse pour toujours, 3 par visiteur
+--               et par jour, 20 en tout par jour, jamais une adresse de la liste noire, d'un compte ou déjà démarchée (n° 96).
+--               La base ne garde que l'empreinte de l'adresse (et celle de l'adresse IP pendant 2 jours), jamais l'adresse.
+--   N° 187 : le journal des actions sensibles est déjà effacé après 1 an par le passage « Suppressions automatiques »
+--            (purge_expired, 5.3.0) ; rien à changer ici, la politique « Vos données » 1.6 le dit désormais.
+-- Termine par « select close_visitor_functions(); » (règle de la 4.3.0).
+
+-- ---------------------------------------------------------------------
+-- 1. N° 124 · plus de validation pour envoyer
+-- ---------------------------------------------------------------------
+create or replace function can_send_convocations(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select auth.uid() is not null and has_area(c, 'evenements');
+$$;
+revoke execute on function can_send_convocations(uuid) from public, anon;
+grant execute on function can_send_convocations(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 2. N° 162 · façon 1 · P.-S. dans une convocation envoyée à un club absent de mypocketclub
+--    Appelée par la fonction envoyer-email juste après la réservation de l'e-mail (convocation_reserve), au nom de la personne
+--    qui envoie, une fois par e-mail réservé. Réponse : oui (on ajoute le P.-S.) ou non. En cas de doute : non.
+-- ---------------------------------------------------------------------
+create or replace function convocation_ps(p_send uuid, p_email text) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare s convocation_sends; em text := lower(trim(coalesce(p_email, '')));
+begin
+  select * into s from convocation_sends where id = p_send;
+  if s.id is null or s.sent_by is distinct from auth.uid() or s.channel <> 'email' or s.status <> 'en_cours' then return false; end if;
+  if em !~ '^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$' or mail_blocked(em) then return false; end if;
+  -- l'adresse est celle d'un membre d'un autre club inscrit : ce club est déjà sur mypocketclub
+  if exists(select 1 from auth.users u join memberships m on m.user_id = u.id and m.status = 'active'
+            join clubs c on c.id = m.club_id and c.deleted_at is null
+            where lower(u.email) = em and m.club_id <> s.club_id) then return false; end if;
+  -- l'adversaire du rendez-vous porte le nom d'un club inscrit
+  if exists(select 1 from events e join clubs c on c.deleted_at is null and c.id <> e.club_id
+            and lower(trim(c.name)) = lower(trim(coalesce(e.opponents, '')))
+            where e.id = s.event_id) then return false; end if;
+  return true;
+end $$;
+revoke execute on function convocation_ps(uuid, text) from public, anon;
+grant execute on function convocation_ps(uuid, text) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 3. N° 162 · façon 2 · recommandation depuis l'écran d'ouverture (réservée au serveur)
+-- ---------------------------------------------------------------------
+create table if not exists club_recommendations (
+  email_hash text primary key,                 -- empreinte de l'adresse (mail_hash), jamais l'adresse
+  ip_hash text,                                -- empreinte de l'adresse IP du visiteur, effacée après 2 jours
+  status text not null default 'en_cours' check (status in ('en_cours', 'envoye', 'echec')),
+  at timestamptz not null default now()
+);
+alter table club_recommendations enable row level security;
+revoke all on club_recommendations from anon, authenticated;
+
+create or replace function recommend_take(p_email text, p_ip text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare em text := lower(trim(coalesce(p_email, ''))); h text; ih text := md5('pc-recommandation:' || coalesce(nullif(p_ip, ''), 'inconnu'));
+  r club_recommendations;
+begin
+  if em !~ '^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$' or length(em) > 160 then raise exception 'Adresse e-mail à vérifier'; end if;
+  h := mail_hash(em);
+  perform pg_advisory_xact_lock(hashtext('mypocketclub:recommandations'));
+  update club_recommendations set ip_hash = null where ip_hash is not null and at < now() - interval '2 days';
+  delete from club_recommendations where status = 'en_cours' and at < now() - interval '1 hour';   -- envoi resté sans réponse
+  -- une même réponse pour tous les refus liés à l'adresse : on ne dit pas si elle a un compte ou si elle s'est désinscrite
+  select * into r from club_recommendations where email_hash = h;
+  if (r.email_hash is not null and r.status <> 'echec') or mail_blocked(em)
+     or exists(select 1 from auth.users u where lower(u.email) = em)
+     or exists(select 1 from club_outreach o where lower(o.email) = em) then
+    raise exception 'Recommandation impossible pour cette adresse';
+  end if;
+  if (select count(*) from club_recommendations where ip_hash = ih and at > now() - interval '1 day') >= 3 then
+    raise exception 'Limite atteinte : 3 recommandations par jour. Réessaie demain.';
+  end if;
+  if (select count(*) from club_recommendations where at > now() - interval '1 day') >= 20 or mails_today() >= 90 then
+    raise exception 'Limite du jour atteinte : réessaie demain.';
+  end if;
+  insert into club_recommendations(email_hash, ip_hash, status, at) values (h, ih, 'en_cours', now())
+    on conflict (email_hash) do update set ip_hash = excluded.ip_hash, status = 'en_cours', at = now();
+  return jsonb_build_object('token', mail_info_token(em));
+end $$;
+
+create or replace function recommend_done(p_email text, p_ok boolean) returns void
+language sql security definer set search_path = public as $$
+  update club_recommendations set status = case when p_ok then 'envoye' else 'echec' end
+    where email_hash = mail_hash(lower(trim(coalesce(p_email, '')))) and status = 'en_cours';
+$$;
+revoke execute on function recommend_take(text, text), recommend_done(text, boolean) from public, anon, authenticated;
+do $$ begin
+  if exists(select 1 from pg_roles where rolname = 'service_role') then
+    execute 'grant execute on function recommend_take(text, text), recommend_done(text, boolean) to service_role';
+    execute 'grant select, insert, update, delete on club_recommendations to service_role';
+  end if;
+end $$;
+
+-- Les recommandations envoyées apparaissent dans la carte « E-mails envoyés » de l'espace admin (type « recommandation », n° 228).
+
+select close_visitor_functions();
+
+-- ===== alpha_5_13_0.sql =====
+-- mypocketclub · alpha 5.13.0 · mise à jour d'une base 5.12.0, sans perte de données, relançable.
+--   N° 236 (décision de Gaël du 13 novembre 2026) : un seul chemin pour « recommander mon club ». Quand la personne n'a pas
+--   l'e-mail d'un contact, elle décrit le club (nom, ville, sport) et peut ne rien donner d'elle : la demande reste alors
+--   anonyme pour le club (l'administrateur la reçoit quand même en notification). Prénom, nom et e-mail deviennent facultatifs
+--   dans club_requests ; « consent » vaut « la personne accepte que son nom soit transmis au club ».
+
+alter table club_requests drop constraint if exists club_requests_first_name_check;
+alter table club_requests drop constraint if exists club_requests_last_name_check;
+alter table club_requests drop constraint if exists club_requests_email_check;
+alter table club_requests alter column first_name set default '';
+alter table club_requests alter column last_name set default '';
+alter table club_requests alter column email set default '';
+alter table club_requests add constraint club_requests_first_name_check check (length(first_name) between 0 and 60);
+alter table club_requests add constraint club_requests_last_name_check check (length(last_name) between 0 and 60);
+alter table club_requests add constraint club_requests_email_check check (length(email) between 0 and 160);
+
+-- p_consent = vrai : la personne donne ses coordonnées (prénom, nom, e-mail obligatoires) ; faux : demande anonyme (aucune coordonnée gardée)
+create or replace function request_club(p_first text, p_last text, p_email text, p_club text, p_city text, p_sport text, p_age_ok boolean, p_consent boolean)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_ip text := md5(request_ip()); v_share boolean := coalesce(p_consent, false);
+  v_email text := case when v_share then lower(trim(coalesce(p_email, ''))) else '' end;
+  v_first text := case when v_share then left(trim(coalesce(p_first, '')), 60) else '' end;
+  v_last text := case when v_share then left(trim(coalesce(p_last, '')), 60) else '' end;
+  v_club text := left(trim(coalesce(p_club, '')), 120); v_city text := left(trim(coalesce(p_city, '')), 80); v_sport text := left(trim(coalesce(p_sport, '')), 40);
+  rid uuid; a uuid; who text;
+begin
+  if v_share and (v_first = '' or v_last = '') then raise exception 'Prénom et nom obligatoires pour donner tes coordonnées'; end if;
+  if v_share and (v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(v_email) > 160) then raise exception 'Adresse e-mail à vérifier'; end if;
+  if length(v_club) < 2 then raise exception 'Nom du club obligatoire'; end if;
+  if v_city = '' or v_sport = '' then raise exception 'Ville et sport du club obligatoires'; end if;
+  if not coalesce(p_age_ok, false) then raise exception 'Moins de 15 ans : un parent fait la demande'; end if;
+  if (select count(*) from club_requests where ip_hash = v_ip and created_at > now() - interval '1 day') >= 10
+     or (v_share and (select count(*) from club_requests where lower(email) = v_email and created_at > now() - interval '1 day') >= 3) then
+    raise exception 'Trop de demandes aujourd''hui. Réessaie demain.';
+  end if;
+  select id into rid from club_requests
+    where ((v_share and lower(email) = v_email) or (not v_share and ip_hash = v_ip and email = ''))
+      and norm_name(club_name) = norm_name(v_club) and norm_name(city) = norm_name(v_city) and created_at > now() - interval '30 days'
+    order by created_at desc limit 1;
+  if rid is not null then return rid; end if;
+  insert into club_requests(first_name, last_name, email, club_name, city, sport, age_ok, consent, user_id, ip_hash)
+    values (v_first, v_last, v_email, v_club, v_city, v_sport, true, v_share, case when v_share then auth.uid() else null end, v_ip) returning id into rid;
+  who := case when v_share then v_first || ' ' || v_last || case when auth.uid() is not null then ' (adhérent)' else ' (visiteur)' end else 'une personne qui reste anonyme' end;
+  for a in select user_id from app_admins loop
+    perform push_enqueue(a, 'Prise de contact demandée : ' || left(v_club, 50),
+      v_club || ' (' || v_city || ', ' || v_sport || ') · demandée par ' || who || '. À toi de contacter le club.',
+      'clubreq', 'clubreq:' || rid::text, './');
+  end loop;
+  return rid;
+end $$;
+revoke execute on function request_club(text, text, text, text, text, text, boolean, boolean) from public;
+grant execute on function request_club(text, text, text, text, text, text, boolean, boolean) to anon, authenticated;
+
+select close_visitor_functions();
+
+-- ===== alpha_5_15_0.sql =====
+-- mypocketclub · alpha 5.15.0 · mise à jour d'une base 5.13.0 / 5.14.0, sans perte de données, relançable.
+--   N° 238 (Gaël, 14 novembre 2026) : dans Messages, chacun ne peut inviter que les personnes avec qui il a un lien :
+--     tout le monde peut écrire au bureau (président et membres du bureau) ; les coachs de son équipe (ou de l'équipe de son enfant) ;
+--     les autres coachs si l'on est coach ; les membres de son équipe (ou de celle de son enfant) ; le bureau peut écrire à tout le club.
+--     La liste est donnée par contact_people() et la base le vérifie à l'invitation (can_contact dans la règle de group_members).
+--     La règle « mineur » de la 5.3.0 (trigger group_members_minor_check) reste en place, inchangée.
+--   N° 242 (Gaël, 14 novembre 2026) : carnet du coach, banque de tactiques (table tactics, schéma animé comme les exercices).
+
+-- ---------- n° 238 ----------
+-- Équipes auxquelles la personne connectée est liée dans le club : son profil d'équipe (coach, joueur, parent, contact),
+-- sa fiche de joueur, ou la fiche d'un de ses enfants (équipe principale et équipes en plus)
+create or replace function my_team_ids(c uuid) returns setof uuid language sql stable security definer set search_path = public as $$
+  select m.team_id from memberships m where m.club_id = c and m.user_id = auth.uid() and m.status = 'active' and m.team_id is not null
+  union
+  select p.team_id from players p where p.club_id = c and p.deleted_at is null and p.team_id is not null
+    and (p.user_id = auth.uid() or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = auth.uid()))
+  union
+  select x.team_id from player_teams x join players p on p.id = x.player_id where p.club_id = c and p.deleted_at is null
+    and (p.user_id = auth.uid() or exists(select 1 from player_parents pp where pp.player_id = p.id and pp.user_id = auth.uid()));
+$$;
+
+-- Comptes que la personne connectée peut inviter dans un groupe d'échange du club
+create or replace function contact_ids(c uuid) returns setof uuid language sql stable security definer set search_path = public as $$
+  with mine as (select my_team_ids(c) as t), me_coach as (select is_coach_in(c) as y)
+  select m.user_id from memberships m where m.club_id = c and m.status = 'active' and is_board(c)
+  union
+  select m.user_id from memberships m where m.club_id = c and m.status = 'active' and m.role in ('president', 'bureau')
+  union
+  select m.user_id from memberships m where m.club_id = c and m.status = 'active' and m.role = 'coach'
+    and (m.team_id in (select t from mine) or (select y from me_coach))
+  union
+  select m.user_id from memberships m where m.club_id = c and m.status = 'active' and m.team_id in (select t from mine)
+  union
+  select p.user_id from players p where p.club_id = c and p.deleted_at is null and p.user_id is not null
+    and (p.team_id in (select t from mine) or exists(select 1 from player_teams x where x.player_id = p.id and x.team_id in (select t from mine)))
+  union
+  select pp.user_id from player_parents pp join players p on p.id = pp.player_id where p.club_id = c and p.deleted_at is null
+    and (p.team_id in (select t from mine) or exists(select 1 from player_teams x where x.player_id = p.id and x.team_id in (select t from mine)));
+$$;
+
+create or replace function can_contact(c uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select u = auth.uid() or exists(select 1 from contact_ids(c) x where x = u);
+$$;
+
+-- La liste affichée dans « Nouveau groupe » : nom (« Prénom N. », comme club_roster, sauf pour le bureau et le coach de l'équipe), rôle, équipe
+create or replace function contact_people(p_club uuid) returns table(user_id uuid, first_name text, last_name text, role text, team_id uuid)
+language sql stable security definer set search_path = public as $$
+  select distinct on (m.user_id) m.user_id, pr.first_name,
+    case when is_board(p_club) or coaches_team(m.team_id) then pr.last_name
+         when coalesce(pr.last_name, '') = '' then '' else left(pr.last_name, 1) || '.' end,
+    m.role, m.team_id
+  from memberships m join profiles pr on pr.id = m.user_id
+  where is_member(p_club) and m.club_id = p_club and m.status = 'active' and m.user_id <> auth.uid()
+    and m.user_id in (select contact_ids(p_club))
+  order by m.user_id, case m.role when 'president' then 0 when 'bureau' then 1 when 'coach' then 2 when 'joueur' then 3 when 'parent' then 4 else 5 end;
+$$;
+revoke execute on function my_team_ids(uuid), contact_ids(uuid), can_contact(uuid, uuid), contact_people(uuid) from public, anon;
+grant execute on function contact_people(uuid), can_contact(uuid, uuid) to authenticated;
+
+-- Compte actif dans le club (lu par la base : la personne qui invite ne voit pas toujours le profil de l'invité,
+-- ce qui bloquait par exemple un parent qui voulait écrire au président)
+create or replace function active_in_club(c uuid, u uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from memberships m where m.club_id = c and m.user_id = u and m.status = 'active');
+$$;
+revoke execute on function active_in_club(uuid, uuid) from public, anon;
+grant execute on function active_in_club(uuid, uuid) to authenticated;
+
+-- La règle d'invitation vérifie maintenant le lien (le créateur s'ajoute lui-même ; un groupe d'équipe garde sa règle propre)
+drop policy if exists "le créateur invite des membres du club" on group_members;
+create policy "le créateur invite des membres du club" on group_members for insert with check (
+  exists(select 1 from groups g where g.id = group_id and g.created_by = auth.uid())
+  and exists(select 1 from groups g where g.id = group_id and active_in_club(g.club_id, group_members.user_id)
+             and (g.team_id is not null or can_contact(g.club_id, group_members.user_id))));
+
+-- ---------- n° 242 · tactiques ----------
+create table if not exists tactics (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references clubs(id) on delete cascade,
+  created_by uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  title text not null check (char_length(title) between 1 and 80),
+  sport text not null default 'Basket-ball',
+  steps jsonb not null,
+  sharing text not null default 'me' check (sharing in ('me', 'club')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+create index if not exists tactics_club on tactics(club_id);
+alter table tactics enable row level security;
+drop policy if exists "tactiques lues par l'auteur ou le club" on tactics;
+create policy "tactiques lues par l'auteur ou le club" on tactics for select using (
+  created_by = auth.uid() or (sharing = 'club' and deleted_at is null and is_member(club_id)));
+drop policy if exists "tactiques créées par l'encadrement" on tactics;
+create policy "tactiques créées par l'encadrement" on tactics for insert with check (
+  created_by = auth.uid() and (is_coach_in(club_id) or is_board(club_id)) and octet_length(steps::text) < 60000);
+drop policy if exists "tactiques modifiées par l'auteur" on tactics;
+create policy "tactiques modifiées par l'auteur" on tactics for update using (created_by = auth.uid())
+  with check (created_by = auth.uid() and octet_length(steps::text) < 60000);
+drop policy if exists "tactiques supprimées par l'auteur" on tactics;
+create policy "tactiques supprimées par l'auteur" on tactics for delete using (created_by = auth.uid());
+grant select, insert, update, delete on tactics to authenticated;
+
+select close_visitor_functions();
+
+select close_visitor_functions();

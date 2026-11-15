@@ -1,6 +1,8 @@
 // mypocketclub · point d'entrée : affichage des écrans, aiguillage des actions, connexion, temps réel.
 // Organisation : js/core.js (état, données, droits), js/ui.js (logos, en-tête, onglets), puis un module par onglet.
-import { BRAND, VERSION, CGU_VERSION } from './config.js';
+import { BRAND, VERSION, CGU_VERSION, IS_TEST } from './config.js';
+// N° 220 · site de test : pastille « TEST » toujours visible (le vrai site, mypocketclub.fr, n'en a pas)
+if (IS_TEST) document.documentElement.classList.add('site-test');
 import {
   S, sb, $, run, toast, hooks, ACTIONS, FORMS, INPUTS, CHANGES, club, active, isActive, ROLES, roleLabel, teamName, teamsLabel, evTeams, pl, pname, team,
   loadMe, loadClub, loadGroup, checkVersion, fmtShort, hm, esc, timeRange,
