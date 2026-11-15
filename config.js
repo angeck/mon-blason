@@ -31,5 +31,5 @@ export const TURNSTILE_SITEKEY = '0x4AAAAAAF9T-CBEkMgHhN_H';
 // Étape B · notifications : clé PUBLIQUE d'envoi (VAPID), faite pour être visible.
 // La clé privée qui va avec n'est JAMAIS dans ce dépôt : elle est rangée dans Supabase (Edge Functions → Secrets).
 // N° 220 : une paire de clés par site. Le vrai site (mypocketclub.fr) a la sienne ; vide = notifications désactivées tant qu'elle n'est pas posée.
-const VAPID = { prod: '', test: 'BNQgN8MQbutsuDcCGinWQojb-1q1h1LBMGbHFK_GdZcr1v3LyYY4_9yLJvT32DxTIB6lcHjamaqoxOH5i_vHRBk' };
+const VAPID = { prod: 'BBMMMVe0JJMiEssWOt-H7eN557MAahCx-9E-DBx2ArEhpX4uU7dHiMA4ufXs7ODdivebb2wFBN1VJE4fULsCu2g', test: 'BNQgN8MQbutsuDcCGinWQojb-1q1h1LBMGbHFK_GdZcr1v3LyYY4_9yLJvT32DxTIB6lcHjamaqoxOH5i_vHRBk' };
 export const VAPID_PUBLIC_KEY = IS_PROD ? VAPID.prod : VAPID.test;
