@@ -27,7 +27,7 @@ const m = bodyOf(k, 'api.resend.com/emails');
 check('recommandation envoyée', r.status === 200 && b.envoye === true);
 check('un seul destinataire, l’adresse saisie (en minuscules)', JSON.stringify(m.to) === '["dirigeant@club.fr"]' && !m.cc && !m.bcc);
 check('part du sous-domaine info., réponses sur contact@', /info\.mypocketclub\.fr/.test(m.from) && m.reply_to === 'contact@mypocketclub.fr');
-check('prénom et club dans l’objet et le texte, tutoiement', m.subject === 'Léa te recommande mypocketclub' && m.text.includes('Léa, un membre de ton club, te recommande mypocketclub pour Volley Club Lardy.') && m.text.includes('gratuit'));
+check('prénom et club dans l’objet et le texte, tutoiement', m.subject === 'Léa te recommande mypocketclub' && m.text.includes('Léa, un membre de ton club, te recommande mypocketclub pour Volley Club Lardy.') && m.text.includes('Teste gratuitement') && m.html.includes('logo-mypocketclub-mail.png'));
 check('lien de désinscription dans le texte et l’en-tête List-Unsubscribe', m.text.includes('https://mypocketclub.fr/#desinscription=' + TOK) && m.headers?.['List-Unsubscribe'] === '<https://mypocketclub.fr/#desinscription=' + TOK + '>');
 check('l’e-mail dit qu’il n’y en aura pas d’autre', m.text.includes('une adresse ne reçoit qu’une recommandation'));
 check('ordre : anti-robots, base, Resend, puis « envoyé » noté et compté', JSON.stringify(k.calls.map((c) => c[0].replace(/.*\/(rpc\/)?/, ''))) === '["siteverify","recommend_take","emails","recommend_done","mail_log_add"]');

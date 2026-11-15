@@ -51,7 +51,7 @@ check('n° 109 : réponses vers le correspondant, sinon contact@', env9.reply_to
 // N° 112 · convocation envoyée au contact du club reçu (PDF joint, réponses et copie à la personne qui envoie)
 const CD = { club: { name: 'Boissy Basket 91' }, from: '2026-11-14', to: '2026-11-15', sender: { name: 'Rémi Rencontres', email: 'remi@exemple.fr' },
   events: [{ id: 'e1', type: 'Match', title: 'Match', starts_at: '2026-11-14T14:00:00Z', place: 'Gymnase Jean-Moulin, 1 rue X', opponents: 'Étampes BC', cancelled: false, team: reines }] };
-function fakeC({ data = true, reserve = 'ok', resendOk = true, resendThrows = false, ps = null } = {}) {
+function fakeC({ data = true, reserve = 'ok', resendOk = true, resendThrows = false, ps = null, pre = null } = {}) {
   const calls = [];
   const f = async (url, o = {}) => {
     calls.push([url, o]);
@@ -62,6 +62,7 @@ function fakeC({ data = true, reserve = 'ok', resendOk = true, resendThrows = fa
     if (url.endsWith('/rpc/convocation_data')) return data ? res(200, CD) : res(400, { message: 'réservé' });
     if (url.endsWith('/rpc/convocation_reserve')) return reserve === 'ok' ? res(200, 'envoi-1') : reserve === 'limite' ? res(400, { message: 'Limite d\'envois du jour atteinte : réessaie demain' }) : res(400, { message: 'Envoi réservé aux comptes validés par mypocketclub' });
     if (url.endsWith('/rpc/convocation_finish')) return res(200, null);
+    if (url.endsWith('/rpc/convocation_had_pre')) return pre === null ? res(404, {}) : res(200, pre); // 5.17.0 · n° 256
     if (url.endsWith('/rpc/convocation_ps')) return ps === null ? res(404, {}) : res(200, ps); // 5.12.0 · n° 162
     if (url === 'https://api.resend.com/emails') { if (resendThrows) throw new Error('réseau coupé'); return resendOk ? res(200, { id: 'em_2' }) : res(422, { message: 'adresse refusée' }); }
     return res(404, {});
@@ -222,7 +223,7 @@ function fakeO({ prep = { outreach: 'o-1', email: 'contact@club.fr', token: TOK9
 k = fakeO(); r = await F.handle(req({ club_outreach: { request: 'cr-1', email: 'contact@club.fr', source: 'Site du club' } }), { ...env, service: 's', appUrl: 'https://mypocketclub.fr/' }, k.f); b = await r.json();
 const om = bodyOf(k, 'api.resend.com/emails');
 check('n° 96 : l’e-mail part du sous-domaine info., réponses sur contact@', r.status === 200 && /info\.mypocketclub\.fr/.test(om.from) && om.reply_to === 'contact@mypocketclub.fr' && JSON.stringify(om.to) === '["contact@club.fr"]');
-check('n° 96 : texte validé (tutoiement, nom du demandeur, nombre, gratuité)', om.subject === 'Un membre de ton club voudrait utiliser mypocketclub' && om.text.includes('Un membre de ton club, Léa Martin, voudrait que Volley Club (Lardy) soit sur mypocketclub. 3 membres') && om.text.includes('jusqu’à la fin de la saison pour tout ton club') && om.text.includes('Réponds simplement'));
+check('n° 96 : texte validé (tutoiement, nom du demandeur, nombre, gratuité)', om.subject === 'Un membre de ton club voudrait utiliser mypocketclub' && om.text.includes('Un membre de ton club, Léa Martin, voudrait que Volley Club (Lardy) soit sur mypocketclub. 3 membres') && om.text.includes('Teste gratuitement : tout ton club jusqu’à la fin de la saison') && !/c’est gratuit/i.test(om.text) && om.text.includes('Réponds simplement'));
 check('n° 96 : lien de désinscription dans le texte et dans l’en-tête List-Unsubscribe', om.text.includes('https://mypocketclub.fr/#desinscription=' + TOK96) && om.headers?.['List-Unsubscribe'] === '<https://mypocketclub.fr/#desinscription=' + TOK96 + '>');
 check('n° 96 : l’e-mail dit d’où vient l’adresse', om.text.includes('nous avons trouvé cette adresse ici : site du club'));
 check('n° 96 : compté comme e-mail d’information', logs(k).some((x) => x.p_kind === 'information' && x.p_ok === true));
@@ -241,11 +242,49 @@ check('n° 96 : HTML : nom du demandeur et du club échappés', !/<script>/.test
 check('n° 162 : sans réponse de la base, pas de P.-S.', !cm.text.includes('P.-S.') && !cm.html.includes('P.-S.'));
 k = fakeC({ ps: true }); r = await F.handle(req(conv()), env, k.f, new Date('2026-11-10T09:00:00Z'));
 const pm = bodyOf(k, 'api.resend.com/emails');
-check('n° 162 : club reçu absent : P.-S. en tutoiement, avec le lien du site', r.status === 200 && pm.text.includes('P.-S. Nous utilisons mypocketclub') && pm.text.includes('Si ça te dit de l’essayer, c’est gratuit : https://mypocketclub.fr') && /P\.-S\.[^<]*<a href="https:\/\/mypocketclub\.fr"/.test(pm.html));
+check('n° 162 : club reçu absent : P.-S. en tutoiement, avec le lien du site', r.status === 200 && pm.text.includes('P.-S. Nous utilisons mypocketclub') && pm.text.includes('Si ça te dit de l’essayer, teste-le gratuitement : https://mypocketclub.fr') && pm.text.includes('mypocketclub, tout ton club dans ta poche') && /P\.-S\.[^<]*<a href="https:\/\/mypocketclub\.fr"/.test(pm.html));
 check('n° 162 : le P.-S. vient avant la signature « Envoyé avec mypocketclub »', pm.text.indexOf('P.-S.') < pm.text.indexOf('Envoyé avec mypocketclub'));
 check('n° 162 : la base reçoit l’envoi réservé et l’adresse saisie', bodyOf(k, '/rpc/convocation_ps')?.p_send === 'envoi-1' && bodyOf(k, '/rpc/convocation_ps')?.p_email === 'jean@club.fr');
 k = fakeC({ ps: false }); await F.handle(req(conv()), env, k.f);
 check('n° 162 : club déjà inscrit (réponse « non ») : pas de P.-S.', !bodyOf(k, 'api.resend.com/emails').text.includes('P.-S.'));
 check('n° 162 : e-mail de service : pas de lien de désinscription', !pm.text.includes('desinscription') && !pm.headers);
+
+// ---------- 5.17.0 · n° 256 · logo et mise en page commune ----------
+const R = await import('../supabase/functions/recommander-club/index.ts');
+const LOGO = 'https://mypocketclub.fr/img/logo-mypocketclub-mail.png';
+const all = [F.testMail('Gaël', new Date()), F.newDeviceMail('Léa', 'Android', new Date(), 'https://x/#pasmoi=1'), F.parentInviteMail('Tom', 'Club', 'https://x/#parent=1', new Date()),
+  F.validationReminderMail('Léa', 'Club', new Date()), F.attestationMail('Léa', 'Tom', 'Club', '2026-2027'), F.inactiveMail('Léa', new Date(), 'https://x/'),
+  F.clubOutreachMail({ first_name: 'Léa', club: 'Club' }, 'https://x/#desinscription=1'), F.convocationMail(CD, 'C', 1, { last: 'Dupont' }), F.convocationMail(CD, 'P', 1, { last: 'Dupont' }), R.recommendMail('Léa', 'Club', 'https://x/#desinscription=1')];
+check('5.17.0 · n° 256 : les 10 modèles ont le logo complet (PNG du vrai site), plus le « my » écrit en texte', all.every((m) => m.html.includes(LOGO) && m.html.includes('alt="mypocketclub"') && !m.html.includes('>my</span>')));
+check('5.17.0 · n° 256 : carte blanche de 520 px et filet jaune sous le logo', all.every((m) => m.html.includes('max-width:520px') && m.html.includes('border-bottom:4px solid #FFC93C')));
+check('5.17.0 · n° 256 : plus aucun « c’est gratuit »', all.every((m) => !/c[’']est gratuit/i.test(m.text + m.html)));
+check('5.17.0 · n° 256 : pied « Tout ton club dans ta poche » (sauf la convocation : « Envoyé avec mypocketclub »)', all.filter((m) => !/onvocation/.test(m.subject)).every((m) => m.html.includes('Tout ton club dans ta poche') && m.text.includes('Tout ton club dans ta poche · https://mypocketclub.fr')) && all.filter((m) => /onvocation/.test(m.subject)).every((m) => m.html.includes('Envoyé avec mypocketclub') && m.html.includes('width="150"')));
+check('5.17.0 · n° 256 : même mise en page et même corps dans les deux fonctions', F.mailLayout('x') === R.mailLayout('x') && JSON.stringify(F.pitchMail(['a'], 'b', 'c')) === JSON.stringify(R.pitchMail(['a'], 'b', 'c')));
+const rm = R.recommendMail('Léa', 'Club', 'L'), dm = F.clubOutreachMail({ first_name: 'Léa', club: 'Club' }, 'L');
+check('5.17.0 · n° 256 : recommandation et démarchage : message de marque et « Teste gratuitement »', [rm, dm].every((m) => m.text.includes('mypocketclub, tout ton club dans ta poche. L’application qui fait vivre ton club : agenda, appel, convocations, messages, cotisations, exercices, tactiques. Pour le bureau, les coachs, les joueurs et les familles.') && m.text.includes('Teste gratuitement : tout ton club jusqu’à la fin de la saison, ou une équipe pendant une saison complète.')));
+check('5.17.0 · n° 256 : seule l’ouverture change entre recommandation et démarchage', rm.text.split('\n\n').slice(2, 6).join() === dm.text.split('\n\n').slice(2, 6).join());
+k = fakeC({ pre: true }); await F.handle(req(conv()), env, k.f);
+check('5.17.0 · n° 256 : convocation après une pré-convocation vers ce contact : « Elle remplace la pré-convocation »', bodyOf(k, 'api.resend.com/emails').text.includes('Elle remplace la pré-convocation envoyée précédemment.') && bodyOf(k, 'rpc/convocation_had_pre').p_send === 'envoi-1');
+k = fakeC({ pre: false }); await F.handle(req(conv()), env, k.f);
+check('5.17.0 · n° 256 : sans pré-convocation vers ce contact : pas de phrase', !bodyOf(k, 'api.resend.com/emails').text.includes('pré-convocation'));
+k = fakeC(); await F.handle(req(conv()), env, k.f);
+check('5.17.0 · n° 256 : sans réponse de la base : pas de phrase', !bodyOf(k, 'api.resend.com/emails').text.includes('remplace la pré-convocation'));
+k = fakeC({ pre: true }); await F.handle(req(conv({ step: 'P' })), env, k.f);
+check('5.17.0 · n° 256 : une pré-convocation ne demande rien à la base et n’a pas la phrase', !k.calls.some((c) => c[0].endsWith('convocation_had_pre')) && !bodyOf(k, 'api.resend.com/emails').text.includes('remplace la pré'));
+
+// ---------- 5.17.0 · n° 257 · « ta demande est validée » ----------
+{
+  const calls = []; const f = async (url, o = {}) => { calls.push([url, o]); const res = (s, b) => ({ ok: s < 300, status: s, json: async () => b });
+    if (url.endsWith('/auth/v1/user')) return res(200, { email: 'pres@exemple.fr' }); if (url.endsWith('/rpc/is_app_admin')) return res(200, false); if (url.endsWith('/rpc/my_profile')) return res(200, { first_name: 'Paul' });
+    if (url.endsWith('/rpc/validation_mails_take')) return res(200, [{ kind: 'adhesion', club: 'Boissy Basket', label: 'Joueur · U18 Masculin', email: 'lea@exemple.fr', first_name: 'Léa' }, { kind: 'club', club: 'Volley Lardy', label: 'Président', email: 'pres@lardy.fr', first_name: '' }, { email: 'pas-une-adresse' }]);
+    if (url === 'https://api.resend.com/emails') return res(200, { id: 'v' }); return res(404, {}); };
+  const r = await F.handle(req({ validated: true }), { ...env, service: 'sb_secret_x', appUrl: 'https://mypocketclub.fr/' }, f); const b = await r.json();
+  const sent = calls.filter((c) => c[0] === 'https://api.resend.com/emails').map((c) => JSON.parse(c[1].body));
+  check('5.17.0 · n° 257 : les e-mails en attente partent (adresses valides seulement), avec la clé du serveur', r.status === 200 && b.envoye === 2 && sent.length === 2 && calls.find((c) => c[0].endsWith('validation_mails_take'))[1].headers.apikey === 'sb_secret_x');
+  check('5.17.0 · n° 257 : adhésion : « Bienvenue à Boissy Basket : ta demande est validée », rôle et équipe', sent[0].subject === 'Bienvenue à Boissy Basket : ta demande est validée' && sent[0].text.includes('Joueur · U18 Masculin') && sent[0].text.includes('Bonjour Léa,') && sent[0].html.includes('logo-mypocketclub-mail.png'));
+  check('5.17.0 · n° 257 : club validé : objet et texte du président', sent[1].subject === 'Volley Lardy est validé par mypocketclub' && sent[1].text.includes('envoi des convocations'));
+  check('5.17.0 · n° 257 : e-mail de service : dit pourquoi (pas de notification), pas de désinscription', sent.every((m) => m.text.includes('notifications ne sont pas activées') && !m.headers));
+  check('5.17.0 · n° 257 : compté comme « validation »', calls.filter((c) => c[0].endsWith('mail_log_add')).every((c) => JSON.parse(c[1].body).p_kind === 'validation'));
+}
 console.log(`\n   ${ok} réussis sur ${ok + ko} tests d'e-mail`);
 if (ko) process.exitCode = 1;

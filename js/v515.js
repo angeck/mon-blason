@@ -158,7 +158,11 @@ function tacticsNow() {
   return null;
 }
 const mini = (st) => { const n = normalize(st, SPORT()); return n ? stepsSvg(n, 0, { all: true }) : ''; };
-const tacTile = (t, act = 'tacopen') => `<button class="ctile" data-act="${act}" data-id="${t.id}"><span class="cthumb">${mini(t.steps)}</span><span class="ct">${esc(t.title)}</span><span class="cs">${t.steps.frames.length > 1 ? t.steps.frames.length + ' étapes' : '1 étape'}${t.sharing === 'club' ? ' · club' : ''}</span></button>`;
+// 5.17.0 · n° 253 : vignette de tactique animée en boucle, dans les mêmes conditions que les exercices (n° 233) :
+// hooks.stepsThumb / sthPlay / sthStop (v510.js), déclenchés au survol sur ordinateur et à l'écran sur téléphone (coach.js) ;
+// fixe si le mouvement réduit est demandé ; une tactique d'une seule étape reste fixe.
+const tacThumb = (t) => (hooks.stepsThumb && hooks.stepsThumb({ id: 'tac-' + t.id, steps: t.steps, title: t.title, label: 'Tactique ', sport: SPORT() })) || mini(t.steps);
+const tacTile = (t, act = 'tacopen') => `<button class="ctile" data-act="${act}" data-id="${t.id}"><span class="cthumb">${tacThumb(t)}</span><span class="ct">${esc(t.title)}</span><span class="cs">${t.steps.frames.length > 1 ? t.steps.frames.length + ' étapes' : '1 étape'}${t.sharing === 'club' ? ' · club' : ''}</span></button>`;
 const exTile = (e) => `<button class="ctile" data-act="cexo" data-id="${e.id}"><span class="cthumb">${thumb(e)}</span><span class="ct">${esc(e.title)}</span><span class="cs">${esc([e.minutes ? e.minutes + ' min' : '', e.category].filter(Boolean).join(' · '))}</span></button>`;
 const addTile = (act, label, extra = '') => `<button class="ctile add" data-act="${act}" ${extra}>${icon('plus', 26)}<span class="ct">${label}</span></button>`;
 

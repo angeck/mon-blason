@@ -1,7 +1,8 @@
 // mypocketclub · alpha 3.8.0 (3.9.0 : n° 109, expéditeur des convocations ; 4.2.0 : n° 112, envoi des convocations ;
 // 4.3.0 : n° 124, chaque e-mail réservé dans la base avant de partir ; n° 127, « cette semaine » ; n° 129, copie au choix ;
 // 5.11.0 : n° 228, chaque e-mail compté (type, club, réussite) ; n° 207, attestation envoyée au demandeur ; n° 187, comptes inactifs prévenus ;
-// 5.12.0 : n° 124, plus de validation pour envoyer ; n° 162, P.-S. « on utilise mypocketclub » quand le club reçu n'est pas inscrit)
+// 5.12.0 : n° 124, plus de validation pour envoyer ; n° 162, P.-S. « on utilise mypocketclub » quand le club reçu n'est pas inscrit ;
+// 5.17.0 : n° 256, logo complet et mise en page commune ; n° 257, « ta demande est validée » sans notification)
 // N° 107 · fonction d’envoi des e-mails (Supabase → Edge Functions)
 // Nom de la fonction : envoyer-email
 // Deux envois possibles : l'e-mail de test (administrateur, à sa propre adresse, réponses vers contact@) et les convocations
@@ -21,17 +22,38 @@ const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { sta
 export const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const escHtml = (s: string) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 
+// ---------- 5.17.0 · n° 256 · une seule mise en page pour tous les e-mails ----------
+// Carte blanche de 520 px centrée sur fond gris clair : logo complet (PNG, Gmail et Outlook n'affichent pas les SVG) avec un filet
+// jaune, le texte, puis un pied « Tout ton club dans ta poche ». Des tableaux plutôt que des blocs : c'est ce que lisent tous les
+// logiciels de messagerie. Même mise en page recopiée dans recommander-club (une fonction Edge ne peut pas importer l'autre).
+// Le logo est servi par le vrai site : https://mypocketclub.fr/img/logo-mypocketclub-mail.png (publié avec la 5.17.0).
+export const LOGO_URL = 'https://mypocketclub.fr/img/logo-mypocketclub-mail.png';
+export const SLOGAN = 'Tout ton club dans ta poche';
+export const TEXT_FOOT = SLOGAN + ' · https://mypocketclub.fr';
+export const BRAND_LINE = 'mypocketclub, tout ton club dans ta poche';
+export const BRAND_PITCH = 'L\u2019application qui fait vivre ton club : agenda, appel, convocations, messages, cotisations, exercices, tactiques. Pour le bureau, les coachs, les joueurs et les familles.';
+export const TRY_FREE = 'Teste gratuitement : tout ton club jusqu\u2019à la fin de la saison, ou une équipe pendant une saison complète.';
+export function mailLayout(body: string, o: { small?: boolean; foot?: string } = {}) {
+  const w = o.small ? 150 : 200, h = o.small ? 32 : 42;
+  const foot = o.foot ?? `${SLOGAN} · <a href="https://mypocketclub.fr" style="color:#4A5068">mypocketclub.fr</a>`;
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
+<body style="margin:0;padding:0;background:#E9ECF5">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#E9ECF5"><tr><td align="center" style="padding:24px 12px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background:#FFFFFF;border-radius:20px;font-family:Arial,Helvetica,sans-serif;color:#11162E">
+<tr><td style="padding:24px 28px 18px;border-bottom:4px solid #FFC93C"><a href="https://mypocketclub.fr"><img src="${LOGO_URL}" width="${w}" height="${h}" alt="mypocketclub" style="display:block;border:0;width:${w}px;height:${h}px"></a></td></tr>
+<tr><td style="padding:24px 28px 8px;font-size:16px;line-height:1.5;color:#11162E">${body}</td></tr>
+<tr><td style="padding:14px 28px 22px;border-top:1px solid #D8DCEA;font-size:12px;line-height:1.5;color:#4A5068">${foot}</td></tr>
+</table></td></tr></table></body></html>`;
+}
+
 // Contenu de l'e-mail de test (texte et HTML simples, lisibles partout)
 export function testMail(name: string, when: Date) {
   const d = when.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long', timeStyle: 'short' });
   const hello = name ? `Bonjour ${name},` : 'Bonjour,';
-  const text = `${hello}\n\nCet e-mail de test a été envoyé par mypocketclub le ${d}, depuis l'adresse notifications@mypocketclub.fr.\nS'il est bien arrivé, la chaîne d'envoi fonctionne : Supabase, Resend et le domaine mypocketclub.fr.\n\nUne réponse à cet e-mail arrive sur contact@mypocketclub.fr.\n\nmypocketclub · https://mypocketclub.fr`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
-<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
-<p>${escHtml(hello)}</p><p>Cet e-mail de test a été envoyé par mypocketclub le ${escHtml(d)}, depuis l'adresse <b>notifications@mypocketclub.fr</b>.</p>
+  const text = `${hello}\n\nCet e-mail de test a été envoyé par mypocketclub le ${d}, depuis l'adresse notifications@mypocketclub.fr.\nS'il est bien arrivé, la chaîne d'envoi fonctionne : Supabase, Resend et le domaine mypocketclub.fr.\n\nUne réponse à cet e-mail arrive sur contact@mypocketclub.fr.\n\n--\n${TEXT_FOOT}`;
+  const html = mailLayout(`<p>${escHtml(hello)}</p><p>Cet e-mail de test a été envoyé par mypocketclub le ${escHtml(d)}, depuis l'adresse <b>notifications@mypocketclub.fr</b>.</p>
 <p>S'il est bien arrivé, la chaîne d'envoi fonctionne : Supabase, Resend et le domaine mypocketclub.fr.</p>
-<p style="color:#5A6178;font-size:14px">Une réponse à cet e-mail arrive sur contact@mypocketclub.fr.</p>
-<p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
+<p style="color:#4A5068;font-size:14px">Une réponse à cet e-mail arrive sur contact@mypocketclub.fr.</p>`);
   return { subject: 'mypocketclub · e-mail de test', text, html };
 }
 
@@ -83,8 +105,11 @@ export function whenPhrase(from: string, to: string, now = new Date()) {
 // 5.12.0 · n° 162 (façon 1, décisions de Gaël du 13 novembre 2026) : seulement si le club reçu n'est pas sur mypocketclub (la base
 // le dit : convocation_ps), une phrase en bas, en tutoiement. E-mail de service : pas de lien de désinscription ; une adresse
 // de la liste noire ne la reçoit jamais. Texte proposé par Claude, à confirmer par Gaël (claude/17-mails-types.md).
-export const CONV_PS = 'P.-S. Nous utilisons mypocketclub pour nos convocations, nos agendas et nos licences : c\u2019est simple et ça change la vie d\u2019un club. Si ça te dit de l\u2019essayer, c\u2019est gratuit : https://mypocketclub.fr';
-export function convocationMail(d: any, step: string, version: number, to: { civ?: string; last?: string }, now = new Date(), ps = false) {
+// 5.17.0 · n° 256 (Gaël, 15 novembre 2026) : plus de « c'est gratuit » ; « teste-le gratuitement », puis la ligne de marque.
+export const CONV_PS = 'P.-S. Nous utilisons mypocketclub pour nos convocations, nos agendas et nos licences : c\u2019est simple et ça change la vie d\u2019un club. Si ça te dit de l\u2019essayer, teste-le gratuitement : https://mypocketclub.fr';
+// N° 256 : phrase ajoutée à la convocation quand une pré-convocation du même week-end est partie vers le même contact (la base le dit : convocation_had_pre)
+export const CONV_REPLACES = 'Elle remplace la pré-convocation envoyée précédemment.';
+export function convocationMail(d: any, step: string, version: number, to: { civ?: string; last?: string }, now = new Date(), ps = false, replacesPre = false) {
   const pre = step === 'P', club = String(d?.club?.name || ''), live = (d?.events || []) as any[];
   const teams = live.filter((x) => !x.cancelled).map((x) => x.team);
   const kind = pre ? 'Pré-convocation' : 'Convocation', upd = version > 1;
@@ -97,12 +122,12 @@ export function convocationMail(d: any, step: string, version: number, to: { civ
   const who = String(d?.sender?.name || '').trim(), when = whenPhrase(String(d?.from || ''), String(d?.to || d?.from || ''), now);
   const intro = pre ? `${club} vous confirme les rencontres suivantes à domicile, ${when}. Le gymnase et les horaires suivront dans la convocation définitive.`
     : `${club} aura le plaisir de vous accueillir ${when}, aux dates et lieux suivants.`;
-  const text = `${hello}\n\n${upd ? 'Mise à jour : ce document remplace la version précédente.\n\n' : ''}${intro}\n\n${lines.map((l) => '- ' + l).join('\n')}\n\nLe document est joint en PDF.\n\nSportivement,\n${who}${who ? ', ' : ''}${club}${ps ? '\n\n' + CONV_PS : ''}\n\n--\nEnvoyé avec mypocketclub · https://mypocketclub.fr`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:600px">
-<p>${escHtml(hello)}</p>${upd ? '<p style="background:#FFF4D6;padding:8px 12px;border-radius:6px"><b>Mise à jour :</b> ce document remplace la version précédente.</p>' : ''}<p>${escHtml(intro)}</p>
+  const rep = !pre && replacesPre ? ' ' + CONV_REPLACES : '';
+  const text = `${hello}\n\n${upd ? 'Mise à jour : ce document remplace la version précédente.\n\n' : ''}${intro}${rep}\n\n${lines.map((l) => '- ' + l).join('\n')}\n\nLe document est joint en PDF.\n\nSportivement,\n${who}${who ? ', ' : ''}${club}${ps ? '\n\n' + CONV_PS + '\n' + BRAND_LINE : ''}\n\n--\nEnvoyé avec mypocketclub · https://mypocketclub.fr`;
+  const html = mailLayout(`<p>${escHtml(hello)}</p>${upd ? '<p style="background:#FFF4D6;padding:8px 12px;border-radius:6px"><b>Mise à jour :</b> ce document remplace la version précédente.</p>' : ''}<p>${escHtml(intro)}${escHtml(rep)}</p>
 <ul>${lines.map((l) => `<li>${escHtml(l)}</li>`).join('')}</ul><p>Le document est joint en PDF.</p>
-<p>Sportivement,<br><b>${escHtml(who)}</b>${who ? ', ' : ''}${escHtml(club)}</p>${ps ? `<p style="font-size:15px">${escHtml(CONV_PS.replace(/ https:\/\/mypocketclub\.fr$/, ' '))}<a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p>` : ''}
-<p style="color:#5A6178;font-size:13px;border-top:1px solid #D8DCEA;padding-top:10px;margin-top:20px">Envoyé avec <span style="display:inline-block;background:#FFC93C;border-radius:4px;padding:0 4px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b> · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
+<p>Sportivement,<br><b>${escHtml(who)}</b>${who ? ', ' : ''}${escHtml(club)}</p>${ps ? `<p style="font-size:15px">${escHtml(CONV_PS.replace(/ https:\/\/mypocketclub\.fr$/, ' '))}<a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a><br><b>${escHtml(BRAND_LINE)}</b></p>` : ''}`,
+    { small: true, foot: 'Envoyé avec mypocketclub · <a href="https://mypocketclub.fr" style="color:#4A5068">mypocketclub.fr</a>' });
   return { subject, text, html };
 }
 // Contact masqué gardé dans le suivi (le contact saisi n'est pas gardé, décision du 5 novembre 2026) : « Jean D. · j***@club.fr »
@@ -153,7 +178,8 @@ async function sendConvocation(env: Env, auth: string, doFetch: typeof fetch, wh
   const sender = String(d.sender?.email || who.email || '');
   const envl = convocationEnvelope(env, d.club.name, (d.events || []).filter((x: any) => !x.cancelled).map((x: any) => x.team), sender);
   const ps = await rpc(env, auth, doFetch, 'convocation_ps', { p_send: sid, p_email: String(to.email) });   // n° 162 : sans réponse claire, pas de P.-S.
-  const m = convocationMail(d, step, version, to, now, ps.ok && ps.data === true);
+  const pre = step === 'C' ? await rpc(env, auth, doFetch, 'convocation_had_pre', { p_send: sid }) : { ok: false, data: null };   // n° 256
+  const m = convocationMail(d, step, version, to, now, ps.ok && ps.data === true, pre.ok && pre.data === true);
   const filename = String(c?.filename || 'Convocation.pdf').replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 80);
   const copy = c?.copy !== false && EMAIL.test(sender);   // n° 129 : « M'envoyer une copie », cochée par défaut
   let ok = false, detail = '';
@@ -178,14 +204,11 @@ export function newDeviceMail(name: string, label: string, at: Date, link: strin
   const d = at.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long', timeStyle: 'short' });
   const hello = name ? `Bonjour ${name},` : 'Bonjour,';
   const what = label ? `depuis un nouvel appareil (${label})` : 'depuis un nouvel appareil';
-  const text = `${hello}\n\nTon compte mypocketclub vient d'être ouvert ${what}, le ${d}.\n\nC'était toi ? Tu n'as rien à faire.\n\nCe n'était pas toi ? Ouvre ce lien : il déconnecte ton compte de tous les appareils, puis tu choisis un nouveau mot de passe :\n${link}\n\nmypocketclub · https://mypocketclub.fr`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
-<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
-<p>${escHtml(hello)}</p><p>Ton compte mypocketclub vient d'être ouvert <b>${escHtml(what)}</b>, le ${escHtml(d)}.</p>
+  const text = `${hello}\n\nTon compte mypocketclub vient d'être ouvert ${what}, le ${d}.\n\nC'était toi ? Tu n'as rien à faire.\n\nCe n'était pas toi ? Ouvre ce lien : il déconnecte ton compte de tous les appareils, puis tu choisis un nouveau mot de passe :\n${link}\n\n--\n${TEXT_FOOT}`;
+  const html = mailLayout(`<p>${escHtml(hello)}</p><p>Ton compte mypocketclub vient d'être ouvert <b>${escHtml(what)}</b>, le ${escHtml(d)}.</p>
 <p>C'était toi ? Tu n'as rien à faire.</p>
 <p><a href="${escHtml(link)}" style="display:inline-block;background:#D93A3A;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Ce n'était pas moi</a></p>
-<p style="color:#5A6178;font-size:14px">Ce bouton déconnecte ton compte de tous les appareils ; tu choisis ensuite un nouveau mot de passe. Il reste valable 7 jours.</p>
-<p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
+<p style="color:#4A5068;font-size:14px">Ce bouton déconnecte ton compte de tous les appareils ; tu choisis ensuite un nouveau mot de passe. Il reste valable 7 jours.</p>`);
   return { subject: 'mypocketclub · nouvelle connexion à ton compte', text, html };
 }
 async function sendNewDevice(env: Env, auth: string, doFetch: typeof fetch, who: { email: string; name: string }, nd: any, now: Date) {
@@ -216,14 +239,11 @@ export function parentInviteMail(childFirst: string, club: string, link: string,
   const whyHtml = conv ? `<b>${escHtml(by)}</b>, du club <b>${escHtml(club)}</b>, souhaite échanger avec <b>${escHtml(who)}</b> dans mypocketclub. Une conversation avec un mineur n'est possible qu'avec un de ses parents et avec ton accord.`
     : `<b>${escHtml(who)}</b> utilise mypocketclub avec le club <b>${escHtml(club)}</b> et te demande de rejoindre l'application en tant que parent.`;
   const then = conv ? ' Une fois validé, tu acceptes ou refuses la conversation dans l\'onglet Messages.' : '';
-  const text = `Bonjour,\n\n${why}\n\nOuvre ce lien, crée ton compte avec cette adresse e-mail, et ta demande part au président du club, qui la valide.${then}\n${link}\n\nLe lien reste valable jusqu'au ${d}. Si tu ne connais pas ${who} ou ce club, ignore ce message : rien ne se passe.\n\nmypocketclub · https://mypocketclub.fr`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
-<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
-<p>Bonjour,</p><p>${whyHtml}</p>
+  const text = `Bonjour,\n\n${why}\n\nOuvre ce lien, crée ton compte avec cette adresse e-mail, et ta demande part au président du club, qui la valide.${then}\n${link}\n\nLe lien reste valable jusqu'au ${d}. Si tu ne connais pas ${who} ou ce club, ignore ce message : rien ne se passe.\n\n--\n${TEXT_FOOT}`;
+  const html = mailLayout(`<p>Bonjour,</p><p>${whyHtml}</p>
 <p><a href="${escHtml(link)}" style="display:inline-block;background:#2F5BFF;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Rejoindre en tant que parent</a></p>
-<p style="color:#5A6178;font-size:14px">Crée ton compte avec cette adresse e-mail : ta demande part au président du club, qui la valide.${escHtml(then)} Le lien reste valable jusqu'au ${escHtml(d)}.</p>
-<p style="color:#5A6178;font-size:14px">Tu ne connais pas ${escHtml(who)} ou ce club ? Ignore ce message : rien ne se passe.</p>
-<p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
+<p style="color:#4A5068;font-size:14px">Crée ton compte avec cette adresse e-mail : ta demande part au président du club, qui la valide.${escHtml(then)} Le lien reste valable jusqu'au ${escHtml(d)}.</p>
+<p style="color:#4A5068;font-size:14px">Tu ne connais pas ${escHtml(who)} ou ce club ? Ignore ce message : rien ne se passe.</p>`);
   const subject = conv ? `mypocketclub · ${club} souhaite échanger avec ${who}` : `mypocketclub · ${who} t'invite à rejoindre ${club}`;
   return { subject: subject.slice(0, 120), text, html };
 }
@@ -251,12 +271,9 @@ async function sendParentInvite(env: Env, auth: string, doFetch: typeof fetch, p
 export function validationReminderMail(first: string, club: string, until: Date) {
   const d = until.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long' });
   const hello = first ? `Bonjour ${first},` : 'Bonjour,';
-  const text = `${hello}\n\nLe club ${club} n'est pas encore validé par mypocketclub. Sans validation avant le ${d}, il part à la corbeille : il resterait 90 jours restaurable, puis serait effacé.\n\nPour le faire valider, réponds simplement à cet e-mail (ou écris à contact@mypocketclub.fr) en indiquant ta fonction au club.\n\nmypocketclub · https://mypocketclub.fr`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
-<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
-<p>${escHtml(hello)}</p><p>Le club <b>${escHtml(club)}</b> n'est pas encore validé par mypocketclub. Sans validation <b>avant le ${escHtml(d)}</b>, il part à la corbeille : il resterait 90 jours restaurable, puis serait effacé.</p>
-<p>Pour le faire valider, réponds simplement à cet e-mail (ou écris à <a href="mailto:contact@mypocketclub.fr" style="color:#2F5BFF">contact@mypocketclub.fr</a>) en indiquant ta fonction au club.</p>
-<p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
+  const text = `${hello}\n\nLe club ${club} n'est pas encore validé par mypocketclub. Sans validation avant le ${d}, il part à la corbeille : il resterait 90 jours restaurable, puis serait effacé.\n\nPour le faire valider, réponds simplement à cet e-mail (ou écris à contact@mypocketclub.fr) en indiquant ta fonction au club.\n\n--\n${TEXT_FOOT}`;
+  const html = mailLayout(`<p>${escHtml(hello)}</p><p>Le club <b>${escHtml(club)}</b> n'est pas encore validé par mypocketclub. Sans validation <b>avant le ${escHtml(d)}</b>, il part à la corbeille : il resterait 90 jours restaurable, puis serait effacé.</p>
+<p>Pour le faire valider, réponds simplement à cet e-mail (ou écris à <a href="mailto:contact@mypocketclub.fr" style="color:#2F5BFF">contact@mypocketclub.fr</a>) en indiquant ta fonction au club.</p>`);
   return { subject: `mypocketclub · ${club} : validation avant le ${d}`.slice(0, 120), text, html };
 }
 async function sendValidationReminders(env: Env, doFetch: typeof fetch) {
@@ -285,12 +302,9 @@ async function sendValidationReminders(env: Env, doFetch: typeof fetch) {
 // elle donne l'adresse du demandeur (jamais lue par l'application) et le PDF déjà enregistré. E-mail de service, sans désinscription.
 export function attestationMail(first: string, player: string, club: string, season: string) {
   const hello = first ? `Bonjour ${first},` : 'Bonjour,';
-  const text = `${hello}\n\nLe club ${club} t'a délivré l'attestation de paiement de ${player || 'ton enfant'} pour la saison ${season}. Elle est jointe en PDF.\n\nTu la retrouves aussi dans mypocketclub : Mon compte › « Attestation de paiement ».\n\nmypocketclub · https://mypocketclub.fr`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
-<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
-<p>${escHtml(hello)}</p><p>Le club <b>${escHtml(club)}</b> t'a délivré l'attestation de paiement de <b>${escHtml(player || 'ton enfant')}</b> pour la saison ${escHtml(season)}. Elle est jointe en PDF.</p>
-<p style="color:#5A6178;font-size:14px">Tu la retrouves aussi dans mypocketclub : Mon compte › « Attestation de paiement ».</p>
-<p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
+  const text = `${hello}\n\nLe club ${club} t'a délivré l'attestation de paiement de ${player || 'ton enfant'} pour la saison ${season}. Elle est jointe en PDF.\n\nTu la retrouves aussi dans mypocketclub : Mon compte › « Attestation de paiement ».\n\n--\n${TEXT_FOOT}`;
+  const html = mailLayout(`<p>${escHtml(hello)}</p><p>Le club <b>${escHtml(club)}</b> t'a délivré l'attestation de paiement de <b>${escHtml(player || 'ton enfant')}</b> pour la saison ${escHtml(season)}. Elle est jointe en PDF.</p>
+<p style="color:#4A5068;font-size:14px">Tu la retrouves aussi dans mypocketclub : Mon compte › « Attestation de paiement ».</p>`);
   return { subject: `${club} · attestation de paiement ${season}`.replace(/[\r\n]/g, ' ').slice(0, 120), text, html };
 }
 async function sendAttestation(env: Env, auth: string, doFetch: typeof fetch, a: any) {
@@ -317,13 +331,10 @@ export function inactiveMail(first: string, until: Date, appUrl: string) {
   const d = until.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long' });
   const hello = first ? `Bonjour ${first},` : 'Bonjour,';
   const link = (appUrl || 'https://mypocketclub.fr/').replace(/#.*$/, '');
-  const text = `${hello}\n\nTon compte mypocketclub n'a pas été utilisé depuis plus d'un an. Pour protéger tes données, il sera mis à la corbeille le ${d}, puis effacé 30 jours plus tard.\n\nTu veux le garder ? Connecte-toi simplement avant cette date :\n${link}\n\nTu n'en as plus besoin ? Tu n'as rien à faire.\n\nmypocketclub · https://mypocketclub.fr`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
-<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
-<p>${escHtml(hello)}</p><p>Ton compte mypocketclub n'a pas été utilisé depuis plus d'un an. Pour protéger tes données, il sera mis à la corbeille <b>le ${escHtml(d)}</b>, puis effacé 30 jours plus tard.</p>
+  const text = `${hello}\n\nTon compte mypocketclub n'a pas été utilisé depuis plus d'un an. Pour protéger tes données, il sera mis à la corbeille le ${d}, puis effacé 30 jours plus tard.\n\nTu veux le garder ? Connecte-toi simplement avant cette date :\n${link}\n\nTu n'en as plus besoin ? Tu n'as rien à faire.\n\n--\n${TEXT_FOOT}`;
+  const html = mailLayout(`<p>${escHtml(hello)}</p><p>Ton compte mypocketclub n'a pas été utilisé depuis plus d'un an. Pour protéger tes données, il sera mis à la corbeille <b>le ${escHtml(d)}</b>, puis effacé 30 jours plus tard.</p>
 <p><a href="${escHtml(link)}" style="display:inline-block;background:#2F5BFF;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Garder mon compte</a></p>
-<p style="color:#5A6178;font-size:14px">Il suffit de te connecter avant cette date. Tu n'en as plus besoin ? Tu n'as rien à faire.</p>
-<p style="color:#5A6178;font-size:14px">mypocketclub · <a href="https://mypocketclub.fr" style="color:#2F5BFF">mypocketclub.fr</a></p></div>`;
+<p style="color:#4A5068;font-size:14px">Il suffit de te connecter avant cette date. Tu n'en as plus besoin ? Tu n'as rien à faire.</p>`);
   return { subject: 'mypocketclub · ton compte va être supprimé', text, html };
 }
 async function sendInactiveWarnings(env: Env, auth: string, doFetch: typeof fetch) {
@@ -348,23 +359,24 @@ async function sendInactiveWarnings(env: Env, auth: string, doFetch: typeof fetc
 // info.mypocketclub.fr (la réputation de notifications@ reste intacte) ; réponses sur contact@. La base vérifie la liste noire,
 // « un envoi et une relance au plus », la limite du jour, et donne le nom du demandeur et le jeton de désinscription.
 // Texte validé par Gaël le 13 novembre 2026 (claude/17-mails-types.md § 1), en tutoiement.
+// 5.17.0 · n° 256 : corps commun de la recommandation et du démarchage ; seules la ou les phrases d'ouverture et le pied (motif,
+// désinscription) changent. Recopié à l'identique dans recommander-club (vérifié par les tests).
+export function pitchMail(open: string[], foot: string, link: string) {
+  const text = `Bonjour,\n\n${open.join('\n\n')}\n\n${BRAND_LINE}. ${BRAND_PITCH}\n\n${TRY_FREE}\n\nPour en savoir plus ou inscrire ton club : https://mypocketclub.fr\nUne question ? Réponds simplement à ce message.\n\nSportivement,\nGaël Raveneau, mypocketclub\n\n—\n${foot}${link}\n\n${TEXT_FOOT}`;
+  const html = mailLayout(`<p>Bonjour,</p>${open.map((x) => `<p>${escHtml(x)}</p>`).join('')}<p><b>${escHtml(BRAND_LINE)}.</b> ${escHtml(BRAND_PITCH)}</p><p><b>${escHtml(TRY_FREE)}</b></p>
+<p><a href="https://mypocketclub.fr" style="display:inline-block;background:#2F5BFF;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Découvrir mypocketclub</a></p>
+<p>Une question ? Réponds simplement à ce message.</p><p>Sportivement,<br><b>Gaël Raveneau</b>, mypocketclub</p>
+<p style="color:#4A5068;font-size:13px;border-top:1px solid #D8DCEA;padding-top:10px;margin-top:20px">${escHtml(foot)}<a href="${escHtml(link)}" style="color:#4A5068">me désinscrire</a>.</p>`);
+  return { text, html };
+}
 export function clubOutreachMail(d: { first_name?: string; last_name?: string; club?: string; city?: string; count?: number; relance?: boolean; source?: string }, link: string) {
   const who = [d.first_name, d.last_name].map((x) => String(x || '').trim()).filter(Boolean).join(' '), club = String(d.club || 'ton club'), city = String(d.city || '').trim(), n = Number(d.count) || 1;
   const p1 = `Un membre de ton club${who ? ', ' + who + ',' : ''} voudrait que ${club}${city ? ` (${city})` : ''} soit sur mypocketclub.${n > 1 ? ` ${n} membres de ton club ont fait cette demande.` : ''}`;
-  const p2 = 'mypocketclub est une application pour les clubs sportifs : l\u2019agenda avec les réponses « Je viens / Je ne viens pas », les convocations, les messages des équipes, les licences et les cotisations, au même endroit, dans la poche de chacun.';
-  const p3 = 'C\u2019est gratuit pour l\u2019essayer : jusqu\u2019à la fin de la saison pour tout ton club, ou pendant une saison complète pour une seule équipe.';
-  const again = d.relance ? 'Je me permets de te relancer, une seule fois, au sujet de ce message.\n\n' : '';
   const src = String(d.source || '').replace(/\s*\(.*\)$/, '').trim();
   const foot = `Tu reçois ce message parce qu\u2019un membre de ton club a demandé son arrivée sur mypocketclub${src ? ` ; nous avons trouvé cette adresse ici : ${src.toLowerCase()}` : ''}. Tu ne recevras rien d\u2019autre sans ton accord. Pour ne plus rien recevoir : `;
-  const text = `Bonjour,\n\n${again}${p1}\n\n${p2}\n\n${p3}\n\nPour en savoir plus ou inscrire ton club : https://mypocketclub.fr\nUne question ? Réponds simplement à ce message.\n\nSportivement,\nGaël Raveneau, mypocketclub\n\n—\n${foot}${link}`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
-<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
-<p>Bonjour,</p>${d.relance ? '<p>Je me permets de te relancer, une seule fois, au sujet de ce message.</p>' : ''}<p>${escHtml(p1)}</p><p>${escHtml(p2)}</p><p><b>${escHtml(p3)}</b></p>
-<p><a href="https://mypocketclub.fr" style="display:inline-block;background:#2F5BFF;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Découvrir mypocketclub</a></p>
-<p>Une question ? Réponds simplement à ce message.</p><p>Sportivement,<br><b>Gaël Raveneau</b>, mypocketclub</p>
-<p style="color:#5A6178;font-size:13px;border-top:1px solid #D8DCEA;padding-top:10px;margin-top:20px">${escHtml(foot)}<a href="${escHtml(link)}" style="color:#5A6178">me désinscrire</a>.</p></div>`;
+  const m = pitchMail(d.relance ? ['Je me permets de te relancer, une seule fois, au sujet de ce message.', p1] : [p1], foot, link);
   const subject = (d.relance ? 'Relance · ' : '') + 'Un membre de ton club voudrait utiliser mypocketclub';
-  return { subject, text, html };
+  return { subject, ...m };
 }
 async function sendClubOutreach(env: Env, auth: string, doFetch: typeof fetch, c: any) {
   if (typeof c?.request !== 'string') return json({ erreur: 'demande inconnue' }, 400);
@@ -382,6 +394,40 @@ async function sendClubOutreach(env: Env, auth: string, doFetch: typeof fetch, c
   await logMail(env, doFetch, 'information', null, s.ok);
   if (!s.ok) { await rpc(env, auth, doFetch, 'admin_outreach_failed', { p_outreach: d.outreach, p_relance: relance }); return json({ erreur: 'Resend a refusé l’envoi', detail: s.detail }, 502); }
   return json({ envoye: true, relance });
+}
+
+// ---------- 5.17.0 · n° 257 · « ta demande est validée », seulement sans notification ----------
+// La base met l'e-mail en attente quand aucun appareil de la personne n'a les notifications (notify_validated) ;
+// l'application de la personne qui valide demande l'envoi juste après. Adresses lues avec la clé du serveur, 20 au plus.
+// E-mail de service (il concerne le compte), sans lien de désinscription.
+export function validatedMail(kind: string, first: string, club: string, label: string, appUrl: string) {
+  const hello = first ? `Bonjour ${first},` : 'Bonjour,', link = (appUrl || 'https://mypocketclub.fr/').replace(/#.*$/, '');
+  const isClub = kind === 'club';
+  const p1 = isClub ? `Bonne nouvelle : ${club} est validé par mypocketclub. Tout est ouvert pour ton club, y compris l\u2019envoi des convocations.`
+    : `Bonne nouvelle : ta demande pour rejoindre ${club}${label ? ` (${label})` : ''} est validée.`;
+  const p2 = isClub ? 'Tu peux maintenant inviter ton bureau, tes coachs et tes équipes.' : 'Tu as maintenant accès à l\u2019agenda, aux messages et aux convocations de ton équipe.';
+  const why = 'Tu reçois cet e-mail parce que les notifications ne sont pas activées sur ton téléphone. Active-les dans Mon compte pour être prévenu plus vite.';
+  const text = `${hello}\n\n${p1}\n\n${p2}\n\nOuvrir mypocketclub : ${link}\n\n${why}\n\n--\n${TEXT_FOOT}`;
+  const html = mailLayout(`<p>${escHtml(hello)}</p><p>${escHtml(p1)}</p><p>${escHtml(p2)}</p>
+<p><a href="${escHtml(link)}" style="display:inline-block;background:#2F5BFF;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Ouvrir mypocketclub</a></p>
+<p style="color:#4A5068;font-size:13px">${escHtml(why)}</p>`);
+  const subject = (isClub ? `${club} est validé par mypocketclub` : `Bienvenue à ${club} : ta demande est validée`).replace(/[\r\n]/g, ' ').slice(0, 120);
+  return { subject, text, html };
+}
+async function sendValidated(env: Env, doFetch: typeof fetch) {
+  if (!env.service) return json({ erreur: 'clé du serveur absente' }, 500);
+  const r = await doFetch(env.url + '/rest/v1/rpc/validation_mails_take', { method: 'POST', headers: svcHeaders(env.service), body: '{}' });
+  const rows = r.ok ? await r.json().catch(() => []) : [];
+  let n = 0;
+  for (const x of Array.isArray(rows) ? rows.slice(0, 20) : []) {
+    const to = String(x?.email || '');
+    if (!EMAIL.test(to)) continue;
+    const m = validatedMail(String(x?.kind || ''), String(x?.first_name || '').slice(0, 40), String(x?.club || 'ton club').slice(0, 80), String(x?.label || '').slice(0, 80), env.appUrl || '');
+    const s = await resend(env, doFetch, { from: env.from, to: [to], reply_to: env.replyTo, subject: m.subject, text: m.text, html: m.html });
+    await logMail(env, doFetch, 'validation', null, s.ok);
+    if (s.ok) n++;
+  }
+  return json({ envoye: n });
 }
 
 // Qui appelle ? (le jeton de la personne connectée, vérifié par Supabase)
@@ -410,6 +456,7 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   if (body?.new_device) return sendNewDevice(env, auth, doFetch, who, body.new_device, now); // n° 147
   if (body?.parent_invite) return sendParentInvite(env, auth, doFetch, body.parent_invite); // 5.3.0
   if (body?.validation_reminders) return sendValidationReminders(env, doFetch); // 5.4.0 · n° 182
+  if (body?.validated) return sendValidated(env, doFetch); // 5.17.0 · n° 257
   if (body?.attestation) return sendAttestation(env, auth, doFetch, body.attestation); // 5.11.0 · n° 207
   if (body?.club_outreach) return who.admin ? sendClubOutreach(env, auth, doFetch, body.club_outreach) : json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403); // 5.11.0 · n° 96
   if (body?.inactive_warnings) return who.admin ? sendInactiveWarnings(env, auth, doFetch) : json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403); // 5.11.0 · n° 187

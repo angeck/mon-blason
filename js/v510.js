@@ -100,7 +100,7 @@ hooks.stepsThumb = (e) => {
   if (!hasSteps(e?.steps)) return '';
   const st = normalize(e.steps, sportOf(e)); if (!st) return '';
   const key = 'th' + e.id; STH[key] = st;
-  return `<span class="vthumb sthumb" data-sth="${esc(key)}">${stepsSvg(st, 0, { anim: true, label: 'Schéma de l’exercice ' + (e.title || '') })}</span>`;
+  return `<span class="vthumb sthumb" data-sth="${esc(key)}">${stepsSvg(st, 0, { anim: true, label: (e.label || 'Schéma de l’exercice ') + (e.title || '') })}</span>`;
 };
 const thFrame = (t, i) => {
   const st = STH[t.dataset.sth]; if (!st) return;

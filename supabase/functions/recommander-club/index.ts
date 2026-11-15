@@ -1,4 +1,4 @@
-// mypocketclub · alpha 5.12.0 · n° 162 (façon 2, décisions de Gaël du 13 novembre 2026) : recommander mypocketclub au dirigeant
+// mypocketclub · alpha 5.12.0 (5.17.0 : n° 256, logo et mise en page commune) · n° 162 (façon 2, décisions de Gaël du 13 novembre 2026) : recommander mypocketclub au dirigeant
 // de son club, depuis l'écran d'ouverture, sans compte.
 // Nom de la fonction : recommander-club. **« Verify JWT » DÉSACTIVÉ** (un visiteur n'a pas de jeton de connexion) :
 // la protection est faite ici, dans cet ordre :
@@ -19,22 +19,48 @@ const EMAIL = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
 const clean = (s: unknown, n: number) => String(s ?? '').replace(/[\r\n<>"]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 const svcHeaders = (service: string) => ({ apikey: service, 'Content-Type': 'application/json', ...(service.startsWith('eyJ') ? { Authorization: 'Bearer ' + service } : {}) });
 
-// Texte proposé par Claude le 13 novembre 2026, à confirmer par Gaël (claude/17-mails-types.md) ; tutoiement.
+// ---------- 5.17.0 · n° 256 · une seule mise en page pour tous les e-mails ----------
+// Carte blanche de 520 px centrée sur fond gris clair : logo complet (PNG, Gmail et Outlook n'affichent pas les SVG) avec un filet
+// jaune, le texte, puis un pied « Tout ton club dans ta poche ». Des tableaux plutôt que des blocs : c'est ce que lisent tous les
+// logiciels de messagerie. Même mise en page recopiée dans recommander-club (une fonction Edge ne peut pas importer l'autre).
+// Le logo est servi par le vrai site : https://mypocketclub.fr/img/logo-mypocketclub-mail.png (publié avec la 5.17.0).
+export const LOGO_URL = 'https://mypocketclub.fr/img/logo-mypocketclub-mail.png';
+export const SLOGAN = 'Tout ton club dans ta poche';
+export const TEXT_FOOT = SLOGAN + ' · https://mypocketclub.fr';
+export const BRAND_LINE = 'mypocketclub, tout ton club dans ta poche';
+export const BRAND_PITCH = 'L\u2019application qui fait vivre ton club : agenda, appel, convocations, messages, cotisations, exercices, tactiques. Pour le bureau, les coachs, les joueurs et les familles.';
+export const TRY_FREE = 'Teste gratuitement : tout ton club jusqu\u2019à la fin de la saison, ou une équipe pendant une saison complète.';
+export function mailLayout(body: string, o: { small?: boolean; foot?: string } = {}) {
+  const w = o.small ? 150 : 200, h = o.small ? 32 : 42;
+  const foot = o.foot ?? `${SLOGAN} · <a href="https://mypocketclub.fr" style="color:#4A5068">mypocketclub.fr</a>`;
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
+<body style="margin:0;padding:0;background:#E9ECF5">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#E9ECF5"><tr><td align="center" style="padding:24px 12px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background:#FFFFFF;border-radius:20px;font-family:Arial,Helvetica,sans-serif;color:#11162E">
+<tr><td style="padding:24px 28px 18px;border-bottom:4px solid #FFC93C"><a href="https://mypocketclub.fr"><img src="${LOGO_URL}" width="${w}" height="${h}" alt="mypocketclub" style="display:block;border:0;width:${w}px;height:${h}px"></a></td></tr>
+<tr><td style="padding:24px 28px 8px;font-size:16px;line-height:1.5;color:#11162E">${body}</td></tr>
+<tr><td style="padding:14px 28px 22px;border-top:1px solid #D8DCEA;font-size:12px;line-height:1.5;color:#4A5068">${foot}</td></tr>
+</table></td></tr></table></body></html>`;
+}
+
+// 5.17.0 · n° 256 : corps commun de la recommandation et du démarchage ; seules la ou les phrases d'ouverture et le pied (motif,
+// désinscription) changent. Recopié à l'identique dans recommander-club (vérifié par les tests).
+export function pitchMail(open: string[], foot: string, link: string) {
+  const text = `Bonjour,\n\n${open.join('\n\n')}\n\n${BRAND_LINE}. ${BRAND_PITCH}\n\n${TRY_FREE}\n\nPour en savoir plus ou inscrire ton club : https://mypocketclub.fr\nUne question ? Réponds simplement à ce message.\n\nSportivement,\nGaël Raveneau, mypocketclub\n\n—\n${foot}${link}\n\n${TEXT_FOOT}`;
+  const html = mailLayout(`<p>Bonjour,</p>${open.map((x) => `<p>${escHtml(x)}</p>`).join('')}<p><b>${escHtml(BRAND_LINE)}.</b> ${escHtml(BRAND_PITCH)}</p><p><b>${escHtml(TRY_FREE)}</b></p>
+<p><a href="https://mypocketclub.fr" style="display:inline-block;background:#2F5BFF;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Découvrir mypocketclub</a></p>
+<p>Une question ? Réponds simplement à ce message.</p><p>Sportivement,<br><b>Gaël Raveneau</b>, mypocketclub</p>
+<p style="color:#4A5068;font-size:13px;border-top:1px solid #D8DCEA;padding-top:10px;margin-top:20px">${escHtml(foot)}<a href="${escHtml(link)}" style="color:#4A5068">me désinscrire</a>.</p>`);
+  return { text, html };
+}
+
+// Texte proposé par Claude le 13 novembre 2026, revu par Gaël le 15 novembre (n° 256) ; tutoiement.
 export function recommendMail(first: string, club: string, link: string) {
   const who = first || 'Un membre de ton club';
   const p1 = `${who}${first ? ', un membre de ton club,' : ''} te recommande mypocketclub${club ? ` pour ${club}` : ''}.`;
-  const p2 = 'mypocketclub est une application pour les clubs sportifs : l’agenda avec les réponses « Je viens / Je ne viens pas », les convocations, les messages des équipes, les licences et les cotisations, au même endroit, dans la poche de chacun.';
-  const p3 = 'C’est gratuit pour l’essayer : jusqu’à la fin de la saison pour tout ton club, ou pendant une saison complète pour une seule équipe.';
-  const foot = 'Tu reçois ce message parce qu’une personne a saisi ton adresse sur mypocketclub pour te le recommander. Il n’y en aura pas d’autre : une adresse ne reçoit qu’une recommandation. Pour ne plus jamais rien recevoir de mypocketclub : ';
-  const text = `Bonjour,\n\n${p1}\n\n${p2}\n\n${p3}\n\nPour en savoir plus ou inscrire ton club : https://mypocketclub.fr\nUne question ? Réponds simplement à ce message.\n\nSportivement,\nGaël Raveneau, mypocketclub\n\n—\n${foot}${link}`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#11162E;max-width:560px">
-<p style="margin:0 0 16px"><span style="display:inline-block;background:#FFC93C;border-radius:6px;padding:0 6px;font-weight:800">my</span><b>pocket</b><b style="color:#2F5BFF">club</b></p>
-<p>Bonjour,</p><p>${escHtml(p1)}</p><p>${escHtml(p2)}</p><p><b>${escHtml(p3)}</b></p>
-<p><a href="https://mypocketclub.fr" style="display:inline-block;background:#2F5BFF;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Découvrir mypocketclub</a></p>
-<p>Une question ? Réponds simplement à ce message.</p><p>Sportivement,<br><b>Gaël Raveneau</b>, mypocketclub</p>
-<p style="color:#5A6178;font-size:13px;border-top:1px solid #D8DCEA;padding-top:10px;margin-top:20px">${escHtml(foot)}<a href="${escHtml(link)}" style="color:#5A6178">me désinscrire</a>.</p></div>`;
+  const foot = 'Tu reçois ce message parce qu\u2019une personne a saisi ton adresse sur mypocketclub pour te le recommander. Il n\u2019y en aura pas d\u2019autre : une adresse ne reçoit qu\u2019une recommandation. Pour ne plus jamais rien recevoir de mypocketclub : ';
   const subject = (first ? `${first} te recommande mypocketclub` : 'Un membre de ton club te recommande mypocketclub').slice(0, 120);
-  return { subject, text, html };
+  return { subject, ...pitchMail([p1], foot, link) };
 }
 
 async function rpc(env: Env, doFetch: typeof fetch, name: string, args: unknown) {
