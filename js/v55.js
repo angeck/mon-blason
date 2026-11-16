@@ -6,7 +6,7 @@
 import { BRAND } from '../config.js';
 import {
   S, sb, esc, hooks, run, toast, render, ACTIONS, active, isBoard, isPresident, hasArea, coachOf, coachTeams, toValidate, playersOfTeam,
-  myFonctions, isMajor, myKids, mySelf, teamName, pl, pname, download, plural, casquettes, isCoachCasq,
+  myFonctions, isMajor, myKids, mySelf, teamName, pl, pname, download, plural, casquettes, isCoachCasq, isActive,
 } from './core.js';
 import { header, icon } from './ui.js';
 import { V310_VIEWS } from './v310.js';
@@ -358,10 +358,10 @@ hooks.obHome = () => {
 // n° 208 c : une ligne faite affiche « C'est fait » coché (jamais « Pas encore fait »)
 function fichePage(id, faq) {
   const f = FICHES[id]; if (!f) return '<p class="empty">Fiche introuvable.</p>';
-  const ok = isDone(id), manual = doneSet().has(id) && !f.auto?.(), extra = txt(f.extra) || '', show = canShow(f);
+  const inClub = !!S.clubId && isActive(), ok = isDone(id), manual = doneSet().has(id) && !f.auto?.(), extra = txt(f.extra) || '', show = inClub && canShow(f); // bêta 1.0.1 · n° 259 : sans club, pas de « Me montrer »
   const shot = SHOTS.has(id) ? `<figure class="obshot"><button type="button" data-act="obzoom" data-id="${id}" aria-label="Agrandir la capture"><picture><source media="(min-width:960px)" srcset="img/faq/${id}-pc.jpg"><source media="(min-width:600px)" srcset="img/faq/${id}-tab.jpg"><img src="img/faq/${id}-tel.jpg" alt="Capture de l’écran : ${esc(f.q)}" loading="lazy"></picture></button><figcaption class="note">L’écran, zone à toucher en jaune</figcaption></figure>` : '';
   const done = !f.line ? '' : ok ? `<span class="obok" role="status">✓ C’est fait</span>${manual ? `<button class="linkbtn" data-act="obundo" data-id="${id}">Annuler</button>` : ''}` : `<button class="btn ${show ? 'ghost' : 'main'}" data-act="obdone" data-id="${id}">C’est fait</button>`;
-  const noRole = f.show && !show ? '<p class="note">« Me montrer » sert à la personne qui a ce rôle : tu ne l’as pas dans ce club.</p>' : '';
+  const noRole = !f.show || show ? '' : !inClub ? '<p class="note">« Me montrer » marchera quand tu seras dans un club.</p>' : '<p class="note">« Me montrer » sert à la personne qui a ce rôle : tu ne l’as pas dans ce club.</p>';
   return `<div class="card lift"><div class="kick">À quoi ça sert</div><p style="margin:0">${esc(byDevice(f.why))}</p></div>
   <div class="card"><div class="kick">Comment faire</div><ol class="obsteps">${stepsOf(f).map((s) => `<li>${esc(s)}</li>`).join('')}</ol>${shot}</div>${noRole}
   <div class="btns">${show ? `<button class="btn main" data-act="obshow" data-id="${id}">Me montrer</button>${faq ? `<button class="btn ghost" data-act="obgo" data-id="${id}">Y aller</button>` : ''}` : ''}${extra}${done}</div>`;
@@ -378,7 +378,8 @@ const FAQ_GROUPS = [
 ];
 const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 function faqPage() {
-  const used = new Set(), mine = (id) => FICHES[id] && (isPresident() || !FICHES[id].who || FICHES[id].who());
+  const inClub = !!S.clubId && isActive(); // bêta 1.0.1 · n° 259 : sans club, seulement les questions pour tout le monde
+  const used = new Set(), mine = (id) => FICHES[id] && (!inClub ? !FICHES[id].who : isPresident() || !FICHES[id].who || FICHES[id].who());
   const groups = FAQ_GROUPS.map(([t, ids]) => [t, ids.filter((id) => mine(id) && !used.has(id) && used.add(id))]).filter(([, l]) => l.length);
   return `<div class="btns"><button class="btn ghost" data-act="guide">Installer et notifications</button>${meta().hidden ? '<button class="btn ghost" data-act="obshowcard">Revoir « Pour bien démarrer »</button>' : ''}</div>
   <div class="field"><label for="faqq">Chercher une question</label><input id="faqq" type="search" data-faqq="1" value="${esc(S.faqQ || '')}" placeholder="Ex. appel, notifications, cotisation" autocomplete="off"></div>

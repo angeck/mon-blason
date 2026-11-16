@@ -13,6 +13,9 @@ srv = http.server.ThreadingHTTPServer(('127.0.0.1', 8765), functools.partial(htt
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 results, errors = [], []
 
+def S_view_none(pg):
+    return pg.evaluate("(async()=>{const {S}=await import('/js/core.js'); return S.view === null;})()") is True
+
 def check(name, cond):
     results.append((name, bool(cond)))
     if not cond and os.environ.get("VITE"): print("ÉCHEC immédiat ·", name, flush=True)
@@ -1530,7 +1533,7 @@ with sync_playwright() as p:
     check('accueil public : recherche, se connecter, lien « Je n’ai pas encore de compte »', 'Chercher un club' in t2() and 'Se connecter' in t2() and 'Je n’ai pas encore de compte' in t2().replace("'", '’'))
     # 5.0.0 · n° 197 : écran d'ouverture de l'identité
     check('n° 197 · slogan de l’identité', 'Tout ton club dans ta poche' in t2())
-    check('n° 197 · pied : mentions légales, version, contact et site', all(x in t2() for x in ['Mentions légales', 'Vos données', 'Conditions', 'bêta 1.0.0 · version de test', 'contact@', 'Site :']))
+    check('n° 197 · pied : mentions légales, version, contact et site', all(x in t2() for x in ['Mentions légales', 'Vos données', 'Conditions', 'bêta 1.0.1 · version de test', 'contact@', 'Site :']))
     check('n° 197 · fond encre et logo « club » bleu clair', pg2.evaluate("getComputedStyle(document.documentElement).backgroundColor") == 'rgb(17, 22, 46)' and pg2.evaluate("getComputedStyle(document.querySelector('.ouvert .wordmark .club')).color") == 'rgb(107, 139, 255)')
     check('n° 197 · la recherche est visible sans défiler sur 360 × 640', (pg2.set_viewport_size({'width': 360, 'height': 640}) or True) and pg2.evaluate("document.querySelector('#psf button[type=submit]').getBoundingClientRect().bottom") <= 640)
     shot2 = lambda n: OUT and pg2.screenshot(path=os.path.join(OUT, n + '.png'))
@@ -2044,7 +2047,14 @@ with sync_playwright() as p:
     check('5.15.2 · n° 248 : le bandeau de « Me montrer » est en bas, à droite de la colonne de gauche', pg9.evaluate("(()=>{const b=document.querySelector('.obbar').getBoundingClientRect(),t=document.querySelector('.tb').getBoundingClientRect();return b.left>=t.right-1&&b.bottom>innerHeight-40;})()"))
     j9("A.obstop()")
     j9("A.tsgo(null, { id: 't-u9', tab: 'preparer' })"); pg9.wait_for_timeout(400)
-    check('5.15.0 · n° 243 : tablette : Exercices et Tactiques côte à côte', pg9.evaluate("getComputedStyle(document.querySelector('.carnet')).flexDirection === 'row'"))
+    check('bêta 1.0.1 · n° 260 : tablette (820 px) : blocs du carnet empilés, tuiles d’au moins 150 px', pg9.evaluate("getComputedStyle(document.querySelector('.carnet')).flexDirection === 'column' && [...document.querySelectorAll('.carnet .ctile')].every(t=>t.getBoundingClientRect().width>=150)"))
+    check('bêta 1.0.1 · n° 260 : tablette : « Tout voir » ne chevauche pas le titre', pg9.evaluate("[...document.querySelectorAll('.carnet .cblk > .sec')].every(s=>{const h=s.querySelector('h2').getBoundingClientRect(),b=s.querySelector('button').getBoundingClientRect();return b.left>=h.right-1||b.top>=h.bottom-1;})"))
+    check('bêta 1.0.1 · n° 260 : tablette : « Ouvrir le terrain » ne déborde pas de son bloc', pg9.evaluate("(()=>{const t=document.querySelector('.carnet .terrainbtn').getBoundingClientRect(),c=document.querySelector('.carnet .terrainbtn').closest('.cblk').getBoundingClientRect();return t.right<=c.right+1;})()"))
+    OUT and pg9.screenshot(path=os.path.join(OUT, '260-carnet-tablette.png'), full_page=True)
+    pg9.set_viewport_size({'width': 1280, 'height': 900}); pg9.wait_for_timeout(300)
+    check('bêta 1.0.1 · n° 260 : ordinateur (1280 px) : blocs empilés, tuiles d’au moins 150 px, texte entier', pg9.evaluate("getComputedStyle(document.querySelector('.carnet')).flexDirection === 'column' && [...document.querySelectorAll('.carnet .ctile')].every(t=>t.getBoundingClientRect().width>=150)"))
+    OUT and pg9.screenshot(path=os.path.join(OUT, '260-carnet-ordinateur.png'), full_page=True)
+    pg9.set_viewport_size({'width': 820, 'height': 1180}); pg9.wait_for_timeout(300)
     j9("A.tacnew()")
     check('5.15.0 · n° 242 : nouvelle tactique : nom, partage et éditeur au doigt', pg9.locator('#tactitle').count() == 1 and pg9.locator('svg[data-sted]').count() == 1 and pg9.locator('[data-act=tacsave]').count() == 1)
     pg9.fill('#tactitle', 'Remise en jeu'); pg9.click('[data-act=tacsave]'); pg9.wait_for_timeout(500)
@@ -2118,6 +2128,48 @@ with sync_playwright() as p:
     j10("const e = S.events.find((x) => !x.cancelled && new Date(x.starts_at) > new Date()); e.place = 'Gymnase Gaston Lefèvre, 12 rue des Sports, 94470 Boissy'; S.view = { type: 'event', id: e.id }; render();")
     check('5.17.0 · n° 254 : page du rendez-vous : nom du gymnase et adresse qui ouvre la carte', pg10.locator('.placecard').count() == 1 and 'Gymnase Gaston Lefèvre' in pg10.inner_text('.placecard') and 'maps' in (pg10.locator('.placelink').get_attribute('href') or '') and pg10.locator('.gobtn').count() == 1)
     pg10.close()
+    # ---------- bêta 1.0.1 : n° 258, 259 (compte sans club), 261 (équipes en mode fantôme), 262 (notifications) ----------
+    pg11 = ctx.new_page(); pg11.set_viewport_size({'width': 390, 'height': 844}); pg11.on('pageerror', lambda e: errors.append(str(e)))
+    pg11.add_init_script("navigator.serviceWorker && (navigator.serviceWorker.register = () => Promise.resolve()); window.__OBCLOSED = true")
+    pg11.goto('http://127.0.0.1:8765/index.html'); pg11.wait_for_selector('.tb', timeout=8000)
+    j11 = lambda c: pg11.evaluate("(async()=>{const c=await import('/js/core.js'); const S=c.S, A=c.ACTIONS, render=c.render; " + c + "})()") or pg11.wait_for_timeout(400)
+    t11 = lambda: pg11.inner_text('#app').lower()
+    # n° 261 : tuiles du président
+    j11("window.__FAKE.memberships.push({ id: 'm-p11', club_id: 'c-1', user_id: 'u-me', role: 'president', team_id: null, status: 'active', created_at: new Date().toISOString() }); await c.refresh(); S.view = { type: 'espace' }; S.casq = 'president'; S.ptab = 'ensemble'; S.tflt = null; render();")
+    check('bêta 1.0.1 · n° 261 : tableau du président : tuile « Équipes en mode fantôme » avec le nombre', pg11.locator('.tile[data-act=tflt][data-v=ghost]').count() == 1 and pg11.inner_text('.tile[data-act=tflt][data-v=ghost] b') == '1')
+    pg11.click('.tile[data-act=tflt][data-v=ghost]'); pg11.wait_for_timeout(500)
+    check('bêta 1.0.1 · n° 261 : la tuile ouvre la liste des équipes en mode fantôme seulement', pg11.evaluate("document.querySelector('details[data-pfold=equipes]').open") and 'u13 f' in pg11.inner_text('details[data-pfold=equipes]').lower() and pg11.locator('details[data-pfold=equipes] [data-act=tsopen]').count() == 1)
+    pg11.click('.tile[data-act=tflt][data-v=nocoach]'); pg11.wait_for_timeout(500)
+    n_nc = pg11.inner_text('.tile[data-act=tflt][data-v=nocoach] b')
+    check('bêta 1.0.1 · n° 261 : « Équipes sans coach » ouvre la liste de ces équipes (fantôme comprises), autant que le nombre de la tuile', pg11.evaluate("document.querySelector('details[data-pfold=equipes]').open") and str(pg11.locator('details[data-pfold=equipes] [data-act=tsopen]').count()) == n_nc and 'équipes sans coach' in pg11.inner_text('details[data-pfold=equipes]').lower())
+    pg11.click('details[data-pfold=equipes] [data-act=tflt][data-v=""]'); pg11.wait_for_timeout(400)
+    check('bêta 1.0.1 · n° 261 : « Voir toutes les équipes » enlève le filtre', pg11.locator('details[data-pfold=equipes] [data-act=tsopen]').count() > int(n_nc or 0))
+    # n° 262 : la fenêtre du navigateur ne s’ouvre pas : on le dit, avec le chemin des réglages
+    j11("const n = await import('/js/notif.js'); n.N.state = 'off'; n.N.hint = false; Object.defineProperty(window, 'Notification', { configurable: true, value: { permission: 'default', requestPermission: () => new Promise(() => {}) } }); S.view = { type: 'account' }; render(); A.pushon();")
+    pg11.wait_for_timeout(500)
+    check('bêta 1.0.1 · n° 262 : « Activer les notifications » : un message tout de suite (plus de silence)', 'autorise les notifications' in pg11.inner_text('#toast').lower())
+    pg11.wait_for_timeout(8300)
+    check('bêta 1.0.1 · n° 262 : pas de fenêtre du navigateur après 8 s : chemin des réglages et « Réessayer »', 'réessayer' in t11() and pg11.locator('[data-anchor=push] .obsteps li').count() >= 3 and pg11.locator('[data-anchor=push] [data-act=pushon]').count() == 1)
+    j11("const n = await import('/js/notif.js'); n.N.state = 'denied'; render();")
+    check('bêta 1.0.1 · n° 262 : notifications bloquées : les étapes pour les rouvrir', pg11.locator('[data-anchor=push] .obsteps li').count() >= 3)
+    # n° 258, 259 : compte sans club
+    j11("S.isAdmin = false; S.adminAcct = false; S.clubId = null; S.stack = []; S.view = { type: 'account' }; render();")
+    check('bêta 1.0.1 · n° 258 : compte sans club : Mon compte a un bouton retour', pg11.locator('header [data-act=back]').count() == 1)
+    check('bêta 1.0.1 · n° 259 : compte sans club : le bouton Aide est là', pg11.locator('[data-act=faq]').count() == 1)
+    OUT and pg11.screenshot(path=os.path.join(OUT, '258-compte-sans-club.png'), full_page=True)
+    pg11.click('[data-act=faq]'); pg11.wait_for_timeout(400)
+    check('bêta 1.0.1 · n° 259 : sans club, l’Aide s’ouvre (questions pour tout le monde, pas celles du coach)', 'pour tout le monde' in t11() and pg11.locator('[data-act=obfiche]').count() > 5 and 'comment faire l’appel' not in t11() and 'trésorier' not in t11())
+    OUT and pg11.screenshot(path=os.path.join(OUT, '259-aide-sans-club.png'), full_page=True)
+    pg11.click('[data-act=obfiche][data-id=K3]'); pg11.wait_for_timeout(400)
+    check('bêta 1.0.1 · n° 259 : sans club, une fiche s’ouvre, sans « Me montrer »', 'apparence' in t11() and pg11.locator('[data-act=obshow]').count() == 0)
+    pg11.click('header [data-act=back]'); pg11.wait_for_timeout(300); pg11.click('header [data-act=back]'); pg11.wait_for_timeout(300); pg11.click('header [data-act=back]'); pg11.wait_for_timeout(400)
+    check('bêta 1.0.1 · n° 258 : trois retours : fiche, Aide, Mon compte, puis l’écran d’accueil d’un compte sans club', pg11.locator('header [data-act=back]').count() == 0 and S_view_none(pg11))
+    pg11.set_viewport_size({'width': 820, 'height': 1180}); j11("S.view = { type: 'faq' }; render();")
+    OUT and pg11.screenshot(path=os.path.join(OUT, '259-aide-sans-club-tablette.png'), full_page=True)
+    pg11.set_viewport_size({'width': 1280, 'height': 900}); pg11.wait_for_timeout(200)
+    check('bêta 1.0.1 · n° 259 : ordinateur : l’Aide sans club s’affiche', 'pour tout le monde' in t11())
+    OUT and pg11.screenshot(path=os.path.join(OUT, '259-aide-sans-club-ordinateur.png'), full_page=True)
+    pg11.close()
     b.close()
 srv.shutdown()
 errs = [e for e in errors if 'favicon' not in e and 'Failed to load resource' not in e]

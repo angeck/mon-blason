@@ -80,6 +80,7 @@ function render(keep) {
   else if (S.me.deleted_at) html = deletedScreen();
   else if (S.me.cgu_version !== CGU_VERSION) html = cguScreen(); // n° 180 : nouvelle version des conditions présentée à la connexion
   else if (S.view?.type === 'account') html = accountScreen() + (inClubNow() ? tabBar() : ''); // 5.7.0 · n° 206 : onglets toujours visibles
+  else if ((vt === 'faq' || vt === 'obfiche') && !inClubNow()) { const o = V310_VIEWS[vt](S.view); html = o.head + `<main class="bd">${o.body}</main>`; } // bêta 1.0.1 · n° 259 : Aide et fiches aussi sans club (tronc commun)
   else if (V37_TOP[vt]) html = V37_TOP[vt](S.view) + (vt === 'guide' && inClubNow() ? tabBar() : ''); // n° 96 : demande d'ajout d'un club, page Admin ; 5.7.0 : onglets sur le guide
   else if (vt === 'csearch' && !S.clubId && VIE_VIEWS.csearch) { const o = VIE_VIEWS.csearch(S.view); html = o.head + `<main class="bd">${o.body}</main>`; } // 5.7.0 · n° 205 : loupe d'un compte sans club (administrateur)
   else if (!vt && hooks.adminLanding && (html = hooks.adminLanding())) { /* 5.6.0 · n° 202 : compte administrateur sans club : espace admin ou code à 6 chiffres */ }

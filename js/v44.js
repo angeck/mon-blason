@@ -133,6 +133,7 @@ const BANDS = {
       tile(noCoachTeams().length, 'Équipes sans coach', 'ftab', go(key, 'equipes')),
       tile(cc.exos || 0, 'Exercices à valider', 'cexos', 'data-tab="club"'),
       tile(dupGroups().length, 'Doublons d’équipes', 'ftab', go(key, 'equipes')),
+      tile(live().filter((t) => t.state === 'Fantôme').length, 'Équipes en mode fantôme', 'ftab', go(key, 'equipes')), // bêta 1.0.1 · n° 261
     ]);
   },
 };
@@ -228,7 +229,7 @@ const BODY = {
   // n° 152 : les coachs sont dans l'onglet Équipes (demandes de coachs, coach de chaque équipe, « Nommer » sur la fiche)
   equipes: () => {
     const req = toValidate().filter((m) => m.role === 'coach');
-    const rows = live().map((t) => { const cs = [...new Set(S.members.filter((m) => m.role === 'coach' && m.status === 'active' && m.team_id === t.id).map((m) => m.user_id))]; return `<button class="row" data-act="tsopen" data-id="${t.id}"><span class="g">${esc(t.name)}${entTag(t.id)}<small>${cs.length ? esc(cs.map(name).join(', ')) : 'Sans coach'}</small></span><span class="pill ${cs.length ? 'blue' : 'wait'}" style="flex:none">${cs.length ? 'Coachs' : 'Nommer'}</span></button>`; }).join('');
+    const rows = live().map((t) => { const cs = [...new Set(S.members.filter((m) => m.role === 'coach' && m.status === 'active' && m.team_id === t.id).map((m) => m.user_id))]; return `<button class="row" data-act="tsopen" data-id="${t.id}"><span class="g">${esc(t.name)}${t.state === 'Fantôme' ? ' · fantôme' : ''}${entTag(t.id)}<small>${cs.length ? esc(cs.map(name).join(', ')) : 'Sans coach'}</small></span><span class="pill ${cs.length ? 'blue' : 'wait'}" style="flex:none">${cs.length ? 'Coachs' : 'Nommer'}</span></button>`; }).join('');
     return [blk('demandes', 'Demandes de coachs', req.length ? `<div class="sec"><h2>Demandes de coachs</h2><span class="pill wait">${req.length}</span></div><div class="card lift">${pendRows(req)}</div>` : ''),
       blk('coachs', 'Coachs par équipe', `<div class="sec"><h2>Coachs par équipe</h2></div><div class="card"><div class="list">${rows || '<p class="empty">Aucune équipe.</p>'}</div></div><p class="note">Touche une équipe pour nommer son coach ou un coach assistant.</p><button class="btn" data-act="choursb">${icon('check', 20)}Heures des coachs</button>`),
       blk('outils', 'Créer, importer, doublons', teamToolsBlock()), blk('equipes', 'Équipes', teamsBlock()), blk('ajout', 'Ajouter des joueurs', addPlayersBlock(liveIds()))];

@@ -186,21 +186,26 @@ export function rightsNote() {
 function presBand() {
   const vp = toValidate().length, live2 = S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée');
   const noCoach = live2.filter((t) => !S.members.some((m) => m.role === 'coach' && m.status === 'active' && m.team_id === t.id)).length;
+  const ghost = live2.filter((t) => t.state === 'Fantôme').length; // bêta 1.0.1 · n° 261
   const fees = S.padmin.filter((a) => a.fee_amount != null && +a.fee_amount - (+a.fee_paid || 0) > 0).length;
   const empty = ['Vice-président', 'Secrétaire', 'Trésorier'].filter((f) => !holder(f).length).length;
   const tile = (n, l, act, extra = '') => `<button class="tile ${n ? 'wait' : 'ok'}" data-act="${act}" ${extra}><b>${n}</b><span>${l}</span></button>`;
-  return `<div class="tiles" style="grid-template-columns:repeat(2,1fr)">${tile(vp, 'Demandes à valider', 'ptab', 'data-v="demandes"')}${tile(noCoach, 'Équipes sans coach', 'ptab', 'data-v="ensemble"')}${tile(fees, 'Cotisations à relancer', 'rub', 'data-id="tresorerie"')}${tile(empty, 'Fonctions sans titulaire', 'ptab', 'data-v="qui"')}</div>`;
+  return `<div class="tiles" style="grid-template-columns:repeat(2,1fr)">${tile(vp, 'Demandes à valider', 'ptab', 'data-v="demandes"')}${tile(noCoach, 'Équipes sans coach', 'tflt', 'data-v="nocoach"')}${tile(fees, 'Cotisations à relancer', 'rub', 'data-id="tresorerie"')}${tile(empty, 'Fonctions sans titulaire', 'ptab', 'data-v="qui"')}${tile(ghost, 'Équipes en mode fantôme', 'tflt', 'data-v="ghost"')}</div>`; // bêta 1.0.1 · n° 261 : les tuiles d'équipes ouvrent la liste filtrée
 }
 function bureauFold() {
   const rows = FONCTIONS.filter((f) => f !== 'Membre du bureau').map((f) => { const h = holder(f); return `<button class="row" data-act="fview" data-v="${esc(f)}"><span class="g">${esc(fl(f))}<small>${h.length ? esc(h.join(', ')) : 'Personne : c’est toi'}</small></span><span class="chev"></span></button>`; }).join('');
   return `<details class="card" ${S.pfold === 'bureau' ? 'open' : ''} data-pfold="bureau"><summary>${icon('user', 18)} Bureau</summary><div class="list">${rows}</div></details>`;
 }
+// bêta 1.0.1 · n° 261 : filtre de la liste des équipes (tuiles « Équipes sans coach » et « Équipes en mode fantôme »)
+const TFLT = { nocoach: ['Équipes sans coach', (t) => !S.members.some((m) => m.role === 'coach' && m.status === 'active' && m.team_id === t.id)], ghost: ['Équipes en mode fantôme', (t) => t.state === 'Fantôme'] };
 export function teamsFold() {
-  const l = S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée');
+  const all = S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée'), flt = TFLT[S.tflt];
+  const l = flt ? all.filter(flt[1]) : all;
   const cats = [...new Set(l.map((t) => t.category || 'Autres'))].sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
   const many = l.length > 8;
-  const row = (t) => `<button class="row" data-act="tsopen" data-id="${t.id}"><span class="g">${esc(t.name)}${entTag(t.id)}<small>${esc([t.category !== t.name ? t.category : '', t.gender].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`;
-  const inner = !l.length ? '<p class="empty">Aucune équipe.</p>' : many ? cats.map((c) => `<div class="kick" style="margin-top:8px">${esc(c)}</div><div class="list">${l.filter((t) => (t.category || 'Autres') === c).map(row).join('')}</div>`).join('') : `<div class="list">${l.map(row).join('')}</div>`;
+  const row = (t) => `<button class="row" data-act="tsopen" data-id="${t.id}"><span class="g">${esc(t.name)}${t.state === 'Fantôme' ? ' · fantôme' : ''}${entTag(t.id)}<small>${esc([t.category !== t.name ? t.category : '', t.gender].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`;
+  const head = flt ? `<div class="sec"><h2>${esc(flt[0])} · ${l.length}</h2><button data-act="tflt" data-v="">Voir toutes les équipes</button></div>` : '';
+  const inner = head + (!l.length ? `<p class="empty">${flt ? 'Aucune équipe dans ce cas.' : 'Aucune équipe.'}</p>` : many ? cats.map((c) => `<div class="kick" style="margin-top:8px">${esc(c)}</div><div class="list">${l.filter((t) => (t.category || 'Autres') === c).map(row).join('')}</div>`).join('') : `<div class="list">${l.map(row).join('')}</div>`);
   // n° 116 : créer, importer et doublons dans le même dépliant (plus de bloc « Créer des équipes » à part)
   return `<details class="card" ${S.pfold === 'equipes' ? 'open' : ''} data-pfold="equipes"><summary>${icon('team', 18)} Équipes</summary>${inner}${teamToolsBlock(true)}</details>`;
 }
@@ -322,7 +327,12 @@ Object.assign(ACTIONS, {
   paytap: () => toast('Le paiement en ligne arrive bientôt. En attendant, règle ta cotisation directement auprès du club.'),
   casqdef: (el, d) => { store.set(defKey(), d.v); S.defAsk = null; toast('C’est noté : cet espace s’ouvrira par défaut.'); render(true); },
   casqdefno: () => { S.defAsk = null; render(true); },
-  ptab: (el, d) => { S.ptab = d.v; if (d.v === 'journal') S.journal = undefined; if (S.view?.type !== 'espace' || S.casq !== 'president') { S.casq = 'president'; S.view = { type: 'espace' }; } render(true); },
+  tflt: (el, d) => { // bêta 1.0.1 · n° 261
+    S.tflt = d.v || null; S.ptab = 'ensemble'; S.pfold = 'equipes';
+    if (S.view?.type !== 'espace' || S.casq !== 'president') { S.casq = 'president'; S.view = { type: 'espace' }; }
+    render(true); document.querySelector('details[data-pfold="equipes"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  },
+  ptab: (el, d) => { S.tflt = null; S.ptab = d.v; if (d.v === 'journal') S.journal = undefined; if (S.view?.type !== 'espace' || S.casq !== 'president') { S.casq = 'president'; S.view = { type: 'espace' }; } render(true); },
   fview: (el, d) => { S.view = { type: 'fview', f: d.v, id: d.v }; render(); },
   poffer: async () => {
     const u = document.getElementById('pto')?.value; if (!u) return toast('Choisis la personne.');

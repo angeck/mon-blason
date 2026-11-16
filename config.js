@@ -18,7 +18,7 @@ const BASES = {
 };
 export const SUPABASE_URL = BASES[IS_PROD ? 'prod' : 'test'].url;
 export const SUPABASE_KEY = BASES[IS_PROD ? 'prod' : 'test'].key;
-export const VERSION = 'bêta 1.0.0';
+export const VERSION = 'bêta 1.0.1';
 // Alpha 3.2.5 · profils de test : liste déroulante « Profil de test » visible seulement quand on est connecté avec un des comptes de la liste.
 // 4.3.0 · n° 126 (audit du 5 novembre 2026) : la liste n'est plus écrite ici (ce fichier est public) ; elle est rangée dans la base
 // (table test_profiles, remplie par le script privé du projet) et lue après la connexion par js/v43.js, qui remplit ce tableau.

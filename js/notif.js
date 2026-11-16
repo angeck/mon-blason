@@ -60,6 +60,17 @@ export async function unlinkPush() {
   } catch { /* hors ligne : la base nettoiera les inscriptions périmées */ }
 }
 
+// bêta 1.0.1 · n° 262 : où rouvrir les notifications, selon l'appareil (une application web ne peut pas ouvrir ces réglages elle-même)
+export function settingsPath() {
+  const ua = navigator.userAgent, b = BRAND.name;
+  const steps = isIOS() ? ['Réglages de l’iPhone', 'Notifications', b, 'Autoriser les notifications']
+    : /SamsungBrowser/i.test(ua) && !standalone() ? ['Menu ≡ de Samsung Internet', 'Paramètres', 'Sites et téléchargements', 'Notifications', b + ' : Autoriser']
+    : /android/i.test(ua) && standalone() ? ['Appui long sur l’icône ' + b, 'Infos sur l’application', 'Notifications', 'Autoriser']
+    : /android/i.test(ua) ? ['Menu ⋮ de Chrome', 'Paramètres', 'Paramètres des sites', 'Notifications', b + ' : Autoriser']
+    : ['Cadenas à gauche de l’adresse du site', 'Notifications', 'Autoriser', 'puis recharge la page'];
+  return `<ol class="obsteps">${steps.map((x) => `<li>${x}</li>`).join('')}</ol>`;
+}
+
 // Encadré dans Mon compte
 export function pushCard() {
   const st = N.state;
@@ -67,9 +78,10 @@ export function pushCard() {
   if (st === 'loading') body = '<p class="note">Vérification…</p>';
   else if (st === 'on') body = `<div class="row static"><span class="g">Activées sur cet appareil<small>Rendez-vous, rappels, annonces et messages de tes clubs.</small></span><span class="pill ok">Oui</span></div><button class="btn small ghost" data-act="pushoff">Couper sur cet appareil</button>`
     + (testProfile() ? `<label class="check"><input type="checkbox" data-pushkeep="1" ${keepAll() ? 'checked' : ''}><span>Garder ce téléphone inscrit pour tous mes profils de test<small class="det" style="display:block">Chaque profil ouvert au moins une fois ici reçoit ses notifications, avec son nom en tête (« Président · … »).</small></span></label>` : '');
+  else if (st === 'off' && N.hint) body = `<p class="note">Ton navigateur n’a pas ouvert sa fenêtre d’autorisation. Regarde s’il y a une petite cloche dans la barre d’adresse, ou passe par les réglages :</p>${settingsPath()}<button class="btn main" data-act="pushon">${icon('plus', 20)}Réessayer</button>`;
   else if (st === 'off') body = `<p class="note">Reçois les nouveaux rendez-vous, les rappels et les annonces même quand ${BRAND.name} est fermé. Une seule fois sur cet appareil, pour tous tes clubs.</p><button class="btn main" data-act="pushon">${icon('plus', 20)}Activer les notifications</button>`;
   else if (st === 'ios-install') body = `<p class="note">Sur iPhone, installe d'abord ${BRAND.name} sur l'écran d'accueil : bouton Partager, puis « Sur l'écran d'accueil ». Ouvre ensuite l'application depuis son icône et reviens ici.</p>`;
-  else if (st === 'denied') body = `<p class="note">Les notifications sont bloquées pour ${BRAND.name} sur cet appareil. Pour les rouvrir : réglages du téléphone ou du navigateur, puis Notifications, puis ${BRAND.name}.</p>`;
+  else if (st === 'denied') body = `<p class="note">Les notifications sont bloquées pour ${BRAND.name} sur cet appareil. Pour les rouvrir :</p>${settingsPath()}`;
   else body = '<p class="note">Ce navigateur ne reçoit pas les notifications. Essaie avec Chrome, Edge, Firefox ou Safari à jour.</p>';
   // 4.8.0 : le guide « Installer et notifications » (js/v48.js), toujours à portée dans Mon compte
   return `<div class="sec"><h2>Notifications</h2></div><div class="card" data-anchor="push">${body}<button class="btn small ghost" data-act="guide">${icon('doc', 18)}Guide : installer l’application et activer les notifications</button></div>`;
@@ -95,8 +107,18 @@ CHANGES.push(async (t) => {
 Object.assign(ACTIONS, {
   pushon: async () => {
     if (!supported()) return toast('Ce navigateur ne reçoit pas les notifications.');
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { await pushState(); render(true); return toast(perm === 'denied' ? 'Notifications refusées. Tu peux les rouvrir dans les réglages du téléphone.' : 'Pas de changement.'); }
+    // bêta 1.0.1 · n° 262 : jamais de silence. Message tout de suite ; si le navigateur n'affiche pas sa fenêtre
+    // (Chrome « discret » : petite cloche dans la barre d'adresse), on le dit au bout de 8 s, avec le chemin des réglages.
+    if (Notification.permission === 'default') toast('Autorise les notifications dans la fenêtre qui s’ouvre.', 8000);
+    const ask = Notification.requestPermission();
+    const perm = await Promise.race([ask, new Promise((ok) => setTimeout(() => ok('timeout'), 8000))]);
+    if (perm === 'timeout') {
+      N.hint = true; render(true); toast('La fenêtre ne s’est pas ouverte : regarde les réglages ci-dessous.', 6000);
+      ask.then((r) => { if (r === 'granted') ACTIONS.pushon(); else { pushState().then(() => render(true)); } });
+      return;
+    }
+    N.hint = false;
+    if (perm !== 'granted') { await pushState(); N.hint = true; render(true); return toast(perm === 'denied' ? 'Notifications refusées sur cet appareil : les réglages pour les rouvrir sont dans Mon compte.' : 'Pas de réponse : tu peux réessayer, ou passer par les réglages.', 6000); }
     try {
       const reg = await ready();
       const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(VAPID_PUBLIC_KEY) }));
