@@ -7,6 +7,7 @@ import {
   team, teamName, name, plural, download, norm, fmtShort, onColor, evTeams, store, loadNames, isPresident, hasArea, durOf,
 } from './core.js';
 import { icon, delBtn, field } from './ui.js';
+import { micBtn } from './dictee.js'; // bêta 1.2.0 · n° 265 : dicter la description
 import { loadXlsx } from './equipe.js';
 import { loadDuplicates, dupBlock, dupListBlock } from './v410.js';
 
@@ -372,7 +373,7 @@ export function exoForm() {
   ${field('exc', 'Catégorie', `<select id="exc" name="category">${CATS.map((x) => `<option ${f.category === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
   ${field('exl', 'Niveau', `<select id="exl" name="level"><option value="">Non précisé</option>${LEVELS.concat(f.level && !LEVELS.includes(f.level) ? [f.level] : []).map((x) => `<option ${f.level === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`)}
   ${field('exd', 'Durée (minutes)', `<input id="exd" name="duration_min" type="number" min="1" max="120" required value="${esc(f.duration_min || 10)}">`)}</div>
-  ${field('exde', 'Description', `<textarea id="exde" name="description" maxlength="4000" rows="7" placeholder="Mise en place, déroulement, consignes, variantes">${esc(f.description || '')}</textarea>`)}
+  ${field('exde', 'Description', `<textarea id="exde" name="description" maxlength="4000" rows="7" placeholder="Mise en place, déroulement, consignes, variantes">${esc(f.description || '')}</textarea>${micBtn('exde', 'Dicter la description')}`)}
   <div class="field"><span class="lab">Tags (${tags.size} choisis)</span>${Object.entries(tagsFor(sp)).map(([th, l]) => [th, l.concat(TAGS[th].filter((t) => tags.has(t) && !l.includes(t)))]).map(([th, l]) => `<div class="tagrow"><span class="det">${esc(th)}</span><div class="chips">${l.map((t) => `<button type="button" class="chip" data-act="extag" data-v="${esc(t)}" aria-pressed="${tags.has(t)}">${esc(t)}</button>`).join('')}</div></div>`).join('')}</div>
   <div class="field"><span class="lab">Origine</span><div class="chips">${Object.entries(ORIGINS).map(([k, l]) => `<label class="chip" style="display:flex;align-items:center;gap:6px"><input type="radio" name="origin" value="${k}" data-exre="1" ${f.origin === k ? 'checked' : ''}>${l}</label>`).join('')}</div></div>
   ${f.origin === 'adapte' ? field('exso', 'Source (livre, site, formation, auteur)', `<input id="exso" name="source" required maxlength="300" value="${esc(f.source || '')}">`) : ''}

@@ -822,3 +822,44 @@ details[data-qui]>summary{font-weight:700}
 .crmd{font-size:13px;color:var(--pc-texte-doux)}
 @media (max-width:599px){.crmevr{grid-template-columns:minmax(0,1fr)}.idnums.crm3{grid-template-columns:minmax(0,1fr)}}
 @media (min-width:960px){.crmboard{display:grid}.crmlead:hover{border-color:var(--pc-jaune)}}
+/* bêta 1.2.0 · n° 245 (suite, 17 novembre 23 h) : menu comme la maquette ; téléphone : 4 rubriques + « Plus » ; dès 600 px : les 7 rubriques en colonne */
+.admtb .ts{display:none}
+.admtb .admmore{display:none}
+@media (max-width:599px){
+  .admtb .admx{display:none}
+  .admtb .admmore{display:flex}
+  .admtb .tl{display:none}
+  .admtb .ts{display:inline}
+}
+/* Cockpit : « Dis-le à Claude » */
+.card.dict{border:3px solid var(--pc-jaune);gap:8px}
+.card.dict>.kick{color:var(--pc-attente-texte)}
+.dictf{display:flex;flex-direction:column;gap:8px}
+.dictf textarea{width:100%;min-height:56px;resize:vertical}
+.dictb{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.dictb .btn{width:auto;flex:0 0 auto}
+.btn.mic{gap:6px}
+.btn.mic.on{background:var(--pc-jaune);color:var(--pc-encre);border-color:var(--pc-jaune);animation:micpulse 1.4s ease-in-out infinite}
+@keyframes micpulse{50%{box-shadow:0 0 0 6px rgba(255,201,60,.25)}}
+@media (prefers-reduced-motion:reduce){.btn.mic.on{animation:none}}
+@media (min-width:600px){.dictf{flex-direction:row;align-items:flex-start}.dictf textarea{flex:1}.dictb{flex-direction:column;justify-content:flex-start}}
+.field .btn.mic{margin-top:6px;align-self:flex-start;width:auto}
+/* Cockpit : tuiles (téléphone et tablette : 2 colonnes ; ordinateur : 4) */
+.cktiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.ckt{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-height:104px;padding:14px;border-radius:18px;border:2px solid var(--pc-trait);background:var(--pc-papier);color:var(--pc-texte-ecran);text-align:left;font:inherit;cursor:pointer}
+.ckt:disabled{cursor:default}
+.ckt .ckl{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--pc-texte-doux)}
+.ckt .ckn{font-size:30px;font-weight:800;line-height:1.1}
+.ckt .ckn small{font-size:15px;font-weight:700;color:var(--pc-texte-doux);margin-left:2px}
+.ckt .cks{font-size:13px;color:var(--pc-texte-doux);overflow-wrap:anywhere}
+.ckt .cks.warn{color:var(--pc-attente-texte);font-weight:600}
+.ckt.hot{background:var(--pc-jaune);border-color:var(--pc-jaune);color:var(--pc-encre)}
+.ckt.hot .ckl,.ckt.hot .cks,.ckt.hot .ckn small{color:var(--pc-encre)}
+.ckt:focus-visible{outline:3px solid var(--pc-action);outline-offset:2px}
+.ckpc{display:none}
+@media (min-width:960px){
+  .cktiles{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .ckpc{display:block}
+  .ckt:not(:disabled):hover{border-color:var(--pc-jaune)}
+}
+@media (min-width:600px){.admtb .tl{text-align:left}}

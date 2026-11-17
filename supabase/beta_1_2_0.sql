@@ -1,4 +1,4 @@
--- MAJ_BETA_1_2_0.sql · mypocketclub · n° 245 et n° 202 (espace admin « pro » : cockpit, mini-CRM, usage et parc des clubs)
+-- MAJ_BETA_1_2_0.sql · mypocketclub · n° 245 et n° 202 (espace admin « pro » : cockpit, mini-CRM, « Dis-le à Claude », usage et parc des clubs) · n° 265 (consignes des tactiques)
 -- À lancer une fois dans Supabase › SQL Editor › Run, d'abord sur la base de TEST. Sans perte de données, relançable sans risque.
 -- À lancer JUSTE APRÈS la mise en ligne du code bêta 1.2.0 (avant, l'onglet Contacts affiche « lance le script »). Rien à redéployer.
 -- Les contacts du CRM sont des données de personnes (nom, fonction, échanges) : ils ne vont que dans la base du VRAI site, jamais dans la base de test avec de vraies personnes.
@@ -234,5 +234,60 @@ begin
 end $$;
 revoke execute on function admin_parc() from public, anon;
 grant execute on function admin_parc() to authenticated;
+
+-- ---------- « Dis-le à Claude » : les phrases dictées ou tapées, en attente d'être rangées (Gaël, 17 novembre, 23 h 03) ----------
+-- La phrase est gardée telle quelle (pas de son). Claude la lit dans la conversation du projet, prépare la fiche, Gaël valide, puis Claude
+-- l'écrit dans le CRM et marque la phrase « rangée ». Rien n'est compris par l'application elle-même (pas d'IA dans l'écran).
+create table if not exists crm_inbox (
+  id uuid primary key default gen_random_uuid(),
+  at timestamptz not null default now(),
+  body text not null check (char_length(trim(body)) between 1 and 2000),
+  status text not null default 'a_ranger' check (status in ('a_ranger', 'range')),
+  contact_id uuid references crm_contacts(id) on delete set null,
+  done_at timestamptz
+);
+create index if not exists crm_inbox_open on crm_inbox(at desc) where status = 'a_ranger';
+alter table crm_inbox enable row level security;
+revoke all on crm_inbox from anon, authenticated;
+
+create or replace function admin_crm_inbox_add(p_body text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare id uuid;
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if char_length(trim(coalesce(p_body, ''))) = 0 then raise exception 'Écris ou dicte une phrase'; end if;
+  insert into crm_inbox(body) values (left(trim(p_body), 2000)) returning crm_inbox.id into id;
+  return id;
+end $$;
+revoke execute on function admin_crm_inbox_add(text) from public, anon;
+grant execute on function admin_crm_inbox_add(text) to authenticated;
+
+create or replace function admin_crm_inbox_list() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('id', i.id, 'at', i.at, 'body', i.body) order by i.at desc)
+    from (select * from crm_inbox where status = 'a_ranger' order by at desc limit 50) i), '[]'::jsonb);
+end $$;
+revoke execute on function admin_crm_inbox_list() from public, anon;
+grant execute on function admin_crm_inbox_list() to authenticated;
+
+-- Retirer une phrase (rangée à la main, ou plus utile) : elle est effacée
+create or replace function admin_crm_inbox_delete(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_app_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  delete from crm_inbox where id = p_id;
+end $$;
+revoke execute on function admin_crm_inbox_delete(uuid) from public, anon;
+grant execute on function admin_crm_inbox_delete(uuid) to authenticated;
+
+-- ---------- N° 265 : consignes d'une tactique (tapées ou dictées) ----------
+alter table tactics add column if not exists notes text not null default '';
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'tactics_notes_len') then
+    alter table tactics add constraint tactics_notes_len check (char_length(notes) <= 2000);
+  end if;
+end $$;
 
 select close_visitor_functions();

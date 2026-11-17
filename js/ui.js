@@ -31,6 +31,7 @@ const P = {
   pin: '<path d="M12 21s-6-5.2-6-10a6 6 0 0 1 12 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2"/>',
   phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/>',
   sms: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h8"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
@@ -39,6 +40,7 @@ const P = {
   down: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4.2-4.2"/>',
   flag: '<path d="M6 21V4"/><path d="M6 4h11l-2.5 4L17 12H6"/>',
+  chart: '<path d="M4 20h16"/><path d="M7 16v-5M12 16V6M17 16v-8"/>',
   crown: '<path d="M4 18h16M5 18L3.5 8l5 4L12 5l3.5 7 5-4L19 18"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>', // n° 98 : directeur technique (ex-directeur sportif, n° 114)
   swap: '<path d="M7 7h12l-3.5-3.5M17 17H5l3.5 3.5"/>', // 5.9.0 · n° 225 : changer de club
