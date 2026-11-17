@@ -34,6 +34,10 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 
 Toutes les personnes des tests sont fictives.
 
+## Bêta 1.2.1
+
+Même contenu que la 1.2.0, plus le cockpit en tuiles et le menu de la maquette (Cockpit · Contacts et CRM · Clubs et parc · Usage · Coûts et quotas · À traiter · Entretien ; téléphone : 4 rubriques + « Plus »), « Dis-le à Claude » avec micro et phrases « À ranger » (table `crm_inbox`), micro dans l'exercice et la tactique, consignes des tactiques (n° 265 ; `tactics.notes`). Dictée : celle du navigateur (`js/dictee.js`), aucun son gardé. Numéro changé pour forcer le rechargement des appareils. Scripts : ajouts dans `MAJ_BETA_1_2_0.sql` (relançable).
+
 ## Bêta 1.2.0
 
 N° 245 et 202 (espace admin « pro » : cockpit et mini-CRM, maquette validée par Gaël le 17 novembre 2026). Code dans `js/b120.js`, branché dans `v56` (onglets admin : Accueil · Clubs · Contacts · À traiter · Entretien).
