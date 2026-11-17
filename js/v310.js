@@ -183,45 +183,26 @@ export function rightsNote() {
   return `<details class="card"><summary>Ce que donne chaque fonction</summary><div class="list">${FONCTIONS.map((f) => `<div class="row static"><span class="g">${esc(fl(f))}<small>${esc(FONCTION_RIGHTS[f] || '')}</small></span></div>`).join('')}</div><p class="note">Les droits s’additionnent quand une personne a plusieurs fonctions. Seuls les adultes reçoivent une fonction.</p></details>`;
 }
 
-function presBand() {
-  const vp = toValidate().length, live2 = S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée');
-  const noCoach = live2.filter((t) => !S.members.some((m) => m.role === 'coach' && m.status === 'active' && m.team_id === t.id)).length;
-  const ghost = live2.filter((t) => t.state === 'Fantôme').length; // bêta 1.0.1 · n° 261
-  const fees = S.padmin.filter((a) => a.fee_amount != null && +a.fee_amount - (+a.fee_paid || 0) > 0).length;
-  const empty = ['Vice-président', 'Secrétaire', 'Trésorier'].filter((f) => !holder(f).length).length;
-  const tile = (n, l, act, extra = '') => `<button class="tile ${n ? 'wait' : 'ok'}" data-act="${act}" ${extra}><b>${n}</b><span>${l}</span></button>`;
-  return `<div class="tiles" style="grid-template-columns:repeat(2,1fr)">${tile(vp, 'Demandes à valider', 'ptab', 'data-v="demandes"')}${tile(noCoach, 'Équipes sans coach', 'tflt', 'data-v="nocoach"')}${tile(fees, 'Cotisations à relancer', 'rub', 'data-id="tresorerie"')}${tile(empty, 'Fonctions sans titulaire', 'ptab', 'data-v="qui"')}${tile(ghost, 'Équipes en mode fantôme', 'tflt', 'data-v="ghost"')}</div>`; // bêta 1.0.1 · n° 261 : les tuiles d'équipes ouvrent la liste filtrée
-}
-function bureauFold() {
-  const rows = FONCTIONS.filter((f) => f !== 'Membre du bureau').map((f) => { const h = holder(f); return `<button class="row" data-act="fview" data-v="${esc(f)}"><span class="g">${esc(fl(f))}<small>${h.length ? esc(h.join(', ')) : 'Personne : c’est toi'}</small></span><span class="chev"></span></button>`; }).join('');
-  return `<details class="card" ${S.pfold === 'bureau' ? 'open' : ''} data-pfold="bureau"><summary>${icon('user', 18)} Bureau</summary><div class="list">${rows}</div></details>`;
-}
-// bêta 1.0.1 · n° 261 : filtre de la liste des équipes (tuiles « Équipes sans coach » et « Équipes en mode fantôme »)
-const TFLT = { nocoach: ['Équipes sans coach', (t) => !S.members.some((m) => m.role === 'coach' && m.status === 'active' && m.team_id === t.id)], ghost: ['Équipes en mode fantôme', (t) => t.state === 'Fantôme'] };
-export function teamsFold() {
-  const all = S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée'), flt = TFLT[S.tflt];
-  const l = flt ? all.filter(flt[1]) : all;
-  const cats = [...new Set(l.map((t) => t.category || 'Autres'))].sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
-  const many = l.length > 8;
-  const row = (t) => `<button class="row" data-act="tsopen" data-id="${t.id}"><span class="g">${esc(t.name)}${t.state === 'Fantôme' ? ' · fantôme' : ''}${entTag(t.id)}<small>${esc([t.category !== t.name ? t.category : '', t.gender].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`;
-  const head = flt ? `<div class="sec"><h2>${esc(flt[0])} · ${l.length}</h2><button data-act="tflt" data-v="">Voir toutes les équipes</button></div>` : '';
-  const inner = head + (!l.length ? `<p class="empty">${flt ? 'Aucune équipe dans ce cas.' : 'Aucune équipe.'}</p>` : many ? cats.map((c) => `<div class="kick" style="margin-top:8px">${esc(c)}</div><div class="list">${l.filter((t) => (t.category || 'Autres') === c).map(row).join('')}</div>`).join('') : `<div class="list">${l.map(row).join('')}</div>`);
-  // n° 116 : créer, importer et doublons dans le même dépliant (plus de bloc « Créer des équipes » à part)
-  return `<details class="card" ${S.pfold === 'equipes' ? 'open' : ''} data-pfold="equipes"><summary>${icon('team', 18)} Équipes</summary>${inner}${teamToolsBlock(true)}</details>`;
-}
-const PTABS = [['ensemble', 'Vue d’ensemble'], ['demandes', 'Demandes'], ['qui', 'Fonctions du bureau'], ['reglages', 'Réglages'], ['journal', 'Journal']];
-// N° 116 : les cinq onglets du président au bas du bloc bleu de l'en-tête, juste sous les casquettes
+// bêta 1.1.0 · n° 244 : le bandeau (presBand), le dépliant « Bureau » et le dépliant « Équipes » de la Vue d'ensemble sont remplacés
+// par la Vue d'ensemble « pro » et les onglets Bureau et Équipes (js/b110.js). Les filtres d'équipes (n° 261) y sont repris.
+// bêta 1.1.0 · n° 244 : six onglets ; « Fonctions du bureau » (ancien onglet « qui ») est dans Bureau
+const PTABS = [['ensemble', 'Vue d’ensemble'], ['demandes', 'Demandes'], ['bureau', 'Bureau'], ['equipes', 'Équipes'], ['reglages', 'Réglages'], ['journal', 'Journal']];
+const ptabNow = () => (S.ptab === 'qui' ? 'bureau' : S.ptab || 'ensemble');
+// N° 116 : les onglets du président au bas du bloc bleu de l'en-tête, juste sous les casquettes
 export function presidentTabs() {
-  const t = S.ptab || 'ensemble';
-  return `<nav class="ttabs" aria-label="Espace du président">${PTABS.map(([k, l]) => `<button data-act="ptab" data-v="${k}" ${t === k ? 'aria-current="page"' : ''}>${l}</button>`).join('')}</nav>`;
+  const t = ptabNow();
+  const vp = toValidate().length;
+  return `<nav class="ttabs" aria-label="Espace du président">${PTABS.map(([k, l]) => `<button data-act="ptab" data-v="${k}" ${t === k ? 'aria-current="page"' : ''}>${l}${k === 'demandes' && vp ? ` <span class="tn">${vp}</span>` : ''}</button>`).join('')}</nav>`;
 }
+hooks.presTabsHtml = () => presidentTabs(); // bêta 1.1.0 : bandeau de gauche dans la page d'une fonction (js/v515.js)
 export function presidentSpace310() {
-  const t = S.ptab || 'ensemble';
+  const t = ptabNow();
   let h = '';
-  // n° 116 : bandeau et dépliants « Bureau » et « Équipes » dans « Vue d'ensemble »
-  if (t === 'ensemble') h += presBand() + bureauFold() + teamsFold() + presidentOverview();
+  // bêta 1.1.0 · n° 244 : Vue d'ensemble « pro », Bureau et Équipes (js/b110.js) ; le suivi d'avant reste sous la Vue d'ensemble
+  if (t === 'ensemble') h += hooks.presVue(presidentOverview());
+  else if (t === 'bureau') h += hooks.presBureau(quiView());
+  else if (t === 'equipes') h += hooks.presEquipes(teamToolsBlock(true));
   else if (t === 'demandes') { h += hooks.attestReqBlock ? hooks.attestReqBlock() : ''; const vp = toValidate(); h += vp.length ? `<div class="card lift">${pendRows(vp)}</div><p class="note">Toi seul valides les demandes des membres du bureau. Le secrétariat et les coachs valident aussi les autres.</p>` : '<p class="empty">Aucune demande à valider.</p>'; }
-  else if (t === 'qui') h += quiView();
   else if (t === 'reglages') h += reglagesView();
   else h += journalBody();
   return h;
@@ -245,7 +226,7 @@ function quiView() {
 }
 function reglagesView() {
   const c = club(), ad = adultMembers().filter((u) => u !== S.me.id), off = S.poffer;
-  let h = `<div class="sec"><h2>Club</h2></div><div class="card">${sw('public_listed', 'Apparaître dans la recherche des clubs', 'Nom, ville, équipes visibles et créneaux seulement.', c.public_listed !== false)}</div>` + brandBlock() + contactsBlock();
+  let h = `<div class="sec"><h2>Club</h2></div>${hooks.clubIdForm ? hooks.clubIdForm() : ''}<div class="card">${sw('public_listed', 'Apparaître dans la recherche des clubs', 'Nom, ville, équipes visibles et créneaux seulement.', c.public_listed !== false)}</div>` + brandBlock() + contactsBlock();
   // 4.4.0 (n° 114) : « cotisation à jour » pour le Secrétariat (non par défaut) ; coordonnées des familles pour le Directeur technique (oui par défaut)
   h += `<div class="sec"><h2>Droits</h2></div><div class="card">${sw('coach_sees_fees', 'Les coachs voient licences et cotisations', 'De leurs joueurs seulement, sans les réductions.', c.coach_sees_fees !== false)}${sw('secretary_sees_fees', 'Le secrétariat voit « cotisation à jour »', 'Oui ou non pour chaque joueur, jamais les montants. Vaut aussi pour le contact licences.', c.secretary_sees_fees === true)}${sw('tech_sees_contacts', 'Le Directeur technique voit les coordonnées des familles', 'Parents et joueurs : téléphone, e-mail, contact d’urgence. Celles de ses propres équipes restent visibles s’il est aussi coach.', c.tech_sees_contacts !== false)}${sw('custom_header', 'Aux couleurs du club', 'L’en-tête prend la couleur principale du club.', c.custom_header)}</div>`;
   h += `<div class="sec"><h2>Saison</h2></div>` + (hooks.seasonBlock ? hooks.seasonBlock() : '');
@@ -275,7 +256,7 @@ function fviewView(v) {
   const o = hooks.fnSpace ? hooks.fnSpace(f, false) : null; // 4.4.0 (n° 114) : même présentation que la personne qui a la fonction
   // n° 133 : la casquette « Président » reste allumée (en jaune) : on voit tout de suite qu'on est ici grâce à elle
   if (isPresident()) S.casq = 'president';
-  return { head: header({ back: true, kicker: 'Espace Président · Bureau', title: esc(fl(f)), casq: casqTabs() || (isPresident() ? `<div class="casq" role="tablist" aria-label="Mes rôles"><button role="tab" data-act="casq" data-v="president" aria-selected="true">${casqIcon('president')}<span>Président</span>${hooks.roleBadge ? hooks.roleBadge('president') : ''}</button></div>` : ''), tabs: o?.tabs || '' }), body: `<div class="card pale"><p class="note" style="margin:0">Tu vois l’espace « ${esc(fl(f))} » avec ton compte : ce que tu fais ici est inscrit au journal <b>à ton nom</b>.${holder(f).length ? ' Titulaire : ' + esc(holder(f).join(', ')) + '.' : ' Personne n’a cette fonction : c’est toi qui t’en occupes.'}</p></div>` + (o ? o.body : fonctionSpace(f, true)) };
+  return { head: header({ back: true, kicker: 'Espace Président · Bureau', title: esc(fl(f)), casq: casqTabs() || (isPresident() ? `<div class="casq" role="tablist" aria-label="Mes rôles"><button role="tab" data-act="casq" data-v="president" aria-selected="true">${casqIcon('president')}<span>Président</span>${hooks.roleBadge ? hooks.roleBadge('president') : ''}</button></div>` : ''), tabs: o?.tabs || '' }), body: (o && o.body.includes('class="fap"') ? '' : `<div class="card pale"><p class="note" style="margin:0">Tu vois l’espace « ${esc(fl(f))} » avec ton compte : ce que tu fais ici est inscrit au journal <b>à ton nom</b>.${holder(f).length ? ' Titulaire : ' + esc(holder(f).join(', ')) + '.' : ' Personne n’a cette fonction : c’est toi qui t’en occupes.'}</p></div>`) + (o ? o.body : fonctionSpace(f, true)) }; // bêta 1.1.0 : sur l'Aperçu, la carte de la personne le dit déjà
 }
 
 // ---------- contact licences (sans tout le Secrétariat) ----------
@@ -313,7 +294,7 @@ export const V310_VIEWS = { tspace: tspaceView, fview: fviewView };
 // ---------- actions ----------
 Object.assign(ACTIONS, {
   // n° 132 : ouvre le dépliant « Équipes » de la vue d'ensemble, formulaire « Créer une équipe » déplié
-  tcreateopen: () => { S.ptab = 'ensemble'; S.pfold = 'equipes'; S.tcreate = true; render(true); const d = document.querySelector('details[data-tcreate]'); if (d) { d.scrollIntoView({ block: 'start', behavior: 'smooth' }); d.querySelector('select,input')?.focus({ preventScroll: true }); } },
+  tcreateopen: () => { S.ptab = 'equipes'; S.eqsub = 'outils'; S.tcreate = true; if (S.view?.type !== 'espace' || S.casq !== 'president') { S.casq = 'president'; S.view = { type: 'espace' }; } render(true); const d = document.querySelector('details[data-tcreate]'); if (d) { d.scrollIntoView({ block: 'start', behavior: 'smooth' }); d.querySelector('select,input')?.focus({ preventScroll: true }); } },
   // Ouvrir l'espace d'une équipe (depuis la liste des équipes du coach ou le dépliant « Équipes » du président)
   tsopen: (el, d) => { S.sel = null; S.tsp = d.id; S.view = { type: 'tspace', id: d.id, tab: 'planifier' }; render(); },
   // Onglets du bandeau : Pointer · Planifier · Préparer · Stats · Effectif (sans empiler les onglets dans le bouton Retour)
@@ -328,12 +309,12 @@ Object.assign(ACTIONS, {
   casqdef: (el, d) => { store.set(defKey(), d.v); S.defAsk = null; toast('C’est noté : cet espace s’ouvrira par défaut.'); render(true); },
   casqdefno: () => { S.defAsk = null; render(true); },
   tflt: (el, d) => { // bêta 1.0.1 · n° 261
-    S.tflt = d.v || null; S.ptab = 'ensemble'; S.pfold = 'equipes';
+    S.tflt = d.v || null; S.ptab = 'equipes'; S.eqsub = null; // bêta 1.1.0 · n° 244 : l'onglet Équipes, filtré
     if (S.view?.type !== 'espace' || S.casq !== 'president') { S.casq = 'president'; S.view = { type: 'espace' }; }
-    render(true); document.querySelector('details[data-pfold="equipes"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    render(true);
   },
-  ptab: (el, d) => { S.tflt = null; S.ptab = d.v; if (d.v === 'journal') S.journal = undefined; if (S.view?.type !== 'espace' || S.casq !== 'president') { S.casq = 'president'; S.view = { type: 'espace' }; } render(true); },
-  fview: (el, d) => { S.view = { type: 'fview', f: d.v, id: d.v }; render(); },
+  ptab: (el, d) => { S.tflt = null; S.ptab = d.v === 'qui' ? 'bureau' : d.v; S.eqsub = null; window.scrollTo(0, 0); if (d.v === 'journal') S.journal = undefined; if (S.view?.type !== 'espace' || S.casq !== 'president') { S.casq = 'president'; S.view = { type: 'espace' }; } render(true); },
+  fview: (el, d) => { if (d.tab) { S.ftabs = S.ftabs || {}; S.ftabs['v:' + d.v] = d.tab; } S.view = { type: 'fview', f: d.v, id: d.v }; render(); }, // bêta 1.1.0 : ouvrir directement un onglet (data-tab)
   poffer: async () => {
     const u = document.getElementById('pto')?.value; if (!u) return toast('Choisis la personne.');
     if (!armed('poffer')) return;

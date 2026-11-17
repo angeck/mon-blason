@@ -34,6 +34,16 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 
 Toutes les personnes des tests sont fictives.
 
+## Bêta 1.1.0
+
+N° 244 (espace Président « pro », maquette en trois vues validée par Gaël le 17 novembre 2026). Code dans `js/b110.js`, branché dans `v310` (onglets du président), `v44` (Aperçu des fonctions), `v515` (bandeau de gauche), `club.js` (tableau des licences et cotisations) et `style.css`.
+
+- Président : six onglets **Vue d'ensemble · Demandes · Bureau · Équipes · Réglages · Journal**. Vue d'ensemble : carte d'identité du club (fédération, numéro d'affiliation, gymnases, contact licences, statut chez mypocketclub, cinq nombres), « À traiter » (cinq tuiles), « Les chiffres du club » (licenciés, cotisations, licences, présence aux entraînements), le bureau, la semaine au club, les dernières actions, puis le suivi d'avant. Bureau : une carte par fonction (sa page), « Nommer, retirer, accès en plus », « Qui s'occupe de quoi ». Équipes : filtres, tableau sur ordinateur, créer, importer, doublons.
+- Chaque fonction : l'Aperçu suit le même modèle (À traiter, trois cartes de chiffres, liste récente, « Ce que voit … » / « Tes droits ») ; c'est la même page chez le président (qui voit en plus la personne qui la tient) et chez la personne.
+- Supports (n° 246) : téléphone et tablette en tuiles, sans graphiques ; ordinateur (960 px) avec graphiques et tableaux ; dès 1200 px, pages plus larges (`html.prov`).
+- Base : `supabase/MAJ_BETA_1_1_0.sql` (source `beta_1_1_0.sql`, ajoutée à `CREER_BASE_NEUVE.sql`) : `clubs.federation` et `clubs.affiliation`, modifiables par le président et le vice-président seulement. **À lancer juste après la mise en ligne du code**, sur les deux bases. Rien à redéployer.
+- FAQ : fiches PR2, PR3, PR4, SE1, DT1, B1 mises à jour, nouvelle question PR6 ; captures refaites. Tests d'écrans : 790/790.
+
 ## Alpha 5.0.0
 
 Deux ajouts : n° 197 (écran d'ouverture de l'identité : fond encre, cercle jaune, logo « club » bleu clair, slogan « Tout ton club dans ta poche », recherche d'un club sous le slogan, bouton « Se connecter », lien jaune « Je n'ai pas encore de compte », pied de page conservé avec mentions légales, version et contact ; même fond pour l'écran de chargement) et n° 168 (thème sombre : trois choix dans Mon compte, « Comme mon téléphone » par défaut, « Clair », « Sombre », gardés sur l'appareil et dans le compte ; couleurs par rôles `--pc-texte-ecran`, `--pc-action`, `--pc-action-texte`, `--pc-aplat` dans `style.css`, en-tête encre en sombre). Pas de script SQL. À contrôler à l'œil sur un vrai téléphone : contraste des états et des tuiles de l'appel, couleur de club en en-tête. Les PDF et e-mails restent clairs. Logos de sport : le logo est écrit en HTML, aucune version « fond encre » à fabriquer.

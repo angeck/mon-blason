@@ -82,8 +82,6 @@ const clubTeamIds = () => S.teams.filter((t) => !t.deleted_at && t.state !== 'Ar
 // n° 113 (3.10.0) : l'ancien espace coach (une seule page) est remplacé par js/v310.js (liste des équipes, puis espace de l'équipe)
 
 export function presidentOverview() {
-  const fees = S.padmin.filter((a) => a.fee_amount != null), due = fees.reduce((a, x) => a + +x.fee_amount, 0), paid = fees.reduce((a, x) => a + Math.min(+x.fee_paid || 0, +x.fee_amount), 0);
-  const tiles = `<div class="tiles"><button class="tile" data-act="rub" data-id="secretariat"><b>${S.players.filter((p) => !p.from_partner).length}</b><span>Licenciés</span></button><button class="tile" data-act="rub" data-id="technique"><b>${S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').length}</b><span>Équipes</span></button><button class="tile ok" data-act="rub" data-id="tresorerie"><b>${due ? Math.round((100 * paid) / due) + ' %' : '—'}</b><span>Cotisations</span></button></div>`;
   const benev = !S.vstats ? '' : `<button class="card" data-act="rub" data-id="evenements" style="border:0;text-align:left;font:inherit;color:inherit;flex-direction:row;align-items:center;gap:12px"><span class="g" style="flex:1"><b>Bénévoles</b><span class="det" style="display:block">Membres : ${(S.vstats.members?.yes || []).length} bénévoles · ${(S.vstats.members?.no || []).length} non${S.vstats.supporters ? ` · supporteurs : ${(S.vstats.supporters.yes || []).length} · ${(S.vstats.supporters.no || []).length} non · ${(S.vstats.supporters.none || []).length} sans réponse` : ''}</span></span><span class="chev"></span></button>`;
   const todo = [], noBirth = S.players.filter((p) => !p.birth_date).length, cc = S.coachCounts || {};
   if (noBirth) todo.push(['rub', 'secretariat', plural(noBirth, 'date de naissance manquante', 'dates de naissance manquantes'), 'Secrétariat']);
@@ -94,7 +92,7 @@ export function presidentOverview() {
   const suivre = !todo.length ? '' : `<div class="sec"><h2>À suivre</h2></div><div class="card"><div class="list">${todo.map(([a, id, t, p]) => `<button class="row" data-act="${a}" data-id="${esc(id)}" data-tab="${esc(id)}"><span class="g">${esc(t)}</span><span class="pill ${p === 'À valider' ? 'wait' : 'blue'}">${esc(p)}</span></button>`).join('')}</div></div>`;
   return arrange('president', [
     // n° 116 : plus de carte « N demandes à valider » (la tuile du bandeau le dit déjà et ouvre l'onglet Demandes)
-    { id: 'chiffres', label: 'Chiffres du club', html: tiles },
+    // bêta 1.1.0 · n° 244 : les chiffres du club sont dans la Vue d'ensemble « pro » (js/b110.js), plus en tuiles ici
     { id: 'joueurs', label: 'Ajouter une équipe ou des joueurs', html: `<button class="btn" data-act="tcreateopen">${icon('plus', 20)}Ajouter une équipe</button>` + addPlayersBlock(clubTeamIds()) }, // n° 132 : « Ajouter une équipe » juste au-dessus de « Ajouter des joueurs »
     { id: 'heures', label: 'Heures des coachs', html: hoursCheckBlock() },
     { id: 'resultats', label: 'Derniers résultats', html: clubResults() },

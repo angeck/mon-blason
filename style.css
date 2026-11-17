@@ -664,3 +664,142 @@ html.site-test body::after { content: 'TEST'; position: fixed; top: calc(env(saf
 .nask-card{border:3px solid var(--pc-jaune)}
 .nask-card .nask-ic{flex:none;color:var(--pc-action)}
 @media (max-width:599px){.nask-row{flex-direction:column;gap:12px}.nask-txt .btns{flex-direction:column-reverse}.nask-txt .btns .btn{width:100%}}
+/* ---------- bêta 1.1.0 · n° 244 : espace Président « pro » et aperçu des fonctions ----------
+   Téléphone : tuiles ; tablette (600 px) : tuiles, sans graphiques ; ordinateur (960 px) : graphiques et tableaux (n° 246).
+   Dès 1200 px, les pages « pro » (html.prov) prennent plus de largeur. */
+.dash{display:flex;flex-direction:column;gap:16px}
+.dsec{display:flex;flex-direction:column;gap:10px}
+.kh{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.kh h3{margin:0;font-family:var(--pc-titre);font-weight:800;font-size:19px;line-height:1.15;min-width:0}
+.klink{background:none;border:0;color:var(--pc-action);font:inherit;font-weight:700;font-size:15px;min-height:44px;padding:0 4px;white-space:nowrap;flex:none}
+.ttabs .tn{display:inline-flex;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--pc-jaune);color:var(--pc-encre);font-size:12px;font-weight:800;align-items:center;justify-content:center;margin-left:4px;box-sizing:border-box}
+/* carte d'identité du club */
+.idcard{gap:14px}
+.idtop{display:flex;flex-wrap:wrap;gap:14px 18px;align-items:flex-start;position:relative}
+.idcrest{flex:none;width:84px;height:84px;border-radius:24px;background:var(--pc-bleu-pale);display:flex;align-items:center;justify-content:center}
+.idname{flex:1;min-width:180px;padding-right:52px}
+.idname h2{margin:2px 0;font-family:var(--pc-titre);font-weight:800;font-size:26px;line-height:1.1}
+.idchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.idchip{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:0 12px;border-radius:14px;background:var(--pc-bleu-pale);font-size:13px;font-weight:700}
+.idchip.off{background:var(--pc-fond);color:var(--pc-texte-doux)}
+.idsw{width:14px;height:14px;border-radius:7px;border:1px solid var(--pc-trait);display:inline-block}
+.idfacts{display:grid;grid-template-columns:1fr;gap:10px;margin:0;width:100%}
+.idfacts dt{font-size:12px;font-weight:700;color:var(--pc-texte-doux)}
+.idfacts dd{margin:2px 0 0;font-size:15px;font-weight:700}
+.tofill{color:var(--pc-attente-texte)}
+.idedit{position:absolute;top:0;right:0;width:44px;height:44px;border-radius:22px;border:2px solid var(--pc-trait);background:var(--pc-papier);color:var(--pc-texte-ecran);display:flex;align-items:center;justify-content:center;padding:0}
+.idnums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.idnums div{background:var(--pc-bleu-pale);border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;min-width:0}
+.idnums b{font-family:var(--pc-titre);font-weight:800;font-size:24px;line-height:1}
+.idnums span{font-size:13px;color:var(--pc-texte-doux);margin-top:3px}
+/* À traiter */
+.ptodo{display:grid;grid-template-columns:1fr;gap:10px}
+.tile.ptile{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:12px;align-items:center;min-height:64px;padding:12px 14px;border:3px solid transparent;text-align:left}
+.tile.ptile b{grid-row:span 2;font-size:30px;color:var(--pc-texte-ecran);min-width:28px}
+.tile.ptile .pl{font-size:15px;font-weight:700;color:var(--pc-texte-ecran)}
+.tile.ptile .ps{font-size:13px;color:var(--pc-texte-doux);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile.ptile.wait{background:var(--pc-attente-fond);border-color:var(--pc-jaune);box-shadow:none}
+.tile.ptile.wait .ps{color:var(--pc-attente-texte)}
+.tile.ptile.neu{background:var(--pc-papier)}
+.tile.ptile.ok{background:var(--pc-papier)}.tile.ptile.ok b{color:var(--pc-oui-texte)}
+.card.pdone{flex-direction:row;align-items:center;gap:12px}
+.pdic{width:36px;height:36px;border-radius:18px;background:var(--pc-oui-fond);display:flex;align-items:center;justify-content:center;flex:none}
+/* chiffres */
+.kgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.kcard{gap:6px;min-width:0}
+.kcard .kh h3{font-size:15px;font-family:var(--pc-texte);font-weight:700;color:var(--pc-texte-doux)}
+.kcard .klink{font-size:14px;min-height:36px}
+.khero{font-family:var(--pc-titre);font-weight:800;font-size:28px;line-height:1.05}
+.kcap{font-size:13px;color:var(--pc-texte-doux)}
+.gv{display:none}
+.hbars{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+.hb{display:grid;grid-template-columns:minmax(56px,120px) minmax(0,1fr) 56px;align-items:center;gap:10px;min-height:26px}
+.hl{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ht{height:12px;background:var(--pc-bleu-pale);border-radius:4px;position:relative}
+.hf{position:absolute;left:0;top:0;bottom:0;background:var(--pc-action);border-radius:4px}
+.href{position:absolute;top:-5px;bottom:-5px;width:2px;margin-left:-1px;background:var(--pc-texte-ecran)}
+.hv{text-align:right;font-weight:700;font-size:14px}
+.kref{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--pc-texte-doux);margin-top:8px}
+.refm{width:2px;height:14px;background:var(--pc-texte-ecran)}
+.stk{display:flex;gap:2px;height:20px;margin:8px 0 10px}
+.stk span:first-child{border-radius:4px 0 0 4px}.stk span:last-child{border-radius:0 4px 4px 0}.stk span:only-child{border-radius:4px}
+.c-ok{background:var(--pc-oui-texte)}.c-part{background:var(--pc-jaune)}.c-due{background:#E8735C}.c-b1{background:var(--pc-action)}.c-b2{background:#9DB2FF}.c-b3{background:var(--pc-trait)}
+.leg div{display:flex;align-items:center;gap:10px;min-height:32px;border-top:1px solid var(--pc-trait);font-size:15px}
+.leg .sw{width:12px;height:12px;border-radius:3px;flex:none}.leg .ll{flex:1}.leg .lp{width:44px;text-align:right;font-size:13px;color:var(--pc-texte-doux)}
+.vbars{display:flex;gap:10px;align-items:flex-end;height:170px;border-bottom:1px solid var(--pc-trait);padding-bottom:4px;margin-top:6px}
+.vb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%;min-width:0}
+.vf{width:40px;max-width:80%;background:var(--pc-action);border-radius:4px 4px 0 0}
+.vv{font-size:13px;font-weight:700;white-space:nowrap}.vl{font-size:13px;color:var(--pc-texte-doux)}
+/* listes et tableaux */
+.dgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+.gtab{display:none;overflow-x:auto}
+.gtab.card{padding:6px 10px}
+.ptable{width:100%;border-collapse:collapse;font-size:15px}
+.ptable th{text-align:left;font-size:13px;font-weight:700;color:var(--pc-texte-doux);padding:0 12px;height:42px;border-bottom:1px solid var(--pc-trait);white-space:nowrap}
+.ptable td{padding:6px 12px;height:48px;border-bottom:1px solid var(--pc-trait)}
+.ptable td.r,.ptable td .pill{white-space:nowrap}
+.ptable tr:last-child td{border-bottom:0}
+.ptable .r{text-align:right}
+.tlink{background:none;border:0;padding:0;font:inherit;font-weight:700;color:var(--pc-action);text-align:left;min-height:44px}
+.mbar{display:inline-block;width:90px;height:10px;background:var(--pc-bleu-pale);border-radius:4px;position:relative;vertical-align:middle;margin-right:10px}
+.mbar span{position:absolute;left:0;top:0;bottom:0;background:var(--pc-action);border-radius:4px}
+.nobody{color:var(--pc-attente-texte);font-weight:700}
+.eqhead{display:flex;flex-direction:column;gap:8px}
+/* Bureau : une carte par fonction */
+.fgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.fcard{background:var(--pc-papier);border:3px solid transparent;border-radius:20px;box-shadow:var(--pc-ombre-douce);padding:14px 16px;display:flex;flex-direction:column;gap:4px;text-align:left;font:inherit;color:inherit;min-height:92px}
+.fcard b{font-size:17px}
+.fcard.none{border:2px dashed var(--pc-attente-texte);background:var(--pc-attente-fond);box-shadow:none}
+/* page d'une fonction : la personne, ses droits */
+.fap{display:flex;flex-direction:column;gap:16px}
+.fap .ftop{display:flex;flex-direction:column;gap:12px}
+.hcard .hwho{display:flex;align-items:center;gap:12px}
+.hav{width:48px;height:48px;border-radius:24px;background:var(--pc-bleu-pale);color:var(--pc-action);font-weight:800;display:flex;align-items:center;justify-content:center;flex:none}
+.hav.empty{background:none;border:2px dashed var(--pc-attente-texte)}
+.hcard .btns{display:flex;gap:8px;flex-wrap:wrap}
+.rcard .kick{margin-top:6px}
+.rvoit div{display:flex;align-items:center;gap:10px;min-height:34px;font-size:15px}
+.rvoit.no{color:var(--pc-texte-doux)}
+.rx{width:18px;text-align:center;color:var(--pc-non-texte);font-weight:800;flex:none}
+.tb .rsub button.fold::after{content:"▾";margin-left:auto;font-size:13px;color:var(--pc-texte-doux)}
+.tb .rsub button.fold[aria-expanded="true"]::after{content:"▴"}
+@media (min-width:600px){
+  .idnums{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .idfacts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ptodo{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .fgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (min-width:960px){
+  .gv{display:block}
+  .gtab{display:block}
+  .notpc{display:none!important}
+  .kgrid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+  .kcard{gap:6px;padding:20px 22px}
+  .khero{font-size:36px}
+  .kcard .kh h3{font-size:17px;font-family:var(--pc-titre);font-weight:800;color:var(--pc-texte-ecran)}
+  .ptodo{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+  .dgrid{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
+  .dgrid.one{grid-template-columns:minmax(0,1fr)}
+  .fap .ftop{display:grid;grid-template-columns:320px minmax(0,1fr);align-items:start}
+}
+@media (min-width:1200px){
+  html.prov #app{max-width:1480px}
+  html.prov .tb{left:max(0px,calc(50% - 740px))}
+  .idtop{flex-wrap:nowrap}
+  .idfacts{width:480px;flex:none}
+  .fgrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+.hb{grid-template-columns:minmax(48px,32%) minmax(40px,1fr) 52px}
+@media (max-width:599px){
+  .idcrest{width:60px;height:60px;border-radius:18px}
+  .idcrest>span{transform:scale(.72)}
+  .idname h2{font-size:22px}
+  .idfacts .notph{display:none}
+  .kcard .kh{flex-wrap:wrap;gap:0 8px}
+  .kcard .klink{min-height:32px;padding:0}
+}
+.fcard.none.soft{border-color:var(--pc-trait);background:var(--pc-papier)}
+.bhead{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+@media (min-width:960px){.bhead{flex-direction:row;align-items:center;justify-content:space-between}.bhead .note{max-width:760px}}
+details[data-qui]>summary{font-weight:700}
+.hd .ttabs button.todo-hl{color:var(--pc-encre)!important;opacity:1} /* bêta 1.1.0 : onglet du bloc bleu en jaune : texte lisible */

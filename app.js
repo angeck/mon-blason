@@ -34,6 +34,7 @@ import './js/v511.js'; // 5.11.0 : n° 227 banque d'exercices dans le menu de ga
 import './js/v56.js'; // 5.6.0 : n° 202 compte administrateur (espace admin, double vérification)
 import './js/v515.js'; // 5.15.0 : n° 239, 242, 243, 246
 import './js/v517.js'; // 5.17.0 : n° 254 (gymnases du club), n° 257 (notifications proposées après une demande)
+import './js/b110.js'; // bêta 1.1.0 : n° 244 (espace Président « pro », aperçu de chaque fonction au même modèle)
 import './js/v55.js'; // 5.5.0 : onboarding « Pour bien démarrer », FAQ (Aide), n° 164 justificatif d'adhésion
 import { validationReminders } from './js/v54.js'; // 5.4.0 : n° 201 (conversation avec un mineur), n° 84 (rattacher), transfert d'une convocation, n° 182
 import './js/v51.js'; // 5.1.0 : n° 189 (retour du téléphone), 190 (pastilles des rôles), 191 (demandes), 196 (bienvenue)
@@ -102,6 +103,7 @@ function render(keep) {
   if (ouv) { const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = '#11162E'; }
   app.innerHTML = switchBar() + html;
   document.documentElement.classList.toggle('notb', !app.querySelector('.tb')); // 5.12.1 · n° 231 : sans onglets (ouverture, connexion, textes légaux), pas de colonne réservée à gauche
+  document.documentElement.classList.toggle('prov', !!app.querySelector('main [data-pro]')); // bêta 1.1.0 · n° 244 : pages « pro » (président, fonctions) plus larges sur ordinateur
   window.scrollTo(0, y);
   onScroll();
   mountCaptcha();

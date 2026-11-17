@@ -72,6 +72,7 @@ function paintTodo() {
     if (!rows.length && (wait.length || numNew || visit.has('lead'))) {
       LEADS.forEach((sel) => document.querySelectorAll(sel).forEach((el) => {
         if (el.closest('.tb') || el.getAttribute('aria-current') === 'page') return;
+        if (el.matches('.klink, .tlink, .ptile:not(.wait), .kcard *, .ptable *')) return; // bêta 1.1.0 : pas de jaune sur les liens des cartes de chiffres ni sur les tuiles sans urgence
         if (sel === '[data-act=tsgo][data-tab=effectif]' && !wait.length) return;
         show(el, 'lead');
       }));
@@ -122,14 +123,18 @@ function roleSubs() {
   const btn = [...document.querySelectorAll('.tb nav.roles [data-act=casq]')].find((b) => b.dataset.v === key);
   if (!btn) return;
   btn.classList.add('ropen');
-  const tt = [...document.querySelectorAll('nav.ttabs')].find((n) => !n.closest('.tb'));
-  if (!tt) return;
+  // bêta 1.1.0 · n° 244 : dans la page d'une fonction ouverte par le président, le bandeau garde les onglets du président
+  // (Bureau déplié, la fonction en jaune) ; les onglets de la fonction restent en haut de la page
+  const pf = S.view?.type === 'fview' && key === 'president' && hooks.presTabsHtml;
+  const tt = pf ? null : [...document.querySelectorAll('nav.ttabs')].find((n) => !n.closest('.tb'));
+  if (!pf && !tt) return;
   const sub = document.createElement('div');
   sub.className = 'rsub'; sub.setAttribute('role', 'group'); sub.setAttribute('aria-label', 'Sous-onglets du rôle');
-  sub.innerHTML = tt.innerHTML;
+  sub.innerHTML = pf ? hooks.presTabsHtml().replace(/^<nav[^>]*>/, '').replace(/<\/nav>$/, '') : tt.innerHTML;
   carnetSubs(sub, key);
+  if (key === 'president' && hooks.presSubs) hooks.presSubs(sub);
   btn.after(sub);
-  root.classList.add('rsubon');
+  if (!pf) root.classList.add('rsubon');
 }
 wide.addEventListener?.('change', () => render(true));
 

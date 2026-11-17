@@ -15,6 +15,7 @@ import { exosForCounts } from './coach.js';
 import { teamToolsBlock, dupGroups } from './v38.js';
 import { payTreasurerSoon } from './v310.js';
 import { addPlayersBlock, tresoSummary, benevBlock, defaultMissionsBlock, rubBody, rubList, annList, missing, sw } from './vie.js';
+import { todoTiles, kcard, klink, hbars, stack, vbars, listOrTable, rightsCard, holderCard, feeCard, feeStats, licCard, licStats, docCard, playersCard, presenceCard, holderOf, tag, presenceByTeam } from './b110.js'; // bêta 1.1.0 · n° 244
 
 const eur = (n) => (Math.round((+n || 0) * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €';
 const live = () => S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée');
@@ -71,11 +72,13 @@ function fnSpace(f, mine) {
   const cur = tabs.find((t) => t.id === S.ftabs[key]) || tabs[0];
   const nav = `<nav class="ttabs" aria-label="Espace ${esc(fl(f))}">${tabs.map((t) => `<button data-act="ftab" data-k="${esc(key)}" data-v="${t.id}" ${t.id === cur.id ? 'aria-current="page"' : ''}>${esc(t.l)}</button>`).join('')}</nav>`;
   const first = cur.set && cur.id === 'ap_' + cur.set; // le bandeau est dans l'Aperçu seulement
+  // bêta 1.1.0 · n° 244 : l'Aperçu suit le modèle de la Vue d'ensemble du président (la même page chez le président et chez la personne)
+  if (first && APERCU[cur.set]) return { tabs: nav, body: apercu(cur.set, key, f, mine) };
   const band = first && BANDS[cur.set] ? BANDS[cur.set](key) : '', b = BODY[cur.id] ? BODY[cur.id]() : '';
   // n° 131 : « Réorganiser » dans chaque onglet qui a plusieurs blocs (ordre propre à la personne, à la fonction et à l'onglet) ;
   // le bandeau reste en tête. 5.1.0 (n° 191) : plus de bouton « Gestion du club » en bas de chaque onglet (la page n'existe plus)
   const body = Array.isArray(b) ? arrange(key + ':' + cur.id, [{ id: 'bandeau', pin: true, html: band }, ...b]) : band + b;
-  return { tabs: nav, body };
+  return { tabs: nav, body: body + '<span data-pro="1" hidden></span>' }; // bêta 1.1.0 · n° 244 : pages des fonctions plus larges sur ordinateur (tableaux)
 }
 hooks.fnSpace = fnSpace;
 
@@ -268,6 +271,131 @@ const BODY = {
   rubs: () => rubList(['commun'].concat(S.v44x || [])) + '<p class="note">Accès que le président t’a ouverts en plus de ta fonction.</p>',
 };
 
+// ---------- bêta 1.1.0 · n° 244 · Aperçu de chaque fonction : À traiter, chiffres (graphiques sur ordinateur), liste récente, droits ----------
+// Chez le président (page ouverte depuis Bureau), la personne qui tient la fonction est en tête ; la page est sinon la même.
+const AUD = { club: 'Tout le club', team: 'Des équipes', board: 'Le bureau', board_coaches: 'Bureau et coachs', coaches: 'Les coachs', people: 'Des personnes' };
+const MOIS = (d) => new Date(d).toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '');
+const dshort = (d) => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+const seasonStart = () => { const y = +String(SEASON).split('-')[0] || new Date().getFullYear(); return new Date(y, 6, 1); };
+const pn = (p) => esc((p.first_name + ' ' + (p.last_name || '')).trim());
+const slotsOf = (e) => (S.missions || []).filter((m) => m.event_id === e.id).reduce((a, m) => a + (+m.slots || 0), 0);
+const benevTag = (e) => { const t = slotsOf(e); if (!t) return '—'; const m = missing(e.id); return tag(`${t - m} / ${t}`, m ? 'wait' : 'ok'); };
+const RIGHT_ROW = (k) => { const c = club() || {}; return { k, l: RIGHTS[k][0], d: RIGHTS[k][1], on: RIGHTS[k][2] ? c[k] !== false : c[k] === true }; };
+const VOIT = {
+  tresorerie: ['Cotisations, versements et relances', 'Tarifs et réductions (motifs compris)', 'Heures des coachs et relevés', 'État des licences (modifiable)', 'Attestations de paiement', 'Coordonnées des familles'],
+  secretariat: ['Demandes à valider (joueurs, parents, supporteurs, coachs)', 'Licences et certificats (fourni ou non)', 'Fiches des joueurs et autorisations', 'Import et export (inscrits au journal)', 'Coordonnées des familles'],
+  licences: ['Licences : état, numéro, certificat fourni', 'Contact licences du club', 'Coordonnées des familles'],
+  rencontres: ['Rencontres, gymnases et convocations', 'Bénévoles et missions', 'Contact rencontres du club', 'Coordonnées des familles'],
+  technique: ['Toutes les équipes et leurs coachs', 'Création d’équipes et nomination des coachs', 'Exercices du club à valider', 'Ententes et résultats'],
+  communication: ['Annonces officielles', 'Lecteurs de ses annonces (« lu par »)'],
+  evenements: ['Événements et assemblée du club', 'Missions des bénévoles et inscrits', 'Réponses des membres'],
+};
+const NEVOIT = { communication: ['Cotisations, tarifs et versements', 'Licences et certificats'], evenements: ['Cotisations, tarifs et versements', 'Licences et certificats'] };
+const MASQ = { secretariat: ['secretary_sees_fees'], licences: ['secretary_sees_fees'], technique: ['tech_sees_contacts', 'coach_sees_fees'] }; // n° 155 : réglages qui touchent la fonction (et les coachs, pour le Directeur technique)
+const APERCU = {
+  tresorerie: (go) => {
+    const fs = feeStats(), cc = S.coachCounts || {}, h = S.v44?.hours;
+    const pays = (S.payments || []).filter((x) => new Date(x.paid_at) >= seasonStart() && S.players.some((p) => p.id === x.player_id && !p.from_partner));
+    const byM = []; pays.forEach((x) => { const k = new Date(x.paid_at).toISOString().slice(0, 7); let r = byM.find((y) => y.k === k); if (!r) byM.push(r = { k, l: MOIS(x.paid_at), n: 0 }); r.n += +x.amount || 0; });
+    byM.sort((a, b) => a.k.localeCompare(b.k));
+    const tot = pays.reduce((a, x) => a + (+x.amount || 0), 0);
+    const hb = (h?.by || []).filter((x) => x.min > 0).sort((a, b) => b.min - a.min).slice(0, 5).map((x) => ({ l: name(x.u), n: Math.round(x.min / 6) / 10 }));
+    const last = [...(S.payments || [])].sort((a, b) => new Date(b.paid_at) - new Date(a.paid_at)).slice(0, 6).map((x) => { const p = S.players.find((y) => y.id === x.player_id); return p ? { p, x } : null; }).filter(Boolean);
+    return {
+      pre: hooks.attestReqBlock ? hooks.attestReqBlock() : '',
+      todo: [{ n: fs.late.length, l: 'Cotisations à relancer', s: fs.late.length ? eur(fs.rest) + ' restent dus' : '', act: 'ftab', attrs: go('cotis') }, { n: cc.hours || 0, l: 'Relevés d’heures à valider', s: '', act: 'choursb', attrs: '' }],
+      cards: [feeCard(klink('Cotisations', 'ftab', go('cotis'))),
+        kcard({ id: 'mois', title: 'Encaissé par mois', hero: eur(tot), cap: 'versements notés depuis le 1er juillet', chart: byM.length ? vbars(byM.map((x) => ({ l: x.l, n: x.n, v: Math.round(x.n).toLocaleString('fr-FR') })), ' €', 'Encaissé par mois') : '' }),
+        kcard({ id: 'heures', title: 'Heures des coachs', hero: h ? Math.round(h.min / 6) / 10 + ' h' : '—', cap: h ? `validées en ${esc(h.label)}${h.amount != null ? ' · environ ' + eur(h.amount) : ''}` : 'validées le mois dernier', link: klink('Heures', 'ftab', go('heures')), chart: hb.length ? hbars(hb, { suffix: ' h', label: 'Heures validées par coach' }) : '' })],
+      list: listOrTable('Derniers versements', [['Joueur'], ['Équipe'], ['Montant', 'r'], ['Moyen'], ['Date']], last.map(({ p, x }) => ({ act: 'player', attrs: `data-id="${p.id}"`, cells: [pn(p), esc(teamName(p.team_id) || '—'), eur(x.amount), esc(x.method || '—'), dshort(x.paid_at)], title: pn(p), sub: `${eur(x.amount)} · ${esc(x.method || '—')} · ${dshort(x.paid_at)}` })), { link: klink('Cotisations', 'ftab', go('cotis')), empty: 'Aucun versement noté pour l’instant.' }),
+    };
+  },
+  secretariat: (go) => {
+    const l = licStats(), inc = incomplete();
+    const why = (p) => [!p.birth_date ? 'date de naissance' : '', !p.last_name ? 'nom' : '', /\s/.test(p.first_name) ? 'prénom et nom à séparer' : ''].filter(Boolean).join(', ');
+    return {
+      todo: [{ n: toValidate().length, l: 'Demandes à valider', s: '', act: 'ftab', attrs: go('fiches') }, { n: inc.length, l: 'Fiches incomplètes', s: 'dates de naissance, noms', act: 'ftab', attrs: go('fiches') }, { n: l.fed + l.pre, l: 'Licences en préinscription', s: `${l.fed} fédé · ${l.pre} club`, act: 'ftab', attrs: go('licences'), hot: false }],
+      cards: [licCard(klink('Licences', 'ftab', go('licences'))), playersCard(), docCard()],
+      list: listOrTable('Fiches à compléter', [['Joueur'], ['Équipe'], ['Ce qui manque']], inc.slice(0, 6).map((p) => ({ act: 'player', attrs: `data-id="${p.id}"`, cells: [pn(p), esc(teamName(p.team_id) || 'Sans équipe'), esc(why(p))], title: pn(p), sub: esc(why(p)) })), { link: klink('Fiches', 'ftab', go('fiches')), empty: 'Toutes les fiches sont complètes.' }),
+    };
+  },
+  licences: (go) => {
+    const l = licStats(), todo = S.players.filter((p) => !p.from_partner && (S.padmin.find((a) => a.player_id === p.id)?.licence_state || 'Préinscrit club') !== 'Licencié');
+    return {
+      todo: [{ n: l.fed + l.pre, l: 'Licences en préinscription', s: `${l.fed} fédé · ${l.pre} club`, act: 'ftab', attrs: go('lic') }, { n: l.n - l.doc, l: 'Certificats pas fournis', s: '', act: 'ftab', attrs: go('lic'), hot: false }],
+      cards: [licCard(klink('Licences', 'ftab', go('lic'))), docCard()],
+      list: listOrTable('Licences à finir', [['Joueur'], ['Équipe'], ['État']], todo.slice(0, 6).map((p) => { const st = S.padmin.find((a) => a.player_id === p.id)?.licence_state || 'Préinscrit club'; return { act: 'player', attrs: `data-id="${p.id}"`, cells: [pn(p), esc(teamName(p.team_id) || '—'), tag(st, 'wait')], title: pn(p), sub: esc(st) }; }), { empty: 'Toutes les licences sont validées.' }),
+    };
+  },
+  rencontres: (go) => {
+    const ms = clubEvs(30).filter((e) => ['Match', 'Plateau', 'Tournoi'].includes(e.type)), home = ms.filter((e) => e.at_home !== false).length;
+    const evs = clubEvs(), tot = evs.reduce((a, e) => a + slotsOf(e), 0), miss = evs.reduce((a, e) => a + missing(e.id), 0), noPlace = homeSoon(60).filter((e) => !(e.place || '').trim());
+    const tc = toConvoke();
+    return {
+      pre: tc.length ? convokeBlock() : '',
+      todo: [{ n: tc.length, l: 'Convocations à envoyer', s: '7 prochains jours', act: 'ftab', attrs: go('convoc') }, { n: miss, l: 'Places de bénévoles à pourvoir', s: '30 prochains jours', act: 'ftab', attrs: go('benev') }, { n: noPlace.length, l: noPlace.length > 1 ? 'Matchs sans gymnase' : 'Match sans gymnase', s: noPlace.slice(0, 2).map((e) => e.title).join(' · '), act: 'ftab', attrs: go('renc') }],
+      cards: [kcard({ id: 'matchs', title: 'Matchs, plateaux, tournois', hero: String(ms.length), cap: `30 prochains jours · ${home} à domicile, ${ms.length - home} à l’extérieur`, link: klink('Rencontres', 'ftab', go('renc')), chart: ms.length ? hbars([{ l: 'À domicile', n: home }, { l: 'À l’extérieur', n: ms.length - home }], { label: 'Rencontres à domicile et à l’extérieur' }) : '' }),
+        kcard({ id: 'benev', title: 'Bénévoles', hero: tot ? Math.round((100 * (tot - miss)) / tot) + ' %' : '—', cap: tot ? `${tot - miss} place${tot - miss > 1 ? 's' : ''} pourvue${tot - miss > 1 ? 's' : ''} sur ${tot} · 30 jours` : 'Aucune mission dans les 30 prochains jours', link: klink('Bénévoles', 'ftab', go('benev')), chart: tot ? stack([{ l: 'Pourvues', n: tot - miss, c: 'c-b1' }, { l: 'À pourvoir', n: miss, c: 'c-b3' }], `Bénévoles : ${tot - miss} places pourvues sur ${tot}`) : '' }),
+        kcard({ id: 'convoc', title: 'Convocations', hero: String(tc.length), cap: `à envoyer · ${plural(homeSoon(7).length, 'rencontre')} à domicile dans les 7 jours`, link: klink('Convocations', 'ftab', go('convoc')) })],
+      list: listOrTable('Prochaines rencontres', [['Rencontre'], ['Date'], ['Lieu'], ['Où'], ['Bénévoles', 'r']], ms.slice(0, 6).map((e) => ({ act: 'event', attrs: `data-id="${e.id}"`, cells: [esc(e.title), esc(fmtShort(e.starts_at)), e.at_home !== false && !(e.place || '').trim() ? tag('Sans gymnase', 'wait') : esc(e.place || '—'), e.at_home === false ? 'Extérieur' : 'Domicile', benevTag(e)], title: esc(e.title), sub: esc(fmtShort(e.starts_at)) + (e.place ? ' · ' + esc(e.place) : '') })), { link: klink('Rencontres', 'ftab', go('renc')), empty: 'Aucune rencontre dans les 30 prochains jours.' }),
+    };
+  },
+  technique: (go) => {
+    const cc = S.coachCounts || {}, req = toValidate().filter((m) => m.role === 'coach'), nc = noCoachTeams(), ghost = live().filter((t) => t.state === 'Fantôme');
+    const coachs = new Set(S.members.filter((m) => m.role === 'coach' && m.status === 'active').map((m) => m.user_id)).size;
+    const ex = exosForCounts(), clubEx = ex ? ex.filter((e) => e.club_id === S.clubId && e.sharing !== 'me' && !e.deleted_at).length : null;
+    const pres = Object.fromEntries(presenceByTeam().map((x) => [x.t.id, x]));
+    const coachOfT = (t) => [...new Set(S.members.filter((m) => m.role === 'coach' && m.status === 'active' && m.team_id === t.id).map((m) => m.user_id))];
+    return {
+      todo: [{ n: req.length, l: 'Demandes de coachs', s: '', act: 'ftab', attrs: go('equipes') }, { n: nc.length, l: nc.length > 1 ? 'Équipes sans coach' : 'Équipe sans coach', s: nc.slice(0, 3).map((t) => t.name).join(' · '), act: 'ftab', attrs: go('equipes') }, { n: cc.exos || 0, l: 'Exercices à valider', s: '', act: 'cexos', attrs: 'data-tab="club"' }, { n: dupGroups().length, l: 'Doublons d’équipes', s: '', act: 'ftab', attrs: go('equipes') }, { n: ghost.length, l: 'Équipes en mode fantôme', s: '', act: 'ftab', attrs: go('equipes'), hot: false }],
+      cards: [presenceCard(klink('Équipes', 'ftab', go('equipes'))),
+        kcard({ id: 'coachs', title: 'Coachs', hero: String(coachs), cap: `${plural(live().length - nc.length, 'équipe')} avec un coach · ${nc.length} sans`, link: klink('Équipes', 'ftab', go('equipes')), chart: live().length ? stack([{ l: 'Équipes avec un coach', n: live().length - nc.length, c: 'c-b1' }, { l: 'Équipes sans coach', n: nc.length, c: 'c-due' }], `Équipes : ${live().length - nc.length} avec un coach, ${nc.length} sans`) : '' }),
+        kcard({ id: 'carnet', title: 'Carnet du club', hero: clubEx == null ? '…' : String(clubEx), cap: 'exercices partagés au club', link: klink('Exercices', 'ftab', go('exos')), chart: clubEx ? hbars([{ l: 'Exercices du club', n: clubEx }, { l: 'À valider', n: cc.exos || 0 }], { label: 'Exercices du club et à valider' }) : '' })],
+      list: listOrTable('Équipes', [['Équipe'], ['Coachs'], ['Joueurs', 'r'], ['Présence', 'r']], live().slice(0, 8).map((t) => { const p = pres[t.id]; const cs = coachOfT(t); return { act: 'tsopen', attrs: `data-id="${t.id}"`, cells: [esc(t.name), cs.length ? esc(cs.map(name).join(', ')) : '<span class="nobody">Aucun coach</span>', String(S.players.filter((x) => x.team_id === t.id && !x.from_partner).length), p?.pct == null ? '—' : p.pct + ' %'], title: esc(t.name), sub: cs.length ? esc(cs.map(name).join(', ')) : 'sans coach' }; }), { link: klink('Toutes', 'ftab', go('equipes')), empty: 'Aucune équipe.' }),
+    };
+  },
+  communication: (go) => {
+    const ss = seasonStart(), all = S.annonces.filter((a) => a.kind === 'annonce' && new Date(a.created_at) >= ss);
+    const m1 = new Date(); m1.setDate(1); m1.setHours(0, 0, 0, 0);
+    const byA = {}; all.forEach((a) => (byA[a.audience] = (byA[a.audience] || 0) + 1));
+    const mine = S.annonces.filter((a) => a.created_by === S.me.id), r = S.v44?.reads;
+    if (mine.length && !r) loadReads(mine.map((a) => a.id));
+    const members = new Set(S.members.filter((m) => m.status === 'active').map((m) => m.user_id)).size;
+    return {
+      pre: `<button class="btn main" data-act="annnew">${icon('plus', 20)}Nouvelle annonce</button>`,
+      todo: [],
+      cards: [kcard({ id: 'annonces', title: 'Annonces', hero: String(all.length), cap: `cette saison · ${all.filter((a) => new Date(a.created_at) >= m1).length} ce mois-ci`, link: klink('Annonces', 'ftab', go('annonces')), chart: all.length ? hbars(Object.entries(byA).map(([k, n]) => ({ l: AUD[k] || k, n })), { label: 'Annonces par public' }) : '' }),
+        kcard({ id: 'lecture', title: 'Lecture de tes annonces', hero: !mine.length ? '—' : r ? `${r[mine[0].id] || 0}` : '…', cap: !mine.length ? 'Tu n’as pas encore écrit d’annonce' : `personnes ont lu la dernière · ${members} membres`, link: klink('Lecteurs', 'ftab', go('lecteurs')), chart: mine.length && r ? hbars(mine.slice(0, 5).map((a) => ({ l: a.title, n: r[a.id] || 0 })), { max: Math.max(1, members), label: 'Lecteurs de tes dernières annonces' }) : '' })],
+      list: listOrTable('Dernières annonces du club', [['Annonce'], ['Pour'], ['Date'], ['Par']], S.annonces.filter((a) => a.kind === 'annonce').slice(0, 5).map((a) => ({ act: 'annopen', attrs: `data-id="${a.id}"`, cells: [esc(a.title), esc(AUD[a.audience] || ''), dshort(a.created_at), esc(name(a.created_by))], title: esc(a.title), sub: `${esc(AUD[a.audience] || '')} · ${dshort(a.created_at)}` })), { link: klink('Annonces', 'ftab', go('annonces')), empty: 'Aucune annonce pour l’instant.' }),
+      extra: brandBlock(),
+    };
+  },
+  evenements: (go) => {
+    const l = upcoming(S.events.filter((e) => !e.cancelled && ['Événement', 'AG'].includes(e.type) && new Date(e.starts_at) < Date.now() + 120 * DAY));
+    const miss = l.filter((e) => new Date(e.starts_at) < Date.now() + 30 * DAY).reduce((a, e) => a + missing(e.id), 0);
+    const vs = S.vstats, yes = (vs?.members?.yes || []).length, no = (vs?.members?.no || []).length;
+    const ag = l.find((e) => e.type === 'AG'), rs = ag ? (S.resp || []).filter((x) => x.event_id === ag.id) : [];
+    return {
+      pre: `<button class="btn main" data-act="evnew" data-type="Événement">${icon('plus', 20)}Nouvel événement</button>`,
+      todo: [{ n: miss, l: 'Places de bénévoles à pourvoir', s: '30 prochains jours', act: 'ftab', attrs: go('events') }],
+      cards: [kcard({ id: 'events', title: 'Événements à venir', hero: String(l.length), cap: '4 prochains mois', link: klink('Événements', 'ftab', go('events')), chart: l.length ? hbars([{ l: 'Assemblées', n: l.filter((e) => e.type === 'AG').length }, { l: 'Événements', n: l.filter((e) => e.type === 'Événement').length }], { label: 'Événements à venir' }) : '' }),
+        kcard({ id: 'benevoles', title: 'Bénévoles du club', hero: vs ? String(yes) : '—', cap: vs ? `adultes qui participent · ${no} non` : 'pas encore de réponse', chart: vs && yes + no ? stack([{ l: 'Participent', n: yes, c: 'c-b1' }, { l: 'Non', n: no, c: 'c-b3' }], `Bénévoles : ${yes} participent, ${no} non`) : '' }),
+        ...(ag ? [kcard({ id: 'ag', title: 'Assemblée générale', hero: String(rs.filter((x) => x.answer === 'oui').length), cap: `viennent · ${esc(fmtShort(ag.starts_at))}`, chart: rs.length ? stack([{ l: 'Viennent', n: rs.filter((x) => x.answer === 'oui').length, c: 'c-b1' }, { l: 'Ne viennent pas', n: rs.filter((x) => x.answer === 'non').length, c: 'c-b3' }], 'Réponses à l’assemblée') : '' })] : [])],
+      list: listOrTable('À venir', [['Événement'], ['Date'], ['Lieu'], ['Bénévoles', 'r']], l.slice(0, 6).map((e) => ({ act: 'event', attrs: `data-id="${e.id}"`, cells: [esc(e.title), esc(fmtShort(e.starts_at)), esc(e.place || '—'), benevTag(e)], title: esc(e.title), sub: esc(fmtShort(e.starts_at)) })), { link: klink('Événements', 'ftab', go('events')), empty: 'Aucun événement dans les 4 prochains mois.' }),
+    };
+  },
+};
+function apercu(set, key, f, mine) {
+  const go2 = (id) => `data-k="${esc(key)}" data-v="${id}"`;
+  const o = APERCU[set](go2);
+  const asPres = !mine && isPresident();
+  const hs = holderOf(f);
+  const title = mine ? 'Tes droits' : hs.length ? 'Ce que voit ' + hs.map(name).join(', ') : 'Ce que verra la personne désignée';
+  const rc = rightsCard(title, VOIT[set] || [], { masq: (MASQ[set] || []).map(RIGHT_ROW), nevoit: NEVOIT[set] || [] });
+  const todo = `<div class="dsec"><div class="kick">À traiter</div>${todoTiles(o.todo)}</div>`;
+  return `<div class="fap" data-pro="1">${asPres ? `<div class="ftop">${holderCard(f)}${todo}</div>` : todo}${o.pre || ''}<div class="kgrid">${o.cards.join('')}</div><div class="dgrid">${o.list}${rc}</div>${o.extra || ''}</div>`;
+}
+
 // ---------- passage de saison pour tout le club (Président › Réglages › Saison) ----------
 hooks.seasonBlock = () => {
   const TO = passSeason(live()), l = live().filter((t) => (t.season || '') !== TO), on = isArmed('season');   // 5.4.0 : saison calculée
@@ -290,7 +418,7 @@ export async function loadV44() {
   ]);
   const rates = Object.fromEntries((rt.data || []).map((x) => [x.user_id, +x.rate])), l = st.data || [];
   const min = l.reduce((s, x) => s + (+x.total_minutes || 0), 0), priced = l.filter((x) => rates[x.user_id] != null);
-  S.v44.hours = { min, label: m.toLocaleDateString('fr-FR', { month: 'long' }), amount: priced.length ? priced.reduce((s, x) => s + ((+x.total_minutes || 0) / 60) * rates[x.user_id], 0) : null };
+  S.v44.hours = { min, label: m.toLocaleDateString('fr-FR', { month: 'long' }), amount: priced.length ? priced.reduce((s, x) => s + ((+x.total_minutes || 0) / 60) * rates[x.user_id], 0) : null, by: l.map((x) => ({ u: x.user_id, min: +x.total_minutes || 0 })) }; // bêta 1.1.0 : par coach (graphique de l'Aperçu)
 }
 
 // ---------- actions ----------
