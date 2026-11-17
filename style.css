@@ -486,7 +486,7 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .obzoom { position: fixed; inset: 0; z-index: 90; background: rgba(17,22,46,.88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; }
 .obzoom img { max-width: 100%; max-height: calc(100% - 70px); border-radius: 14px; }
 /* 5.6.0 · n° 202 : espace admin */
-@media (max-width:599px){.admtb nav{grid-template-columns:repeat(4,minmax(0,1fr))}} /* 5.17.0 · n° 255 : quatre onglets seulement sur téléphone ; dès 600 px, bandeau en colonne (n° 246) */
+@media (max-width:599px){.admtb nav{grid-template-columns:repeat(5,minmax(0,1fr))}} /* 5.17.0 · n° 255 : onglets en ligne sur téléphone (cinq depuis la bêta 1.2.0 : + Contacts) ; dès 600 px, bandeau en colonne (n° 246) */
 .admnums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;text-align:center}
 .admnums.three{grid-template-columns:repeat(3,minmax(0,1fr))}
 .admnums .big{font-size:28px}
@@ -803,3 +803,22 @@ html.site-test body::after { content: 'TEST'; position: fixed; top: calc(env(saf
 @media (min-width:960px){.bhead{flex-direction:row;align-items:center;justify-content:space-between}.bhead .note{max-width:760px}}
 details[data-qui]>summary{font-weight:700}
 .hd .ttabs button.todo-hl{color:var(--pc-encre)!important;opacity:1} /* bêta 1.1.0 : onglet du bloc bleu en jaune : texte lisible */
+
+/* ---------- bêta 1.2.0 · n° 245 : espace admin « pro », mini-CRM (js/b120.js) ----------
+   Téléphone et tablette : listes et tuiles ; ordinateur (960 px) : colonnes d'étapes, graphiques et tableaux (n° 246). */
+.crmboard{display:none;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:start}
+.crmcol{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:20px;background:var(--pc-bleu-pale);min-width:0}
+.crmlead{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:12px 14px;border-radius:16px;text-align:left;font:inherit;color:inherit;width:100%;box-sizing:border-box;border:2px solid transparent;cursor:pointer}
+.crmlead b{font-size:15px;overflow-wrap:anywhere}
+.crmlead small{font-size:13px;color:var(--pc-texte-doux)}
+.crmrow{display:flex;gap:6px;flex-wrap:wrap}
+.idnums.crm3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.idnums.crm3 b{font-size:16px;line-height:1.2;overflow-wrap:anywhere}
+.crmev{display:flex;flex-direction:column}
+.crmevr{display:grid;grid-template-columns:104px minmax(0,1fr);gap:10px;padding:10px 0;border-top:1px solid var(--pc-trait)}
+.crmevr:first-child{border-top:0}
+.crmevr .g{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
+.crmevr small{font-size:14px;color:var(--pc-texte-ecran)}
+.crmd{font-size:13px;color:var(--pc-texte-doux)}
+@media (max-width:599px){.crmevr{grid-template-columns:minmax(0,1fr)}.idnums.crm3{grid-template-columns:minmax(0,1fr)}}
+@media (min-width:960px){.crmboard{display:grid}.crmlead:hover{border-color:var(--pc-jaune)}}

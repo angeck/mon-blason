@@ -34,6 +34,15 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 
 Toutes les personnes des tests sont fictives.
 
+## Bêta 1.2.0
+
+N° 245 et 202 (espace admin « pro » : cockpit et mini-CRM, maquette validée par Gaël le 17 novembre 2026). Code dans `js/b120.js`, branché dans `v56` (onglets admin : Accueil · Clubs · Contacts · À traiter · Entretien).
+
+- Accueil admin : tuiles Contacts, relances à faire (bouton « Fait »), entonnoir commercial, outils actuels des contacts, « Ce qui sert, ce qui ne sert pas » (12 fonctions, nombres seulement), parc des clubs, objectif de clubs payants.
+- Onglet Contacts : recherche, filtres, tableau par étape (ordinateur) ou listes (téléphone, tablette), fiche avec historique, « Noter un échange », fiche modifiable, effacement en deux touches. Claude range les phrases de Gaël via la conversation, Gaël valide.
+- Boîte mail (gael@, contact@) : EN SUSPEND, non codée.
+- Base : `supabase/MAJ_BETA_1_2_0.sql` (source `beta_1_2_0.sql`, ajoutée à `CREER_BASE_NEUVE.sql`) : tables `crm_contacts` et `crm_events` (illisibles par tout compte de l'application, accès par fonctions réservées à l'administrateur avec code à 6 chiffres), `admin_crm_*`, `admin_usage`, `admin_parc`. À lancer après la mise en ligne du code ; contacts réels seulement sur la base du vrai site.
+
 ## Bêta 1.1.0
 
 N° 244 (espace Président « pro », maquette en trois vues validée par Gaël le 17 novembre 2026). Code dans `js/b110.js`, branché dans `v310` (onglets du président), `v44` (Aperçu des fonctions), `v515` (bandeau de gauche), `club.js` (tableau des licences et cotisations) et `style.css`.

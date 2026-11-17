@@ -10,6 +10,7 @@ import { header, crest, icon, field } from './ui.js';
 import { V37_TOP } from './v37.js';
 import { mailTestBlock } from './v38.js';
 import { adminsButton } from './v46.js';
+import { crmLoadHome, crmLoadList, crmTab, crmBadge, cockpitCards, goalCard } from './b120.js'; // bêta 1.2.0 · n° 245 : cockpit et mini-CRM
 
 const A = () => (S.adm = S.adm || {});
 const arr = (x) => (Array.isArray(x) ? x : null);
@@ -18,7 +19,7 @@ const day = (iso) => (iso ? fmtDay(String(iso).length === 10 ? iso + 'T12:00:00'
 const today = () => new Date().toLocaleDateString('sv-SE');
 const REASON = { paye: 'Payé', devis: 'Devis accepté', gratuite: 'Gratuité', test: 'Test' };
 const STATUS = { test: 'Test', gratuit: 'Gratuit', payant: 'Payant' };
-const TABS = [['home', 'Accueil', 'home'], ['clubs', 'Clubs', 'shield'], ['todo', 'À traiter', 'flag'], ['tools', 'Entretien', 'refresh']];
+const TABS = [['home', 'Accueil', 'home'], ['clubs', 'Clubs', 'shield'], ['crm', 'Contacts', 'team'], ['todo', 'À traiter', 'flag'], ['tools', 'Entretien', 'refresh']];
 const NEED_SCRIPT = 'La base n’est pas encore à jour : lance le script MAJ_ALPHA_5_6_0.sql dans Supabase.';
 
 // ---------- chargements (chaque appel est refusé par la base sans la double vérification) ----------
@@ -34,6 +35,8 @@ async function load(tab) {
   if (tab === 'home') { try { const r = await sb.rpc('admin_ai_stats'); a.ai = r.error ? (/function|fonction|schema cache/i.test(r.error.message || '') ? { missing: true } : null) : r.data; } catch { a.ai = null; } }
   // 5.11.0 · n° 228 : e-mails du jour et du mois (sans message d'erreur si le script 5.11.0 n'est pas encore lancé)
   if (tab === 'home') { try { const r = await sb.rpc('admin_mail_stats'); a.mails = r.error ? (/function|fonction|schema cache/i.test(r.error.message || '') ? { missing: true } : null) : r.data; } catch { a.mails = null; } }
+  if (tab === 'home') await crmLoadHome(); // bêta 1.2.0 : relances, entonnoir, usage, parc
+  if (tab === 'crm') await crmLoadList();
   if (tab === 'clubs' || tab === 'todo' || tab === 'club') a.clubs = arr(await rpc('admin_club_list')) || a.clubs || [];
   if (tab === 'todo') {
     const [rep, dup, ov] = await Promise.all([rpc('admin_reports'), rpc('duplicates_list'), rpc('admin_overview')]);
@@ -57,17 +60,18 @@ hooks.adminLanding = adminLanding;
 function nav() {
   const t = S.admTab || 'home', ov = A().ov || {}, todo = (+ov.to_validate || 0) + (+ov.club_requests || 0) + (+ov.schemas || 0) + (+ov.duplicates || 0) + (+ov.reports || 0);
   return `<div class="tb admtb"><nav aria-label="Onglets admin">${TABS.map(([k, l, ic]) => {
-    const cur = k === t, n = k === 'todo' ? todo : 0;
+    const cur = k === t, n = k === 'todo' ? todo : k === 'crm' ? crmBadge() : 0;
     return `<button data-act="admtab" data-k="${k}" ${cur ? 'aria-current="page"' : ''}><span class="ic">${icon(ic, 24, 'currentColor', cur ? 2.2 : 2)}</span><span>${l}</span>${n ? `<span class="n">${n > 99 ? '99+' : n}</span>` : ''}</button>`;
   }).join('')}</nav></div>`;
 }
 function space(asView) {
   const t = S.admTab || 'home', a = A();
-  const titles = { home: 'Bonjour ' + esc(S.me?.first_name || ''), clubs: 'Clubs', todo: 'À traiter', tools: 'Entretien' };
+  const titles = { home: 'Bonjour ' + esc(S.me?.first_name || ''), clubs: 'Clubs', crm: 'Contacts', todo: 'À traiter', tools: 'Entretien' };
   const head = header({ brand: true, back: asView, kicker: 'Administration', title: titles[t] });
   if (!S.isAdmin) return head + '<main class="bd"><p class="empty">Réservé à l’administrateur.</p></main>';
-  const body = { home: homeTab, clubs: clubsTab, todo: todoTab, tools: toolsTab }[t]();
-  return head + `<main class="bd adm">${a.err ? `<div class="card alert" role="alert"><b>${esc(a.err)}</b></div>` : ''}${body}</main>` + nav();
+  const body = { home: homeTab, clubs: clubsTab, crm: crmTab, todo: todoTab, tools: toolsTab }[t]();
+  const wide = t === 'home' || t === 'crm'; // bêta 1.2.0 : pages « pro » plus larges sur ordinateur (html.prov)
+  return head + `<main class="bd adm">${a.err ? `<div class="card alert" role="alert"><b>${esc(a.err)}</b></div>` : ''}${wide ? `<div data-pro>${body}</div>` : body}</main>` + nav();
 }
 
 // ---------- Accueil ----------
@@ -85,7 +89,7 @@ function homeTab() {
     <div class="row static"><span class="g">Montant prévu (clubs payants)</span><b>${euros(n('due_cents'))}</b></div></section>`;
   const purge = `<section class="card" style="flex-direction:row;align-items:center;gap:12px"><span class="g" style="flex:1;display:flex;flex-direction:column"><b>Suppressions automatiques</b><span class="det">${ov.last_purge ? 'Dernier passage le ' + esc(day(ov.last_purge)) : 'Jamais lancées depuis cet écran'}</span></span><button class="btn small ghost" data-act="admtab" data-k="tools">Voir</button></section>`;
   const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-  return `<p class="note">${esc(date.charAt(0).toUpperCase() + date.slice(1))} · ${esc(VERSION)}</p>${todo}${aiCard()}${mailCard()}${parc}${subs}${purge}${S.clubId ? '' : '<p class="note">Ce compte n’a pas de club : il n’ouvre que l’administration.</p>'}`;
+  return `<p class="note">${esc(date.charAt(0).toUpperCase() + date.slice(1))} · ${esc(VERSION)}</p>${todo}${cockpitCards()}${aiCard()}${mailCard()}${parc}${goalCard(n('sub_paid'))}${subs}${purge}${S.clubId ? '' : '<p class="note">Ce compte n’a pas de club : il n’ouvre que l’administration.</p>'}`;
 }
 
 // ---------- 5.10.0 · n° 161 : IA des exercices (estimation de l'application ; le chiffre exact est dans la Console Claude) ----------
