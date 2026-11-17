@@ -4,7 +4,7 @@
 // aperçu du futur e-mail de démarchage au dirigeant (rien n'est envoyé tant que l'option n'est pas activée).
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_3_7_0.sql) ; l'écran n'est qu'un confort.
 import { BRAND, TURNSTILE_SITEKEY } from '../config.js';
-import { S, sb, esc, run, toast, render, ACTIONS, FORMS, INPUTS, plural, fmtDay } from './core.js';
+import { S, sb, esc, run, toast, render, ACTIONS, FORMS, INPUTS, plural, fmtDay, hooks } from './core.js';
 import { header, crest, icon, field } from './ui.js';
 
 // ---------- n° 93 · top 5 des équipes les plus suivies ----------
@@ -177,6 +177,7 @@ function creqMailScreen(v) {
 async function loadCreqs() {
   S.creqs = (await run(sb.from('club_requests').select('*').order('created_at', { ascending: false }).limit(300))) || []; S.creqNew = S.creqs.filter((r) => r.status === 'new').length;
   try { const o = await sb.from('club_outreach').select('*').limit(500); S.creqOut = o.error ? [] : o.data || []; } catch { S.creqOut = []; } // 5.11.0 (avant le script : liste vide)
+  try { await hooks.admRefresh?.(); } catch { /* l'aperçu admin se remettra à jour au prochain chargement */ } // bêta 1.2.0 : la tuile « Demandes de clubs » suit « Marquer comme traitée »
 }
 
 // Écrans ouverts au-dessus de tout (visiteur non connecté compris pour « creq ») : lus par app.js

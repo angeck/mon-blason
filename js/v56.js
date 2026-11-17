@@ -55,6 +55,7 @@ export function adminLanding() {
   return '';
 }
 hooks.adminLanding = adminLanding;
+hooks.admRefresh = async () => { const o = await rpc('admin_overview'); if (o) A().ov = o; };
 
 // ---------- l'espace admin ----------
 function nav() {

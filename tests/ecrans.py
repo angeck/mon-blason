@@ -877,8 +877,9 @@ with sync_playwright() as p:
     check('5.11.0 · n° 96 · deux touches avant l’envoi', has('Confirmer : envoyer l’e-mail') and not pg.evaluate("window.__CALLS.some(c => c[0] === 'functions' && c[2]?.club_outreach)"))
     pg.click('#creqsend [type=submit]'); pg.wait_for_timeout(500)
     check('5.11.0 · n° 96 · envoi par la fonction serveur : demande, adresse et source', pg.evaluate("window.__CALLS.some(c => c[0] === 'functions' && c[2]?.club_outreach?.email === 'contact@club-introuvable.fr' && c[2].club_outreach.source === 'Site du club' && !c[2].club_outreach.relance)"))
-    go("S.view = { type: 'creqs' }"); act('[data-act=creqdone]')
+    go("S.view = { type: 'creqs' }"); n_ov = pg.evaluate("window.__CALLS.filter(c => c[1] === 'admin_overview').length"); act('[data-act=creqdone]')
     check('n° 96 · demande marquée comme traitée', pg.evaluate("window.__FAKE.club_requests[0].status === 'done'"))
+    check('1.2.0 · la tuile « Demandes de clubs » de l’espace admin est relue après « Marquer comme traitée »', pg.evaluate("window.__CALLS.filter(c => c[1] === 'admin_overview').length") > n_ov)
     # n° 97 : nom et logo mypocketclub
     go("S.view = null; S.tab = 0")
     check('n° 97 · titre de la page « mypocketclub »', pg.title() == 'mypocketclub')
