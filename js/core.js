@@ -204,10 +204,14 @@ export async function loadMe() {
   S.mems = mems.data || [];
   // bêta 1.2.0 : si une des deux vérifications échoue (réseau coupé un instant, jeton en cours de renouvellement),
   // on garde l'état d'avant au lieu de faire repasser l'administrateur sur l'écran « sans club »
-  if (!adm?.error && !acct?.error) {
-    S.isAdmin = adm?.data === true; // n° 86 : administrateur mypocketclub (demandes de schéma, n° 96 : demandes de clubs)
-    S.adminAcct = S.isAdmin || acct?.data === true; // 5.6.0 · n° 202 : compte administrateur ; S.isAdmin seulement après le code à 6 chiffres (double vérification)
-  }
+  // bêta 1.3.0 · n° 269 : l'état gardé n'a de sens que pour le MÊME compte ; après un changement de profil de test, on redemande une fois
+  let [a1, a2] = [adm, acct];
+  if ((a1?.error || a2?.error) && S.adminUid !== uid) { await new Promise((r) => setTimeout(r, 700)); [a1, a2] = await Promise.all([sb.rpc('is_app_admin'), sb.rpc('admin_account')]); }
+  if (!a1?.error && !a2?.error) {
+    S.isAdmin = a1?.data === true; // n° 86 : administrateur mypocketclub (demandes de schéma, n° 96 : demandes de clubs)
+    S.adminAcct = S.isAdmin || a2?.data === true; // 5.6.0 · n° 202 : compte administrateur ; S.isAdmin seulement après le code à 6 chiffres (double vérification)
+    S.adminUid = uid;
+  } else if (S.adminUid !== uid) { S.isAdmin = false; S.adminAcct = false; }
   const ids = [...new Set(S.mems.map((m) => m.club_id))];
   S.clubs = {};
   if (ids.length) { const { data } = await sb.from('clubs').select('*').in('id', ids); (data || []).forEach((c) => (S.clubs[c.id] = c)); }

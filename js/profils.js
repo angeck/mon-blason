@@ -23,6 +23,8 @@ export function saveSwitch(session) {
 // Quand le compte change, on efface ce qui appartenait à l'ancien compte
 export function resetUser() {
   Object.assign(S, { me: null, mems: [], clubs: {}, names: {}, nicks: {}, phones: {}, view: null, stack: [], tab: 0, joinChecked: false, recovery: false, onb: null, sel: null, form: null });
+  // bêta 1.3.0 · n° 269 : l'état administrateur appartient au compte quitté (sinon, en revenant sur admin@, l'écran « sans club » s'ouvrait)
+  Object.assign(S, { isAdmin: false, adminAcct: false, adminUid: null, admLoaded: false, admOff: false, adm: null, crm: null, mfa: null, admTab: 'home', admSeg: 'suivi', clubId: null });
   if (S.channel) { sb.removeChannel(S.channel); S.channel = null; }
 }
 
