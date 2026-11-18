@@ -1,4 +1,6 @@
 // mypocketclub · alpha 5.10.2 · n° 161 · fonction Edge « generer-exercice » (Supabase → Edge Functions)
+// Bêta 1.4.0 · n° 271 et 272 : l'IA dit aussi, à chaque étape, quels éléments bougent et comment (« m » : déplacement ;
+// ballon : « p » passe, « r » rebond, « d » dribble, « s » shoot). Schéma v: 2 ; sans aucun « m », v: 1 (l'application devine les flèches comme avant).
 // Le coach décrit son exercice ; l'IA (Claude, d'Anthropic) propose un schéma animé, étape par étape, que le coach modifie ensuite.
 // Ce que l'IA reçoit : le sport, la catégorie, la durée, le niveau, le titre, la description et les tags. Jamais un nom ni une donnée de joueur.
 // Contrôles avant l'appel : ai_state(club) dans la base, avec la session du coach (droits, IA en pause, solde, budget du club, plafond du jour).
@@ -17,6 +19,7 @@ export const cost = (model: string, tin: number, tout: number) => { const p = PR
 
 export const W = 360, H = 500, MAXI = 14, MAXF = 8;
 const KINDS = ['a', 'd', 'l', 'e', 'c', 'b'];
+export const MOVES = ['m', 'p', 'r', 'd', 's'];
 const clampN = (v: unknown, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
 const txt = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
@@ -31,14 +34,22 @@ export function cleanSteps(raw: any, sport: string) {
     if (items.length >= MAXI) break;
   }
   if (!items.length) return null;
-  const frames: { c: string; p: Record<string, [number, number]> }[] = [];
-  let last: Record<string, [number, number]> = {};
+  const frames: { c: string; p: Record<string, [number, number]>; m: Record<string, string> }[] = [];
+  const kindOf: Record<string, string> = Object.fromEntries(items.map((it) => [it.id, it.k]));
+  let last: Record<string, [number, number]> = {}, anyMove = false;
   for (const f of raw.frames.slice(0, MAXF)) {
-    const p: Record<string, [number, number]> = {};
+    const p: Record<string, [number, number]> = {}, m: Record<string, string> = {};
     const list = Array.isArray(f?.p) ? f.p : Object.entries(f?.p || {}).map(([id, xy]: [string, any]) => ({ id, x: xy?.[0], y: xy?.[1] }));
     for (const q of list) if (seen.has(String(q?.id))) p[String(q.id)] = [clampN(q.x, 8, W - 8), clampN(q.y, 8, H - 8)];
     for (const it of items) if (!p[it.id] && last[it.id]) p[it.id] = last[it.id];
-    frames.push({ c: txt(f?.c, 200), p }); last = p;
+    // n° 271 et 272 : mouvements de l'étape (tableau [{ id, t }] ou objet { id: t }) ; le ballon prend p, r, d ou s, les autres « m »
+    const ml = Array.isArray(f?.m) ? f.m : Object.entries(f?.m || {}).map(([id, t]: [string, any]) => ({ id, t }));
+    if (frames.length) for (const q of ml) {
+      const id = String(q?.id || ''), k = kindOf[id]; let t = String(q?.t || ''); if (!k || !MOVES.includes(t)) continue;
+      t = k === 'b' ? (t === 'm' ? 'p' : t) : 'm';
+      m[id] = t; anyMove = true;
+    }
+    frames.push({ c: txt(f?.c, 200), p, m }); last = p;
   }
   if (!frames.length) return null;
   // un élément placé seulement plus tard est mis à sa première position dans les étapes d'avant
@@ -46,7 +57,10 @@ export function cleanSteps(raw: any, sport: string) {
     const first = frames.find((f) => f.p[it.id])?.p[it.id] || [W / 2, H / 2];
     for (const f of frames) { if (!f.p[it.id]) f.p[it.id] = first; else break; }
   }
-  return { v: 1, sport: sport === 'Volley-ball' ? 'Volley-ball' : 'Basket-ball', items, frames };
+  // un mouvement annoncé sans déplacement (moins de 8) est oublié
+  frames.forEach((f, i) => { if (i) for (const id of Object.keys(f.m)) { const a = frames[i - 1].p[id], b = f.p[id]; if (!a || !b || Math.hypot(b[0] - a[0], b[1] - a[1]) < 8) delete f.m[id]; } });
+  if (!anyMove) return { v: 1, sport: sport === 'Volley-ball' ? 'Volley-ball' : 'Basket-ball', items, frames: frames.map(({ c, p }) => ({ c, p })) };
+  return { v: 2, sport: sport === 'Volley-ball' ? 'Volley-ball' : 'Basket-ball', items, frames };
 }
 
 const COURT: Record<string, string> = {
@@ -62,8 +76,9 @@ Postes de notre camp (vu depuis notre ligne de fond, filet en haut) : 4 avant ga
 const EXAMPLE: Record<string, string> = {
   'Basket-ball': `Exemple (passe et va, 3 étapes) : items [{id:"a1",k:"a",n:"1"},{id:"a2",k:"a",n:"2"},{id:"b",k:"b",n:""},{id:"c1",k:"c",n:""}] ;
 étape 1 « Le 1 a le ballon en haut, le 2 attend à l'aile. » p [a1 (180,260), a2 (300,190), b (192,252), c1 (240,200)] ;
-étape 2 « Le 1 passe au 2. » p [a1 (180,260), a2 (300,190), b (292,184), c1 (240,200)] ;
-étape 3 « Le 1 coupe vers le panier par l'intérieur du plot, le 2 lui redonne : double pas. » p [a1 (170,70), a2 (300,190), b (176,62), c1 (240,200)].`,
+étape 2 « Le 1 passe au 2. » p [a1 (180,260), a2 (300,190), b (292,184), c1 (240,200)] ; m [b "p"] ;
+étape 3 « Le 1 coupe vers le panier par l'intérieur du plot, le 2 lui redonne : double pas. » p [a1 (170,70), a2 (300,190), b (176,62), c1 (240,200)] ; m [a1 "m", b "p"].
+Autres types : un joueur qui part en dribble → son ballon « d » ; une passe à terre (qui rebondit) → « r » ; un tir au panier → ballon « s » jusqu'au cercle (180, 36).`,
   'Volley-ball': `Exemple (défense sur le passeur, attaque adverse en 4) : items 4, C (centrale), 2 (passeur), L (libéro, k "l"), 6, 1, E (coach, k "e"), ballon ;
 étape 1 « Mise en place : ligne avant au filet, 5 et 1 bas. » ; étape 2 « Contre à deux en 2, le 4 en petite diagonale, L et 6 sur la grande diagonale, le 1 sur la ligne. » (2 en (326,126), C en (296,126), 4 en (108,250), L en (90,390), 6 en (137,430), 1 en (324,390)) ;
 étape 3 « Le coach attaque sur le passeur. Le 2 reste au contre. » (ballon vers (150,330)) ; étape 4 « Le défenseur qui fait la réception (ici le 6) va faire la passe. » (6 vers (210,200), ballon en (210,190)) ; étape 5 « Il passe au 4 pour l'attaque. » (ballon vers (72,130)).`,
@@ -77,6 +92,9 @@ ${COURT[sport]}
 Éléments (« k ») : a = joueur (attaque ou joueur de l'exercice), d = défenseur, l = libéro (volley seulement), e = entraîneur, c = plot, b = ballon. Au plus ${MAXI} éléments.
 « n » est l'étiquette affichée dans le rond : un numéro ou une lettre, 3 caractères au plus (1, 2, P, C, L, E). Jamais de prénom ni de nom. Rien pour les plots et le ballon.
 Garde le même « id » d'une étape à l'autre : l'application anime les déplacements entre deux étapes. Le ballon suit les passes et reste collé (à 8 près) au joueur qui l'a.
+Pour chaque étape (sauf la première, qui est la mise en place), « m » liste ce qui bouge depuis l'étape d'avant et comment ; seuls ces mouvements reçoivent une flèche.
+Type « t » : pour un joueur, un défenseur, le coach ou un plot : "m" (il se déplace). Pour le ballon : "p" passe directe, "r" passe à terre avec rebond, "d" dribble (le ballon accompagne le joueur qui dribble), "s" shoot (tir au panier, en cloche).
+Un élément qui ne bouge pas n'est pas dans « m ». Ne mets pas de mouvement pour un simple placement.
 Positions réalistes, dans le terrain, sans deux joueurs au même endroit. Si la description est floue, fais la version la plus simple et la plus courante de l'exercice.
 ${EXAMPLE[sport]}
 Réponds uniquement en appelant l’outil « schema », sans aucun texte.`;
@@ -84,11 +102,12 @@ Réponds uniquement en appelant l’outil « schema », sans aucun texte.`;
     b.title && `Titre : ${txt(b.title, 80)}`, Array.isArray(b.tags) && b.tags.length && `Tags : ${b.tags.slice(0, 25).map((t: unknown) => txt(t, 40)).join(', ')}`,
     `Description du coach :\n${String(b.description || '').slice(0, 2000)}`].filter(Boolean);
   const pt = { type: 'object', properties: { id: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } }, required: ['id', 'x', 'y'] };
+  const mv = { type: 'object', properties: { id: { type: 'string' }, t: { type: 'string', enum: MOVES } }, required: ['id', 't'] };
   return {
     model, max_tokens: 4096, system,
     tools: [{ name: 'schema', description: 'Le schéma animé de l’exercice, étape par étape.', input_schema: { type: 'object', properties: {
       items: { type: 'array', maxItems: MAXI, items: { type: 'object', properties: { id: { type: 'string' }, k: { type: 'string', enum: KINDS }, n: { type: 'string' } }, required: ['id', 'k', 'n'] } },
-      frames: { type: 'array', minItems: 2, maxItems: MAXF, items: { type: 'object', properties: { c: { type: 'string' }, p: { type: 'array', items: pt } }, required: ['c', 'p'] } },
+      frames: { type: 'array', minItems: 2, maxItems: MAXF, items: { type: 'object', properties: { c: { type: 'string' }, p: { type: 'array', items: pt }, m: { type: 'array', items: mv } }, required: ['c', 'p'] } },
     }, required: ['items', 'frames'] } }],
     tool_choice: { type: 'auto' }, // ce modèle refuse « tool » et « any » (erreur 400 constatée le 13 novembre 2026) : le texte demande l'outil « schema », la réponse est contrôlée ensuite
     messages: [{ role: 'user', content: lines.join('\n') }],

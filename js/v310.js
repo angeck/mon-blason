@@ -92,6 +92,8 @@ function preparerBody(tid) {
 // N° 116 : même bloc bleu que l'espace : en-tête, équipe et « club · saison », casquettes, onglets de l'équipe
 function tspaceView(v) {
   const t = team(v.id), tab = v.tab === 'preparer' ? 'preparer' : 'planifier';
+  // bêta 1.4.0 · n° 273 : « Carnet du coach » sans équipe choisie (depuis « Mes équipes ») : le carnet, qui est au coach
+  if (!v.id && tab === 'preparer') { S.tsp = null; currentCasq(); return { head: header({ back: true, space: true, title: 'Carnet du coach', under: clubSeason(SEASON), casq: casqTabs(), tabs: teamTabs('', 'Carnet du coach') }), body: preparerBody('') }; }
   S.tsp = v.id; currentCasq();
   const head = header({ back: true, space: true, title: esc(t?.name || 'Équipe'), under: clubSeason(t?.season || SEASON), casq: casqTabs(), tabs: t ? teamTabs(v.id, TAB_LABEL[tab]) : '' });
   if (!t) return { head, body: '<p class="empty">Équipe introuvable.</p>' };
@@ -299,6 +301,14 @@ Object.assign(ACTIONS, {
   tsopen: (el, d) => { S.sel = null; S.tsp = d.id; S.view = { type: 'tspace', id: d.id, tab: 'planifier' }; render(); },
   // Onglets du bandeau : Pointer · Planifier · Préparer · Stats · Effectif (sans empiler les onglets dans le bouton Retour)
   tsgo: async (el, d) => {
+    // bêta 1.4.0 · n° 273 : onglet touché sans équipe choisie (« Mes équipes ») : le carnet s'ouvre ;
+    // Planifier, Effectif et Stats gardent le comportement d'avant : il faut choisir l'équipe (une seule : elle est prise d'office)
+    if (!d.id) {
+      if (d.tab === 'preparer') { S.tsp = null; S.sel = null; S.view = { type: 'tspace', id: '', tab: 'preparer' }; render(); return; }
+      const c = currentCasq(), l = (c?.teams || []).filter(live);
+      if (l.length !== 1) { S.tsp = null; if (S.view?.type !== 'espace') { S.view = { type: 'espace' }; render(); } toast('Choisis d’abord une équipe.'); return; }
+      d = { ...d, id: l[0] };
+    }
     const tid = d.id, tab = d.tab === 'pointer' ? 'planifier' : d.tab || 'planifier', wasIn = !!S.tsp && S.tsp === tid;
     S.tsp = tid; S.sel = null; if (wasIn) S.noStack = true;
     if (tab === 'stats') { S.st = { team: tid, period: S.st?.period || 'saison' }; S.view = { type: 'stats' }; render(); await ACTIONS.stteam(el, { id: tid }); return; }

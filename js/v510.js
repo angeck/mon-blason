@@ -3,7 +3,11 @@
 //    (l'IA ne reçoit que le texte de l'exercice et les tags, jamais un nom).
 // 2. Éditeur au doigt : étapes, joueurs à glisser, éléments à ajouter ou retirer, texte de chaque étape.
 // 3. Aperçu animé : les éléments glissent d'une étape à l'autre ; les flèches montrent les déplacements (trait) et les passes (pointillés).
-// Le schéma est rangé dans exercises.steps : { v, sport, items: [{ id, k, n }], frames: [{ c, p: { id: [x, y] } }] }, terrain de 360 × 500.
+// Le schéma est rangé dans exercises.steps : { v, sport, items: [{ id, k, n }], frames: [{ c, p: { id: [x, y] }, m: { id: type } }] }, terrain de 360 × 500.
+// Bêta 1.4.0 · n° 271 et 272 (v: 2) : une flèche n'est dessinée que pour un mouvement demandé (frames[i].m, de l'étape i - 1 à l'étape i) :
+//   « m » = déplacement d'un joueur, d'un plot… (trait) ; ballon : « p » passe (pointillés), « r » rebond (cercle au rebond),
+//   « d » dribble (trait ondulé, petit cercle à chaque rebond), « s » shoot (pointillés épais en parabole).
+//   Un schéma v: 1 (avant la 1.4.0) garde son rendu : chaque déplacement de 20 ou plus devient un mouvement (passe pour le ballon).
 // L'ancien schéma fixe (exercises.diagram) reste affiché tel quel.
 import { S, sb, esc, toast, render, hooks, ACTIONS, INPUTS, club, armed, isArmed } from './core.js';
 import { icon } from './ui.js';
@@ -18,6 +22,10 @@ const KIND = {
 const sportOf = (f) => (f?.sport === 'Volley-ball' || (f?.sport === 'Tous les sports' && club()?.sport === 'Volley-ball') ? 'Volley-ball' : 'Basket-ball');
 export const hasSteps = (st) => !!(st && Array.isArray(st.items) && st.items.length && Array.isArray(st.frames) && st.frames.length);
 const clampXY = (x, y) => [Math.max(8, Math.min(W - 8, Math.round(x))), Math.max(8, Math.min(H - 8, Math.round(y)))];
+// n° 271 et 272 : types de mouvement permis selon l'élément
+export const BALL_T = ['p', 'r', 'd', 's'];
+const okT = (k, t) => (k === 'b' ? BALL_T.includes(t) : t === 'm');
+const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 
 // Remet en forme un schéma (venu de l'IA, de la base ou d'une ancienne version) : chaque élément a une position à chaque étape
 export function normalize(st, sport) {
@@ -25,9 +33,19 @@ export function normalize(st, sport) {
   const items = [], seen = new Set();
   for (const it of st.items) { const id = String(it?.id || '').slice(0, 12); if (!id || seen.has(id) || !KIND[it.k]) continue; seen.add(id); items.push({ id, k: it.k, n: String(it.n || '').slice(0, 3) }); if (items.length >= MAXI) break; }
   let last = {};
-  const frames = st.frames.slice(0, MAXF).map((f) => { const p = {}; for (const it of items) { const q = f?.p?.[it.id] || last[it.id]; if (q) p[it.id] = clampXY(q[0], q[1]); } last = p; return { c: String(f?.c || '').slice(0, 200), p }; });
+  const frames = st.frames.slice(0, MAXF).map((f) => { const p = {}; for (const it of items) { const q = f?.p?.[it.id] || last[it.id]; if (q) p[it.id] = clampXY(q[0], q[1]); } last = p; return { c: String(f?.c || '').slice(0, 200), p, m: {} }; });
   for (const it of items) { const first = frames.find((f) => f.p[it.id])?.p[it.id] || [W / 2, H / 2]; for (const f of frames) { if (f.p[it.id]) break; f.p[it.id] = first; } }
-  return { v: 1, sport: st.sport || sport || 'Basket-ball', items, frames };
+  // n° 271 et 272 : mouvements demandés ; un ancien schéma (v: 1, sans « m ») garde ses flèches d'avant
+  const explicit = (+st.v || 1) >= 2 || st.frames.some((f) => f && f.m && typeof f.m === 'object' && Object.keys(f.m).length);
+  frames.forEach((f, i) => {
+    if (!i) return;
+    const src = st.frames[i]?.m || {};
+    for (const it of items) {
+      if (explicit) { const t = src[it.id]; if (okT(it.k, t)) f.m[it.id] = t; }
+      else if (dist(frames[i - 1].p[it.id], f.p[it.id]) >= 20) f.m[it.id] = it.k === 'b' ? 'p' : 'm';
+    }
+  });
+  return { v: 2, sport: st.sport || sport || 'Basket-ball', items, frames };
 }
 
 // ---------- dessin ----------
@@ -45,30 +63,51 @@ function shape(it, edit) {
   return `${ring}<circle r="13" fill="${K.fill}" stroke="${K.stroke || K.fill}" stroke-width="1"/><text y="4.5" text-anchor="middle" font-size="13" font-weight="700" fill="${K.tf}" font-family="DM Sans, sans-serif">${esc(it.n)}</text>`;
 }
 const tr = (q, anim) => `transform:translate(${q[0]}px,${q[1]}px)${anim ? ';transition:transform .8s ease' : ''}`;
-// flèches de l'étape : déplacement d'un joueur (trait) ou passe du ballon (pointillés)
-function arrows(st, i) {
+// n° 271 et 272 : une flèche par mouvement demandé, selon son type
+const INK = '#11162E', GREY = '#9AA6C0';
+const r1 = (v) => Math.round(v * 10) / 10;
+function seg(it, a, b, t, anim) {
+  if (!a || !b || !t) return '';
+  const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy); if (d < 8) return '';
+  const ux = dx / d, uy = dy / d, nx = -uy, ny = ux, s0 = it.k === 'b' ? 9 : 15;
+  const x1 = a[0] + ux * s0, y1 = a[1] + uy * s0, x2 = b[0] - ux * (s0 + 2), y2 = b[1] - uy * (s0 + 2), L = Math.max(1, d - 2 * s0 - 2);
+  if (t === 'm') return `<line x1="${r1(x1)}" y1="${r1(y1)}" x2="${r1(x2)}" y2="${r1(y2)}" stroke="${GREY}" stroke-width="2" marker-end="url(#stah)"/>`;
+  if (t === 'p' || t === 'r') {
+    const ln = `<line class="stt-${t}" x1="${r1(x1)}" y1="${r1(y1)}" x2="${r1(x2)}" y2="${r1(y2)}" stroke="${INK}" stroke-width="2" stroke-dasharray="5 5" stroke-opacity=".6" marker-end="url(#stah)"/>`;
+    if (t === 'p') return ln;
+    // rebond : un cercle autour du ballon, au moment où il touche le sol (au milieu du trajet)
+    return ln + `<circle class="stbnc${anim ? ' anim' : ''}" cx="${r1((a[0] + b[0]) / 2)}" cy="${r1((a[1] + b[1]) / 2)}" r="10" fill="none" stroke="${INK}" stroke-width="2"/>`;
+  }
+  if (t === 'd') { // dribble : trait ondulé, un petit cercle à chaque rebond
+    const n = Math.max(2, Math.round(L / 22)), amp = 5, pts = [], dots = [];
+    for (let k = 0; k <= n * 8; k++) { const u = k / (n * 8), w = Math.sin(u * n * Math.PI * 2) * amp; pts.push(`${r1(x1 + ux * L * u + nx * w)},${r1(y1 + uy * L * u + ny * w)}`); }
+    for (let k = 1; k < n; k++) { const u = k / n; dots.push(`<circle cx="${r1(x1 + ux * L * u)}" cy="${r1(y1 + uy * L * u)}" r="2.6" fill="${INK}"/>`); }
+    return `<polyline class="stt-d" points="${pts.join(' ')}" fill="none" stroke="${INK}" stroke-width="2" stroke-linejoin="round" marker-end="url(#stah)"/>${dots.join('')}`;
+  }
+  if (t === 's') { // shoot : pointillés épais, en parabole
+    const h = Math.min(90, Math.max(24, d * 0.35)), side = ny > 0 ? -1 : 1; // la courbe monte vers le haut du terrain (côté panier)
+    const cx = (x1 + x2) / 2 + nx * h * side, cy = (y1 + y2) / 2 + ny * h * side;
+    return `<path class="stt-s" d="M${r1(x1)} ${r1(y1)} Q${r1(cx)} ${r1(cy)} ${r1(x2)} ${r1(y2)}" fill="none" stroke="${INK}" stroke-width="3.2" stroke-dasharray="8 5" marker-end="url(#stah)"/>`;
+  }
+  return '';
+}
+// flèches d'une étape (lecteur animé, éditeur)
+function arrows(st, i, anim) {
   if (i < 1) return '';
-  const A = st.frames[i - 1].p, B = st.frames[i].p;
-  return st.items.map((it) => {
-    const a = A[it.id], b = B[it.id]; if (!a || !b) return '';
-    const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy); if (d < 20) return '';
-    const s = it.k === 'b' ? 9 : 15;
-    return `<line x1="${Math.round(a[0] + (dx / d) * s)}" y1="${Math.round(a[1] + (dy / d) * s)}" x2="${Math.round(b[0] - (dx / d) * (s + 2))}" y2="${Math.round(b[1] - (dy / d) * (s + 2))}" stroke="${it.k === 'b' ? '#11162E' : '#9AA6C0'}" stroke-width="2" ${it.k === 'b' ? 'stroke-dasharray="5 5" stroke-opacity=".6"' : ''} marker-end="url(#stah)"/>`;
-  }).join('');
+  const A = st.frames[i - 1].p, B = st.frames[i];
+  return st.items.map((it) => seg(it, A[it.id], B.p[it.id], B.m?.[it.id], anim)).join('');
 }
 // tout le parcours (vue fixe : séance, impression, aperçu dans le formulaire)
 function paths(st) {
-  return st.items.map((it) => {
-    const pts = st.frames.map((f) => f.p[it.id]).filter(Boolean).filter((q, j, l) => !j || Math.hypot(q[0] - l[j - 1][0], q[1] - l[j - 1][1]) >= 4);
-    if (pts.length < 2) return '';
-    return `<polyline points="${pts.map((q) => q.join(',')).join(' ')}" fill="none" stroke="${it.k === 'b' ? '#11162E' : '#9AA6C0'}" stroke-width="2" ${it.k === 'b' ? 'stroke-dasharray="5 5" stroke-opacity=".6"' : ''} marker-end="url(#stah)"/>`;
-  }).join('');
+  let h = '';
+  for (let i = 1; i < st.frames.length; i++) h += arrows(st, i, false);
+  return h;
 }
 const DEFS = '<defs><marker id="stah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M1 1L9 5L1 9z" fill="#5A6280"/></marker></defs>';
 export function stepsSvg(st, i = 0, o = {}) {
   const f = st.frames[Math.min(i, st.frames.length - 1)];
   const lbl = o.label || 'Schéma de l’exercice';
-  return `<svg class="stsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(lbl)}" ${o.edit ? 'data-sted="1"' : ''} style="${o.edit ? 'touch-action:none;' : ''}">${DEFS}${court(st.sport)}<g class="starr">${o.all ? paths(st) : arrows(st, i)}</g>${order(st.items).map((it) => `<g data-it="${esc(it.id)}" class="${o.edit && S.stEd?.sel === it.id ? 'on' : ''}" style="${tr(f.p[it.id] || [W / 2, H / 2], o.anim)}">${shape(it, o.edit)}</g>`).join('')}</svg>`;
+  return `<svg class="stsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(lbl)}" ${o.edit ? 'data-sted="1"' : ''} style="${o.edit ? 'touch-action:none;' : ''}">${DEFS}${court(st.sport)}<g class="starr">${o.all ? paths(st) : arrows(st, i, o.anim)}</g>${order(st.items).map((it) => `<g data-it="${esc(it.id)}" class="${o.edit && S.stEd?.sel === it.id ? 'on' : ''}" style="${tr(f.p[it.id] || [W / 2, H / 2], o.anim)}">${shape(it, o.edit)}</g>`).join('')}</svg>`;
 }
 // petit schéma fixe (séances, agenda, impression)
 hooks.stepsMini = (x) => (hasSteps(x?.steps) ? stepsSvg(normalize(x.steps), 0, { all: true }) : '');
@@ -88,7 +127,7 @@ function setFrame(key, i) {
   const n = st.frames.length; i = Math.max(0, Math.min(n - 1, i)); box.dataset.i = i;
   const f = st.frames[i];
   box.querySelectorAll('g[data-it]').forEach((g) => { const q = f.p[g.dataset.it]; if (q) g.style.transform = `translate(${q[0]}px,${q[1]}px)`; });
-  box.querySelector('.starr').innerHTML = arrows(st, i);
+  box.querySelector('.starr').innerHTML = arrows(st, i, true);
   box.querySelector('.stpc').textContent = f.c; box.querySelector('.stpn').textContent = `Étape ${i + 1} sur ${n}`;
   return true;
 }
@@ -141,11 +180,12 @@ hooks.exAiForm = (f) => {
 function starter(sport) {
   if (sport === 'Volley-ball') {
     const P = [['4', 72, 138], ['3', 180, 138], ['2', 288, 138], ['5', 72, 330], ['6', 180, 420], ['1', 288, 330]];
-    return { v: 1, sport, items: P.map(([n]) => ({ id: 'v' + n, k: 'a', n })).concat([{ id: 'b1', k: 'b', n: '' }]), frames: [{ c: 'Mise en place.', p: Object.fromEntries(P.map(([n, x, y]) => ['v' + n, [x, y]]).concat([['b1', [196, 412]]])) }] };
+    return { v: 2, sport, items: P.map(([n]) => ({ id: 'v' + n, k: 'a', n })).concat([{ id: 'b1', k: 'b', n: '' }]), frames: [{ c: 'Mise en place.', p: Object.fromEntries(P.map(([n, x, y]) => ['v' + n, [x, y]]).concat([['b1', [196, 412]]])) }] };
   }
-  return { v: 1, sport, items: [{ id: 'a1', k: 'a', n: '1' }, { id: 'a2', k: 'a', n: '2' }, { id: 'b1', k: 'b', n: '' }], frames: [{ c: 'Mise en place.', p: { a1: [180, 300], a2: [300, 190], b1: [192, 292] } }] };
+  return { v: 2, sport, items: [{ id: 'a1', k: 'a', n: '1' }, { id: 'a2', k: 'a', n: '2' }, { id: 'b1', k: 'b', n: '' }], frames: [{ c: 'Mise en place.', p: { a1: [180, 300], a2: [300, 190], b1: [192, 292] } }] };
 }
-const openEditor = () => { S.stEd = { i: 0, sel: null, prev: false }; S.view = { type: 'exsteps' }; render(); };
+// n° 271 : le schéma est remis en forme à l'ouverture (un ancien schéma garde ses flèches, devenues des mouvements demandés)
+const openEditor = () => { if (S.exf?.steps) S.exf.steps = normalize(S.exf.steps, sportOf(S.exf)) || S.exf.steps; S.stEd = { i: 0, sel: null, prev: false }; S.view = { type: 'exsteps' }; render(); };
 
 // ---------- éditeur au doigt ----------
 function editor() {
@@ -157,12 +197,24 @@ function editor() {
   return `<div class="card stedit">
   <div class="stchips" role="group" aria-label="Étapes"><span class="det">Étapes</span>${st.frames.map((_, k) => `<button type="button" class="stchip" data-act="stsel" data-i="${k}" aria-pressed="${k === E.i}" aria-label="Étape ${k + 1}">${k + 1}</button>`).join('')}${st.frames.length < MAXF ? '<button type="button" class="stchip add" data-act="stadd" aria-label="Ajouter une étape (copie de celle-ci)">+</button>' : ''}</div>
   ${stepsSvg(st, E.i, { edit: true, label: 'Terrain modifiable : touche un élément pour le choisir, glisse-le pour le déplacer' })}
-  <div class="stsel-row">${sel ? `<span class="det">${esc(KIND[sel.k].l)}${sel.n ? ' ' + esc(sel.n) : ''} · glisse-le pour le déplacer</span>${'adle'.includes(sel.k) ? `<label class="stlab">Étiquette <input data-stlab="1" maxlength="3" value="${esc(sel.n)}" aria-label="Étiquette de l’élément"></label>` : ''}<button type="button" class="btn ghost small ko" data-act="stdel">Retirer</button>` : '<span class="det">Touche un élément pour le choisir</span>'}</div>
+  ${tool(st, E, sel)}
+  ${sel && 'adle'.includes(sel.k) ? `<div class="stsel-row"><label class="stlab">Étiquette <input data-stlab="1" maxlength="3" value="${esc(sel.n)}" aria-label="Étiquette de l’élément"></label></div>` : ''}
   <div class="chips">${add.map(([k, l]) => `<button type="button" class="chip" data-act="stnew" data-k="${k}" ${st.items.length >= MAXI ? 'disabled' : ''}>${l}</button>`).join('')}</div>
   <div class="field"><label for="stcap">Texte de l’étape ${E.i + 1}</label><textarea id="stcap" data-stcap="1" rows="2" maxlength="200" placeholder="Ce qui se passe à cette étape">${esc(st.frames[E.i].c)}</textarea></div>
   ${st.frames.length > 1 ? `<button type="button" class="btn ghost small" data-act="stfdel">${isArmed('stfdel' + E.i) ? 'Touche encore pour supprimer l’étape ' + (E.i + 1) : 'Supprimer l’étape ' + (E.i + 1)}</button>` : ''}
-  <p class="note">Déplacer un élément à une étape le déplace aussi aux étapes suivantes où il n’avait pas encore bougé.</p></div>
+  <p class="note">Sans « Mouvement », déplacer un élément le replace sans flèche (aux étapes d’avant et d’après où il était au même endroit). Avec « Mouvement », il bouge à partir de cette étape et une flèche le montre.</p></div>
   <div class="pair"><button type="button" class="btn ghost" data-act="stprev" ${st.frames.length < 2 ? 'disabled' : ''}>Aperçu animé</button><button type="button" class="btn main" data-act="back">Terminé</button></div>`;
+}
+// n° 271 et 272 : barre de l'élément choisi, collée en bas de l'écran tant que le terrain est visible (aucun défilement pour changer son état)
+const BT_L = { r: 'Rebond', d: 'Dribble', s: 'Shoot' };
+function tool(st, E, sel) {
+  if (!sel) return '<div class="sttool"><span class="det">Touche un élément pour le choisir</span></div>';
+  const t = E.i > 0 ? st.frames[E.i].m?.[sel.id] || '' : '';
+  const name = `<span class="sttn">${esc(KIND[sel.k].l)}${sel.n ? ' ' + esc(sel.n) : ''}</span>`;
+  const mv = E.i < 1 ? '<span class="det sthint">Étape 1 : mise en place, sans mouvement</span>'
+    : `<span class="stseg" role="group" aria-label="Mouvement de l’élément à l’étape ${E.i + 1}"><button type="button" data-act="stmv" data-v="0" aria-pressed="${!t}">Pas de mouvement</button><button type="button" data-act="stmv" data-v="1" aria-pressed="${!!t}">Mouvement</button></span>`;
+  const bt = sel.k === 'b' && E.i > 0 ? `<span class="stseg" role="group" aria-label="Type de mouvement du ballon">${['r', 'd', 's'].map((v) => `<button type="button" data-act="stbt" data-v="${v}" aria-pressed="${t === v}">${BT_L[v]}</button>`).join('')}</span>` : '';
+  return `<div class="sttool">${name}${mv}${bt}<button type="button" class="btn ghost small ko" data-act="stdel">Retirer</button></div>`;
 }
 COACH_VIEWS.exsteps = () => ['Exercice', 'Schéma animé', editor];
 
@@ -188,8 +240,10 @@ const endDrag = (e) => {
   if (!drag || (e.pointerId !== undefined && e.pointerId !== drag.pid)) return;
   const d = drag; drag = null;
   if (d.moved) {   // les étapes suivantes où l'élément n'avait pas encore bougé suivent
-    const fr = S.exf.steps.frames, now = fr[S.stEd.i].p[d.id];
-    for (let j = S.stEd.i + 1; j < fr.length; j++) { const q = fr[j].p[d.id]; if (!q || q[0] !== d.old[0] || q[1] !== d.old[1]) break; fr[j].p[d.id] = now.slice(); }
+    const fr = S.exf.steps.frames, i = S.stEd.i, now = fr[i].p[d.id], same = (q) => q && q[0] === d.old[0] && q[1] === d.old[1];
+    for (let j = i + 1; j < fr.length; j++) { if (!same(fr[j].p[d.id])) break; fr[j].p[d.id] = now.slice(); }
+    // n° 271 : sans « Mouvement », l'élément est replacé, pas déplacé : les étapes d'avant où il était au même endroit suivent aussi (aucune flèche)
+    if (!(i > 0 && fr[i].m?.[d.id])) for (let j = i - 1; j >= 0; j--) { if (!same(fr[j].p[d.id])) break; fr[j].p[d.id] = now.slice(); }
   }
   render(true);
 };
@@ -236,7 +290,7 @@ Object.assign(ACTIONS, {
   stedit: () => { keepEx(); if (!S.exf || !hasSteps(S.exf.steps)) return; openEditor(); },
   strm: () => { keepEx(); if (!armed('strm')) return; S.exf.steps = null; render(true); },
   stsel: (el, d) => { S.stEd.i = +d.i; S.stEd.sel = null; render(true); },
-  stadd: () => { const fr = S.exf.steps.frames; if (fr.length >= MAXF) return; const cur = fr[S.stEd.i]; fr.splice(S.stEd.i + 1, 0, { c: '', p: JSON.parse(JSON.stringify(cur.p)) }); S.stEd.i++; S.stEd.sel = null; render(true); toast('Étape ajoutée : déplace les éléments qui bougent.'); },
+  stadd: () => { const fr = S.exf.steps.frames; if (fr.length >= MAXF) return; const cur = fr[S.stEd.i]; fr.splice(S.stEd.i + 1, 0, { c: '', p: JSON.parse(JSON.stringify(cur.p)), m: {} }); S.stEd.i++; S.stEd.sel = null; render(true); toast('Étape ajoutée : déplace les éléments qui bougent.'); },
   stfdel: () => { const st = S.exf.steps; if (st.frames.length < 2 || !armed('stfdel' + S.stEd.i)) return; st.frames.splice(S.stEd.i, 1); S.stEd.i = Math.max(0, S.stEd.i - 1); render(true); },
   stnew: (el, d) => {
     const st = S.exf.steps; if (st.items.length >= MAXI) return toast(`${MAXI} éléments au plus.`);
@@ -246,6 +300,20 @@ Object.assign(ACTIONS, {
     st.items.push(it); st.frames.forEach((f) => { f.p[it.id] = [W / 2, sportOf(S.exf) === 'Volley-ball' ? 300 : 320]; });
     S.stEd.sel = it.id; render(true);
   },
-  stdel: () => { const st = S.exf.steps, id = S.stEd.sel; if (!id) return; if (st.items.length <= 1) return toast('Garde au moins un élément, ou retire le schéma.'); st.items = st.items.filter((x) => x.id !== id); st.frames.forEach((f) => delete f.p[id]); S.stEd.sel = null; render(true); },
+  stdel: () => { const st = S.exf.steps, id = S.stEd.sel; if (!id) return; if (st.items.length <= 1) return toast('Garde au moins un élément, ou retire le schéma.'); st.items = st.items.filter((x) => x.id !== id); st.frames.forEach((f) => { delete f.p[id]; if (f.m) delete f.m[id]; }); S.stEd.sel = null; render(true); },
+  // n° 271 : « Mouvement / Pas de mouvement » de l'élément choisi, à l'étape en cours
+  stmv: (el, d) => {
+    const st = S.exf?.steps, E = S.stEd, it = st?.items.find((x) => x.id === E?.sel); if (!it || E.i < 1) return;
+    const f = st.frames[E.i]; f.m = f.m || {};
+    if (d.v === '1') { if (!f.m[it.id]) f.m[it.id] = it.k === 'b' ? 'p' : 'm'; } else delete f.m[it.id];
+    render(true);
+  },
+  // n° 272 : ballon : rebond, dribble ou shoot (un seul à la fois ; toucher encore = simple passe)
+  stbt: (el, d) => {
+    const st = S.exf?.steps, E = S.stEd, it = st?.items.find((x) => x.id === E?.sel); if (!it || it.k !== 'b' || E.i < 1 || !BT_L[d.v]) return;
+    const f = st.frames[E.i]; f.m = f.m || {};
+    f.m[it.id] = f.m[it.id] === d.v ? 'p' : d.v;
+    render(true);
+  },
   stprev: () => { if (!S.stEd) return; S.stEd.prev = !S.stEd.prev; S.stEd.sel = null; render(true); },
 });

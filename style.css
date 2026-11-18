@@ -520,6 +520,19 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .stsel-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:44px}
 .stsel-row .det{flex:1;min-width:140px}
 .stlab{display:flex;align-items:center;gap:6px;font-size:13px}.stlab input{width:56px;min-height:40px}
+/* bêta 1.4.0 · n° 271 et 272 : barre de l'élément choisi, collée en bas de l'écran tant que le terrain est visible */
+.sttool{position:sticky;bottom:calc(84px + env(safe-area-inset-bottom));z-index:5;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:52px;padding:8px 10px;background:var(--pc-papier);border:2px solid var(--pc-trait);border-radius:14px;box-shadow:var(--pc-ombre)}
+.sttool .sttn{font-weight:800}
+.sttool .det{flex:1;min-width:120px}
+.sttool .ko{margin-left:auto}
+.stseg{display:inline-flex;border:2px solid var(--pc-trait);border-radius:12px;overflow:hidden}
+.stseg button{min-height:40px;padding:4px 12px;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;font-size:14px;cursor:pointer}
+.stseg button+button{border-left:2px solid var(--pc-trait)}
+.stseg button[aria-pressed=true]{background:var(--pc-action);color:var(--pc-action-texte)}
+@media (min-width:600px){.sttool{bottom:12px}}
+.stbnc.anim{animation:stbnc .8s ease both}
+@keyframes stbnc{0%,40%{opacity:0}55%{opacity:1;stroke-width:3.5}100%{opacity:.75}}
+@media (prefers-reduced-motion:reduce){.stbnc.anim{animation:none}}
 .dmini .stsvg{width:46px;border-radius:6px}
 @media (min-width:700px){.stp,.stedit .stsvg{max-width:420px}}
 

@@ -11,7 +11,7 @@ import { S, sb, esc, hooks, ACTIONS, INPUTS, render, toast, run, club, armed, is
 import { icon, SPACE_VIEWS } from './ui.js';
 import { micBtn } from './dictee.js'; // bêta 1.2.0 · n° 265 : dicter le nom et les consignes
 import { COACH_VIEWS, thumb, exosForCounts, plansForEvent, loadPlans } from './coach.js';
-import { canCallRoll, homeEvents, needsAnswer } from './agenda.js';
+import { canCallRoll, homeEvents, needsAnswer, teamTabs } from './agenda.js';
 import { normalize, stepsSvg, player, hasSteps } from './v510.js';
 
 // ---------- n° 239 et 250 · toute pastille mène à l'élément en jaune ; une fois vu, pastille et jaune s'enlèvent ----------
@@ -75,6 +75,7 @@ function paintTodo() {
         if (el.closest('.tb') || el.getAttribute('aria-current') === 'page') return;
         if (el.matches('.klink, .tlink, .ptile:not(.wait), .kcard *, .ptable *')) return; // bêta 1.1.0 : pas de jaune sur les liens des cartes de chiffres ni sur les tuiles sans urgence
         if (sel === '[data-act=tsgo][data-tab=effectif]' && !wait.length) return;
+        if (el.dataset.act === 'tsgo' && !el.dataset.id) return; // bêta 1.4.0 · n° 273 : onglet sans équipe choisie, pas un chemin vers la demande
         show(el, 'lead');
       }));
     }
@@ -116,7 +117,9 @@ function roleSubs() {
   document.querySelectorAll('.tb .rsub').forEach((x) => x.remove());
   document.querySelectorAll('.tb nav.roles button.ropen').forEach((x) => x.classList.remove('ropen'));
   if (!wide.matches) return;
-  const inRole = SPACE_VIEWS.includes(S.view?.type) || !!S.tsp;
+  // bêta 1.4.0 · n° 273 : le carnet ouvert sans équipe choisie garde le rôle Coach déplié
+  const carnetNoTeam = !S.tsp && !!CARNET_CUR[S.view?.type] && isCoachCasq(S.casq);
+  const inRole = SPACE_VIEWS.includes(S.view?.type) || !!S.tsp || carnetNoTeam;
   if (!inRole) return;
   let key = S.casq;
   if (S.tsp) { const c = casquettes().find((x) => isCoachCasq(x.k) && (x.teams || []).includes(S.tsp)); if (c) key = c.k; }   // espace d'une équipe : le rôle Coach
@@ -127,7 +130,9 @@ function roleSubs() {
   // bêta 1.1.0 · n° 244 : dans la page d'une fonction ouverte par le président, le bandeau garde les onglets du président
   // (Bureau déplié, la fonction en jaune) ; les onglets de la fonction restent en haut de la page
   const pf = S.view?.type === 'fview' && key === 'president' && hooks.presTabsHtml;
-  const tt = pf ? null : [...document.querySelectorAll('nav.ttabs')].find((n) => !n.closest('.tb'));
+  let tt = pf ? null : [...document.querySelectorAll('nav.ttabs')].find((n) => !n.closest('.tb'));
+  // bêta 1.4.0 · n° 273 : rôle Coach sans équipe choisie (carnet, exercices, tactiques) : les mêmes onglets, déjà dépliés
+  if (!pf && !tt && isCoachCasq(key)) { const x = document.createElement('div'); x.innerHTML = teamTabs('', CARNET_CUR[S.view?.type] ? 'Carnet du coach' : ''); tt = x.firstElementChild; }
   if (!pf && !tt) return;
   const sub = document.createElement('div');
   sub.className = 'rsub'; sub.setAttribute('role', 'group'); sub.setAttribute('aria-label', 'Sous-onglets du rôle');

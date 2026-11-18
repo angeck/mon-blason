@@ -50,5 +50,15 @@ check('sans clé : en pause, aucun appel', !(await (await F.handle(req(B), { ...
 const v = F.buildRequest('claude-sonnet-5-5', { ...B, sport: 'Volley-ball' });
 check('volley : le terrain et l’exemple de Gaël (le 2 reste au contre, le défenseur qui reçoit fait la passe)', v.system.includes('filet est horizontal') && v.system.includes('Le 2 reste au contre') && v.system.includes('va faire la passe'));
 check('cleanSteps refuse une réponse vide', F.cleanSteps({ items: [], frames: [] }, 'Basket-ball') === null && F.cleanSteps(null, 'x') === null);
+// bêta 1.4.0 · n° 271 et 272 : mouvements demandés par l'IA
+const mvRaw = { items: [{ id: 'a1', k: 'a', n: '1' }, { id: 'b', k: 'b', n: '' }, { id: 'c1', k: 'c', n: '' }],
+  frames: [{ c: 'Départ', p: [{ id: 'a1', x: 180, y: 300 }, { id: 'b', x: 190, y: 292 }, { id: 'c1', x: 100, y: 100 }], m: [{ id: 'a1', t: 'm' }] },
+    { c: 'Dribble', p: [{ id: 'a1', x: 180, y: 200 }, { id: 'b', x: 190, y: 192 }], m: [{ id: 'a1', t: 'm' }, { id: 'b', t: 'd' }, { id: 'c1', t: 'm' }] },
+    { c: 'Tir', p: [{ id: 'b', x: 180, y: 36 }], m: { b: 's', a1: 'r' } }] };
+const mv = F.cleanSteps(mvRaw, 'Basket-ball');
+check('n° 271 · schéma v2 : mouvements de l’IA gardés, pas à la mise en place, ni sans déplacement (plot immobile)', mv.v === 2 && !Object.keys(mv.frames[0].m).length && mv.frames[1].m.a1 === 'm' && mv.frames[1].m.b === 'd' && !mv.frames[1].m.c1);
+check('n° 272 · ballon « s » gardé ; un joueur ne peut pas « rebondir » (et ne bouge pas ici)', mv.frames[2].m.b === 's' && !mv.frames[2].m.a1);
+check('n° 271 · sans aucun mouvement de l’IA : schéma v1 (l’application devine les flèches comme avant)', F.cleanSteps(good, 'Basket-ball').v === 1);
+check('n° 272 · l’outil « schema » demande « m » avec les types', JSON.stringify(sent.tools[0].input_schema).includes('"enum":["m","p","r","d","s"]') && sent.system.includes('"d" dribble'));
 console.log(`\n  ${ok} réussis sur ${ok + ko} tests (fonction generer-exercice)`);
 if (ko) process.exit(1);

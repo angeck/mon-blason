@@ -63,7 +63,7 @@ function espaceView() {
   let body = clubTrashBanner(), tabs = '', title = esc(c.label), under = clubSeason(SEASON);
   // n° 113 : une équipe → l'espace de l'équipe directement ; plusieurs → la liste des équipes (niveau 2)
   if (one) { const t = team(c.teams[0]); title = esc(teamName(c.teams[0])); under = clubSeason(t?.season || SEASON); tabs = teamTabs(c.teams[0], 'Planifier'); body += coachSingle(c.teams[0]); }
-  else if (isCoachCasq(c.k)) { title = 'Mes équipes'; body += coachHub(c.teams); }
+  else if (isCoachCasq(c.k)) { title = 'Mes équipes'; tabs = teamTabs('', ''); body += coachHub(c.teams); } // bêta 1.4.0 · n° 273 : les onglets du rôle (dont le carnet) sans choisir d'équipe
   else if (c.k === 'president') { title = 'Président'; tabs = presidentTabs(); body += presidentSpace310(); } // n° 114 : cinq onglets
   else { const f = c.k.slice(2), o = hooks.fnSpace ? hooks.fnSpace(f, true) : null; if (o) { tabs = o.tabs; body += o.body; } else body += fonctionSpace(f); } // 4.4.0 (n° 114) : bandeau + onglets (js/v44.js)
   body += defaultAsk(); // n° 116 : une ligne discrète en bas de page
