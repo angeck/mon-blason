@@ -183,7 +183,7 @@ export function crmTab() {
   const note = '<p class="note">Seul l’administrateur voit cette page. Une fiche s’efface avec son historique (droit d’effacement).</p>';
   if (!cur) return l + note;
   if (c.events?.id !== cur.id && c.loadingEv !== cur.id) { c.loadingEv = cur.id; loadEvents(cur.id).then(() => { c.loadingEv = null; render(true); }); }
-  return `<div class="crmmd"><div class="crmlist">${l}${note}</div><section class="card crmpane" aria-label="Fiche ${esc(cur.org)}">${ficheBody(cur, true)}</section></div>`;
+  return `<div class="crmmd"><div class="crmlist">${l}${note}</div><section class="card crmpane crmfiche" aria-label="Fiche ${esc(cur.org)}">${ficheBody(cur, true)}</section></div>`;
 }
 
 // ---------- Fiche d'un club ----------
@@ -252,7 +252,7 @@ function ficheScreen(id) {
   if (!S.isAdmin) return head('Club') + '<main class="bd"><p class="empty">Réservé à l’administrateur.</p></main>';
   const c = C(), k = findRow(id);
   if (!k) return head('Club') + `<main class="bd"><p class="empty">${c.list ? 'Fiche introuvable.' : 'Chargement…'}</p></main>`;
-  return head(esc(k.org)) + `<main class="bd adm">${c.err ? `<div class="card alert" role="alert"><b>${esc(c.err)}</b></div>` : ''}<div data-pro>${ficheBody(k, false)}</div></main>`;
+  return head(esc(k.org)) + `<main class="bd adm">${c.err ? `<div class="card alert" role="alert"><b>${esc(c.err)}</b></div>` : ''}<div data-pro><div class="crmfiche">${ficheBody(k, false)}</div></div></main>`;
 }
 function newScreen() {
   const head = header({ brand: true, back: true, kicker: 'Administration · clubs', title: 'Nouveau prospect' });

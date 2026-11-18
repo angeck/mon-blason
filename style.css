@@ -921,3 +921,13 @@ details[data-qui]>summary{font-weight:700}
   .crmpane{display:flex;flex-direction:column;gap:12px}
   .crmlist{min-width:0;display:flex;flex-direction:column;gap:10px}
 }
+/* bêta 1.3.1 · fiche d'un club : de l'air entre les blocs (capture de Gaël, tablette, 18 novembre) */
+.crmfiche{display:flex;flex-direction:column;gap:18px}
+.crmfiche>.sec{margin:10px 0 -6px}
+.crmfiche>.card,.crmfiche>form.card{margin:0}
+.crmfiche>.chips{gap:8px;row-gap:10px}
+.crmfiche>.chips .chip{min-height:40px;padding:4px 14px;font-size:14px}
+.crmtop{gap:14px}
+.crmt{padding:16px 18px;gap:6px}
+.crmt .btns{margin-top:auto;padding-top:8px}
+.crmhead{margin-bottom:-10px}
