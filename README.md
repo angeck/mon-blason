@@ -34,6 +34,15 @@ Application web installable (PWA) pour les clubs sportifs : agenda avec réponse
 
 Toutes les personnes des tests sont fictives.
 
+## Bêta 1.2.2
+
+- n° 266 : dictée sur Android, la phrase ne se répète plus (`mergeResults`, `js/dictee.js` ; test `tests/dictee.test.mjs`).
+- n° 264 : la demande d'attestation de paiement est dans la fiche du joueur, cadre « Licence et cotisation » (`hooks.attestFiche`, js/v57.js), plus dans Mon compte ; la notification ouvre la fiche (lien `#fiche=<club>.<joueur>`, app.js) ; texte de l'e-mail changé dans `envoyer-email` (à recoller).
+- n° 265 : « Vos données » 1.10 (dictée du navigateur, licence visible du parent, lieu de la base selon le site) ; une ligne sous le micro de l'exercice et des consignes.
+- n° 267 : import de joueurs : « Relier à la fiche existante », fusion automatique quand le n° de licence est le même, choix obligatoire sur une simple ressemblance (`match_players` refaite, action `link` dans `import_players`).
+- n° 268 : « Prévenir l'encadrement » dans la séance reliée à un entraînement (`notify_plan_staff`, colonne `training_plans.staff_notified_at`).
+- Script : `supabase/MAJ_BETA_1_2_2.sql` (source `beta_1_2_2.sql`, relançable).
+
 ## Bêta 1.2.1
 
 Même contenu que la 1.2.0, plus le cockpit en tuiles et le menu de la maquette (Cockpit · Contacts et CRM · Clubs et parc · Usage · Coûts et quotas · À traiter · Entretien ; téléphone : 4 rubriques + « Plus »), « Dis-le à Claude » avec micro et phrases « À ranger » (table `crm_inbox`), micro dans l'exercice et la tactique, consignes des tactiques (n° 265 ; `tactics.notes`). Dictée : celle du navigateur (`js/dictee.js`), aucun son gardé. Numéro changé pour forcer le rechargement des appareils. Scripts : ajouts dans `MAJ_BETA_1_2_0.sql` (relançable).

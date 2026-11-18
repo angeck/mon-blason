@@ -3,6 +3,7 @@
 // 5.11.0 : n° 228, chaque e-mail compté (type, club, réussite) ; n° 207, attestation envoyée au demandeur ; n° 187, comptes inactifs prévenus ;
 // 5.12.0 : n° 124, plus de validation pour envoyer ; n° 162, P.-S. « on utilise mypocketclub » quand le club reçu n'est pas inscrit ;
 // 5.17.0 : n° 256, logo complet et mise en page commune ; n° 257, « ta demande est validée » sans notification)
+// bêta 1.2.2 : n° 264, l'attestation se retrouve sur la fiche du joueur (plus dans Mon compte)
 // N° 107 · fonction d’envoi des e-mails (Supabase → Edge Functions)
 // Nom de la fonction : envoyer-email
 // Deux envois possibles : l'e-mail de test (administrateur, à sa propre adresse, réponses vers contact@) et les convocations
@@ -302,9 +303,9 @@ async function sendValidationReminders(env: Env, doFetch: typeof fetch) {
 // elle donne l'adresse du demandeur (jamais lue par l'application) et le PDF déjà enregistré. E-mail de service, sans désinscription.
 export function attestationMail(first: string, player: string, club: string, season: string) {
   const hello = first ? `Bonjour ${first},` : 'Bonjour,';
-  const text = `${hello}\n\nLe club ${club} t'a délivré l'attestation de paiement de ${player || 'ton enfant'} pour la saison ${season}. Elle est jointe en PDF.\n\nTu la retrouves aussi dans mypocketclub : Mon compte › « Attestation de paiement ».\n\n--\n${TEXT_FOOT}`;
+  const text = `${hello}\n\nLe club ${club} t'a délivré l'attestation de paiement de ${player || 'ton enfant'} pour la saison ${season}. Elle est jointe en PDF.\n\nTu la retrouves aussi dans mypocketclub, sur la fiche de ${player || 'ton enfant'}, cadre « Licence et cotisation ».\n\n--\n${TEXT_FOOT}`;
   const html = mailLayout(`<p>${escHtml(hello)}</p><p>Le club <b>${escHtml(club)}</b> t'a délivré l'attestation de paiement de <b>${escHtml(player || 'ton enfant')}</b> pour la saison ${escHtml(season)}. Elle est jointe en PDF.</p>
-<p style="color:#4A5068;font-size:14px">Tu la retrouves aussi dans mypocketclub : Mon compte › « Attestation de paiement ».</p>`);
+<p style="color:#4A5068;font-size:14px">Tu la retrouves aussi dans mypocketclub, sur la fiche de ${escHtml(player || 'ton enfant')}, cadre « Licence et cotisation ».</p>`);
   return { subject: `${club} · attestation de paiement ${season}`.replace(/[\r\n]/g, ' ').slice(0, 120), text, html };
 }
 async function sendAttestation(env: Env, auth: string, doFetch: typeof fetch, a: any) {

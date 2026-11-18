@@ -133,7 +133,7 @@ export function playerPage(pid) {
   const A = a || {}, due = A.fee_amount, paid = +A.fee_paid || 0, rest = due == null ? null : Math.max(0, due - paid), pays = S.payments.filter((x) => x.player_id === pid);
   // 4.4.0 (n° 114) : le Secrétariat et le contact licences voient la licence, pas les montants
   if (A.nofee) {
-    h += `<div class="card"><div class="chips">${statusPills(p)}</div>${A.licence_number ? `<div class="det">Licence n° ${esc(A.licence_number)}</div>` : ''}<p class="note" style="margin:0">Les montants de la cotisation sont réservés à la trésorerie et au président.</p></div>`;
+    h += `<div class="card"><div class="chips">${statusPills(p)}</div>${A.licence_number ? `<div class="det">Licence n° ${esc(A.licence_number)}</div>` : ''}<p class="note" style="margin:0">Les montants de la cotisation sont réservés à la trésorerie et au président.</p>${hooks.attestFiche ? hooks.attestFiche(p) : ''}</div>`; // bêta 1.2.2 · n° 264
     if (canAdminPlayer(p)) h += licForm(pid, A, false);
     if (canAdminPlayer(p)) h += delBtn('pdel', pid, 'Mettre la fiche à la corbeille', 'Confirmer : la fiche part à la corbeille (30 jours)', isArmed('p' + pid)) + accBtn(p);
     return h;
@@ -141,8 +141,8 @@ export function playerPage(pid) {
   h += `<div class="card"><div class="chips">${statusPills(p)}</div>${A.licence_number ? `<div class="det">Licence n° ${esc(A.licence_number)}</div>` : ''}
   <div class="grid2" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div><div class="kick">Dû</div><b class="big" style="font-size:24px">${eur(due)}</b></div><div><div class="kick">Réglé</div><b class="big" style="font-size:24px">${eur(paid)}</b></div><div><div class="kick">Reste</div><b class="big" style="font-size:24px">${eur(rest)}</b></div></div>
   ${due == null ? '<p class="note">Montant dû inconnu : le tarif de la catégorie ou de l’équipe n’est pas encore dans la grille du club.</p>' : ''}
-  ${pays.length ? `<div class="list">${pays.map((x) => `<div class="row static"><span class="g">${eur(x.amount)}<small>${new Date(x.paid_at).toLocaleDateString('fr-FR')}${x.method ? ' · ' + esc(x.method) : ''}</small></span>${canAdminPlayer(p) ? `<button class="pill ${isArmed('pay' + x.id) ? 'armed' : ''}" data-act="paydel" data-id="${x.id}">${isArmed('pay' + x.id) ? 'Confirmer le retrait' : 'Retirer'}</button>` : ''}</div>`).join('')}</div>` : ''}</div>`;
-  if (hooks.attestBtn) h += hooks.attestBtn(p); // 5.5.0 · n° 164 : justificatif d'adhésion
+  ${pays.length ? `<div class="list">${pays.map((x) => `<div class="row static"><span class="g">${eur(x.amount)}<small>${new Date(x.paid_at).toLocaleDateString('fr-FR')}${x.method ? ' · ' + esc(x.method) : ''}</small></span>${canAdminPlayer(p) ? `<button class="pill ${isArmed('pay' + x.id) ? 'armed' : ''}" data-act="paydel" data-id="${x.id}">${isArmed('pay' + x.id) ? 'Confirmer le retrait' : 'Retirer'}</button>` : ''}</div>`).join('')}</div>` : ''}${hooks.attestFiche ? hooks.attestFiche(p) : ''}</div>`; // bêta 1.2.2 · n° 264 : demande d'attestation (parent relié, joueur majeur), dans le cadre
+  if (hooks.attestBtn) h += hooks.attestBtn(p); // 5.5.0 · n° 164 : justificatif d'adhésion (trésorerie, président)
   if (canAdminPlayer(p)) {
     const D = S.discounts.find((x) => x.player_id === pid) || {};
     h += `<form id="payf" data-id="${pid}" class="card"><div class="kick">Ajouter un versement</div><div class="grid2">${field('pa1', 'Montant (€)', `<input id="pa1" name="amount" type="number" step="0.01" min="0.01" inputmode="decimal" required value="${rest ? rest : ''}">`)}${field('pa2', 'Moyen', `<select id="pa2" name="method"><option value="">—</option>${PAY.map((x) => `<option>${x}</option>`).join('')}</select>`)}</div><button class="btn main" type="submit">Ajouter le versement</button>

@@ -863,3 +863,7 @@ details[data-qui]>summary{font-weight:700}
   .ckt:not(:disabled):hover{border-color:var(--pc-jaune)}
 }
 @media (min-width:600px){.admtb .tl{text-align:left}}
+/* bêta 1.2.2 · n° 264 : demande d'attestation dans la fiche (cadre « Licence et cotisation ») */
+.attbox{background:var(--pc-bleu-pale);border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.attbox .atth{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.attbox .atth b{display:flex;align-items:center;gap:8px;font-size:16px}

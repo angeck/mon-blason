@@ -1,4 +1,4 @@
-// mypocketclub · bêta 1.2.0 · dictée au micro (n° 265 et « Dis-le à Claude » du n° 245)
+// mypocketclub · bêta 1.2.0 (1.2.2 : n° 266, morceaux répétés sur Android) · dictée au micro (n° 265 et « Dis-le à Claude » du n° 245)
 // La voix devient du texte dans le champ, grâce à la dictée du navigateur (Chrome, Samsung, Safari). Aucun son n'est gardé par mypocketclub.
 // Sur Chrome et Samsung, la voix est transformée en texte par le service de Google (texte « Vos données »). Sans dictée (Firefox) : pas de bouton.
 import { toast, ACTIONS } from './core.js';
@@ -8,12 +8,30 @@ const Rec = () => window.SpeechRecognition || window.webkitSpeechRecognition;
 export const canDictate = () => !!Rec();
 let rec = null, target = '', base = '';
 
+// 1.2.2 · n° 266 : Chrome sur Android renvoie la même phrase en morceaux qui s'allongent (« J'ai », « J'ai commencé »…) ;
+// les coller bout à bout répétait la phrase. Un morceau qui prolonge le texte le remplace, un morceau déjà dit est ignoré,
+// un morceau nouveau (ordinateur : une phrase après l'autre) s'ajoute.
+const flat = (s) => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
+export function mergeResults(list) {
+  let out = '';
+  for (const raw of list) {
+    const t = String(raw || '').trim(); if (!t) continue;
+    const a = flat(out), b = flat(t);
+    if (!b) continue;
+    if (b.startsWith(a)) out = t;
+    else if (a.includes(b)) continue;
+    else out = out + ' ' + t;
+  }
+  return out.replace(/\s+/g, ' ').trim();
+}
+
 const label = (on, txt) => (on ? 'J’écoute… touche pour arrêter' : txt);
 // Bouton à poser sous un champ (input ou textarea) : data-for = l'id du champ
-export function micBtn(id, txt = 'Dicter') {
+// 1.2.2 · n° 265 : note = une ligne sous le bouton (la voix passe par Google ou Apple ; pas de nom de joueur), une fois par écran
+export function micBtn(id, txt = 'Dicter', note = false) {
   if (!canDictate()) return '';
   const on = !!rec && target === id;
-  return `<button type="button" class="btn small ghost mic${on ? ' on' : ''}" data-act="mic" data-for="${id}" data-txt="${txt}" aria-pressed="${on}">${icon('mic', 18)}<span>${label(on, txt)}</span></button>`;
+  return `<button type="button" class="btn small ghost mic${on ? ' on' : ''}" data-act="mic" data-for="${id}" data-txt="${txt}" aria-pressed="${on}">${icon('mic', 18)}<span>${label(on, txt)}</span></button>${note ? '<p class="note micnote">Ta voix passe par la dictée de ton navigateur (Google ou Apple), qui la transforme en texte. Évite de dicter le nom d’un joueur.</p>' : ''}`;
 }
 function paint() {
   document.querySelectorAll('[data-act=mic]').forEach((b) => {
@@ -30,8 +48,7 @@ function start(id) {
   rec = r; target = id; base = el.value; paint();
   r.onresult = (e) => {
     const f = document.getElementById(target); if (!f) { stopDictation(); return; }
-    let said = ''; for (let i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
-    said = said.trim(); if (!said) return;
+    const said = mergeResults(Array.from(e.results, (x) => x[0].transcript)); if (!said) return;
     const sep = base && !/\s$/.test(base) ? ' ' : '';
     const max = +f.getAttribute('maxlength') || 4000;
     f.value = (base + sep + said.charAt(0).toUpperCase() + said.slice(1)).slice(0, max);

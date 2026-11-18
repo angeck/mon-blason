@@ -30,7 +30,7 @@ export function accountScreen() {
   if (S.convRet) h += `<div class="card yellow" style="transform:none"><b>Tu complètes les coordonnées du contact de la convocation.</b><div class="btns" style="margin-top:8px"><button type="button" class="btn main small" data-act="convback">Revenir à la convocation</button></div></div>`; // 5.13.0 · n° 234
   if (c) h += `<button class="btn main" data-act="rqgo">${icon('plus', 20)}Demander un autre rôle dans ${esc(c.name)}</button>`;
   if (hooks.helpAccount) h += hooks.helpAccount(); // 5.5.0 : Aide (FAQ et « Pour bien démarrer »)
-  if (hooks.attestAccount) h += hooks.attestAccount(); // 5.7.0 · n° 207 : demander une attestation de paiement
+  // bêta 1.2.2 · n° 264 : la demande d’attestation est dans la fiche du joueur (cadre « Licence et cotisation »), plus ici
   h += `<div class="sec"><h2>Mon profil</h2></div><form id="proff" class="card"><div class="grid2">${field('pn', 'Prénom', `<input id="pn" name="first_name" value="${esc(me.first_name || '')}" required>`)}${field('pn2', 'Nom', `<input id="pn2" name="last_name" value="${esc(me.last_name || '')}" required>`)}</div>
   ${field('pp', 'Pseudo (affiché dans les groupes)', `<input id="pp" name="nickname" value="${esc(me.nickname || '')}" maxlength="30">`)}
   ${field('pm', 'Adresse e-mail', `<input id="pm" value="${esc(S.session.user.email)}" readonly>`)}

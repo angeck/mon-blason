@@ -351,7 +351,7 @@ with sync_playwright() as p:
     check('n° 180 · cocher le droit à l’image l’envoie à la base, sans toucher aux e-mails', pg.evaluate("window.__CALLS.some(c => c[1] === 'set_my_consents' && c[2].p_image === true && c[2].p_optin === null)"))
     check('n° 180 · le formulaire du profil n’envoie plus les e-mails d’information', pg.locator('#proff [name=optin]').count() == 0)
     act('[data-act=legal][data-v=mentions]')
-    check('mentions légales : adresse de contact, éditeur, hébergeurs, Irlande, version et date', has('contact@mypocketclub.fr') and not has('@gmail.com') and has('Gaël Raveneau') and has('Irlande') and has('Kellermann') and has('version 1.9 du 15 novembre 2026') and not has('Paris (région'))
+    check('mentions légales : adresse de contact, éditeur, hébergeurs, Irlande, version et date', has('contact@mypocketclub.fr') and not has('@gmail.com') and has('Gaël Raveneau') and has('Irlande') and has('Kellermann') and has('version 1.10 du 18 novembre 2026') and not has('Paris (région'))
     act('[data-act=back]')
     act('[data-act=legal][data-v=donnees]')
     check('n° 175 · « Vos données » : version courte, lien vers la politique complète', has('Qui s\'occupe de vos données ?') and has('Prénom I.') and pg.locator('[data-act=legal][data-v=politique]').count() == 1)
@@ -360,7 +360,7 @@ with sync_playwright() as p:
     check('5.11.0 · n° 229-230 · politique : date de naissance, versements, empreinte IP, coordonnées par fonction', has('date de naissance') and has('versements notés') and has('empreinte') and has('du contact licences et du contact rencontres'))
     act('[data-act=back]'); act('[data-act=back]')
     act('[data-act=legal][data-v=cgu]')
-    check('n° 175 · conditions d’utilisation : 15 articles, version affichée', has('15. Droit applicable et contact') and has('version 1.9 du 15 novembre 2026'))
+    check('n° 175 · conditions d’utilisation : 15 articles, version affichée', has('15. Droit applicable et contact') and has('version 1.10 du 18 novembre 2026'))
     check('5.11.0 · n° 229 · conditions : les deux gratuités (club jusqu’à la fin de la saison, équipe une saison complète)', has("gratuit jusqu'à la fin de la saison en cours") and has('de décembre à décembre'))
     act('[data-act=back]')
     check('n° 175 · retour sur Mon compte', has('Mes accords'))
@@ -492,6 +492,26 @@ with sync_playwright() as p:
         check(f'n° 47 : import {f} lu (4 joueurs, accents gardés)', len(vals) == 4 and vals[0] == first)
     act('[data-act=impok]')
     check('n° 47 : import validé', pg.evaluate("window.__CALLS.filter(c => c[1] === 'import_players').length >= 2"))
+    # bêta 1.2.2 · n° 267 : relier un joueur qui existe déjà ; fusion automatique quand le n° de licence est le même
+    pg.evaluate("""() => { window.__MATCH = (rows) => { const out = []; rows.forEach((r, i) => {
+      if (r.last_name === 'DUPONT') out.push({ idx: i, player_id: 'p-tom', kind: 'licence', label: 'Tom Dupont · 12/03/2017', team_name: 'U9', same_team: true, team_archived: false, diff: null });
+      if (r.last_name === 'LEROY') out.push({ idx: i, player_id: 'p-ana', kind: 'possible', label: 'Ana Leroy', team_name: 'U11 (2025-2026)', same_team: false, team_archived: true, diff: 'date de naissance différente' });
+      if (r.last_name === 'MARTIN') out.push({ idx: i, player_id: 'p-tom', kind: 'licence_conflit', label: 'Tom Dupont', team_name: 'U9', same_team: true, team_archived: false, diff: 'même n° de licence, mais nom différent' });
+    }); return out; }; }""")
+    act('[data-act=tab][data-i="3"]'); act('[data-act=teamsel][data-id=t-u9]'); act('[data-act=team][data-id=t-u9]'); act('[data-act=tsgo][data-tab=effectif][data-id=t-u9]'); act('[data-act=import][data-id=t-u9]')
+    pg.fill('#imt', 'Prénom;Nom;Naissance;Licence\nTom;DUPONT;12/03/2017;VT1234567\nAnna;LEROY;;\nLéa;MARTIN;;VT1234567\nZoé;NOUVELLE;;'); act('[data-act=impcheck]'); pg.wait_for_timeout(400)
+    check('bêta 1.2.2 · n° 267 : même n° de licence : « Fusionnée avec la fiche existante », relier choisi tout seul', has('Fusionnée avec la fiche existante') and pg.input_value('#ir0a') == 'link:p-tom')
+    check('bêta 1.2.2 · n° 267 : simple ressemblance : rien de choisi, différence et saison passée montrées', pg.input_value('#ir1a') == '' and has('Ressemble à une fiche du club') and has('date de naissance différente') and has('saison passée') and has('passe dans l’équipe'))
+    check('bêta 1.2.2 · n° 267 : même licence, autre nom : alerte « erreur de saisie ? », rien de choisi', pg.input_value('#ir2a') == '' and has('erreur de saisie'))
+    check('bêta 1.2.2 · n° 267 : trois choix (Relier, Nouvelle personne, Ne pas importer)', pg.locator('#ir1a option[value="link:p-ana"]').count() == 1 and pg.locator('#ir1a option[value=create]').count() == 1 and pg.locator('#ir1a option[value=skip]').count() == 1)
+    n0 = pg.evaluate("window.__CALLS.filter(c => c[1] === 'import_players').length")
+    act('[data-act=impok]'); pg.wait_for_timeout(300)
+    check('bêta 1.2.2 · n° 267 : « Valider l’import » attend les lignes à trancher', pg.evaluate("window.__CALLS.filter(c => c[1] === 'import_players').length") == n0 and '2 lignes ressemblent' in pg.evaluate("document.getElementById('toast')?.innerText || ''"))
+    pg.select_option('#ir1a', 'link:p-ana'); pg.wait_for_timeout(150); pg.select_option('#ir2a', 'create'); pg.wait_for_timeout(150)
+    act('[data-act=impok]'); pg.wait_for_timeout(400)
+    rows = pg.evaluate('window.__IMPROWS') or []
+    check('bêta 1.2.2 · n° 267 : envoyé à la base : relier, relier, créer, créer', [(r.get('action'), r.get('existing')) for r in rows] == [('link', 'p-tom'), ('link', 'p-ana'), ('create', None), ('create', None)])
+    pg.evaluate('window.__MATCH = null')
     act('[data-act=tab][data-i="3"]')
     check('n° 51 : « Moi » et « Mon enfant » séparés', has('Moi') and has('Mon enfant') and not has('Mes enfants'))
     shot('17-moi-et-enfant')
@@ -541,6 +561,13 @@ with sync_playwright() as p:
     shot('19-seance')
     pg.click('#planf [type=submit]'); pg.wait_for_timeout(400)
     check('3.1 : séance enregistrée et reliée à l’entraînement', pg.evaluate("window.__FAKE.training_plans.some(p => p.event_id === 'e8' && p.items.length === 3 && p.items[0].exercise_id === 'x3')"))
+    # bêta 1.2.2 · n° 268 : « Prévenir l'encadrement » (séance enregistrée et reliée)
+    check('bêta 1.2.2 · n° 268 : séance reliée : bouton « Prévenir l’encadrement »', pg.locator('[data-act=pnotify]').count() == 1 and has('Prévenir l’encadrement'))
+    act('[data-act=pnotify]'); pg.wait_for_timeout(300)
+    check('bêta 1.2.2 · n° 268 : la base est appelée pour cette séance, « 2 coachs prévenus. »', bool((pg.evaluate('window.__NOTIFY') or {}).get('p_plan')) and '2 coachs prévenus' in pg.evaluate("document.getElementById('toast')?.innerText || ''"))
+    check('bêta 1.2.2 · n° 268 : ensuite « Encadrement prévenu » et la date du dernier envoi', has('Encadrement prévenu') and has('Dernier envoi'))
+    pg.click('#planf [type=submit]'); pg.wait_for_timeout(400)
+    check('bêta 1.2.2 · n° 268 : séance modifiée après l’envoi : « Prévenir : séance modifiée »', has('Prévenir : séance modifiée'))
     # n° 58 : bouton « Ajouter un exercice » et sélecteur par-dessus la séance
     check('n° 58 : gros bouton « Ajouter un exercice » dans la séance', pg.locator('[data-act=padd]').count() == 1 and pg.evaluate("document.querySelector('[data-act=padd]').getBoundingClientRect().height >= 48"))
     act('[data-act=padd]')
@@ -1540,7 +1567,7 @@ with sync_playwright() as p:
     check('accueil public : recherche, se connecter, lien « Je n’ai pas encore de compte »', 'Chercher un club' in t2() and 'Se connecter' in t2() and 'Je n’ai pas encore de compte' in t2().replace("'", '’'))
     # 5.0.0 · n° 197 : écran d'ouverture de l'identité
     check('n° 197 · slogan de l’identité', 'Tout ton club dans ta poche' in t2())
-    check('n° 197 · pied : mentions légales, version, contact et site', all(x in t2() for x in ['Mentions légales', 'Vos données', 'Conditions', 'bêta 1.2.1 · version de test', 'contact@', 'Site :']))
+    check('n° 197 · pied : mentions légales, version, contact et site', all(x in t2() for x in ['Mentions légales', 'Vos données', 'Conditions', 'bêta 1.2.2 · version de test', 'contact@', 'Site :']))
     check('n° 197 · fond encre et logo « club » bleu clair', pg2.evaluate("getComputedStyle(document.documentElement).backgroundColor") == 'rgb(17, 22, 46)' and pg2.evaluate("getComputedStyle(document.querySelector('.ouvert .wordmark .club')).color") == 'rgb(107, 139, 255)')
     check('n° 197 · la recherche est visible sans défiler sur 360 × 640', (pg2.set_viewport_size({'width': 360, 'height': 640}) or True) and pg2.evaluate("document.querySelector('#psf button[type=submit]').getBoundingClientRect().bottom") <= 640)
     shot2 = lambda n: OUT and pg2.screenshot(path=os.path.join(OUT, n + '.png'))
@@ -1800,13 +1827,22 @@ with sync_playwright() as p:
     dv = pg7.evaluate('window.__ADELIV') or {}
     check('5.7.0 · n° 207 : « Délivrer » envoie le PDF à la base pour cette demande', dv.get('p_id') == 'rq-1' and str(dv.get('p_pdf', '')).startswith('JVBERi0'))
     # n° 207 : Mon compte
+    # n° 207, déplacé par le n° 264 (bêta 1.2.2) : la demande d'attestation est dans la fiche du joueur, plus dans Mon compte
     pg7.evaluate("(async()=>{window.__AMINE=[{player_id:'p-tom',club_id:'c-1',club_name:'BC Testville',first_name:'Tom',last_name:'Dupont',request_id:null,status:null,reason:null,decided_at:null},{player_id:'p-lily',club_id:'c-1',club_name:'BC Testville',first_name:'Lily',last_name:'Dupont',request_id:'rq-2',status:'delivree',reason:null,decided_at:new Date().toISOString()}]; const {S,render}=await import('/js/core.js'); S.attMine=undefined; S.view={type:'account'}; render();})()"); pg7.wait_for_timeout(600)
-    check('5.7.0 · n° 207 : Mon compte : « Attestation de paiement », « Demander » et « PDF »', pg7.locator('[data-act=attask][data-id=p-tom]').count() == 1 and pg7.locator('[data-act=attget][data-id=rq-2]').count() == 1)
+    check('bêta 1.2.2 · n° 264 : Mon compte n’a plus de bloc « Attestation de paiement »', pg7.locator('[data-act=attask]').count() == 0 and pg7.locator('[data-act=attget]').count() == 0)
+    # vue d'un parent (sans présidence ni trésorerie) : on retire ces droits à l'écran le temps du test
+    pg7.evaluate("(async()=>{const {S,render}=await import('/js/core.js'); window.__SAVE={m:S.mems,a:S.areas}; S.mems=S.mems.map(m=>m.club_id===S.clubId&&m.role==='president'?{...m,role:'parent'}:m); S.areas=[]; S.attMine=undefined; S.view={type:'player', id:'p-tom'}; render();})()"); pg7.wait_for_timeout(600)
+    check('bêta 1.2.2 · n° 264 : fiche (parent) : « Demander une attestation » dans le cadre « Licence et cotisation »', pg7.locator('#pl-lic + .card .attbox [data-act=attask][data-id=p-tom]').count() == 1 and pg7.locator('[data-act=attopen]').count() == 0)
     pg7.click('[data-act=attask][data-id=p-tom]'); pg7.wait_for_timeout(400)
-    check('5.7.0 · n° 207 : demande envoyée, ligne « Demandée »', (pg7.evaluate('window.__AREQUEST') or {}).get('p_player') == 'p-tom' and 'demandée' in t7())
+    check('bêta 1.2.2 · n° 264 : demande envoyée depuis la fiche', (pg7.evaluate('window.__AREQUEST') or {}).get('p_player') == 'p-tom')
+    pg7.evaluate("(async()=>{const {S,render}=await import('/js/core.js'); S.view={type:'player', id:'p-lily'}; render();})()"); pg7.wait_for_timeout(400)
+    check('bêta 1.2.2 · n° 264 : attestation prête : « Prête » et « Télécharger le PDF »', pg7.locator('.attbox .pill.ok').count() == 1 and pg7.locator('[data-act=attget][data-id=rq-2]').count() == 1 and 'disponible ici jusqu’au 30 juin' in t7())
     with pg7.expect_download() as dl2:
         pg7.click('[data-act=attget][data-id=rq-2]')
-    check('5.7.0 · n° 207 : le PDF délivré se télécharge', dl2.value.suggested_filename.endswith('.pdf'))
+    check('bêta 1.2.2 · n° 264 : le PDF délivré se télécharge depuis la fiche', dl2.value.suggested_filename.endswith('.pdf'))
+    pg7.evaluate("(async()=>{window.__AMINE=[{player_id:'p-lily',club_id:'c-1',club_name:'BC Testville',first_name:'Lily',last_name:'Dupont',request_id:'rq-3',status:'refusee',reason:'Versement pas encore encaissé',decided_at:new Date().toISOString()}]; const {S,render}=await import('/js/core.js'); S.attMine=undefined; render();})()"); pg7.wait_for_timeout(500)
+    check('bêta 1.2.2 · n° 264 : demande refusée : motif et « Redemander »', 'versement pas encore encaissé' in t7() and pg7.locator('.attbox [data-act=attask][data-id=p-lily]').count() == 1)
+    pg7.evaluate("(async()=>{const {S,render}=await import('/js/core.js'); S.mems=window.__SAVE.m; S.areas=window.__SAVE.a; S.view={type:'account'}; render();})()"); pg7.wait_for_timeout(300)
     check('5.7.0 · n° 206 : les onglets restent visibles dans Mon compte', pg7.locator('.tb [data-act=tab]').count() == 5)
     # n° 206 : « Me montrer » et « Y aller »
     pg7.evaluate("(async()=>{const {S,render}=await import('/js/core.js'); S.view={type:'obfiche', id:'K5', faq:true}; render();})()"); pg7.wait_for_timeout(300)

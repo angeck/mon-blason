@@ -223,7 +223,7 @@ function tacEditPage() {
   const f = S.exf; if (!f?.tac) return '<p class="empty">Tactique introuvable.</p>';
   const ed = COACH_VIEWS.exsteps()[2]().replace(/<button type="button" class="btn main" data-act="back">Terminé<\/button>/, `<button type="button" class="btn main" data-act="tacsave">Enregistrer la tactique</button>`);
   return `<div class="card lift"><div class="field"><label for="tactitle">Nom de la tactique</label><input id="tactitle" data-tactitle="1" maxlength="80" value="${esc(f.title || '')}" placeholder="Ex. Remise en jeu">${micBtn('tactitle', 'Dicter le nom')}</div>
-  <div class="field"><label for="tacnotes">Consignes (facultatif)</label><textarea id="tacnotes" data-tacnotes="1" maxlength="2000" rows="4" placeholder="Ex. le meneur fixe à gauche, le pivot monte l'écran, tir au poste 2">${esc(f.notes || '')}</textarea>${micBtn('tacnotes', 'Dicter les consignes')}</div>
+  <div class="field"><label for="tacnotes">Consignes (facultatif)</label><textarea id="tacnotes" data-tacnotes="1" maxlength="2000" rows="4" placeholder="Ex. le meneur fixe à gauche, le pivot monte l'écran, tir au poste 2">${esc(f.notes || '')}</textarea>${micBtn('tacnotes', 'Dicter les consignes', true)}</div>
   <label class="check"><input type="checkbox" data-tacshare="1" ${f.sharing === 'club' ? 'checked' : ''}><span>Partager avec les coachs du club</span></label></div>${ed}
   ${f.id ? `<button class="btn danger ${isArmed('tacdel') ? 'armed' : ''}" data-act="tacdel">${icon('trash', 20)}${isArmed('tacdel') ? 'Confirmer la suppression' : 'Supprimer la tactique'}</button>` : ''}`;
 }

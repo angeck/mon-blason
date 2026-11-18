@@ -1,13 +1,15 @@
 // mypocketclub · alpha 4.9.0 · n° 175 et n° 180 : mentions légales, « Vos données » (version courte et politique complète),
 // conditions d'utilisation. Textes de claude/15-textes-juridiques.md, 15b et 15c (version de test 1.5 du 13 novembre 2026 : n° 229, toutes les données gardées ;
 // n° 230, coordonnées par fonction ; lot e-mails 1 ; conditions 1.3 : gratuité ; 1.6 du 13 novembre 2026 : n° 162, recommandations,
-// n° 187, journal des actions à 1 an ; 1.9 (5.17.0) : n° 257, e-mail « demande validée » sans notification ; n° 254, gymnases du club ; 1.7 (5.13.0) : n° 236, un seul chemin « recommander mon club », coordonnées facultatives ; conditions inchangées),
+// n° 187, journal des actions à 1 an ; 1.9 (5.17.0) : n° 257, e-mail « demande validée » sans notification ; n° 254, gymnases du club ; 1.7 (5.13.0) : n° 236, un seul chemin « recommander mon club », coordonnées facultatives ; conditions inchangées) ; 1.10 (bêta 1.2.2) : dictée du navigateur (n° 265), licence et cotisation visibles du parent (n° 264), lieu de la base selon le site,
 // non relus par un juriste. Vouvoiement. Changer LEGAL.version et LEGAL.date (et CGU_VERSION dans config.js
 // pour les conditions) à chaque modification : une nouvelle version des conditions est présentée à la connexion suivante.
-import { BRAND } from '../config.js';
+import { BRAND, IS_PROD } from '../config.js';
+// bêta 1.2.2 : lieu de la base selon le site (vrai site : projet « mpc » à Paris ; site de test : « mpc-test » en Irlande)
+const LIEU = IS_PROD ? 'France, à Paris' : 'Irlande';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.9', date: '15 novembre 2026' };
+export const LEGAL = { version: '1.10', date: '18 novembre 2026' };
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -37,7 +39,7 @@ Contact : ${C}
 Directeur de la publication : Gaël Raveneau.
 ## Hébergement
 - Pages de l'application : GitHub Pages, GitHub, Inc., 88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, États-Unis.
-- Base de données et fichiers : Supabase, Inc. ; les données sont stockées en Irlande (Union européenne).
+- Base de données et fichiers : Supabase, Inc. ; les données sont stockées dans l'Union européenne (${LIEU}).
 - Nom de domaine : OVH SAS, 2 rue Kellermann, 59100 Roubaix, France.
 ## Version de test
 Le service est fourni gratuitement pendant le test. Il peut évoluer, être interrompu ou comporter des erreurs. Merci de nous les signaler à ${C}.
@@ -58,7 +60,7 @@ const SHORT = `
 - Votre place dans le club : rôle, équipe, lien entre un parent et son enfant.
 - La fiche d'un joueur : nom, prénom, date de naissance, équipe ; e-mail et téléphone d'un parent et contact d'urgence si le club les note ; autorisations (rentrer seul, soins d'urgence, covoiturage) ; réponse de chaque parent sur le droit à l'image.
 - La vie du club : réponses aux rendez-vous, présences (avec l'heure d'arrivée), messages et groupes, missions de bénévole, heures des coachs.
-- Licence et cotisation, visibles du bureau seulement : état de la licence, cotisation, remise éventuelle, versements notés, attestations de paiement.
+- Licence et cotisation : état de la licence, cotisation, remise éventuelle, versements notés, attestations de paiement ; visibles du bureau, et du parent ou du joueur majeur pour sa propre fiche.
 - Vos réglages : équipes suivies, notifications sur chaque appareil, avancée du guide « Pour bien démarrer ».
 - Renforts et ententes : le fait qu'un joueur renforce une autre équipe de son club (avec l'accord de sa famille), et, pour une équipe en entente, le club d'origine du joueur.
 - Jamais d'information médicale. Merci de ne pas en écrire dans l'application.
@@ -82,7 +84,8 @@ Deux accords sont facultatifs, et vous pouvez les retirer à tout moment dans «
 - Appareils de connexion : effacés après 12 mois sans usage.
 - Attestations de paiement : jusqu'à la fin de la saison.
 ## Où sont vos données ?
-Dans l'Union européenne (Irlande), chez Supabase. Les e-mails sont envoyés par Resend et les pages sont servies par GitHub, deux sociétés américaines liées par un contrat de protection des données. Quand un coach prépare le schéma d'un exercice avec l'IA, le texte de l'exercice est envoyé à Anthropic (États-Unis), jamais un nom ni une donnée de joueur.
+Dans l'Union européenne (${LIEU}), chez Supabase. Les e-mails sont envoyés par Resend et les pages sont servies par GitHub, deux sociétés américaines liées par un contrat de protection des données. Quand un coach prépare le schéma d'un exercice avec l'IA, le texte de l'exercice est envoyé à Anthropic (États-Unis), jamais un nom ni une donnée de joueur.
+Le bouton micro utilise la dictée de votre navigateur : sur Chrome et Samsung Internet, votre voix est transformée en texte par Google ; sur Safari, par Apple. mypocketclub ne reçoit que le texte, jamais le son. Évitez de dicter le nom d'un joueur.
 ## Vos droits
 Vous pouvez demander à voir vos données, les corriger, les effacer, en obtenir une copie ou vous opposer à un usage. Écrivez à ${C} : réponse sous un mois. Si la demande concerne les données gérées par votre club, nous la lui transmettons. Vous pouvez aussi saisir la CNIL (cnil.fr).`;
 
@@ -102,7 +105,7 @@ Contact pour toute question : ${C}.
 - **Signalements** : un message signalé garde la trace de la personne qui l'a signalé et de la date.
 - **Vie du club** : rendez-vous et réponses, présences (avec l'heure d'arrivée notée à l'appel), convocations, messages et groupes d'échange, sondages, missions de bénévole.
 - **Entraîneurs** : heures, taux horaire et montants, visibles du président et de la trésorerie.
-- **Licence et cotisation**, visibles du bureau seulement : état de la licence, cotisation, remise éventuelle, versements notés.
+- **Licence et cotisation** : état de la licence, cotisation, remise éventuelle, versements notés, demandes d'attestation de paiement ; visibles du bureau, et du parent ou du joueur majeur pour sa propre fiche (c'est là qu'il demande une attestation).
 - **Attestations de paiement** : demande (nom du demandeur), attestation délivrée en PDF, signature en image de la personne qui la délivre (gardée avec son compte) ; coordonnées, numéro SIRET ou RNA et cachet du club, réglés par le président.
 - **Renforts et ententes** : le fait qu'un joueur renforce une autre équipe de son club, avec la réponse de sa famille ; pour une équipe en entente, le club d'origine du joueur et le contact du club partenaire.
 - **Abonnement du club** : nombre de joueurs, statut et montant, visibles du président du club et de mypocketclub.
@@ -176,13 +179,15 @@ Les e-mails nécessaires au service sont toujours envoyés : convocation, change
 | Demande de conversation avec un mineur (qui la fait, le parent sollicité, sa réponse) | Effacée 30 jours après la réponse ou l'annulation |
 Les copies de sauvegarde sont effacées dans les semaines qui suivent. Le motif d'un départ n'est jamais enregistré.
 ## 8. Où sont les données, et qui nous aide ?
-| Supabase | Base de données, comptes, fichiers · Irlande (Union européenne) |
+| Supabase | Base de données, comptes, fichiers · ${LIEU} (Union européenne) |
 | Resend | Envoi des e-mails · États-Unis |
 | Cloudflare | Vérification « vous n'êtes pas un robot » (Turnstile) à l'inscription, à la connexion et pour une recommandation · États-Unis |
 | GitHub | Pages de l'application (aucune donnée de membre) · États-Unis |
 | Anthropic | IA Claude : propose le schéma d'un exercice à la demande d'un coach ; reçoit seulement le titre, la description et les tags de l'exercice, jamais un nom ni une donnée de joueur · États-Unis |
 | OVH | Nom de domaine et boîte de contact · France |
 Les prestataires américains interviennent dans le cadre des garanties prévues par le RGPD pour les transferts hors de l'Union européenne (clauses contractuelles types ou cadre de protection des données entre l'Union européenne et les États-Unis). Cette liste est mise à jour à chaque changement.
+
+**Dictée.** Le bouton micro (description d'un exercice, consignes d'une tactique) n'est pas un service de mypocketclub : c'est la dictée de votre navigateur, régie par les règles de son éditeur (Google pour Chrome et Samsung Internet, Apple pour Safari), qui peut envoyer votre voix à ses serveurs pour la transformer en texte. mypocketclub ne reçoit que le texte écrit dans le champ, jamais le son. Évitez de dicter le nom d'un joueur ; si vous ne voulez pas utiliser la dictée, tapez le texte.
 ## 9. Sécurité
 - Les échanges avec l'application sont chiffrés.
 - Les droits de chacun sont vérifiés par le serveur, selon son rôle dans le club.

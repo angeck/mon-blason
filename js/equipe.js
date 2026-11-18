@@ -161,6 +161,19 @@ export function teamPage(tid) {
 }
 
 // ---------- ajout et import de joueurs ----------
+// bêta 1.2.2 · n° 267 : carte d'une ligne qui ressemble à une ou plusieurs fiches du club ; choix « Relier », « Nouvelle personne », « Ne pas importer »
+const DUP_TITLE = { licence: 'Fusion automatique : même n° de licence', licence_conflit: 'Même n° de licence qu’une autre fiche : erreur de saisie ?', certain: 'Déjà dans le club', possible: 'Ressemble à une fiche du club' };
+function dupCard(r, i, dups, tid) {
+  const auto = r.auto && r.action === 'link', k = dups[0].kind, open = !r.action;
+  const where = (m) => m.same_team ? '' : m.team_archived ? ' (passe dans l’équipe ' + teamName(tid) + ')' : ' (ajouté aussi à l’équipe ' + teamName(tid) + ')';
+  const opts = (open ? '<option value="" selected>— Choisis —</option>' : '')
+    + dups.map((m) => `<option value="link:${m.player_id}" ${r.action === 'link' && r.existing === m.player_id ? 'selected' : ''}>Relier à ${esc(m.label)}${esc(where(m))}</option>`).join('')
+    + `<option value="create" ${r.action === 'create' ? 'selected' : ''}>Nouvelle personne (homonyme)</option><option value="skip" ${r.action === 'skip' ? 'selected' : ''}>Ne pas importer cette ligne</option>`;
+  return `<div class="card ${auto ? 'pale' : k === 'licence_conflit' ? 'alert' : 'warn'} dupc" data-dup="${k}">${auto ? '<span class="pill ok" style="align-self:flex-start">Fusionnée avec la fiche existante</span>' : ''}<b>${DUP_TITLE[auto ? 'licence' : k === 'licence' ? 'certain' : k]}</b>
+    <div class="list">${dups.map((m) => `<div class="row static"><span class="g">${esc(m.label)}<small>${esc(m.team_name)}${m.team_archived && m.team_name !== 'sans équipe' ? ' · saison passée' : ''}${m.diff ? ' · ' + esc(m.diff) : ''}</small></span></div>`).join('')}</div>
+    ${field(`ir${i}a`, open ? 'Que faire ? (à choisir avant de valider)' : 'Que faire ?', `<select id="ir${i}a" data-impact="${i}" class="${open ? 'doubt' : ''}">${opts}</select>`)}
+    <p class="note" style="margin:0">Relier complète seulement les cases vides de la fiche : rien n’est effacé.</p></div>`;
+}
 async function checkImport() {
   const I = S.imp;
   if (!I.rows.length) { toast('Aucune ligne reconnue : vérifie que la liste contient bien des noms (un joueur par ligne).'); I.rows = null; return render(); }
@@ -168,7 +181,14 @@ async function checkImport() {
   I.matches = {}; (r || []).forEach((m) => { (I.matches[m.idx] = I.matches[m.idx] || []).push(m); });
   I.rows.forEach((x, i) => {
     const inFile = I.rows.findIndex((y, j) => j < i && norm(y.first_name) === norm(x.first_name) && norm(y.last_name) === norm(x.last_name)) >= 0;
-    x.action = I.matches[i] || inFile ? 'skip' : 'create'; x.existing = I.matches[i]?.[0]?.player_id || null;
+    // bêta 1.2.2 · n° 267 : même n° de licence (et même nom ou même date) → fusion automatique ; mêmes nom et prénom → « Relier » proposé ;
+    // simple ressemblance ou licence en conflit → rien par défaut, la personne tranche avant « Valider l'import »
+    const ms = I.matches[i] || [], best = ms[0];
+    x.auto = false; x.existing = null;
+    if (inFile) x.action = 'skip';
+    else if (best && best.kind === 'licence') { x.action = 'link'; x.existing = best.player_id; x.auto = true; }
+    else if (best && best.kind === 'certain') { x.action = 'link'; x.existing = best.player_id; }
+    else x.action = ms.length ? '' : 'create';
   });
   render();
 }
@@ -219,10 +239,7 @@ export function importPage(tid) {
     const inp = (k, label, type = 'text') => field(`ir${i}${k}`, label, `<input id="ir${i}${k}" type="${type}" data-imp="${i}" data-k="${k}" value="${esc(r[k] || '')}" class="${dz.has(k) ? 'doubt' : ''}">`);
     h += `<div class="card flat" style="${r.action === 'skip' ? 'opacity:.6' : ''}"><div class="grid2">${inp('first_name', 'Prénom')}${inp('last_name', 'Nom')}</div><div class="grid2">${inp('birth_date', 'Naissance', 'date')}${inp('licence', 'N° de licence')}</div>${(r.email || r.phone) && !I.noContacts ? `<div class="grid2">${inp('email', 'E-mail du parent', 'email')}${inp('phone', 'Téléphone du parent', 'tel')}</div>` : ''}`;
     if (inFile) h += '<span class="pill ko">Doublon dans la liste elle-même</span>';
-    if (dups.length) {
-      const d = dups[0];
-      h += `<div class="card warn"><b>${d.kind === 'certain' ? 'Déjà dans le club' : 'Ressemble à'} : ${esc(d.label)} · ${esc(d.team_name)}</b>${field(`ir${i}a`, 'Que faire ?', `<select id="ir${i}a" data-impact="${i}"><option value="skip" ${r.action === 'skip' ? 'selected' : ''}>Garder l'existant (ne pas ajouter cette ligne)</option><option value="create" ${r.action === 'create' ? 'selected' : ''}>Garder les deux (deux personnes différentes)</option><option value="complete" ${r.action === 'complete' ? 'selected' : ''}>Compléter la fiche existante</option>${d.same_team ? '' : `<option value="addteam" ${r.action === 'addteam' ? 'selected' : ''}>Ajouter aussi à l'équipe ${esc(teamName(tid))}</option>`}</select>`)}</div>`;
-    }
+    if (dups.length) h += dupCard(r, i, dups, tid);
     h += `<button class="btn link" data-act="impdel" data-i="${i}" style="align-self:flex-start">Retirer cette ligne</button></div>`;
   });
   h += '</div>';
@@ -247,7 +264,9 @@ Object.assign(ACTIONS, {
   impback: () => { S.imp.rows = null; S.imp.map = null; render(); },
   impswapall: async () => { const I = S.imp; I.rows.forEach((r) => { [r.first_name, r.last_name] = [r.last_name, r.first_name]; }); await checkImport(); toast('Prénom et nom inversés.'); },
   impok: async () => {
-    const I = S.imp, rows = I.rows.map((r) => ({ first_name: niceFirst(r.first_name), last_name: niceLast(r.last_name), birth_date: r.birth_date || null, licence: r.licence || null, action: r.action || 'create', existing: r.existing || null, email: I.noContacts ? null : r.email || null, phone: I.noContacts ? null : r.phone || null, club: r.club || null }));
+    const I = S.imp, rows = I.rows.map((r) => ({ first_name: niceFirst(r.first_name), last_name: niceLast(r.last_name), birth_date: r.birth_date || null, licence: r.licence || null, action: r.action ?? 'create', existing: r.existing || null, email: I.noContacts ? null : r.email || null, phone: I.noContacts ? null : r.phone || null, club: r.club || null }));
+    const open = rows.filter((r) => !r.action).length; // bêta 1.2.2 · n° 267
+    if (open) return toast(open > 1 ? open + ' lignes ressemblent à une fiche du club : choisis « Que faire ? » pour chacune.' : 'Une ligne ressemble à une fiche du club : choisis « Que faire ? ».');
     if (rows.some((r) => r.action !== 'skip' && (!r.first_name || !r.last_name))) return toast('Chaque ligne doit avoir un prénom et un nom.');
     const { data: n, error } = navigator.onLine ? await sb.rpc('import_players', { p_club: S.clubId, p_team: I.tid, p_rows: rows }) : { error: { message: 'pas de réseau' } };
     if (error) { console.error(error); return toast('Enregistrement refusé : ' + (error.message || 'erreur inconnue').replace(/^.*?: /, '') + '. Rien n’a été importé.'); }
@@ -274,7 +293,7 @@ INPUTS.push((t) => {
 });
 CHANGES.push(async (t) => {
   if (t.dataset.teamauto) { const f = t.closest('form'), n = f.querySelector('[data-teamname]'); if (n && !n.dataset.manual) n.value = autoName(f.querySelector('[name=category]').value, f.querySelector('[name=gender]').value); return true; }
-  if (t.dataset.impact) { S.imp.rows[+t.dataset.impact].action = t.value; render(true); return true; }
+  if (t.dataset.impact) { const r = S.imp.rows[+t.dataset.impact], v = t.value; r.auto = false; if (v.startsWith('link:')) { r.action = 'link'; r.existing = v.slice(5); } else { r.action = v; r.existing = null; } render(true); return true; }
   if (t.dataset.impcol) { S.imp.map.columns[+t.dataset.impcol].k = t.value; S.imp.map.columns[+t.dataset.impcol].sure = true; render(true); return true; }
   if (t.dataset.impnocontact) { S.imp.noContacts = t.checked; render(true); return true; }
   if (t.dataset.impswap) { S.imp.swap = t.checked; return true; }

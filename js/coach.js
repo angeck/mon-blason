@@ -149,7 +149,7 @@ async function bulkVideos(files) {
   await loadExos(); render(true);
   toast(`${plural(ok.length, 'vidéo ajoutée', 'vidéos ajoutées')}.${ko.length ? ' Sans exercice du même nom : ' + ko.join(', ') + '.' : ''}`, ko.length ? 9000 : undefined);
 }
-export async function loadEvPlans() { S.evPlans = canCoachSpace() ? ((await sb.from('training_plans').select('id,title,event_id,team_id,items,notes').not('event_id', 'is', null).is('deleted_at', null).limit(300)).data || []) : []; }
+export async function loadEvPlans() { S.evPlans = canCoachSpace() ? ((await sb.from('training_plans').select('id,title,event_id,team_id,items,notes,updated_at,staff_notified_at').not('event_id', 'is', null).is('deleted_at', null).limit(300)).data || []) : []; }
 // n° 135 : la liste chargée appartient à un compte et à un club ; après un changement de profil de test ou de club, elle est rechargée
 const exosKey = () => (S.me?.id || '') + ':' + (S.clubId || '');
 export const exosFresh = () => !!S.exos && S.exosKey === exosKey();
@@ -373,7 +373,7 @@ export function exoForm() {
   ${field('exc', 'Catégorie', `<select id="exc" name="category">${CATS.map((x) => `<option ${f.category === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
   ${field('exl', 'Niveau', `<select id="exl" name="level"><option value="">Non précisé</option>${LEVELS.concat(f.level && !LEVELS.includes(f.level) ? [f.level] : []).map((x) => `<option ${f.level === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`)}
   ${field('exd', 'Durée (minutes)', `<input id="exd" name="duration_min" type="number" min="1" max="120" required value="${esc(f.duration_min || 10)}">`)}</div>
-  ${field('exde', 'Description', `<textarea id="exde" name="description" maxlength="4000" rows="7" placeholder="Mise en place, déroulement, consignes, variantes">${esc(f.description || '')}</textarea>${micBtn('exde', 'Dicter la description')}`)}
+  ${field('exde', 'Description', `<textarea id="exde" name="description" maxlength="4000" rows="7" placeholder="Mise en place, déroulement, consignes, variantes">${esc(f.description || '')}</textarea>${micBtn('exde', 'Dicter la description', true)}`)}
   <div class="field"><span class="lab">Tags (${tags.size} choisis)</span>${Object.entries(tagsFor(sp)).map(([th, l]) => [th, l.concat(TAGS[th].filter((t) => tags.has(t) && !l.includes(t)))]).map(([th, l]) => `<div class="tagrow"><span class="det">${esc(th)}</span><div class="chips">${l.map((t) => `<button type="button" class="chip" data-act="extag" data-v="${esc(t)}" aria-pressed="${tags.has(t)}">${esc(t)}</button>`).join('')}</div></div>`).join('')}</div>
   <div class="field"><span class="lab">Origine</span><div class="chips">${Object.entries(ORIGINS).map(([k, l]) => `<label class="chip" style="display:flex;align-items:center;gap:6px"><input type="radio" name="origin" value="${k}" data-exre="1" ${f.origin === k ? 'checked' : ''}>${l}</label>`).join('')}</div></div>
   ${f.origin === 'adapte' ? field('exso', 'Source (livre, site, formation, auteur)', `<input id="exso" name="source" required maxlength="300" value="${esc(f.source || '')}">`) : ''}
@@ -419,6 +419,7 @@ export function planEditor() {
     : '<p class="empty">Aucun exercice dans cette séance pour l’instant.</p>';
   h += `${field('pn', 'Notes (matériel, consignes)', `<textarea id="pn" name="notes" maxlength="2000" rows="3">${esc(p.notes)}</textarea>`)}
   <div class="btns"><button class="btn main" type="submit">${p.id ? 'Enregistrer la séance' : 'Enregistrer la séance'}</button>${p.items.length ? '<button type="button" class="btn ghost" data-act="pprint">Imprimer / PDF</button>' : ''}</div>
+  ${notifyBlock(p)}
   ${p.items.length ? '<button type="button" class="btn ghost" data-act="ptplsave">Enregistrer comme séance type</button>' : ''}
   <div class="btns"><button type="button" class="btn ghost small" data-act="pnew">Nouvelle séance vide</button><button type="button" class="btn ghost small" data-act="cplans">Mes séances et séances types</button></div></form>`;
   return h;
@@ -433,6 +434,28 @@ export function plansPage() {
   return (tpl.length ? `<div class="sec"><h2>Séances types</h2></div><div class="card"><div class="list">${tpl.map(row).join('')}</div></div>` : '')
     + (pl.length ? `<div class="sec"><h2>Séances</h2></div><div class="card"><div class="list">${pl.map(row).join('')}</div></div>` : '');
 }
+// bêta 1.2.2 · n° 268 : « Prévenir l'encadrement » (séance enregistrée, reliée à un entraînement de l'équipe) :
+// une notification aux autres coachs de l'équipe, assistants compris ; le coach décide quand la séance est prête
+// (pas d'envoi automatique : il enregistre souvent en plusieurs fois). Après une modification : « Prévenir : séance modifiée ».
+function planNotice(p) {
+  const row = (S.evPlans || []).find((x) => x.id === p.id) || (S.plans || []).find((x) => x.id === p.id) || {};
+  const at = p.notified !== undefined ? p.notified : row.staff_notified_at || null;
+  const dirty = p.dirty !== undefined ? p.dirty : !!(at && row.updated_at && new Date(row.updated_at) - new Date(at) > 2000);
+  return { at, dirty };
+}
+function notifyBlock(p) {
+  if (!p.id || !p.event_id || !p.team_id) return '';
+  const n = planNotice(p), lab = !n.at ? 'Prévenir l’encadrement' : n.dirty ? 'Prévenir : séance modifiée' : 'Encadrement prévenu · prévenir encore';
+  return `<div class="card pale" style="box-shadow:none"><button type="button" class="btn ${!n.at || n.dirty ? 'main' : 'ghost'}" data-act="pnotify">${icon('bell', 20)}${lab}</button><p class="note" style="margin:0">Enregistre la séance puis envoie une notification aux autres coachs de l’équipe, assistants compris.${n.at ? ' Dernier envoi : ' + esc(new Date(n.at).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '.' : ''}</p></div>`;
+}
+ACTIONS.pnotify = async () => {
+  await FORMS.planf(); const p = S.plan; if (!p?.id) return;
+  const n = await run(sb.rpc('notify_plan_staff', { p_plan: p.id }));
+  if (n === null || n === undefined) return;
+  p.notified = new Date().toISOString(); p.dirty = false; savePlanLocal();
+  toast(n ? (n > 1 ? n + ' coachs prévenus.' : 'Un coach prévenu.') : 'Personne d’autre n’encadre cette équipe : aucune notification envoyée.');
+  render(true);
+};
 // Appel en tuiles : « Ajouter un exercice » ouvre la séance reliée à l'entraînement (ou en crée une)
 export function openPlanForEvent(e) {
   const p = plansForEvent(e.id)[0];
@@ -724,7 +747,7 @@ FORMS.planf = async () => {
   if (!p.items.length) return toast('Ajoute au moins un exercice.');
   const row = { title: p.title.trim() || 'Séance', team_id: p.team_id || null, event_id: p.event_id || null, notes: p.notes || '', items: p.items.map((x) => ({ ...x, minutes: Math.min(120, Math.max(1, +x.minutes || 1)) })) };
   const r = p.id ? await run(sb.from('training_plans').update(row).eq('id', p.id).select().single()) : await run(sb.from('training_plans').insert({ ...row, club_id: S.clubId }).select().single());
-  if (r) { p.id = r.id; savePlanLocal(); toast(r.event_id ? 'Séance enregistrée et reliée à l’entraînement.' : 'Séance enregistrée.'); S.evPlans = null; render(true); }
+  if (r) { if (p.id !== r.id) { p.notified = r.staff_notified_at || null; p.dirty = false; } else if (planNotice(p).at) p.dirty = true; p.id = r.id; savePlanLocal(); toast(r.event_id ? 'Séance enregistrée et reliée à l’entraînement.' : 'Séance enregistrée.'); S.evPlans = null; render(true); }
 };
 FORMS.hf = async (v) => {
   const row = { club_id: S.clubId, user_id: S.me.id, day: v.day, kind: v.kind, team_id: v.team_id || null, minutes: +v.minutes, note: (v.note || '').trim() };

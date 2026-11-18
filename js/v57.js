@@ -1,7 +1,7 @@
 // mypocketclub · alpha 5.7.0
 //   N° 204 · justificatif d'adhésion sur le modèle de Boissy : coordonnées, identifiant (SIRET ou RNA), pied de page et cachet du club
 //            (Président › Réglages) ; signature en image de la personne qui délivre ; formulaire avant le PDF (demandeur, identifiant).
-//   N° 207 · « Demander une attestation » (Mon compte) : la trésorerie ou le président délivre (PDF gardé jusqu'à la fin de la saison)
+//   N° 207 · « Demander une attestation » (fiche du joueur depuis la bêta 1.2.2, n° 264 ; avant : Mon compte) : la trésorerie ou le président délivre (PDF gardé jusqu'à la fin de la saison)
 //            ou refuse avec un motif court.
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_5_7_0.sql) ; l'écran n'est qu'un confort.
 import {
@@ -97,7 +97,7 @@ function formPage(v) {
     <div class="kick">Signature et cachet</div>
     <div class="btns" style="align-items:center">${S.mySig ? `<img src="${esc(S.mySig)}" alt="Ma signature" style="max-height:56px;background:#fff;border-radius:6px">` : '<span class="note">Pas encore de signature.</span>'}<label class="btn small ghost">${S.mySig ? 'Changer ma signature' : 'Ajouter ma signature (image)'}<input type="file" accept="image/*" data-attsig="1" hidden></label></div>
     <p class="note" style="margin:0">${s.stamp ? 'Le cachet du club sera posé à côté.' : 'Pas de cachet : le président peut l’ajouter dans ses réglages.'} Ta signature reste dans ton compte : personne d’autre ne la voit.</p>
-    ${req ? `<fieldset class="field" style="border:0;padding:0;margin:0"><legend class="kick" style="padding:0">Le demandeur la reçoit</legend><label class="check"><input type="radio" name="via" value="app" checked><span>Dans mypocketclub (Mon compte, avec une notification)</span></label><label class="check"><input type="radio" name="via" value="email"><span>Dans mypocketclub et par e-mail, PDF joint</span></label></fieldset>` : ''}
+    ${req ? `<fieldset class="field" style="border:0;padding:0;margin:0"><legend class="kick" style="padding:0">Le demandeur la reçoit</legend><label class="check"><input type="radio" name="via" value="app" checked><span>Dans mypocketclub (sur la fiche du joueur, avec une notification)</span></label><label class="check"><input type="radio" name="via" value="email"><span>Dans mypocketclub et par e-mail, PDF joint</span></label></fieldset>` : ''}
     <div class="btns"><button class="btn ${req ? 'ghost' : 'main'}" type="button" data-act="attmake" data-mode="dl">${icon('down', 20)}Télécharger le PDF</button>${req ? `<button class="btn main" type="button" data-act="attmake" data-mode="send">${icon('check', 20)}Délivrer au demandeur</button>` : ''}</div>
     <p class="note" style="margin:0">Chaque attestation est inscrite au journal, avec le nom du demandeur.</p></form>`;
   if (req) h += `<form id="attnof" class="card flat" data-req="${esc(req.id)}">${field('atno', 'Ou refuser, avec un motif court', '<input id="atno" name="why" maxlength="200" required placeholder="Ex. : cotisation pas encore réglée en entier">')}<button class="btn ghost" type="submit">Refuser la demande</button></form>`;
@@ -163,8 +163,8 @@ ACTIONS.attmake = async (el, d) => {
         let msg = 'Attestation délivrée et envoyée par e-mail au demandeur.';
         try {
           const { data, error } = await sb.functions.invoke('envoyer-email', { body: { attestation: { id: rid } } });
-          if (error || !data?.envoye) msg = 'Attestation délivrée : le demandeur la trouve dans Mon compte. L’e-mail n’est pas parti' + (await mailErr(error)) + '.';
-        } catch { msg = 'Attestation délivrée : le demandeur la trouve dans Mon compte. L’e-mail n’est pas parti.'; }
+          if (error || !data?.envoye) msg = 'Attestation délivrée : le demandeur la trouve sur la fiche du joueur. L’e-mail n’est pas parti' + (await mailErr(error)) + '.';
+        } catch { msg = 'Attestation délivrée : le demandeur la trouve sur la fiche du joueur. L’e-mail n’est pas parti.'; }
         toast(msg);
       }
       await loadV57(); const b = (S.stack || []).pop() || null; S.view = b; S.noStack = true; render();
@@ -186,6 +186,7 @@ async function mailErr(error) {
 
 // ---------- n° 207 · demandes reçues (trésorerie, président) ----------
 export async function loadV57() {
+  S.attMine = undefined; // bêta 1.2.2 · n° 264 : l'état des demandes (fiche du joueur) se relit à chaque mise à jour
   if (!S.clubId || !issuer()) { S.attReqs = []; return; }
   try { const r = await sb.rpc('club_attestation_requests', { p_club: S.clubId }); S.attReqs = Array.isArray(r.data) ? r.data : []; } catch { S.attReqs = []; }
 }
@@ -196,19 +197,24 @@ hooks.attestReqBlock = () => {
   return `<div class="sec"><h2>Attestations demandées</h2><span class="pill wait">${l.length}</span></div><div class="card lift"><div class="list">${l.map((x) => `<button class="row" data-act="attopen" data-id="${x.player_id}" data-req="${x.id}"><span class="g">${esc(x.first_name)} ${esc(x.last_name)}<small>Demandée par ${esc(x.requester_name)} · ${esc(dfr(x.created_at))}</small></span><span class="chev"></span></button>`).join('')}</div></div>`;
 };
 
-// ---------- n° 207 · Mon compte : « Demander une attestation » ----------
+// ---------- n° 207, déplacé par le n° 264 (bêta 1.2.2) : « Demander une attestation » dans la fiche du joueur ----------
+// Le bloc vit dans le cadre « Licence et cotisation » de la fiche (parent relié ou joueur majeur), plus dans Mon compte :
+// l'attestation concerne un club, un joueur et une saison. La trésorerie et le président gardent leur bouton (hooks.attestBtn).
 async function loadMine() { try { const r = await sb.rpc('my_attestation_players'); S.attMine = Array.isArray(r.data) ? r.data : []; } catch { S.attMine = []; } }
-hooks.attestAccount = () => {
+const seasonEnd = () => { const n = new Date(); return '30 juin ' + (n.getMonth() >= 6 ? n.getFullYear() + 1 : n.getFullYear()); };
+hooks.attestFiche = (p) => {
+  if (!p || p.from_partner || issuer()) return '';
   if (S.attMine === undefined) { S.attMine = null; loadMine().then(() => render(true)); }
-  const l = S.attMine || []; if (!l.length) return '';
-  const st = (x) => {
-    if (x.status === 'attente') return '<span class="pill wait">Demandée</span>';
-    if (x.status === 'delivree') return `<button class="btn small main" data-act="attget" data-id="${x.request_id}" data-n="${esc(x.first_name)}">${icon('down', 18)}PDF</button>`;
-    return `<button class="btn small ghost" data-act="attask" data-id="${x.player_id}">Redemander</button>`;
-  };
-  return `<div class="sec"><h2>Attestation de paiement</h2></div><div class="card" data-anchor="attest"><p class="note" style="margin:0">Pour un comité d’entreprise : le club atteste ce que tu as versé pour la licence. La trésorerie la prépare, tu la retrouves ici jusqu’à la fin de la saison.</p>
-    <div class="list">${l.map((x) => `<div class="row static"><span class="g">${esc(x.first_name)} ${esc(x.last_name)}<small>${esc(x.club_name)}${x.status === 'refusee' && x.reason ? ' · refusée : ' + esc(x.reason) : x.status === 'delivree' ? ' · délivrée le ' + esc(dfr(x.decided_at)) : ''}</small></span>${x.status ? st(x) : `<button class="btn small main" data-act="attask" data-id="${x.player_id}">Demander</button>`}</div>`).join('')}</div></div>`;
+  const x = (S.attMine || []).find((y) => y.player_id === p.id); if (!x) return '';
+  const head = (pill) => `<div class="atth"><b>${icon('doc', 20)}Attestation de paiement</b>${pill}</div>`;
+  let b;
+  if (x.status === 'attente') b = head('<span class="pill wait">Demandée</span>') + '<p class="note">La trésorerie est prévenue. Tu recevras une notification quand elle sera prête.</p>';
+  else if (x.status === 'delivree') b = head('<span class="pill ok">Prête</span>') + `<p class="note">Délivrée le ${esc(dfr(x.decided_at))}. Disponible ici jusqu’au ${seasonEnd()}.</p><button class="btn main" data-act="attget" data-id="${x.request_id}" data-n="${esc(x.first_name)}">${icon('down', 20)}Télécharger le PDF</button>`;
+  else if (x.status === 'refusee') b = head('<span class="pill ko">Refusée</span>') + `<p class="note">${x.reason ? 'Motif de la trésorerie : « ' + esc(x.reason) + ' »' : 'La trésorerie a refusé la demande.'}</p><button class="btn small ghost" data-act="attask" data-id="${x.player_id}">Redemander</button>`;
+  else b = head('') + '<p class="note">Pour un comité d’entreprise : le club atteste ce que tu as versé pour la saison. La trésorerie la prépare.</p><button class="btn main" data-act="attask" data-id="' + x.player_id + '">Demander une attestation</button>';
+  return `<div class="attbox" data-anchor="attest">${b}</div>`;
 };
+hooks.attestAccount = () => ''; // bêta 1.2.2 · n° 264 : plus dans Mon compte
 Object.assign(ACTIONS, {
   attask: async (el, d) => { if (await run(sb.rpc('request_attestation', { p_player: d.id }), 'Demande envoyée : la trésorerie est prévenue.')) { await loadMine(); render(true); } },
   attget: async (el, d) => {
