@@ -181,7 +181,7 @@ export function crmTab() {
   l += `<div class="chips crmf">${[['all', 'Tous'], ...STATES.map((s) => [s[0], s[1].replace(' ou gratuit', '')])].map(([k, t]) => `<button class="chip${k === 'all' ? '' : ' st ' + ST[k][2]}" data-act="crmf" data-k="${k}" aria-pressed="${k === f}">${t} · ${k === 'all' ? all.length : all.filter((x) => stOf(x) === k).length}</button>`).join('')}</div>`;
   l += `<section class="card"><div class="list">${vis.map((k) => clubRow(k, cur && k.id === cur.id)).join('') || '<p class="empty">Aucun club.</p>'}</div></section>`;
   const note = '<p class="note">Seul l’administrateur voit cette page. Une fiche s’efface avec son historique (droit d’effacement).</p>';
-  if (!cur) return l + note;
+  if (!cur) return `<div class="crmlist">${l}${note}</div>`;
   if (c.events?.id !== cur.id && c.loadingEv !== cur.id) { c.loadingEv = cur.id; loadEvents(cur.id).then(() => { c.loadingEv = null; render(true); }); }
   return `<div class="crmmd"><div class="crmlist">${l}${note}</div><section class="card crmpane crmfiche" aria-label="Fiche ${esc(cur.org)}">${ficheBody(cur, true)}</section></div>`;
 }

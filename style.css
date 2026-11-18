@@ -944,3 +944,9 @@ details[data-qui]>summary{font-weight:700}
 .crmt{padding:16px 18px;gap:6px}
 .crmt .btns{margin-top:auto;padding-top:8px}
 .crmhead{margin-bottom:-10px}
+/* bêta 1.3.2 : espace admin, même écart entre les blocs que partout (le cadre [data-pro] coupait l'écart de .bd) */
+.bd.adm>[data-pro]{display:flex;flex-direction:column;gap:14px}
+.crmlist{display:flex;flex-direction:column;gap:12px;min-width:0}
+.crmlist>.card,.crmlist>.chips{margin:0}
+.crmt .btns .btn{flex:1 1 auto;white-space:nowrap}
+.crmrow.cur{outline:none;background:var(--pc-bleu-pale);border-radius:14px;padding-left:10px;padding-right:10px}
