@@ -165,7 +165,7 @@ async function sendConvocation(env: Env, auth: string, doFetch: typeof fetch, wh
   const data = await rpc(env, auth, doFetch, 'convocation_data', { p_event: c.event_id });
   if (!data.ok || !data.data?.club) return json({ erreur: 'réservé au correspondant rencontres, au vice-président et au président' }, 403);
   const d = data.data;
-  const ini = String(d.club.name || 'PC').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z ]/g, '').split(/\s+/).filter(Boolean).map((w: string) => w[0]).join('').slice(0, 3) || 'PC';
+  const ini = String(d.club.name || 'PC').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z ]/g, '').split(/\s+/).filter(Boolean).map((w: string) => w[0]).join('').slice(0, 3) || 'PC';
   const ref = `${ini}-${String(d.from).replace(/-/g, '')}-${step}`;
   // n° 124 : réservation dans la base (validation + limite + ligne « en cours »), avant tout envoi
   const res = await rpc(env, auth, doFetch, 'convocation_reserve', { p_event: c.event_id, p_step: step, p_ref: ref, p_version: version, p_hash: String(c?.hash || '').slice(0, 64), p_hint: contactHint(to) });
