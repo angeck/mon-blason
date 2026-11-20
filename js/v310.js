@@ -9,7 +9,7 @@ import {
   S, sb, esc, hooks, run, toast, render, refresh, armed, isArmed, ACTIONS, club, active, isBoard, isPresident, coachTeams, coachOf,
   SEASON, team, teamName, name, plural, fmtShort, hm, evTeams, store, toValidate, playersOfTeam, isMajor, myKids, mySelf, FONCTIONS, hasArea, fl,
 } from './core.js';
-import { entTag } from './core.js';
+import { entTag, canAllStats } from './core.js';
 import { icon, header, dayBadge, field, clubSeason, casqIcon } from './ui.js';
 import { upcoming, evCard, canCallRoll, appelPage, teamTabs, cancelBtn } from './agenda.js';
 import { plansForEvent, fmtMin, exosForCounts } from './coach.js';
@@ -311,7 +311,8 @@ Object.assign(ACTIONS, {
     }
     const tid = d.id, tab = d.tab === 'pointer' ? 'planifier' : d.tab || 'planifier', wasIn = !!S.tsp && S.tsp === tid;
     S.tsp = tid; S.sel = null; if (wasIn) S.noStack = true;
-    if (tab === 'stats') { S.st = { team: tid, period: S.st?.period || 'saison' }; S.view = { type: 'stats' }; render(); await ACTIONS.stteam(el, { id: tid }); return; }
+    if (tab === 'stats') { S.st = { team: tid, period: S.st?.period || 'saison', all: !coachOf(tid) && canAllStats() }; // n° 286 : équipe ouverte depuis l'espace président
+      S.view = { type: 'stats' }; render(); await ACTIONS.stteam(el, { id: tid }); return; }
     if (tab === 'effectif') { S.view = { type: 'team', id: tid }; render(); return; }
     S.view = { type: 'tspace', id: tid, tab }; render();
   },

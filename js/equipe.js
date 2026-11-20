@@ -130,7 +130,8 @@ async function loadCands(tid) {
 }
 export function teamPage(tid) {
   const t = team(tid); if (!t) return '<p class="empty">Équipe introuvable.</p>';
-  const board = isBoard(), coach = coachOf(tid), ct = cteam(tid);
+  // bêta 1.6.0 · n° 78 : équipe d'un autre club en entente : les réglages restent au club porteur, ses coachs gardent leurs droits
+  const board = isBoard() && !t.foreign, coach = coachOf(tid), ct = cteam(tid);
   if (!board && !coach && !myTeamIds().includes(tid)) return followView(tid);
   let h = `<div class="card lift">${ct && ct.coaches != null ? `<div class="chips"><span class="pill blue">Coachs : ${ct.coaches}</span><span class="pill blue">Effectif : ${plural(ct.players, 'joueur')}</span></div>` : ''}<div class="kick">Créneaux et gymnase</div><div>${esc(t.slots || 'Non renseignés')}</div>${t.state === 'Fantôme' ? `<span class="pill wait">Fantôme · en attente de validation</span><p class="note">Visible du bureau et de ses coachs seulement, aucune notification. Les familles la verront une fois validée.</p>${!S.tsp ? '' : `<button class="btn main ${isArmed('tv' + tid) ? 'ink' : ''}" data-act="tvisible" data-id="${tid}">${isArmed('tv' + tid) ? "Confirmer : l'équipe devient visible des familles" : "Rendre l'équipe visible"}</button>`}` : t.state === 'Archivée' ? '<span class="pill">Archivée</span>' : ''}${!myTeamIds().includes(tid) ? followBtn(tid) : ''}</div>`;
   // n° 113 (n° 101 point 2) : la fiche reste consultable ; les boutons de gestion sont dans l'espace de l'équipe (onglet Effectif)
@@ -148,7 +149,7 @@ export function teamPage(tid) {
   if ((board || coach) && !S.tsp) h += `<button class="btn" data-act="tsgo" data-id="${tid}" data-tab="effectif">${icon('shield', 20)}Gérer dans l'espace de l'équipe</button>`;
   const vp = toValidate().filter((m) => m.team_id === tid);
   if (manage && vp.length) h += `<div class="sec"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card">${pendRows(vp)}</div>`;
-  if (manage) h += partnerBlock(t) + (hooks.teamExtra ? hooks.teamExtra(tid) : '');
+  if (manage) h += (t.foreign ? `<div class="card pale"><b>Équipe en entente</b><p class="note" style="margin:0">Équipe de ${esc((S.entNames || {})[tid] || 'l’autre club')}, en entente avec ton club. Ses réglages et l’entente se gèrent dans ce club ; tu gardes tous tes droits de coach.</p></div>` : partnerBlock(t)) + (hooks.teamExtra ? hooks.teamExtra(tid) : '');
   if (manage) {
     h += `<button class="btn main" data-act="import" data-id="${tid}">${icon('plus', 20)}Ajouter des joueurs (un par un, liste, Excel, photo)</button>`;
     h += `<details class="card"><summary>${board ? "Réglages de l'équipe" : "Créneaux de l'équipe"}</summary>${board ? teamForm(t, 'teamedit') : `<form id="teamslots" data-id="${tid}" class="stack">${field('tsl', 'Créneaux et gymnase', `<input id="tsl" name="slots" value="${esc(t.slots || '')}">`)}<button class="btn main" type="submit">Enregistrer</button></form>`}${t.partner_hidden && (t.partner_state || 'aucune') === 'aucune' ? `<button class="btn ghost small" data-act="pfshow" data-id="${tid}">Réafficher « Équipe en entente ? »</button>` : ''}</details>`;

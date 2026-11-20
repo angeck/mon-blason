@@ -95,6 +95,9 @@ class Q {
   is(k, v) { this.f.push((r) => (r[k] ?? null) === v); return this; }
   not(k, op, v) { this.f.push((r) => (r[k] ?? null) !== v); return this; }
   neq(k, v) { this.f.push((r) => r[k] !== v); return this; }
+  // bêta 1.6.0 · n° 78 : « col.eq.val,col2.eq.val » (une des conditions) et chevauchement de listes
+  or(x) { const c = String(x).split(',').map((p) => p.split('.eq.')); this.f.push((r) => c.some(([k, v]) => String(r[k] ?? '') === v)); return this; }
+  overlaps(k, v) { this.f.push((r) => (r[k] || []).some((x) => v.includes(x))); return this; }
   order() { return this; } limit() { return this; }
   single() { this.one = true; return this; } maybeSingle() { this.one = true; return this; }
   insert(v) { this.op = 'insert'; this.v = v; return this; }
@@ -191,6 +194,7 @@ const RPC = {
   ask_hours_check: ({ p_month }) => { const id = uid(); D.hours_checks.unshift({ id, club_id: C, month: p_month }); D.hours_confirms.push({ check_id: id, user_id: 'u-c11', minutes: 120, confirmed_at: null }); return 1; },
   relance_hours: () => 1,
   set_team_partner: ({ p_team, p_club, p_name }) => { const t = D.teams.find((x) => x.id === p_team); t.partner_state = p_club ? 'demandee' : p_name ? 'invitee' : 'aucune'; t.partner_name = p_name || (p_club ? 'Volley Ailleurs' : ''); return t.partner_state; },
+  entente_names: () => D.teams.filter((t) => t.partner_state === 'acceptee' && t.club_id !== C).map((t) => ({ team_id: t.id, other_club: 'ES Voisins', host: false })), // bêta 1.6.0 · n° 78
   partner_teams: () => [{ team_id: 't-x', team_name: 'U15 M', host_club: 'ES Voisins', state: 'demandee', coaches: 'Paul R.', my_players: ['Ana L.'], players_count: 9 }],
   top_followed_teams: () => window.__TOP || [],
   request_club: (a) => { const id = uid(); D.club_requests.unshift({ id, created_at: new Date().toISOString(), first_name: a.p_first, last_name: a.p_last, email: a.p_email, club_name: a.p_club, city: a.p_city, sport: a.p_sport, age_ok: a.p_age_ok, consent: a.p_consent, user_id: null, status: 'new' }); return id; },

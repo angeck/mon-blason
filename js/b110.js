@@ -11,7 +11,7 @@
 // Rappel : chaque droit est vérifié par la base ; l'écran n'est qu'un confort. Rien ici n'ouvre une donnée de plus.
 import {
   S, sb, esc, hooks, ACTIONS, FORMS, render, run, toast, refresh, club, isPresident, hasArea, FONCTIONS, fl, name, plural, fmtShort,
-  evTeams, team, teamName, toValidate, SEASON, catsFor, active,
+  evTeams, team, teamName, toValidate, SEASON, catsFor, active, canAllStats,
 } from './core.js';
 import { icon, crest } from './ui.js';
 import { missing } from './vie.js';
@@ -259,7 +259,8 @@ hooks.presEquipes = (tools = '', add = '') => {
   const table = sorted.length ? `<div class="gtab card"><table class="ptable"><thead><tr><th scope="col">Équipe</th><th scope="col">Catégorie</th><th scope="col">Coachs</th><th scope="col" class="r">Joueurs</th><th scope="col">Présence · 4 semaines</th><th scope="col" class="r">Cotisations à jour</th><th scope="col" class="r">Licences</th><th scope="col">Statut</th></tr></thead><tbody>${sorted.map((t) => `<tr><td><button class="tlink" data-act="tsopen" data-id="${t.id}">${esc(t.name)}</button></td><td>${esc(t.category || '')}</td><td>${coachIdsOf(t.id).length ? esc(coachIdsOf(t.id).map(name).join(', ')) : '<span class="nobody">Aucun coach</span>'}</td><td class="r">${nb(t)}</td><td class="pres">${bar(t)}</td><td class="r">${fee(t)}</td><td class="r">${lic(t)}</td><td>${stat(t)}</td></tr>`).join('')}</tbody></table></div>` : '';
   const list = `<div class="card notpc"><div class="list">${sorted.map((t) => `<button class="row" data-act="tsopen" data-id="${t.id}"><span class="g">${esc(t.name)}<small>${esc([t.category !== t.name ? t.category : '', coachIdsOf(t.id).length ? coachIdsOf(t.id).map(name).join(', ') : 'sans coach', plural(nb(t), 'joueur')].filter(Boolean).join(' · '))}</small></span>${t.state === 'Fantôme' ? tag('fantôme', '') : ''}<span class="chev"></span></button>`).join('')}</div></div>`;
   const body = sorted.length ? table + list : `<p class="empty">${flt ? 'Aucune équipe dans ce cas.' : 'Aucune équipe pour l’instant.'}</p>`;
-  return `<div class="dash" data-pro="1"><div class="eqhead"><div class="det">${plural(all.length, 'équipe')} · ${plural(ownPlayers().length, 'joueur')} · ${plural(new Set(S.members.filter((m) => m.role === 'coach' && m.status === 'active').map((m) => m.user_id)).size, 'coach', 'coachs')}</div>${head}</div>${body}<div class="dsec" id="eqtools"><div class="kick">Créer, importer, doublons</div>${tools}${add}</div></div>`;
+  const stats = canAllStats() ? `<button class="btn small" data-act="cstats" style="align-self:flex-start">${icon('team', 18)}Statistiques des équipes</button>` : ''; // n° 286
+  return `<div class="dash" data-pro="1"><div class="eqhead"><div class="det">${plural(all.length, 'équipe')} · ${plural(ownPlayers().length, 'joueur')} · ${plural(new Set(S.members.filter((m) => m.role === 'coach' && m.status === 'active').map((m) => m.user_id)).size, 'coach', 'coachs')}</div>${head}${stats}</div>${body}<div class="dsec" id="eqtools"><div class="kick">Créer, importer, doublons</div>${tools}${add}</div></div>`;
 };
 
 // Réglages › Club : fiche du club (fédération, numéro d'affiliation) ; président et vice-président (vérifié par la base)

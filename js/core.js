@@ -121,15 +121,21 @@ export const shortName = (full) => { const p = String(full || '').trim().split(/
 export const team = (id) => S.teams.find((t) => t.id === id);
 // 5.2.1 : tag « Entente » sur les équipes en entente avec un autre club (confirmée ou en attente)
 const ENT = { acceptee: ['Entente', 'blue'], demandee: ['Entente · en attente', 'wait'], invitee: ['Entente · club invité', 'wait'] };
-export const entTag = (id) => { const e = ENT[team(id)?.partner_state]; return e ? ` <span class="pill ${e[1]}">${e[0]}</span>` : ''; };
+export const entTag = (id) => {
+  const t = team(id), o = (S.entNames || {})[id]; // n° 78 : « Entente · Boissy Basket 91 » (le nom de l'autre club), dans les deux clubs
+  if (t?.foreign || (o && t?.partner_state === 'acceptee')) return ` <span class="pill blue">Entente${o ? ' · ' + esc(o) : ''}</span>`;
+  const e = ENT[t?.partner_state]; return e ? ` <span class="pill ${e[1]}">${e[0]}</span>` : '';
+};
+export const isForeignTeam = (id) => !!team(id)?.foreign; // équipe d'un autre club, en entente avec le nôtre
 export const teamName = (id) => team(id)?.name || '';
 export const teamsLabel = (ids) => (ids || []).map(teamName).filter(Boolean).join(', ');
 // N° 109 et 111 : catégorie et genre d'une équipe (« U9 F »), jamais son nom, qui peut être un nom interne (« Les Reines »)
 const GENRE = { Féminine: 'F', Masculine: 'M', Mixte: 'mixte' };
 export const catGender = (t) => (t ? [String(t.category || '').trim(), GENRE[t.gender] || ''].filter(Boolean).join(' ') : '');
 export const catsLabel = (ids) => [...new Set((ids || []).map((id) => catGender(team(id))).filter(Boolean))].join(', ');
-export const pl = (id) => S.players.find((p) => p.id === id);
-export const pname = (p) => (p.first_name + ' ' + (p.last_name || '')).trim();
+export const pl = (id) => S.players.find((p) => p.id === id) || (S.xplayers || []).find((p) => p.id === id);
+// bêta 1.6.0 · n° 78 : un joueur de l'autre club d'une équipe en entente s'affiche en « Prénom N. »
+export const pname = (p) => (p.foreign ? shortName(p.first_name + ' ' + (p.last_name || '')) : (p.first_name + ' ' + (p.last_name || '')).trim());
 export const adminOf = (pid) => S.padmin.find((a) => a.player_id === pid);
 export const parentsOf = (pid) => S.pparents.filter((x) => x.player_id === pid).map((x) => x.user_id);
 export const isParentOf = (pid) => parentsOf(pid).includes(S.me.id);
@@ -141,7 +147,7 @@ export const myKids = () => S.players.filter((p) => isParentOf(p.id) && p.user_i
 export const mySelf = () => S.players.filter((p) => p.user_id === S.me.id);
 export const myKidsIn = (tids) => myKids().filter((p) => tids.some((t) => inTeam(p, t)));
 export const iPlayIn = (tids) => active().some((m) => m.role === 'joueur' && tids.includes(m.team_id)) || S.players.some((p) => p.user_id === S.me.id && tids.some((t) => inTeam(p, t)));
-export const playersOfTeam = (tid) => S.players.filter((p) => inTeam(p, tid));
+export const playersOfTeam = (tid) => S.players.concat(S.xplayers || []).filter((p) => inTeam(p, tid)); // n° 78 : joueurs de l'autre club de l'entente compris
 export const canManagePlayer = (p) => isBoard() || teamsOfPlayer(p).some(coachOf);
 export function isMajor(p) {
   if (!p.birth_date) return false;   // mineur par défaut si la date manque
@@ -150,6 +156,9 @@ export function isMajor(p) {
 }
 // N° 55 : rubriques du bureau (tresorerie, secretariat, technique, communication, evenements), calculées par la base
 export const hasArea = (a) => (S.areas || []).includes(a);
+// bêta 1.6.0 · n° 286 : les statistiques de toutes les équipes, dans l'espace président : président, vice-président, directeur technique (rubrique Technique)
+export const isVP = () => active().some((m) => m.role === 'bureau' && m.fonction === 'Vice-président');
+export const canAllStats = () => isPresident() || isVP() || hasArea('technique');
 export const AREAS = { tresorerie: 'Trésorerie', secretariat: 'Secrétariat', technique: 'Technique', communication: 'Communication', evenements: 'Événements' };
 export const FONCTIONS = ['Vice-président', 'Secrétaire', 'Secrétaire adjoint', 'Trésorier', 'Trésorier adjoint', 'Directeur technique', 'Correspondant rencontres', 'Correspondant licences', 'Chargé de communication', 'Responsable événements', 'Responsable sponsoring', 'Membre du bureau'];
 // Casquettes de l'espace (charte du 31 octobre) : Coach, Président, chaque fonction du bureau
@@ -226,7 +235,7 @@ export async function loadClub() {
   const cid = S.clubId, since = new Date(Date.now() - 30 * 864e5).toISOString();
   const [mem, teams, evs, grps, roster, plr, docs, fees, hid] = await Promise.all([
     sb.from('memberships').select('*').eq('club_id', cid),
-    sb.from('teams').select('*').eq('club_id', cid).order('name'),
+    sb.from('teams').select('*').or(`club_id.eq.${cid},partner_club_id.eq.${cid}`).order('name'), // n° 78 : équipes en entente acceptée d'un autre club (la base ne donne que celles-là)
     sb.from('events').select('*').eq('club_id', cid).gte('starts_at', since).order('starts_at').limit(400),
     sb.from('groups').select('*').eq('club_id', cid).order('created_at', { ascending: false }),
     sb.rpc('club_roster', { p_club: cid }),
@@ -238,7 +247,20 @@ export async function loadClub() {
   S.members = mem.data || []; S.teams = teams.data || []; S.events = evs.data || []; S.groups = grps.data || [];
   S.roster = roster.data || []; S.players = plr.data || []; S.docs = docs.data || []; S.fees = fees.data || []; S.hidden = hid.data || [];
   S.roster.forEach((x) => { if (x.user_id) S.names[x.user_id] = (x.first_name + ' ' + (x.last_name || '')).trim(); });
-  const pids = S.players.map((p) => p.id), eids = S.events.map((e) => e.id), gids = S.groups.map((g) => g.id);
+  // bêta 1.6.0 · n° 78 : équipe en entente, vue dans les deux clubs : ses rendez-vous (enregistrés au club porteur)
+  // et les fiches de l'autre club (selon les droits de la base), à part de S.players (licences, cotisations, décomptes restent au club)
+  S.teams = S.teams.filter((t) => t.club_id === cid || t.partner_state === 'acceptee');
+  S.teams.forEach((t) => { t.foreign = t.club_id !== cid; });
+  const xt = S.teams.filter((t) => t.foreign).map((t) => t.id), et = S.teams.filter((t) => t.partner_state === 'acceptee').map((t) => t.id);
+  const [xe, xp, en] = await Promise.all([
+    xt.length ? sb.from('events').select('*').overlaps('team_ids', xt).neq('club_id', cid).gte('starts_at', since).order('starts_at').limit(200) : Promise.resolve({ data: [] }),
+    et.length ? sb.from('players').select(PLAYER_COLS).in('team_id', et).neq('club_id', cid).is('deleted_at', null).order('last_name') : Promise.resolve({ data: [] }),
+    et.length ? sb.rpc('entente_names', { p_club: cid }) : Promise.resolve({ data: [] }),
+  ]);
+  if ((xe.data || []).length) { const seen = new Set(S.events.map((e) => e.id)); S.events = S.events.concat((xe.data || []).filter((e) => !seen.has(e.id))).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)); }
+  S.xplayers = (xp.data || []).map((p) => ({ ...p, foreign: true }));
+  S.entNames = Object.fromEntries((Array.isArray(en.data) ? en.data : []).map((x) => [x.team_id, x.other_club]));
+  const pids = S.players.map((p) => p.id).concat(S.xplayers.map((p) => p.id)), eids = S.events.map((e) => e.id), gids = S.groups.map((g) => g.id);
   const [pp, pa, at, pt, rs, lm, dc, pay, fol, ct, mg, cl, gp, mc] = await Promise.all([
     inList(sb.from('player_parents').select('*'), 'player_id', pids),
     inList(sb.from('player_admin').select('*'), 'player_id', pids),

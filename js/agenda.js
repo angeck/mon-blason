@@ -3,7 +3,7 @@ import {
   S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, CHANGES, INPUTS, TEAM_TYPES, club, active, isBoard, coachOf, coachTeams,
   teamName, teamsLabel, catsLabel, evTeams, name, pl, pname, parentsOf, myKidsIn, iPlayIn, inTeam, playersOfTeam, fmtDate, hm, localDay, inHolidays,
   toLocalInput, fmtDay, plural, download, norm, follows, hooks, hasArea, myMem, isPresident,
-  SEASON, durOf, endOf, timeRange, fmtDur, DEF_DUR, fmtShort,
+  SEASON, durOf, endOf, timeRange, fmtDur, DEF_DUR, fmtShort, team,
 } from './core.js';
 import { backAfterDelete } from './core.js';
 import { icon, dayBadge, delBtn, field, crest, ball } from './ui.js';
@@ -276,7 +276,7 @@ export function agendaTab() {
 // N° 89 · « Tout le club » : supporteurs compris par défaut pour un match, un plateau ou un tournoi ; membres seulement sinon (AG, fête…)
 const supDefault = (t) => ['Match', 'Plateau', 'Tournoi'].includes(t);
 function audienceField(f) {
-  const myTeams = S.teams.filter((t) => isBoard() || coachOf(t.id));
+  const myTeams = S.teams.filter((t) => (isBoard() && !t.foreign) || coachOf(t.id)); // n° 78 : une équipe en entente d'un autre club, seulement pour ses coachs
   const opts = isBoard() ? [['club', 'Tout le club'], ['team', 'Une ou plusieurs équipes'], ['board', 'Bureau'], ['board_coaches', 'Bureau et coachs'], ['coaches', 'Tous les coachs'], ['people', 'Personnes choisies']] : [['team', myTeams.length > 1 ? 'Une ou plusieurs de mes équipes' : 'Mon équipe']];
   let h = `<div class="field"><span class="lab">Pour</span><div class="chips">${opts.map(([v, l]) => `<button type="button" class="chip" data-act="evaud" data-v="${v}" aria-pressed="${f.aud === v}">${INTERNAL[v] || v === 'people' ? icon('lock', 14) + ' ' : ''}${l}</button>`).join('')}</div></div>`;
   if (f.aud === 'club') h += `<div class="field"><span class="lab">Supporteurs</span><div class="chips"><button type="button" class="chip" data-act="evsup" data-v="0" aria-pressed="${!f.sup}">${icon('lock', 14)} Membres du club seulement</button><button type="button" class="chip" data-act="evsup" data-v="1" aria-pressed="${!!f.sup}">Tout le club, supporteurs compris</button></div><p class="note">${f.sup ? 'Les supporteurs le voient dans l’Agenda et en sont prévenus.' : 'Les supporteurs ne le voient pas et ne sont pas prévenus.'}</p></div>`; // n° 89
@@ -626,7 +626,10 @@ FORMS.evf = async (v) => {
   if (aud === 'people' && !f.people.size) return toast('Choisis au moins une personne.');
   const conv = ['Match', 'Plateau', 'Tournoi'].includes(f.type) && aud === 'team' && f.teams.size === 1 && f.convMode === 'some' ? [...f.conv] : [];
   if (f.convMode === 'some' && conv.length === 0 && ['Match', 'Plateau', 'Tournoi'].includes(f.type) && aud === 'team' && f.teams.size === 1) return toast('Choisis au moins un joueur à convoquer.');
-  const base = { club_id: S.clubId, audience: aud, team_ids: aud === 'team' ? [...f.teams] : [], people: aud === 'people' ? [...f.people] : [], convoked: conv, type: f.type, title: v.title.trim(), place: (v.place || '').trim(), opponents: (v.opponents || '').trim(), at_home: ['Match', 'Plateau', 'Tournoi'].includes(f.type) ? !!v.at_home : true, with_supporters: aud === 'club' ? !!f.sup : true };
+  // bêta 1.6.0 · n° 78 : un rendez-vous d'une équipe en entente d'un autre club s'enregistre dans le club porteur (vu des deux clubs)
+  const hosts = aud === 'team' ? [...new Set([...f.teams].map((t) => team(t)?.club_id || S.clubId))] : [S.clubId];
+  if (hosts.length > 1) return toast('Une équipe en entente avec un autre club se programme seule : crée un rendez-vous à part pour elle.');
+  const base = { club_id: hosts[0] || S.clubId, audience: aud, team_ids: aud === 'team' ? [...f.teams] : [], people: aud === 'people' ? [...f.people] : [], convoked: conv, type: f.type, title: v.title.trim(), place: (v.place || '').trim(), opponents: (v.opponents || '').trim(), at_home: ['Match', 'Plateau', 'Tournoi'].includes(f.type) ? !!v.at_home : true, with_supporters: aud === 'club' ? !!f.sup : true };
   // 5.4.0 · n° 158 : renforts invités (pas avec une liste de convoqués : on les coche dans la liste)
   const rfOn = aud === 'team' && TEAM_TYPES.includes(f.type) && !conv.length, rfMode = rfOn ? (f.rfMode || 'aucun') : 'aucun';
   if (rfMode === 'choisis' && !(f.rf || new Set()).size) return toast('Choisis au moins un renfort, ou « Équipe seule ».');

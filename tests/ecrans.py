@@ -616,6 +616,23 @@ with sync_playwright() as p:
     check('bêta 1.5.1 · n° 285 : tableau avec les noms : aussi dans l’appli', pg.locator('.docview iframe').count() == 1 and pg.evaluate("window.__wo") == 0)
     pg.click('.docview [data-dv=close]'); pg.wait_for_timeout(200)
     pg.evaluate("window.open = window.__open0; 0")
+    # bêta 1.6.0 · n° 286 : dans l'espace coach, un membre du bureau ne voit que ses équipes ; toutes depuis l'espace président (président, VP, DT)
+    check('bêta 1.6.0 · n° 286 : Stats de l’espace coach : seulement l’équipe dont on est coach (même au bureau)', pg.locator('main [data-act=stteam]').count() == 1)
+    n286 = pg.evaluate("(async()=>{const c=await import('/js/core.js'); const a0=c.S.areas; c.S.areas=(a0||[]).concat('technique'); await c.ACTIONS.cstats(); await new Promise(r=>setTimeout(r,300)); const n=document.querySelectorAll('main [data-act=stteam]').length; c.S.areas=a0; return n;})()")
+    check('bêta 1.6.0 · n° 286 : « Statistiques » ouvertes par la Technique : toutes les équipes du club', n286 >= 3)
+    n286b = pg.evaluate("(async()=>{const c=await import('/js/core.js'); const a0=c.S.areas; c.S.areas=['tresorerie']; await c.ACTIONS.cstats(); await new Promise(r=>setTimeout(r,300)); const n=document.querySelectorAll('main [data-act=stteam]').length; c.S.areas=a0; return n;})()")
+    check('bêta 1.6.0 · n° 286 : sans fonction président, VP ou Technique : ses équipes seulement', n286b == 1)
+    # bêta 1.6.0 · n° 78 : une équipe d'un autre club en entente avec le nôtre se voit dans notre club
+    r78 = pg.evaluate("""(async()=>{const c=await import('/js/core.js'); const D=window.__FD; const soon=new Date(Date.now()+3*864e5).toISOString();
+      D.teams.push({id:'t-x9', club_id:'c-9', partner_club_id:'c-1', partner_state:'acceptee', name:'U17 Entente', category:'U17', gender:'Mixte', state:'Visible', season:'2026-2027', slots:'', deleted_at:null});
+      D.players.push({id:'p-x1', club_id:'c-9', team_id:'t-x9', user_id:null, first_name:'Léon', last_name:'Ailleurs', birth_date:'2011-04-02', consents:{}, deleted_at:null, created_at:soon, from_partner:false});
+      D.events.push({id:'e-x1', club_id:'c-9', audience:'team', team_ids:['t-x9'], people:[], type:'Entraînement', title:'Entraînement entente', starts_at:soon, place:'', opponents:'', series_id:null, cancelled:false, created_by:'u-x', convoked:[]});
+      await c.refresh(); const t=c.team('t-x9'), p=c.pl('p-x1');
+      const r={team:!!t && t.foreign, ev:c.S.events.some(e=>e.id==='e-x1'), own:!c.S.players.some(x=>x.id==='p-x1'), name:p?c.pname(p):'', tag:c.entTag('t-x9'), roster:c.playersOfTeam('t-x9').length};
+      D.teams=D.teams.filter(x=>x.id!=='t-x9'); D.players=D.players.filter(x=>x.id!=='p-x1'); D.events=D.events.filter(x=>x.id!=='e-x1'); await c.refresh(); return r;})()""")
+    check('bêta 1.6.0 · n° 78 : équipe en entente d’un autre club chargée dans notre club, avec ses rendez-vous', r78['team'] and r78['ev'])
+    check('bêta 1.6.0 · n° 78 : ses joueurs de l’autre club en « Prénom N. », hors des fiches du club (licences, cotisations)', r78['name'] == 'Léon A.' and r78['own'] and r78['roster'] == 1)
+    check('bêta 1.6.0 · n° 78 : pastille « Entente · ES Voisins »', 'Entente · ES Voisins' in r78['tag'])
     with pg.expect_download() as dl: pg.click('[data-act=stxlsx]')
     d = dl.value; path = d.path()
     import zipfile
@@ -1321,7 +1338,7 @@ with sync_playwright() as p:
     act('.sttool [data-act=stbt][data-v=r]')
     check('n° 272 · « Rebond » : cercle au rebond', ST("st.frames[1].m.b === 'r'") and pg.locator('svg[data-sted] .starr circle.stbnc').count() == 1)
     act('.sttool [data-act=stbt][data-v=d]')
-    check('n° 272 · « Dribble » : trait ondulé (un seul choix à la fois)', ST("st.frames[1].m.b === 'd'") and pg.locator('svg[data-sted] .starr .stt-d').count() == 1 and pg.locator('svg[data-sted] .starr circle.stbnc').count() == 0)
+    check('n° 274 · « Dribble » : pointillés et 2 à 8 rebonds (un seul choix à la fois)', ST("st.frames[1].m.b === 'd'") and pg.locator('svg[data-sted] .starr .stt-d').count() == 1 and 2 <= pg.locator('svg[data-sted] .starr circle.stdrb').count() <= 8 and pg.locator('svg[data-sted] .starr polyline').count() == 0 and pg.locator('svg[data-sted] .starr circle.stbnc').count() == 0)
     act('.sttool [data-act=stbt][data-v=s]')
     check('n° 272 · « Shoot » : pointillés épais en parabole', ST("st.frames[1].m.b === 's'") and pg.locator('svg[data-sted] .starr path.stt-s').count() == 1 and ' Q' in (pg.get_attribute('svg[data-sted] .starr path.stt-s', 'd') or ''))
     shot('z272-shoot')
@@ -1637,7 +1654,7 @@ with sync_playwright() as p:
     check('accueil public : recherche, se connecter, lien « Je n’ai pas encore de compte »', 'Chercher un club' in t2() and 'Se connecter' in t2() and 'Je n’ai pas encore de compte' in t2().replace("'", '’'))
     # 5.0.0 · n° 197 : écran d'ouverture de l'identité
     check('n° 197 · slogan de l’identité', 'Tout ton club dans ta poche' in t2())
-    check('n° 197 · pied : mentions légales, version, contact et site', all(x in t2() for x in ['Mentions légales', 'Vos données', 'Conditions', 'bêta 1.5.1 · version de test', 'contact@', 'Site :']))
+    check('n° 197 · pied : mentions légales, version, contact et site', all(x in t2() for x in ['Mentions légales', 'Vos données', 'Conditions', 'bêta 1.6.0 · version de test', 'contact@', 'Site :']))
     check('n° 197 · fond encre et logo « club » bleu clair', pg2.evaluate("getComputedStyle(document.documentElement).backgroundColor") == 'rgb(17, 22, 46)' and pg2.evaluate("getComputedStyle(document.querySelector('.ouvert .wordmark .club')).color") == 'rgb(107, 139, 255)')
     check('n° 197 · la recherche est visible sans défiler sur 360 × 640', (pg2.set_viewport_size({'width': 360, 'height': 640}) or True) and pg2.evaluate("document.querySelector('#psf button[type=submit]').getBoundingClientRect().bottom") <= 640)
     shot2 = lambda n: OUT and pg2.screenshot(path=os.path.join(OUT, n + '.png'))

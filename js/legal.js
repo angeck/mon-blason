@@ -9,7 +9,7 @@ import { BRAND, IS_PROD } from '../config.js';
 const LIEU = IS_PROD ? 'France, à Paris' : 'Irlande';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.10', date: '18 novembre 2026' };
+export const LEGAL = { version: '1.11', date: '20 novembre 2026' }; // 1.11 (bêta 1.6.0) : équipe en entente vue des deux clubs (n° 78)
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -136,6 +136,7 @@ Vos données ne servent ni à de la publicité, ni à de la revente, ni à étab
 - **Le bureau du club** voit ce dont il a besoin pour gérer le club. La cotisation, la remise et la licence ne sont visibles que du bureau.
 - **Les coordonnées des familles** (e-mail, téléphone, contact d'urgence) ne sont visibles, pour tout le club, que du président, du secrétariat, de la trésorerie, du directeur technique (sauf si le président les lui masque), du contact licences et du contact rencontres. Le vice-président, la communication, le sponsoring, les événements et les autres fonctions ne les voient pas.
 - **Dans Messages**, chacun ne peut inviter dans un groupe que les personnes avec qui il a un lien : le bureau (tout le monde peut lui écrire), les coachs et les membres de son équipe ou de celle de son enfant, les autres coachs s'il est coach ; le bureau peut écrire à tout le club. Les noms apparaissent sous la forme « Prénom N. », sauf pour le bureau et le coach de l'équipe.
+- **Équipe en entente entre deux clubs** : une fois l'entente acceptée par les deux clubs, les membres de l'autre club qui font partie de l'équipe (joueurs, parents, coachs) voient l'équipe et ses rendez-vous, et y répondent. Un joueur de l'autre club leur apparaît sous la forme « Prénom N. ». Les coachs de l'équipe, des deux clubs, voient les joueurs de toute l'équipe ; le bureau du club qui porte l'équipe voit leurs fiches ; le bureau de l'autre club ne voit que les fiches de son club. Les licences, cotisations et coordonnées restent gérées par chaque club pour ses joueurs. Il n'y a pas de messages entre les deux clubs. Les deux clubs sont responsables ensemble de ces données ; l'entente cesse dès que le club qui porte l'équipe la retire.
 - **Le président du club** voit les messages signalés dans les groupes du club, avec leur auteur ; il peut aussi retirer l'accès d'un joueur à son club.
 - **Le contact du club** choisit lui-même si son e-mail ou son téléphone est affiché aux personnes connectées.
 - **Une personne non connectée** ne voit que la liste des clubs.

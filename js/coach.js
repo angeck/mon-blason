@@ -4,7 +4,7 @@
 import { BRAND } from '../config.js';
 import {
   S, sb, esc, run, toast, render, hooks, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, club, isBoard, isCoach, coachTeams, coachOf,
-  team, teamName, name, plural, download, norm, fmtShort, onColor, evTeams, store, loadNames, isPresident, hasArea, durOf,
+  team, teamName, name, plural, download, norm, fmtShort, onColor, evTeams, store, loadNames, isPresident, hasArea, durOf, canAllStats,
 } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 import { micBtn } from './dictee.js'; // bêta 1.2.0 · n° 265 : dicter la description
@@ -43,7 +43,11 @@ const monthStart = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
 const monthLabel = (d) => { const s = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }); return s.charAt(0).toUpperCase() + s.slice(1); };
 const stamp = () => { const d = new Date(); return d.toLocaleDateString('sv-SE') + ' ' + String(d.getHours()).padStart(2, '0') + 'h' + String(d.getMinutes()).padStart(2, '0'); };
 const cleanFile = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '');
-const staffTeams = () => (isBoard() ? S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').map((t) => t.id) : coachTeams().filter((t) => team(t)));
+// bêta 1.6.0 · n° 286 : dans l'espace coach, chacun ne voit que les équipes dont il est coach, même s'il est du bureau ;
+// toutes les équipes seulement pour les statistiques ouvertes depuis l'espace président (président, vice-président, directeur technique)
+const allTeams = () => S.teams.filter((t) => !t.deleted_at && t.state !== 'Archivée').map((t) => t.id);
+const staffTeams = () => coachTeams().filter((t) => team(t));
+const statTeams = () => (S.st?.all && canAllStats() ? allTeams() : staffTeams());
 export const canCoachSpace = () => isBoard() || isCoach();
 
 // ---------- chargement ----------
@@ -490,8 +494,9 @@ async function loadStats() {
 }
 const pct = (a, b) => (b ? Math.round((100 * a) / b) + ' %' : '—');
 export function statsPage() {
-  const teams = staffTeams(); S.st = S.st || { team: teams[0] || '', period: 'saison' };
-  const st = S.st;
+  S.st = S.st || { all: canAllStats(), team: '', period: 'saison' };
+  const teams = statTeams(), st = S.st;
+  if (!teams.includes(st.team)) st.team = teams[0] || '';
   if (!teams.length) return '<p class="empty">Aucune équipe à suivre.</p>';
   let h = `<div class="chips">${teams.map((t) => `<button class="chip" data-act="stteam" data-id="${t}" aria-pressed="${st.team === t}">${esc(teamName(t))}</button>`).join('')}</div>
   <div class="chips">${[['mois', 'Ce mois'], ['3mois', '3 derniers mois'], ['saison', 'Saison']].map(([k, l]) => `<button class="chip" data-act="stper" data-v="${k}" aria-pressed="${st.period === k}">${l}</button>`).join('')}</div>`;
@@ -716,7 +721,7 @@ Object.assign(ACTIONS, {
   popen: (el, d) => { const p = S.plans.find((x) => x.id === d.id); S.plan = { club: S.clubId, id: p.id, title: p.title, team_id: p.team_id || '', event_id: p.event_id || '', notes: p.notes, items: p.items }; savePlanLocal(); S.ctab = 'seance'; S.view = { type: 'exos' }; render(); },
   pldel: async (el, d) => { if (!armed('pl' + d.id)) return; if (await run(sb.from('training_plans').delete().eq('id', d.id), 'Séance supprimée.')) { if (S.plan?.id === d.id) S.plan.id = null; await loadPlans(); render(true); } },
   pview: (el, d) => { const p = (S.evPlans || []).find((x) => x.id === d.id); if (p) printPlan(p); },
-  cstats: () => { S.st = null; statsPage(); return open({ type: 'stats' }, loadStats); },
+  cstats: () => { S.st = null; statsPage(); return open({ type: 'stats' }, loadStats); }, // n° 286 : depuis l'espace président (ou du directeur technique) : toutes les équipes
   stteam: (el, d) => { S.st.team = d.id; return open({ type: 'stats' }, loadStats); },
   stper: (el, d) => { S.st.period = d.v; return open({ type: 'stats' }, loadStats); },
   stxlsx: () => statsXlsx(),

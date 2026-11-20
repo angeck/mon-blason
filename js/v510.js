@@ -6,7 +6,7 @@
 // Le schéma est rangé dans exercises.steps : { v, sport, items: [{ id, k, n }], frames: [{ c, p: { id: [x, y] }, m: { id: type } }] }, terrain de 360 × 500.
 // Bêta 1.4.0 · n° 271 et 272 (v: 2) : une flèche n'est dessinée que pour un mouvement demandé (frames[i].m, de l'étape i - 1 à l'étape i) :
 //   « m » = déplacement d'un joueur, d'un plot… (trait) ; ballon : « p » passe (pointillés), « r » rebond (cercle au rebond),
-//   « d » dribble (trait ondulé, petit cercle à chaque rebond), « s » shoot (pointillés épais en parabole).
+//   « d » dribble (pointillés et un cercle à chaque rebond, 2 à 8 selon la distance : n° 274), « s » shoot (pointillés épais en parabole).
 //   Un schéma v: 1 (avant la 1.4.0) garde son rendu : chaque déplacement de 20 ou plus devient un mouvement (passe pour le ballon).
 // L'ancien schéma fixe (exercises.diagram) reste affiché tel quel.
 import { S, sb, esc, toast, render, hooks, ACTIONS, INPUTS, club, armed, isArmed } from './core.js';
@@ -78,11 +78,15 @@ function seg(it, a, b, t, anim) {
     // rebond : un cercle autour du ballon, au moment où il touche le sol (au milieu du trajet)
     return ln + `<circle class="stbnc${anim ? ' anim' : ''}" cx="${r1((a[0] + b[0]) / 2)}" cy="${r1((a[1] + b[1]) / 2)}" r="10" fill="none" stroke="${INK}" stroke-width="2"/>`;
   }
-  if (t === 'd') { // dribble : trait ondulé, un petit cercle à chaque rebond
-    const n = Math.max(2, Math.round(L / 22)), amp = 5, pts = [], dots = [];
-    for (let k = 0; k <= n * 8; k++) { const u = k / (n * 8), w = Math.sin(u * n * Math.PI * 2) * amp; pts.push(`${r1(x1 + ux * L * u + nx * w)},${r1(y1 + uy * L * u + ny * w)}`); }
-    for (let k = 1; k < n; k++) { const u = k / n; dots.push(`<circle cx="${r1(x1 + ux * L * u)}" cy="${r1(y1 + uy * L * u)}" r="2.6" fill="${INK}"/>`); }
-    return `<polyline class="stt-d" points="${pts.join(' ')}" fill="none" stroke="${INK}" stroke-width="2" stroke-linejoin="round" marker-end="url(#stah)"/>${dots.join('')}`;
+  if (t === 'd') {
+    // bêta 1.6.0 · n° 274 : dribble = le ballon rebondit plusieurs fois, comme le « Rebond » (pointillés, cercle à chaque impact) ;
+    // un rebond tous les 3 à 4 pas du schéma (environ 45 points), 2 au moins, 8 au plus ; en animation, chaque cercle apparaît quand le ballon y passe
+    const n = Math.min(8, Math.max(2, Math.round(L / 45))), rings = [];
+    for (let k = 0; k < n; k++) {
+      const u = (k + 0.5) / n, dl = anim ? ` style="animation-delay:${Math.max(0, u * 0.8 - 0.08).toFixed(2)}s"` : '';
+      rings.push(`<circle class="stdrb${anim ? ' anim' : ''}" cx="${r1(x1 + ux * L * u)}" cy="${r1(y1 + uy * L * u)}" r="8" fill="none" stroke="${INK}" stroke-width="2"${dl}/>`);
+    }
+    return `<line class="stt-d" x1="${r1(x1)}" y1="${r1(y1)}" x2="${r1(x2)}" y2="${r1(y2)}" stroke="${INK}" stroke-width="2" stroke-dasharray="5 5" stroke-opacity=".6" marker-end="url(#stah)"/>${rings.join('')}`;
   }
   if (t === 's') { // shoot : pointillés épais, en parabole
     const h = Math.min(90, Math.max(24, d * 0.35)), side = ny > 0 ? -1 : 1; // la courbe monte vers le haut du terrain (côté panier)
