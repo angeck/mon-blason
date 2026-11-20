@@ -48,8 +48,8 @@ async function saveOrder(key, ids) {
 const myPending = () => S.hconf.filter((c) => c.user_id === S.me.id && !c.confirmed_at).map((c) => ({ c, k: S.hchecks.find((k) => k.id === c.check_id) })).filter((x) => x.k);
 export function hoursHome() {
   return myPending().map(({ c, k }) => {
-    const m = monthOf(k.month);
-    return `<div class="card yellow"><span class="kick" style="color:var(--pc-texte-ecran)">Heures des coachs</span><b style="font-family:var(--pc-titre);font-size:22px;line-height:1.1">As-tu vérifié tes heures ${de(m)} ?</b><button class="btn ghost small" data-act="hcdetail" data-id="${k.month}" style="align-self:flex-start">${hFmt(c.minutes)} déclarées · voir le détail</button><div class="btns"><button class="btn main small" data-act="hcok" data-id="${k.id}">${icon('check', 18, 'currentColor', 3)}C’est bon</button><button class="btn ghost small" data-act="hcdetail" data-id="${k.month}">Je corrige</button></div><p class="note">Après « C’est bon », les heures ${de(m)} sont figées : une correction passe par le trésorier ou le président.</p></div>`;
+    const m = monthOf(k.month), tn = c.team_id ? teamName(c.team_id) : '';
+    return `<div class="card yellow"><span class="kick" style="color:var(--pc-texte-ecran)">Heures des coachs</span><b style="font-family:var(--pc-titre);font-size:22px;line-height:1.1">As-tu vérifié tes heures ${de(m)}${tn ? ' · ' + esc(tn) : ''} ?</b><button class="btn ghost small" data-act="hcdetail" data-id="${k.month}" style="align-self:flex-start">${hFmt(c.minutes)} déclarées · voir le détail</button><div class="btns"><button class="btn main small" data-act="hcok" data-id="${k.id}" data-t="${c.team_id || ''}">${icon('check', 18, 'currentColor', 3)}C’est bon</button><button class="btn ghost small" data-act="hcdetail" data-id="${k.month}">Je corrige</button></div><p class="note">Après « C’est bon », les heures ${de(m)} sont figées : une correction passe par le trésorier ou le président.</p></div>`;
   }).join('');
 }
 const managers = () => isPresident() || hasArea('tresorerie');
@@ -59,7 +59,9 @@ export function hoursCheckBlock() {
   const k = S.hchecks[0];
   let h = `<div class="sec"><h2>Heures des coachs</h2><button data-act="choursb">Relevés</button></div><div class="card">`;
   if (k) {
-    const rows = S.hconf.filter((c) => c.check_id === k.id), ok = rows.filter((c) => c.confirmed_at), late = rows.filter((c) => !c.confirmed_at);
+    const all = S.hconf.filter((c) => c.check_id === k.id), byU = new Map();
+    all.forEach((c) => { const g = byU.get(c.user_id) || { ...c, minutes: 0, confirmed_at: c.confirmed_at, relanced_at: c.relanced_at }; if (byU.has(c.user_id)) { g.minutes += c.minutes; if (!c.confirmed_at) g.confirmed_at = null; if (c.relanced_at && (!g.relanced_at || c.relanced_at > g.relanced_at)) g.relanced_at = c.relanced_at; } byU.set(c.user_id, g); });
+    const rows = [...byU.values()], ok = rows.filter((c) => c.confirmed_at), late = rows.filter((c) => !c.confirmed_at); // n° 276 : un coach de plusieurs équipes ne compte qu'une fois
     h += `<div class="sec" style="margin:0"><b>${monthOf(k.month)[0].toUpperCase() + monthOf(k.month).slice(1)} ${String(k.month).slice(0, 4)}</b><span class="pill ${late.length ? 'wait' : 'ok'}">${ok.length} / ${rows.length} coachs ont confirmé</span></div>`;
     if (late.length) h += `<div class="list">${late.map((c) => `<div class="row static"><span class="g">${esc(name(c.user_id))}<small>${hFmt(c.minutes)} déclarées${c.relanced_at ? ' · relancé le ' + new Date(c.relanced_at).toLocaleDateString('fr-FR') : ''}</small></span><button class="btn small ghost" style="flex:none" data-act="hcrel" data-id="${k.id}" data-u="${c.user_id}" ${c.relanced_at && Date.now() - new Date(c.relanced_at) < 864e5 ? 'disabled' : ''}>Relancer</button></div>`).join('')}</div>`;
     else h += '<p class="note">Tous les coachs ont vérifié leurs heures : tu peux faire les comptes.</p>';
@@ -141,7 +143,7 @@ Object.assign(ACTIONS, {
   reorgreset: async (el, d) => { await saveOrder(d.id, []); await saveHidden(d.id, []); toast('Ordre par défaut remis, tous les blocs réaffichés.'); render(true); },
   blkhide: async (el, d) => { const l = new Set(S.prefs?.['hide:' + S.reorg] || []); l.has(d.id) ? l.delete(d.id) : l.add(d.id); await saveHidden(S.reorg, [...l]); render(true); },
   blkmv: async (el, d) => { const ids = [...(S.reorgIds || [])], i = ids.indexOf(d.id), j = i + +d.v; if (i < 0 || j < 0 || j >= ids.length) return; [ids[i], ids[j]] = [ids[j], ids[i]]; await saveOrder(S.reorg, ids); render(true); },
-  hcok: async (el, d) => { const n = await run(sb.rpc('confirm_hours', { p_check: d.id }), 'Merci, c’est noté.'); if (n !== null) { const c = S.hconf.find((x) => x.check_id === d.id && x.user_id === S.me.id); if (c) c.confirmed_at = new Date().toISOString(); render(true); } },
+  hcok: async (el, d) => { const t = d.t || null, n = await run(sb.rpc('confirm_hours', { p_check: d.id, p_team: t }), 'Merci, c’est noté.'); if (n !== null) { S.hconf.filter((x) => x.check_id === d.id && x.user_id === S.me.id && (!t || x.team_id === t)).forEach((x) => { x.confirmed_at = new Date().toISOString(); }); render(true); } },
   hcdetail: (el, d) => ACTIONS.chours(null, { month: d.id }),
   hcform: (el, d) => { const last = new Date(); last.setDate(1); last.setMonth(last.getMonth() - 1); S.hcform = d.v === '1' ? { month: ymd(last).slice(0, 7), who: 'all', users: [] } : null; render(true); },
   hcwho: (el, d) => { const m = document.getElementById('hcm'); if (m) S.hcform.month = m.value; S.hcform.who = d.v; render(true); },

@@ -24,7 +24,7 @@ function areasOf(k) {
 // 5.2.0 (n° 190) : coachs qui n'ont pas encore confirmé le dernier relevé d'heures demandé (trésorerie et président)
 function lateHours() {
   const k = (S.hchecks || [])[0]; if (!k) return 0;
-  return (S.hconf || []).filter((c) => c.check_id === k.id && !c.confirmed_at).length;
+  return new Set((S.hconf || []).filter((c) => c.check_id === k.id && !c.confirmed_at).map((c) => c.user_id)).size; // un coach compte une fois, même avec plusieurs équipes
 }
 // Ce qui attend la personne dans un rôle : demandes à valider (par identifiant, pour ne rien compter deux fois),
 // exercices à valider, heures à vérifier

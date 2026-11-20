@@ -122,7 +122,9 @@ async function refresh(msg) {
   if (!S.joinChecked) { S.joinChecked = true; await openPendingJoin(); await acceptParentInvite(); }
   if (!S.purged) { S.purged = true; sb.rpc('purge_trash').then(() => {}, () => {}); validationReminders().catch(() => {}); } // 5.4.0 · n° 182 : rappels de validation par e-mail
   if (S.openFiche && S.me) { const f = S.openFiche; if (S.clubs[f.club] && f.club !== S.clubId) { S.clubId = f.club; try { localStorage.setItem('pc_club', f.club); } catch { /* sans stockage */ } S.tab = 0; S.names = {}; S.attMine = undefined; } } // n° 264
+  if (S.openGo && S.me && S.clubs[S.openGo.club] && S.openGo.club !== S.clubId) { S.clubId = S.openGo.club; try { localStorage.setItem('pc_club', S.openGo.club); } catch { /* sans stockage */ } S.tab = 0; S.names = {}; S.attMine = undefined; } // bêta 1.5.0 · n° 278
   await loadClub();
+  if (S.openGo && S.me) { const g = S.openGo; S.openGo = null; if (g.club === S.clubId) { S.stack = []; try { if (g.to === 'heures') ACTIONS.fview(null, { v: 'Trésorier', tab: 'heures' }); else if (g.to === 'exos') ACTIONS.cexos(null, { tab: 'club' }); } catch (e) { console.warn('ouvrir', e); } } }
   if (S.openFiche && S.me) { const f = S.openFiche; S.openFiche = null; if (f.club === S.clubId && S.players.some((x) => x.id === f.player)) { S.view = { type: 'player', id: f.player }; S.stack = []; } } // n° 264
   restoreDraftScreen(); // 5.2.1 : après un rechargement, retour là où la saisie avait commencé
   await Promise.all([loadCoachCounts(), loadEvPlans(), loadAdminCounts(), loadV310(), loadV43(), loadV44(), loadV57()]).catch(() => {});
@@ -287,8 +289,13 @@ function captureFiche() {
   const m = /^#fiche=([0-9a-f-]{36})\.([0-9a-f-]{36})$/.exec(location.hash || ''); if (!m) return false;
   S.openFiche = { club: m[1], player: m[2] }; history.replaceState(null, '', location.pathname + location.search); return true;
 }
-captureFiche();
-window.addEventListener('hashchange', () => { if (captureFiche() && S.session) refresh(); });
+// bêta 1.5.0 · n° 278 : lien « #ouvrir=<club>.heures » ou « .exos » d'une notification : ouvre l'écran où il y a quelque chose à traiter
+function captureGo() {
+  const m = /^#ouvrir=([0-9a-f-]{36})\.(heures|exos)$/.exec(location.hash || ''); if (!m) return false;
+  S.openGo = { club: m[1], to: m[2] }; history.replaceState(null, '', location.pathname + location.search); return true;
+}
+captureFiche(); captureGo();
+window.addEventListener('hashchange', () => { if ((captureFiche() || captureGo()) && S.session) refresh(); });
 sb.auth.onAuthStateChange(async (ev, session) => {
   if (session) { saveSwitch(session); if (S.uid && S.uid !== session.user.id) resetUser(); S.uid = session.user.id; } else S.uid = null;
   if (ev === 'TOKEN_REFRESHED') { S.session = session; return; }

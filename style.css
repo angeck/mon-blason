@@ -780,6 +780,7 @@ html.site-test body::after { content: 'TEST'; position: fixed; top: calc(env(saf
   .idnums{grid-template-columns:repeat(5,minmax(0,1fr))}
   .idfacts{grid-template-columns:repeat(2,minmax(0,1fr))}
   .ptodo{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ptodo > .ptile:last-child:nth-child(odd){grid-column:1/-1} /* n° 277 : une tuile seule sur la dernière ligne prend toute la largeur */
   .fgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (min-width:960px){
@@ -950,3 +951,7 @@ details[data-qui]>summary{font-weight:700}
 .crmlist>.card,.crmlist>.chips{margin:0}
 .crmt .btns .btn{flex:1 1 auto;white-space:nowrap}
 .crmrow.cur{outline:none;background:var(--pc-bleu-pale);border-radius:14px;padding-left:10px;padding-right:10px}
+
+/* bêta 1.5.0 : pastilles de la carte d'identité cliquables (président) */
+button.idchip.idgo{font:inherit;color:inherit;cursor:pointer;border:0}
+button.idchip.idgo:hover{filter:brightness(.96)}

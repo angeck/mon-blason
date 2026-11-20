@@ -9,6 +9,7 @@ import {
 import { icon, delBtn, field } from './ui.js';
 import { micBtn } from './dictee.js'; // bêta 1.2.0 · n° 265 : dicter la description
 import { loadXlsx } from './equipe.js';
+import { openStatsPdf } from './statspdf.js'; // bêta 1.5.0 · n° 279
 import { loadDuplicates, dupBlock, dupListBlock } from './v410.js';
 
 export const CATS = ['Échauffement', 'Technique', 'Tactique', 'Physique', 'Jeu', 'Retour au calme'];
@@ -500,7 +501,7 @@ export function statsPage() {
   if (!sessions) return h + '<div class="card"><p class="empty">Aucune séance pointée sur cette période.</p><p class="note">Seules les séances dont l’appel est fait comptent. Fais l’appel depuis le rendez-vous.</p></div>';
   const tot = st.rows.reduce((o, r) => ({ s: o.s + r.sessions, p: o.p + r.present + r.late, l: o.l + r.late, ya: o.ya + r.yes_absent, an: o.an + r.answered }), { s: 0, p: 0, l: 0, ya: 0, an: 0 });
   h += `<div class="grid2"><div class="card lift"><span class="big">${pct(tot.p, tot.s)}</span><span class="det">assiduité · ${plural(sessions, 'séance pointée', 'séances pointées')}</span></div><div class="card lift"><span class="big">${pct(tot.an, tot.s)}</span><span class="det">réponses données avant la séance</span></div></div>`;
-  h += `<div class="btns"><button class="btn" data-act="stxlsx">${icon('down', 20)}Excel</button><button class="btn ghost" data-act="stpdf">${icon('doc', 20)}PDF</button></div>`;
+  h += `<div class="btns"><button class="btn" data-act="stxlsx">${icon('down', 20)}Excel</button><button class="btn ghost" data-act="stpdf">${icon('doc', 20)}PDF</button></div><button class="klink" data-act="stpdfn" style="align-self:flex-start">Tableau détaillé avec les noms (PDF)</button>`;
   h += `<div class="card" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Joueur</th><th>Présence</th><th>Retards</th><th>Absences</th><th>A répondu</th><th>Oui mais absent</th><th>Non mais venu</th></tr></thead><tbody>${st.rows.map((r) => `<tr><td><b>${esc(r.first_name)} ${esc(r.last_name)}</b></td><td>${pct(r.present + r.late, r.sessions)}</td><td>${r.late}</td><td>${r.absent}</td><td>${pct(r.answered, r.sessions)}</td><td>${r.yes_absent ? `<span class="pill ko">${r.yes_absent}</span>` : 0}</td><td>${r.no_present}</td></tr>`).join('')}</tbody></table></div>`;
   h += '<p class="note">Fiabilité : « Oui mais absent » = a répondu « Je viens » puis n’est pas venu. Un retard compte comme une présence. Une séance sans appel ne compte pas.</p>';
   return h;
@@ -695,13 +696,14 @@ Object.assign(ACTIONS, {
   stteam: (el, d) => { S.st.team = d.id; return open({ type: 'stats' }, loadStats); },
   stper: (el, d) => { S.st.period = d.v; return open({ type: 'stats' }, loadStats); },
   stxlsx: () => statsXlsx(),
-  stpdf: () => statsPdf(),
+  stpdf: () => openStatsPdf(S.st, club(), teamName(S.st.team), { mois: 'ce mois', '3mois': '3 derniers mois', saison: 'saison' }[S.st.period] || 'saison'), // n° 279 : sans noms
+  stpdfn: () => statsPdf(), // l'ancien tableau, avec les noms, sur demande
   chours: (el, d) => { S.hr = { month: d?.month ? new Date(d.month + 'T12:00') : new Date(), board: false }; return open({ type: 'hours' }, loadHours); },
   choursb: () => { S.hr = { month: new Date(), board: true }; S.hOpen = null; return open({ type: 'hoursb' }, loadHours); },
   hmonth: (el, d) => { const m = monthStart(S.hr.month); S.hr.month = new Date(m.getFullYear(), m.getMonth() + +d.v, 1); S.hr.lines = null; return open(S.view, loadHours); },
   hfill: async () => { const n = await run(sb.rpc('fill_coach_hours', { p_club: S.clubId, p_month: ymd(monthStart(S.hr.month)) })); if (n !== null) { toast(n ? plural(n, 'séance ajoutée', 'séances ajoutées') + '.' : 'Rien à ajouter : tes séances passées sont déjà notées.'); await loadHours(); render(true); } },
   hdel: async (el, d) => { if (await run(sb.from('coach_hours').delete().eq('id', d.id), 'Ligne retirée.')) { await loadHours(); render(true); } },
-  hsend: async () => { if (!armed('hsend')) return; if (await run(sb.rpc('submit_coach_month', { p_club: S.clubId, p_month: ymd(monthStart(S.hr.month)) }), 'Relevé envoyé au bureau.')) { await loadHours(); render(true); } },
+  hsend: async () => { if (!armed('hsend')) return; if (await run(sb.rpc('submit_coach_month', { p_club: S.clubId, p_month: ymd(monthStart(S.hr.month)) }), 'Relevé envoyé au bureau.')) { await loadHours(); const hf = await run(sb.from('hours_confirms').select('*')); if (hf) S.hconf = hf; /* n° 276 : l'envoi répond à la demande, carte et pastille s'effacent */ render(true); } },
   hopen: (el, d) => { S.hOpen = S.hOpen === d.id ? null : d.id; render(true); },
   hok: async (el, d) => {
     const ok = d.v === '1', com = ((S.hCom || {})[d.u] || '').trim();

@@ -182,8 +182,10 @@ function identityCard() {
   const coachs = new Set(S.members.filter((m) => m.role === 'coach' && m.status === 'active').map((m) => m.user_id)).size;
   const bureau = new Set(S.members.filter((m) => ['president', 'bureau'].includes(m.role) && m.status === 'active').map((m) => m.user_id)).size;
   const nums = [[ownPlayers().length, 'licenciés'], [live().length, 'équipes'], [coachs, 'coachs'], [bureau, 'au bureau'], [g.length, 'gymnases']];
-  const chip = (t) => `<span class="idchip">${icon('check', 14, 'var(--pc-action)')}${esc(t)}</span>`;
-  const chips = [c.public_listed !== false ? chip('Visible dans la recherche') : '<span class="idchip off">Absent de la recherche</span>', c.custom_header ? chip('En-tête aux couleurs du club') : '',
+  // bêta 1.5.0 : pour le président, « Visible dans la recherche » et « En-tête aux couleurs » mènent au réglage (en jaune)
+  const go = isPresident(), wrap = (k, cls, inner) => (go ? `<button class="${cls} idgo" data-act="idgo" data-v="${k}" aria-label="${esc(inner.replace(/<[^>]+>/g, ''))} : modifier ce réglage">${inner}</button>` : `<span class="${cls}">${inner}</span>`);
+  const chip = (k, t) => wrap(k, 'idchip', `${icon('check', 14, 'var(--pc-action)')}${esc(t)}`);
+  const chips = [c.public_listed !== false ? chip('public_listed', 'Visible dans la recherche') : wrap('public_listed', 'idchip off', 'Absent de la recherche'), c.custom_header ? chip('custom_header', 'En-tête aux couleurs du club') : '',
     `<span class="idchip">Couleurs <span class="idsw" style="background:${esc(c.color1 || '#2F5BFF')}"></span><span class="idsw" style="background:${esc(c.color2 || '#FFC93C')}"></span></span>`].join('');
   return `<section class="card idcard" data-idcard="1"><div class="idtop"><span class="idcrest">${crest(c, 72)}</span><div class="idname"><div class="kick">Carte d’identité du club</div><h2>${esc(c.name || '')}</h2><div class="det">${esc([c.sport === 'Volley-ball' ? 'Volley' : 'Basket', (c.city || '') + dep, 'saison ' + SEASON].filter((x) => x.trim()).join(' · '))}</div><div class="idchips">${chips}</div></div>
   <dl class="idfacts">${facts.map(([a, b, cl]) => `<div${cl ? ` class="${cl}"` : ''}><dt>${esc(a)}</dt><dd>${b}</dd></div>`).join('')}</dl>${canEdit ? `<button class="idedit" data-act="pclubedit" aria-label="Modifier la fiche du club">${icon('edit', 18)}</button>` : ''}</div>
@@ -203,7 +205,7 @@ function presTodo() {
     { n: nc.length, l: nc.length > 1 ? 'Équipes sans coach' : 'Équipe sans coach', s: names(nc), act: 'tflt', attrs: 'data-v="nocoach"' },
     { n: gh.length, l: 'Équipes en mode fantôme', s: names(gh), act: 'tflt', attrs: 'data-v="ghost"', hot: false },
     { n: empty.length, l: 'Fonctions sans titulaire', s: empty.map(fl).join(' · '), act: 'ptab', attrs: 'data-v="bureau"', hot: false },
-  ], { all: true });
+  ].map((x, i) => ({ ...x, _i: i })).sort((a, b) => ((b.hot ?? b.n > 0) && b.n > 0) - ((a.hot ?? a.n > 0) && a.n > 0) || a._i - b._i)); // bêta 1.5.0 · n° 277 : seules les tuiles à traiter, les urgentes en tête ; tout à 0 : « Rien à traiter »
 }
 function bureauCard() {
   const rows = FONCTIONS.filter((f) => f !== 'Membre du bureau').map((f) => ({ f, hs: holderOf(f) }));
@@ -293,6 +295,15 @@ hooks.presSubs = (sub) => {
   add('equipes', [`<button data-act="ptab" data-v="equipes" data-eq="liste" ${S.eqsub !== 'outils' ? 'aria-current="page"' : ''}>Toutes</button>`, `<button data-act="eqtools" ${S.eqsub === 'outils' ? 'aria-current="page"' : ''}>Créer et importer</button>`]);
 };
 Object.assign(ACTIONS, {
+  idgo: (el, d) => {
+    S.ptab = 'reglages'; S.casq = 'president'; S.view = { type: 'espace' }; render();
+    setTimeout(() => {
+      const sel = d.v === 'custom_header' ? 'label.switch:has(input[name=perso])' : 'label.switch:has([data-clubset=public_listed])';
+      const t = document.querySelector(sel); if (!t) return;
+      const det = t.closest('details'); if (det) det.open = true;
+      t.classList.add('todo-hl'); t.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 60);
+  },
   pclubedit: () => { S.ptab = 'reglages'; S.casq = 'president'; S.view = { type: 'espace' }; render(); setTimeout(() => { const f = document.querySelector('[data-clubid]'); f?.scrollIntoView({ block: 'start', behavior: 'smooth' }); f?.querySelector('input')?.focus({ preventScroll: true }); }, 60); },
   eqtools: () => { S.ptab = 'equipes'; S.eqsub = 'outils'; S.casq = 'president'; if (S.view?.type !== 'espace') S.view = { type: 'espace' }; render(true); setTimeout(() => document.getElementById('eqtools')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60); },
 });
