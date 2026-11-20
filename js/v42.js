@@ -17,6 +17,7 @@ import { icon, field } from './ui.js';
 import { reference, weekendLabel, periodOf, mailSender, blocking, convocHtml } from './convoc.js';
 import { Pdf, wrap, toBase64 } from './pdfmin.js';
 import { pdfArt } from './v43.js';
+import { showDoc } from './docview.js'; // bêta 1.5.1 · n° 285
 
 const DAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -242,9 +243,10 @@ async function sendAll() {
 Object.assign(ACTIONS, {
   cvpreview: async () => {
     const v = S.convoc; if (!v?.data) return;
-    const w = window.open('', '_blank'); if (!w) return toast('Autorise les fenêtres pour voir le PDF.');
+    // bêta 1.5.1 · n° 285 : aperçu dans l'appli (plus de nouvelle fenêtre) ; le vrai fichier PDF reste téléchargeable
     const p = await prepare(), art = await pdfArt(v.data).catch(() => ({}));
-    w.location.href = URL.createObjectURL(new Blob([convocPdf(v.data, v.step, p?.version || 1, new Date(), art)], { type: 'application/pdf' }));
+    const url = URL.createObjectURL(new Blob([convocPdf(v.data, v.step, p?.version || 1, new Date(), art)], { type: 'application/pdf' }));
+    showDoc(convocHtml(v.data, v.step, new Date(), { version: p?.version || 1, print: false }), { title: 'Aperçu de la convocation', download: { url, name: 'convocation.pdf' } });
   },
   cvmode: (el, d) => { const s = st(), x = s.dest[+d.i]; if (!x || (!canSend() && d.v !== 'pdf')) return; x.mode = d.v; x.err = ''; render(true); },
   cvadd: () => { const s = st(); s.dest.push(newDest(canSend() ? (s.dest.length ? 'email' : 'app') : 'pdf')); render(true); },
@@ -275,8 +277,7 @@ Object.assign(ACTIONS, {
   },
   cvopen: async (el, d) => {
     const r = await run(sb.rpc('convocation_open', { p_send: d.id })); if (!r?.data) return;
-    const w = window.open('', '_blank'); if (!w) return toast('Autorise les fenêtres pour lire le document.');
-    w.document.open(); w.document.write(convocHtml(r.data, r.step, new Date(), { version: r.version, print: false })); w.document.close();
+    showDoc(convocHtml(r.data, r.step, new Date(), { version: r.version, print: false }), { title: 'Convocation' }); // bêta 1.5.1 · n° 285
     const x = (S.creceived || []).find((y) => y.id === d.id); if (x && !x.read_at) { x.read_at = new Date().toISOString(); render(true); }
   },
 });

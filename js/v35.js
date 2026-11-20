@@ -49,7 +49,7 @@ const myPending = () => S.hconf.filter((c) => c.user_id === S.me.id && !c.confir
 export function hoursHome() {
   return myPending().map(({ c, k }) => {
     const m = monthOf(k.month), tn = c.team_id ? teamName(c.team_id) : '';
-    return `<div class="card yellow"><span class="kick" style="color:var(--pc-texte-ecran)">Heures des coachs</span><b style="font-family:var(--pc-titre);font-size:22px;line-height:1.1">As-tu vérifié tes heures ${de(m)}${tn ? ' · ' + esc(tn) : ''} ?</b><button class="btn ghost small" data-act="hcdetail" data-id="${k.month}" style="align-self:flex-start">${hFmt(c.minutes)} déclarées · voir le détail</button><div class="btns"><button class="btn main small" data-act="hcok" data-id="${k.id}" data-t="${c.team_id || ''}">${icon('check', 18, 'currentColor', 3)}C’est bon</button><button class="btn ghost small" data-act="hcdetail" data-id="${k.month}">Je corrige</button></div><p class="note">Après « C’est bon », les heures ${de(m)} sont figées : une correction passe par le trésorier ou le président.</p></div>`;
+    return `<div class="card yellow"><span class="kick" style="color:var(--pc-texte-ecran)">Heures des coachs</span><b style="font-family:var(--pc-titre);font-size:22px;line-height:1.1">As-tu vérifié tes heures ${de(m)}${tn ? ' · ' + esc(tn) : ''} ?</b><button class="btn ghost small" data-act="hcdetail" data-id="${k.month}" style="align-self:flex-start">${hFmt(c.minutes)} déclarées · voir le détail</button><div class="btns"><button class="btn main small" data-act="hcok" data-id="${k.id}" data-t="${c.team_id || ''}">${icon('check', 18, 'currentColor', 3)}C’est bon</button><button class="btn ghost small" data-act="hcdetail" data-id="${k.month}" data-t="${c.team_id || ''}">Je corrige</button></div><p class="note">Après « C’est bon », les heures ${de(m)} sont figées : une correction passe par le trésorier ou le président.</p></div>`;
   }).join('');
 }
 const managers = () => isPresident() || hasArea('tresorerie');
@@ -144,7 +144,7 @@ Object.assign(ACTIONS, {
   blkhide: async (el, d) => { const l = new Set(S.prefs?.['hide:' + S.reorg] || []); l.has(d.id) ? l.delete(d.id) : l.add(d.id); await saveHidden(S.reorg, [...l]); render(true); },
   blkmv: async (el, d) => { const ids = [...(S.reorgIds || [])], i = ids.indexOf(d.id), j = i + +d.v; if (i < 0 || j < 0 || j >= ids.length) return; [ids[i], ids[j]] = [ids[j], ids[i]]; await saveOrder(S.reorg, ids); render(true); },
   hcok: async (el, d) => { const t = d.t || null, n = await run(sb.rpc('confirm_hours', { p_check: d.id, p_team: t }), 'Merci, c’est noté.'); if (n !== null) { S.hconf.filter((x) => x.check_id === d.id && x.user_id === S.me.id && (!t || x.team_id === t)).forEach((x) => { x.confirmed_at = new Date().toISOString(); }); render(true); } },
-  hcdetail: (el, d) => ACTIONS.chours(null, { month: d.id }),
+  hcdetail: (el, d) => ACTIONS.chours(null, { month: d.id, team: d.t || '' }), // n° 284
   hcform: (el, d) => { const last = new Date(); last.setDate(1); last.setMonth(last.getMonth() - 1); S.hcform = d.v === '1' ? { month: ymd(last).slice(0, 7), who: 'all', users: [] } : null; render(true); },
   hcwho: (el, d) => { const m = document.getElementById('hcm'); if (m) S.hcform.month = m.value; S.hcform.who = d.v; render(true); },
   hcrel: async (el, d) => { const n = await run(sb.rpc('relance_hours', { p_check: d.id, p_user: d.u })); if (n !== null) { toast('Relance envoyée.'); const c = S.hconf.find((x) => x.check_id === d.id && x.user_id === d.u); if (c) c.relanced_at = new Date().toISOString(); render(true); } },

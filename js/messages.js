@@ -1,5 +1,6 @@
 // mypocketclub · messages : groupes d'échange, messages en direct, sondages (supprimables, restaurables par le bureau).
 import { annoncesBlock } from './vie.js';
+import { showImage } from './docview.js'; // bêta 1.5.1 · n° 285
 import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, isBoard, isPresident, name, nick, teamName, fmtShort, loadGroup, parentsOf, playersOfTeam, plural, norm, hooks } from './core.js';
 import { backAfterDelete } from './core.js';
 import { icon, delBtn, field } from './ui.js';
@@ -151,10 +152,14 @@ Object.assign(ACTIONS, {
   group: (el, d) => openGroup(d.id),
   attrm: (el, d) => { S.msgatt.splice(+d.i, 1); render(true); },
   msgfile: async (el, d) => {
-    const w = window.open('', '_blank');
-    const { data, error } = await sb.storage.from('message-files').createSignedUrl(d.path, 300, { download: false });
-    if (error || !data?.signedUrl) { w?.close(); return toast('Fichier introuvable ou plus disponible.'); }
-    if (w) w.location = data.signedUrl; else location.href = data.signedUrl;
+    // bêta 1.5.1 · n° 285 : plus de nouvelle fenêtre (l'appli installée se fermait sur Android).
+    // Une image s'affiche dans le lecteur de l'appli ; un autre fichier (PDF…) se télécharge.
+    const img = /\.(png|jpe?g|gif|webp|heic|avif)$/i.test(d.name || d.path || '');
+    const { data, error } = await sb.storage.from('message-files').createSignedUrl(d.path, 300, img ? { download: false } : { download: d.name || true });
+    if (error || !data?.signedUrl) return toast('Fichier introuvable ou plus disponible.');
+    if (img) return showImage(data.signedUrl, d.name);
+    const a = document.createElement('a'); a.href = data.signedUrl; a.download = d.name || ''; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+    toast('Téléchargement lancé : retrouve le fichier dans tes téléchargements.');
   },
   msgrep: async (el, d) => { if (await run(sb.rpc('report_message', { p_message: +d.id, p_reason: null }), 'Merci : le président a été prévenu.')) render(true); },
   repfwd: async (el, d) => { if (await run(sb.rpc('forward_report', { p_report: d.id }), 'Message transmis à mypocketclub.')) { const r = (S.reports || []).find((x) => x.report_id === d.id); if (r) r.forwarded_at = new Date().toISOString(); render(true); } }, // 5.6.0 · n° 202

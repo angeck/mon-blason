@@ -418,7 +418,7 @@ export async function loadV44() {
   ]);
   const rates = Object.fromEntries((rt.data || []).map((x) => [x.user_id, +x.rate])), l = st.data || [];
   const min = l.reduce((s, x) => s + (+x.total_minutes || 0), 0), priced = l.filter((x) => rates[x.user_id] != null);
-  S.v44.hours = { min, label: m.toLocaleDateString('fr-FR', { month: 'long' }), amount: priced.length ? priced.reduce((s, x) => s + ((+x.total_minutes || 0) / 60) * rates[x.user_id], 0) : null, by: l.map((x) => ({ u: x.user_id, min: +x.total_minutes || 0 })) }; // bêta 1.1.0 : par coach (graphique de l'Aperçu)
+  S.v44.hours = { min, label: m.toLocaleDateString('fr-FR', { month: 'long' }), amount: priced.length ? priced.reduce((s, x) => s + ((+x.total_minutes || 0) / 60) * rates[x.user_id], 0) : null, by: Object.entries(l.reduce((o, x) => ((o[x.user_id] = (o[x.user_id] || 0) + (+x.total_minutes || 0)), o), {})).map(([u, min]) => ({ u, min })) }; // n° 284 : plusieurs relevés (équipes) par coach // bêta 1.1.0 : par coach (graphique de l'Aperçu)
 }
 
 // ---------- actions ----------

@@ -3,6 +3,7 @@
 // sans gymnase ni horaire) puis convocation (étape 2 sur 2, avec gymnase, adresse, date et heure).
 // Réservé à la rubrique Événements (coordinateur, vice-président, président) ; la base le vérifie (convocation_data).
 import { BRAND } from '../config.js';
+import { showDoc } from './docview.js'; // bêta 1.5.1 · n° 285
 import { S, sb, esc, run, toast, render, ACTIONS, hooks, hasArea, onColor, contrast, catGender } from './core.js';
 import { header, icon, crest, ballSrc } from './ui.js';
 import { VIE_VIEWS } from './vie.js';
@@ -159,7 +160,6 @@ Object.assign(ACTIONS, {
   convstep: async (el, d) => { S.convoc.step = d.v; S.convoc.version = 0; if (S.convoc.send) S.convoc.send.confirm = false; render(true); await loadSends(S.convoc.eid); render(true); },
   convpdf: () => {
     const v = S.convoc; if (!v?.data || blocking(v.data, v.step)) return;
-    const w = window.open('', '_blank'); if (!w) return toast('Autorise les fenêtres pour créer le PDF.');
-    w.document.open(); w.document.write(convocHtml(v.data, v.step, new Date(), { version: v.version || 1 })); w.document.close();
+    showDoc(convocHtml(v.data, v.step, new Date(), { version: v.version || 1, print: false }), { title: 'Convocation' }); // bêta 1.5.1 · n° 285 : dans l'appli
   },
 });

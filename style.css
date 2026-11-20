@@ -955,3 +955,19 @@ details[data-qui]>summary{font-weight:700}
 /* bêta 1.5.0 : pastilles de la carte d'identité cliquables (président) */
 button.idchip.idgo{font:inherit;color:inherit;cursor:pointer;border:0}
 button.idchip.idgo:hover{filter:brightness(.96)}
+/* bêta 1.5.1 · n° 283 : encarts jaunes lisibles en mode sombre (le fond des boutons secondaires restait foncé) */
+.card.yellow .btn:not(.main):not(.yes){background:transparent}
+.card.yellow .btn:not(.main):not(.yes):hover{background:rgba(17,22,46,.08)}
+.card.yellow small,.card.yellow .klink,.card.yellow a:not(.btn),.card.yellow label,.card.yellow p{color:var(--pc-encre)}
+.card.yellow input,.card.yellow select,.card.yellow textarea{background:#FFFFFF;color:var(--pc-encre);border-color:var(--pc-encre)}
+.card.yellow .row{color:var(--pc-encre);border-color:rgba(17,22,46,.18)}
+/* bêta 1.5.1 · n° 285 : lecteur de documents dans l'application (plus de nouvelle fenêtre) */
+.docview{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;background:var(--pc-fond)}
+.dv-bar{display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));background:var(--pc-papier);border-bottom:1px solid var(--pc-trait);flex-wrap:wrap}
+.dv-bar .dv-t{flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--pc-texte-ecran)}
+.dv-bar .btn{width:auto;flex:0 0 auto}
+.dv-frame{flex:1;width:100%;border:0;background:#E9ECF5}
+body.dv-open{overflow:hidden}
+@media print{body.dv-open>*:not(.docview){display:none!important}body.dv-open .dv-bar{display:none}}
+/* bêta 1.5.1 · n° 284 : un relevé par équipe dans l'onglet Heures du bureau */
+.hstmt{display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--pc-trait)}

@@ -5,6 +5,7 @@
 import { BRAND } from '../config.js';
 import { esc, contrast, toast } from './core.js';
 import { crest, ballSrc } from './ui.js';
+import { showDoc } from './docview.js'; // bêta 1.5.1 · n° 285
 
 const abs = (u) => { try { return new URL(u, location.href).href; } catch { return u; } };
 const tint = (hex, k = 0.9) => { const n = parseInt(String(hex).slice(1), 16), m = (v) => Math.round(v + (255 - v) * k); return '#' + [m(n >> 16), m((n >> 8) & 255), m(n & 255)].map((v) => v.toString(16).padStart(2, '0')).join(''); };
@@ -65,6 +66,5 @@ ${per.length > 1 ? `<div class="bx"><h3>Présence à chaque séance (%)</h3>${co
 }
 
 export function openStatsPdf(st, c, team, period) {
-  const w = window.open('', '_blank'); if (!w) { toast('Autorise les fenêtres pour imprimer ou enregistrer en PDF.'); return; }
-  w.document.write(statsDoc(st, c, team, period)); w.document.close();
+  showDoc(statsDoc(st, c, team, period, { print: false }), { title: 'Statistiques · ' + (team || '') }); // n° 285 : dans l'appli
 }
