@@ -2,7 +2,7 @@
 import { annoncesBlock } from './vie.js';
 import { showImage } from './docview.js'; // bêta 1.5.1 · n° 285
 import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, isBoard, isPresident, name, nick, teamName, fmtShort, loadGroup, parentsOf, playersOfTeam, plural, norm, hooks } from './core.js';
-import { backAfterDelete } from './core.js';
+import { backAfterDelete, team } from './core.js';
 import { icon, delBtn, field } from './ui.js';
 
 export const grp = (id) => S.groups.find((g) => g.id === id);
@@ -58,7 +58,7 @@ export function groupForm() {
   // 5.15.0 · n° 238 : la liste vient de la base (contact_people) : les personnes avec qui on a un lien ; la base le revérifie à l'invitation
   if (S.contacts === undefined) { S.contacts = null; loadContacts(); }
   const people = (S.contacts || []).slice().sort((a, b) => name(a.user_id).localeCompare(name(b.user_id), 'fr'));
-  const teams = isBoard() ? S.teams : S.teams.filter((t) => myTeams().has(t.id));
+  const teams = isBoard() ? S.teams.filter((t) => !t.foreign || myTeams().has(t.id)) : S.teams.filter((t) => myTeams().has(t.id)); // n° 78 : équipe d'un autre club, seulement si j'en fais partie
   const q = norm(f.q), shown = people.filter((m) => !q || norm(name(m.user_id)).includes(q));
   return `<div class="card lift">
   ${field('gn', 'Nom du groupe', `<input id="gn" data-f="name" value="${esc(f.name || '')}" maxlength="80" placeholder="Ex. U9 · Parents et coachs">`)}
@@ -144,9 +144,14 @@ Object.assign(ACTIONS, {
     const asTeam = t && [S.me.id, ...S.form.sel].every(inTeam);
     // 5.4.0 · n° 201 : un mineur sans son parent → l'écran propose d'ajouter le parent ; la conversation attendra son accord
     if (!asTeam && hooks.minorStep && await hooks.minorStep(nm, [...S.form.sel])) return;
-    const g = await run(sb.from('groups').insert({ club_id: S.clubId, name: nm, created_by: S.me.id, ...(asTeam ? { team_id: t } : {}) }).select().single()); if (!g) return;
+    // bêta 1.7.1 · n° 78 : le groupe d'une équipe en entente est rangé au club qui la porte et réunit les deux clubs
+    const tt = asTeam ? team(t) : null, ent = tt?.partner_state === 'acceptee';
+    const g = await run(sb.from('groups').insert({ club_id: tt?.club_id || S.clubId, name: nm, created_by: S.me.id, ...(asTeam ? { team_id: t } : {}) }).select().single()); if (!g) return;
     const ids = [S.me.id, ...S.form.sel];
-    if (await run(sb.from('group_members').insert(ids.map((u) => ({ group_id: g.id, user_id: u }))), 'Groupe créé.')) { S.groups.unshift(g); S.form = null; await openGroup(g.id); }
+    if (await run(sb.from('group_members').insert(ids.map((u) => ({ group_id: g.id, user_id: u }))), ent ? 'Groupe créé, avec l’équipe des deux clubs.' : 'Groupe créé.')) {
+      if (ent) await sb.rpc('entente_group_fill', { p_group: g.id });
+      S.groups.unshift(g); S.form = null; await openGroup(g.id);
+    }
     else await sb.from('groups').delete().eq('id', g.id);   // refusé par les règles : pas de groupe vide qui traîne
   },
   group: (el, d) => openGroup(d.id),

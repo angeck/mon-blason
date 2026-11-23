@@ -99,6 +99,7 @@ export function playerPage(pid) {
   // n° 113 : bouton pour passer en modification dans l'espace de l'équipe
   if (staff && !S.tsp && p.team_id) h += `<button class="btn" data-act="tsplayer" data-id="${p.id}">${icon('doc', 20)}Modifier dans l'espace de l'équipe</button>`;
   h += payFamilySoon(p); // n° 115
+  if (hooks.loanBlock && !p.foreign) h += hooks.loanBlock(p); // bêta 1.7.1 · n° 293 : prêté / en prêt
   // informations
   h += '<div class="sec"><h2>Informations</h2></div>';
   const hid = contactsHidden() && !coachOf(p.team_id) && !isParentOf(p.id) && p.user_id !== S.me.id; // 4.4.0 : coordonnées masquées par le président

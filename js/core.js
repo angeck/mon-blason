@@ -252,13 +252,19 @@ export async function loadClub() {
   S.teams = S.teams.filter((t) => t.club_id === cid || t.partner_state === 'acceptee');
   S.teams.forEach((t) => { t.foreign = t.club_id !== cid; });
   const xt = S.teams.filter((t) => t.foreign).map((t) => t.id), et = S.teams.filter((t) => t.partner_state === 'acceptee').map((t) => t.id);
-  const [xe, xp, en] = await Promise.all([
+  // bêta 1.7.1 · n° 78 : groupes d'équipe communs aux deux clubs (rangés au club qui porte l'équipe) et coordonnées des joueurs de l'autre club
+  const xclubs = [...new Set(S.teams.filter((t) => t.partner_state === 'acceptee').map((t) => (t.foreign ? t.club_id : t.partner_club_id)).filter(Boolean))];
+  const [xe, xp, en, xg, ...xpc] = await Promise.all([
     xt.length ? sb.from('events').select('*').overlaps('team_ids', xt).neq('club_id', cid).gte('starts_at', since).order('starts_at').limit(200) : Promise.resolve({ data: [] }),
     et.length ? sb.from('players').select(PLAYER_COLS).in('team_id', et).neq('club_id', cid).is('deleted_at', null).order('last_name') : Promise.resolve({ data: [] }),
     et.length ? sb.rpc('entente_names', { p_club: cid }) : Promise.resolve({ data: [] }),
+    xt.length ? sb.from('groups').select('*').in('team_id', xt).order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
+    ...xclubs.map((c) => sb.rpc('player_contacts', { p_club: c })),
   ]);
+  if ((xg.data || []).length) { const seen = new Set(S.groups.map((g) => g.id)); S.groups = S.groups.concat((xg.data || []).filter((g) => !seen.has(g.id))); }
   if ((xe.data || []).length) { const seen = new Set(S.events.map((e) => e.id)); S.events = S.events.concat((xe.data || []).filter((e) => !seen.has(e.id))).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)); }
-  S.xplayers = (xp.data || []).map((p) => ({ ...p, foreign: true }));
+  const xpcm = new Map(xpc.flatMap((r) => (Array.isArray(r?.data) ? r.data : [])).map((x) => [x.id, x]));
+  S.xplayers = (xp.data || []).map((p) => { const x = xpcm.get(p.id); return { ...p, foreign: true, parent_email: x?.parent_email || null, parent_phone: x?.parent_phone || null, emergency_name: x?.emergency_name || null, emergency_phone: x?.emergency_phone || null }; });
   S.entNames = Object.fromEntries((Array.isArray(en.data) ? en.data : []).map((x) => [x.team_id, x.other_club]));
   const pids = S.players.map((p) => p.id).concat(S.xplayers.map((p) => p.id)), eids = S.events.map((e) => e.id), gids = S.groups.map((g) => g.id);
   const [pp, pa, at, pt, rs, lm, dc, pay, fol, ct, mg, cl, gp, mc] = await Promise.all([

@@ -192,6 +192,10 @@ const RPC = {
   // bêta 1.7.0 : n° 289, 292, 295
   event_push_now: ({ p_event }) => { const e = D.events.find((x) => x.id === p_event); if (e) e.pushed_at = new Date().toISOString(); return 3; },
   report_event: () => 'r-170',
+  club_loans: () => (window.__LOANS || []),
+  set_player_loan: ({ p_player, p_dir, p_name }) => { (window.__LOANS = window.__LOANS || []).push({ player_id: p_player, direction: p_dir, other_name: p_name || 'Club', season: '2026-2027', notice: 'email' }); return 'l-171'; },
+  end_player_loan: ({ p_player }) => { window.__LOANS = (window.__LOANS || []).filter((l) => l.player_id !== p_player); return null; },
+  entente_group_fill: () => 2,
   event_reports_list: () => [],
   my_coach_contact: () => ({ show_phone: false, show_sms: false, show_email: false }),
   set_coach_contact: () => null,

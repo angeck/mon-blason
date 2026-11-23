@@ -4,7 +4,7 @@
 //   n° 293 : joueur prêté (il joue ailleurs, licence chez nous) / joueur en prêt (il joue chez nous, licence ailleurs) ;
 //   n° 78 suites : sondages partagés entre les deux clubs d'une entente, coordonnées des joueurs de l'autre club pour le coach.
 // Chaque droit est vérifié par la base (supabase/beta_1_7_0.sql) ; l'écran n'est qu'un confort.
-import { S, sb, esc, run, toast, render, refresh, ACTIONS, FORMS, INPUTS, CHANGES, hooks, coachTeams, isPresident, isVP, hasArea, evTeams, teamName, teamsLabel, playersOfTeam, plural } from './core.js';
+import { S, sb, esc, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, hooks, coachTeams, canManagePlayer, pl, pname, isPresident, isVP, hasArea, evTeams, teamName, teamsLabel, playersOfTeam, plural } from './core.js';
 import { icon, header } from './ui.js';
 import { V310_VIEWS } from './v310.js';
 import { canCallRoll } from './agenda.js';
@@ -92,6 +92,58 @@ CHANGES.push(async (t) => {
     if ((v.show_phone || v.show_sms) && !S.me.phone) toast('Ajoute ton téléphone dans « Mon profil » pour qu’il apparaisse.');
   } else t.checked = !t.checked;
   return true;
+});
+
+// ---------------------------------------------------------------------
+// N° 293 · joueur prêté (il joue ailleurs, licence chez nous : nous payons) / en prêt (il joue chez nous, licence ailleurs)
+// ---------------------------------------------------------------------
+const loanOf = (pid) => (S.loans || []).find((l) => l.player_id === pid);
+const loadLoans = () => { if (S.loansClub === S.clubId) return; S.loansClub = S.clubId; S.loans = []; sb.rpc('club_loans', { p_club: S.clubId }).then(({ data }) => { S.loans = Array.isArray(data) ? data : []; render(true); }); };
+hooks.loanBlock = (p) => {
+  if (!canManagePlayer(p)) return '';
+  loadLoans();
+  const l = loanOf(p.id);
+  if (l) return `<div class="card loanc"><div class="kick">Prêt · saison ${esc(l.season)}</div><b>${l.direction === 'sortant' ? 'Prêté à ' : 'En prêt de '}${esc(l.other_name)}</b><p class="note" style="margin:0">${l.direction === 'sortant' ? 'Il joue là-bas ; sa licence reste chez nous : notre club paye pour lui.' : 'Il joue chez nous ; sa licence est dans l’autre club : notre club ne paye pas pour lui.'}${l.notice === 'mpc' ? ' Le club a été prévenu dans mypocketclub.' : l.notice === 'email' ? ' mypocketclub prévient le club par e-mail (adresse publiée par le club).' : ''}</p><button class="btn small ghost" data-act="loanend" data-id="${p.id}">${isArmed('loanend' + p.id) ? 'Touche encore pour mettre fin au prêt' : 'Mettre fin au prêt'}</button></div>`;
+  return `<button class="btn ghost loanbtn" data-act="loannew" data-id="${p.id}">${icon('swap', 20)}Prêt à un autre club</button>`;
+};
+function loanPage() {
+  const L = S.loan, p = L && pl(L.pid); if (!p) return '<p class="empty">Joueur introuvable.</p>';
+  const out = L.dir === 'sortant';
+  let h = `<div class="card lift"><div class="det">${esc(pname(p))} · ${esc(teamName(p.team_id) || 'Sans équipe')}</div>
+  <div class="stseg repseg" role="group" aria-label="Sens du prêt"><button type="button" data-act="loandir" data-v="sortant" aria-pressed="${out}">Il part dans un autre club</button><button type="button" data-act="loandir" data-v="entrant" aria-pressed="${!out}">Il vient d’un autre club</button></div>
+  <p class="note repmed">${out ? 'Il joue ailleurs, sa licence reste chez nous : notre club paye pour lui.' : 'Il joue chez nous, sa licence est dans l’autre club : notre club ne paye pas pour lui.'} Pour la saison en cours.</p>`;
+  if (L.club) h += `<div class="card flat"><b>${esc(L.club.name)}</b><span class="det">${esc(L.club.city || '')} · sur mypocketclub : son président sera prévenu</span><button class="btn small ghost" data-act="loanclr">Changer de club</button></div>`;
+  else {
+    h += `<div class="field"><label for="loanq">${out ? 'Club d’accueil' : 'Club d’origine'}</label><input id="loanq" type="search" data-loanq="1" value="${esc(L.q || '')}" placeholder="Nom ou ville du club" autocomplete="off"></div>`;
+    if (L.res?.length) h += `<div class="list">${L.res.map((c) => `<button class="row" data-act="loanpick" data-id="${c.id}"><span class="g">${esc(c.name)}<small>${esc([c.city, c.sport].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`).join('')}</div>`;
+    if (L.res && (L.q || '').trim().length >= 2) h += `<div class="card flat"><b>Le club n’est pas sur mypocketclub ?</b><div class="grid2"><div class="field"><label for="loann">Nom du club</label><input id="loann" value="${esc(L.name || L.q || '')}" maxlength="120"></div><div class="field"><label for="loanc">Ville</label><input id="loanc" value="${esc(L.city || '')}" maxlength="80"></div></div><p class="note" style="margin:0">mypocketclub le préviendra par un seul e-mail, à l’adresse que le club publie, avec un lien pour refuser définitivement.</p></div>`;
+  }
+  h += `<button class="btn main" data-act="loansave">${icon('check', 18)}Enregistrer le prêt</button></div>`;
+  return h;
+}
+V310_VIEWS.loan = () => ({ head: header({ back: true, kicker: 'Fiche du joueur', title: 'Prêt à un autre club' }), body: loanPage() });
+let loanT = 0;
+INPUTS.push((t) => {
+  if (t.dataset.loanq && S.loan) {
+    S.loan.q = t.value; clearTimeout(loanT);
+    loanT = setTimeout(async () => { const q = (S.loan?.q || '').trim(); if (q.length < 2) { S.loan.res = null; return render(true); } const { data } = await sb.rpc('public_search_clubs', { p_query: q, p_sport: null }); if (!S.loan) return; S.loan.res = (data || []).filter((c) => c.id !== S.clubId).slice(0, 8); const pos = t.selectionStart; render(true); const n = document.getElementById('loanq'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch { /* */ } } }, 300);
+    return true;
+  }
+  return false;
+});
+Object.assign(ACTIONS, {
+  loannew: (el, d) => { S.loan = { pid: d.id, dir: 'sortant', q: '', res: null, club: null }; S.view = { type: 'loan' }; render(); },
+  loandir: (el, d) => { S.loan.dir = d.v; render(true); },
+  loanpick: (el, d) => { S.loan.club = (S.loan.res || []).find((c) => c.id === d.id) || null; render(true); },
+  loanclr: () => { S.loan.club = null; render(true); },
+  loansave: async () => {
+    const L = S.loan; if (!L) return;
+    const name = (document.getElementById('loann')?.value || '').trim(), city = (document.getElementById('loanc')?.value || '').trim();
+    if (!L.club && (name.length < 2 || !city)) return toast('Choisis le club dans la liste, ou écris son nom et sa ville.');
+    const id = await run(sb.rpc('set_player_loan', { p_player: L.pid, p_dir: L.dir, p_club: L.club?.id || null, p_name: L.club ? null : name, p_city: L.club ? null : city }));
+    if (id) { toast(L.dir === 'sortant' ? 'Prêt enregistré : le joueur reste compté dans ton club.' : 'Prêt enregistré : le joueur n’est pas compté dans la facture de ton club.'); S.loan = null; S.loansClub = null; ACTIONS.back(); }
+  },
+  loanend: async (el, d) => { if (!armed('loanend' + d.id)) return; if (await run(sb.rpc('end_player_loan', { p_player: d.id }), 'Prêt terminé.')) { S.loansClub = null; render(true); } },
 });
 
 export { canReport, plural, teamName, refresh, FORMS };
