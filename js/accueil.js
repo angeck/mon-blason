@@ -16,7 +16,8 @@ export function homeTitle() {
   return `Salut ${esc(first)} !<br>${todo ? plural(todo, 'réponse à donner', 'réponses à donner') + '.' : 'Tout est à jour.'}`;
 }
 export function homeTab() {
-  const fut = homeEvents(), today = fut.filter(isToday), todo = fut.filter(needsAnswer), next = todo.find((e) => !isToday(e));
+  // bêta 1.7.0 · n° 294 : un rendez-vous dont le score est saisi quitte la liste de l'Accueil : l'encart « Résultat » le remplace (plus de doublon)
+  const fut = homeEvents().filter((e) => !e.scores?.length), today = fut.filter(isToday), todo = fut.filter(needsAnswer), next = todo.find((e) => !isToday(e));
   // 5.5.0 : l'encart « Pour bien démarrer » remplace, tant qu'il est là, les cartes installer, notifications, bienvenue (n° 196) et fonction (n° 122)
   const ob = hooks.obHome ? hooks.obHome() : '';
   let h = (hooks.pendNotif ? hooks.pendNotif() : '') + clubTrashBanner() + sendBanner() + presidencyCard() + (hooks.renfortHome ? hooks.renfortHome() : '') + (ob || contactAsk() + pushHome()) + (hooks.welcomeHome && !hooks.obHome ? hooks.welcomeHome() : ''); // 5.1.0 (n° 196) : bienvenue // n° 122 : encart jaune de la fonction reçue // n° 114 : club dans la corbeille, présidence proposée ; puis l'encart des notifications

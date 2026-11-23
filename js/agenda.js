@@ -35,7 +35,17 @@ export const OPEN_DAYS = 7;
 // - Rendez-vous d'équipe (entraînement, match, plateau, tournoi) : 7 jours avant sa date, ou s'il est le prochain rendez-vous
 //   de l'équipe, toutes sortes confondues. Une fois le prochain entraînement ou match répondu, les suivants (à plus d'une semaine) ne sont plus en encart.
 // - Rendez-vous du club ou autre rendez-vous : l'encart reste jusqu'à la réponse (sauf série : la prochaine séance, ou 7 jours avant).
+// bêta 1.7.0 · n° 289 (Gaël, 21 novembre) : un ENTRAÎNEMENT entre dans « À répondre » une semaine avant (créer la saison d'un coup
+// ne fait plus de bruit), ou tout de suite si l'organisateur l'a poussé (« Faire apparaître maintenant », events.pushed_at).
+// Match, plateau, tournoi et tout autre rendez-vous : dès la création. L'Agenda et « Voir plus » montrent toujours tout.
 export function isOpen(e) {
+  const now = Date.now(), t = new Date(e.starts_at).getTime();
+  if (t <= now + OPEN_DAYS * 864e5 || e.pushed_at) return true;
+  if (e.type === 'Entraînement') return false;
+  return true;
+}
+// (règle d'avant la 1.7.0, gardée pour mémoire : prochain rendez-vous de l'équipe ou de la série)
+export function isOpenOld(e) {
   const now = Date.now(), t = new Date(e.starts_at).getTime();
   if (t <= now + OPEN_DAYS * 864e5) return true;
   let rival;
@@ -189,35 +199,65 @@ export function scoreSum(e) {
   if (L.length === 1) { const l = L[0], k = w ? 'v' : lo ? 'd' : 'n'; return { k, text: (w ? 'Victoire ' : lo ? 'Défaite ' : 'Nul ') + l.us + ' – ' + l.them + (l.opponent ? ' contre ' + l.opponent : '') + (l.forfeit ? ' (forfait)' : '') }; }
   return { k: w > lo ? 'v' : lo > w ? 'd' : 'n', text: plural(w, 'victoire') + ', ' + plural(lo, 'défaite') + (d ? ', ' + plural(d, 'nul') : '') };
 }
+// bêta 1.7.0 · n° 294 : sports à sets (volley ; plus tard tennis, tennis de table) : le coach saisit les sets, le score du match en découle
+export const setSport = () => /volley|tennis/i.test(club()?.sport || '');
+const NSETS = 5;
+const setsOf = (l) => (Array.isArray(l?.sets) ? l.sets.filter((x) => Array.isArray(x) && Number.isFinite(x[0]) && Number.isFinite(x[1])) : []);
+export const setsText = (l, flip) => setsOf(l).map((x) => (flip ? x[1] + '-' + x[0] : x[0] + '-' + x[1])).join(' · ');
 const canScore = (e) => ['Match', 'Plateau', 'Tournoi'].includes(e.type) && !e.cancelled && canCallRoll(e) && new Date(e.starts_at) <= Date.now();
 function scoreBlock(e) {
   if (!['Match', 'Plateau', 'Tournoi'].includes(e.type) || e.cancelled) return '';
   const sum = scoreSum(e), team = teamsLabel(evTeams(e)) || 'Nous';
   if (S.score?.eid === e.id) {
     const L = S.score.lines;
+    if (setSport()) { // n° 294 : une grille de sets par rencontre ; le score du match (sets gagnés) est calculé
+      const opp = (l) => esc(l.opponent || 'Adversaire'), cell = (l, i, k, j) => { const v = (l.sets || [])[k]?.[j]; return `<input name="s${i}_${k}_${j}" type="number" min="0" max="99" inputmode="numeric" value="${Number.isFinite(v) ? v : ''}" aria-label="Set ${k + 1}, ${j ? 'adversaire' : esc(team)}">`; };
+      return `<form id="scoref" class="card lift"><div class="kick">Score · ${esc(team)}</div>${L.map((l, i) => `<div class="score-l setsl"><input name="o${i}" value="${esc(l.opponent || '')}" placeholder="Adversaire" aria-label="Adversaire ${i + 1}" maxlength="80"><button type="button" class="btn ghost small" style="width:48px;padding:0" data-act="scrm" data-i="${i}" aria-label="Retirer cette rencontre" ${L.length > 1 ? '' : 'disabled'}>${icon('trash', 18)}</button></div>
+        <div class="setgrid"><span></span>${Array.from({ length: NSETS }, (_, k) => `<span class="det">Set ${k + 1}</span>`).join('')}<b>${esc(team)}</b>${Array.from({ length: NSETS }, (_, k) => cell(l, i, k, 0)).join('')}<b>${opp(l)}</b>${Array.from({ length: NSETS }, (_, k) => cell(l, i, k, 1)).join('')}</div>
+        <p class="note">Score du match : <b>${l.us === '' ? '—' : l.us + ' – ' + l.them}</b> (calculé avec les sets)</p><label class="check" style="margin-top:-4px"><input type="checkbox" name="f${i}" ${l.forfeit ? 'checked' : ''}><span>Forfait</span></label>`).join('')}
+      <button type="button" class="btn ghost small" data-act="scadd">+ 1 rencontre</button><div class="btns"><button class="btn main" type="submit">Valider</button><button type="button" class="btn ghost" data-act="sccancel">Annuler</button></div></form>`;
+    }
     return `<form id="scoref" class="card lift"><div class="kick">Score · ${esc(team)}</div>${L.map((l, i) => `<div class="score-l"><input name="o${i}" value="${esc(l.opponent || '')}" placeholder="Adversaire" aria-label="Adversaire ${i + 1}" maxlength="80"><input name="u${i}" type="number" min="0" max="999" inputmode="numeric" value="${esc(l.us ?? '')}" aria-label="Score de ${esc(team)}" required><span>–</span><input name="t${i}" type="number" min="0" max="999" inputmode="numeric" value="${esc(l.them ?? '')}" aria-label="Score de l'adversaire" required><button type="button" class="btn ghost small" style="width:48px;padding:0" data-act="scrm" data-i="${i}" aria-label="Retirer cette ligne" ${L.length > 1 ? '' : 'disabled'}>${icon('trash', 18)}</button></div><label class="check" style="margin-top:-4px"><input type="checkbox" name="f${i}" ${l.forfeit ? 'checked' : ''}><span>Forfait</span></label>`).join('')}
-      <button type="button" class="btn ghost small" data-act="scadd">${icon('plus', 18)}+ 1 rencontre</button><div class="btns"><button class="btn main" type="submit">Valider</button><button type="button" class="btn ghost" data-act="sccancel">Annuler</button></div></form>`;
+      <button type="button" class="btn ghost small" data-act="scadd">+ 1 rencontre</button><div class="btns"><button class="btn main" type="submit">Valider</button><button type="button" class="btn ghost" data-act="sccancel">Annuler</button></div></form>`;
   }
   let h = '';
-  if (sum) h += `<div class="card"><div class="kick">Résultat${e.score_edited ? ' · modifié' : ''}</div><span class="pill res-${sum.k}" style="font-size:16px;align-self:flex-start">${esc(sum.text)}</span>${(e.scores || []).length > 1 ? `<div class="list">${e.scores.map((l) => `<div class="row static"><span class="g">${esc(team)} ${l.us} – ${l.them} ${esc(l.opponent || 'adversaire')}${l.forfeit ? ' · forfait' : ''}</span><span class="pill res-${l.us > l.them ? 'v' : l.us < l.them ? 'd' : 'n'}">${l.us > l.them ? 'V' : l.us < l.them ? 'D' : 'N'}</span></div>`).join('')}</div>` : ''}${canScore(e) ? `<button class="btn ghost small" data-act="scedit" data-id="${e.id}">Corriger le score</button>` : ''}</div>`;
+  if (sum) h += `<div class="card"><div class="kick">Résultat${e.score_edited ? ' · modifié' : ''}</div><span class="pill res-${sum.k}" style="font-size:16px;align-self:flex-start">${esc(sum.text)}</span>${(e.scores || []).length === 1 && setsText(e.scores[0]) ? `<span class="det">Sets : ${esc(setsText(e.scores[0]))}</span>` : ''}${(e.scores || []).length > 1 ? `<div class="list">${e.scores.map((l) => `<div class="row static"><span class="g">${esc(team)} ${l.us} – ${l.them} ${esc(l.opponent || 'adversaire')}${l.forfeit ? ' · forfait' : ''}${setsText(l) ? `<small>${esc(setsText(l))}</small>` : ''}</span><span class="pill res-${l.us > l.them ? 'v' : l.us < l.them ? 'd' : 'n'}">${l.us > l.them ? 'V' : l.us < l.them ? 'D' : 'N'}</span></div>`).join('')}</div>` : ''}${canScore(e) ? `<button class="btn ghost small" data-act="scedit" data-id="${e.id}">Corriger le score</button>` : ''}</div>`;
   else if (canScore(e)) h += `<button class="btn main" data-act="scedit" data-id="${e.id}">Mettre le score</button>`;
   return h;
 }
 function keepScore() {
   const fm = document.getElementById('scoref'); if (!fm || !S.score) return; const v = Object.fromEntries(new FormData(fm));
+  if (setSport()) { // n° 294 : les sets donnent le score du match
+    S.score.lines = S.score.lines.map((l, i) => {
+      const sets = []; for (let k = 0; k < NSETS; k++) { const a = v[`s${i}_${k}_0`], b = v[`s${i}_${k}_1`]; if (a !== '' && a != null && b !== '' && b != null) sets.push([+a, +b]); }
+      const w = sets.filter((x) => x[0] > x[1]).length, lo = sets.filter((x) => x[0] < x[1]).length;
+      return { opponent: v['o' + i] || '', sets, us: sets.length ? w : '', them: sets.length ? lo : '', forfeit: !!v['f' + i] };
+    });
+    return;
+  }
   S.score.lines = S.score.lines.map((l, i) => ({ opponent: v['o' + i] || '', us: v['u' + i] === '' ? '' : +v['u' + i], them: v['t' + i] === '' ? '' : +v['t' + i], forfeit: !!v['f' + i] }));
 }
 FORMS.scoref = async () => {
   keepScore(); const L = S.score.lines;
+  if (setSport()) {
+    if (L.some((l) => !l.sets.length)) { render(true); return toast('Indique au moins un set pour chaque rencontre (un forfait : 25-0 par set).'); }
+    if (L.some((l) => l.sets.some((x) => x[0] === x[1]))) { render(true); return toast('Un set ne peut pas finir à égalité.'); }
+  }
   if (L.some((l) => l.us === '' || l.them === '')) return toast('Indique les deux scores de chaque rencontre.');
   const n = await run(sb.rpc('set_score', { p_event: S.score.eid, p_lines: L }));
   if (n !== null) { const e = S.events.find((x) => x.id === S.score.eid); if (e) { e.score_edited = !!e.scores; e.scores = L; } S.score = null; toast('Score enregistré : les joueurs, les familles et les supporteurs de l’équipe le voient sur leur Accueil.'); await refresh(); }
 };
 Object.assign(ACTIONS, {
   scedit: (el, d) => { const e = S.events.find((x) => x.id === d.id), opp = (e.opponents || '').split(',').map((x) => x.trim()).filter(Boolean); S.score = { eid: e.id, lines: e.scores?.length ? e.scores.map((l) => ({ ...l })) : (opp.length ? opp : ['']).map((o) => ({ opponent: o, us: '', them: '', forfeit: false })) }; render(true); },
-  scadd: () => { keepScore(); if (S.score.lines.length >= 20) return toast('Vingt rencontres au plus.'); const e = S.events.find((x) => x.id === S.score.eid), opp = (e.opponents || '').split(',').map((x) => x.trim()).filter(Boolean); S.score.lines.push({ opponent: opp[S.score.lines.length] || '', us: '', them: '', forfeit: false }); render(true); },
+  scadd: () => { keepScore(); if (S.score.lines.length >= 20) return toast('Vingt rencontres au plus.'); const e = S.events.find((x) => x.id === S.score.eid), opp = (e.opponents || '').split(',').map((x) => x.trim()).filter(Boolean); S.score.lines.push({ opponent: opp[S.score.lines.length] || '', us: '', them: '', sets: [], forfeit: false }); render(true); },
   scrm: (el, d) => { keepScore(); S.score.lines.splice(+d.i, 1); render(true); },
   sccancel: () => { S.score = null; render(true); },
+  // n° 289 : pousser l'encart d'un entraînement avant la semaine (deux touches : une notification part)
+  evpushnow: async (el, d) => {
+    if (!armed('evpushnow' + d.id)) return;
+    const n = await run(sb.rpc('event_push_now', { p_event: d.id }));
+    if (n !== null) { const e = S.events.find((x) => x.id === d.id); if (e) e.pushed_at = new Date().toISOString(); toast(n ? plural(n, 'personne prévenue', 'personnes prévenues') + ' : l’entraînement est dans « À répondre ».' : 'C’est fait : l’entraînement est dans « À répondre ».'); await refresh(); }
+  },
 });
 
 function statusPill(e) {
@@ -386,11 +426,15 @@ export function eventPage(id) {
   // n° 165 (Gaël, 9 novembre 2026) : répondre « non » ne masque rien ; une case à part masque le rendez-vous, quelle que soit la réponse.
   // Masqué avec « oui » : la personne est quand même prévenue d'une annulation ou d'un changement de date ou d'heure (vérifié par la base).
   if (!coachOnly(e)) h += `<div class="card flat"><label class="check"><input type="checkbox" data-hideev="${id}" ${hiddenByMe(e) ? 'checked' : ''}><span><b>Masquer ce rendez-vous de mon agenda</b><br><span class="det">${R.mine === 'oui' || myKidsIn(evTeams(e)).some((p) => R.kid(p.id) === 'oui') ? 'Tu as répondu « oui » : tu seras quand même prévenu s’il est annulé ou si sa date ou son heure change.' : 'Tu ne recevras plus de notification pour ce rendez-vous. Filtre « Masqués » de l’Agenda pour le retrouver.'}</span></span></label></div>`;
+  // bêta 1.7.0 · n° 289 : entraînement pas encore dans « À répondre » : l'organisateur peut le faire apparaître tout de suite (une notification)
+  if (man && !e.cancelled && !isOpen(e) && new Date(e.starts_at) > Date.now())
+    h += `<div class="card flat"><div class="kick">Pas encore dans « À répondre »</div><p class="note">Cet entraînement arrivera dans « À répondre » le ${esc(fmtDay(opensOn(e)))}, sans notification à sa création. Rappel automatique 72 h avant à ceux qui n’ont pas répondu.</p><button class="btn small main" data-act="evpushnow" data-id="${id}">${isArmed('evpushnow' + id) ? 'Touche encore : tout le monde sera prévenu' : 'Faire apparaître maintenant'}</button></div>`;
   if (man && !e.cancelled && new Date(e.starts_at) > Date.now()) {
     const recent = e.reminded_at && Date.now() - new Date(e.reminded_at) < 12 * 3600e3;
     h += `<div class="card flat"><div class="kick">Relance</div>${(e.convoked || []).length ? `<span class="pill blue">${plural(e.convoked.length, 'joueur convoqué', 'joueurs convoqués')}</span>` : ''}<button class="btn small ${recent ? 'ghost' : 'main'}" data-act="evremind" data-id="${id}" ${recent ? 'disabled' : ''}>${recent ? 'Relance faite à ' + hm(new Date(e.reminded_at)) : 'Relancer les sans-réponse'}</button><p class="note">Un rappel s'affiche en haut de l'Accueil des personnes qui n'ont pas répondu (une relance toutes les 12 heures).</p></div>`;
   }
   h += scoreBlock(e);
+  h += hooks.reportBtn ? hooks.reportBtn(e) : ''; // bêta 1.7.0 · n° 292 : « Signaler un problème » (b170.js)
   h += (hooks.convocBlock || (() => ''))(e);
   h += missionsBlock(e);
   const plans = (S.evPlans || []).filter((p) => p.event_id === id);

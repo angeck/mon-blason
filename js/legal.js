@@ -9,7 +9,7 @@ import { BRAND, IS_PROD } from '../config.js';
 const LIEU = IS_PROD ? 'France, à Paris' : 'Irlande';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.11', date: '20 novembre 2026' }; // 1.11 (bêta 1.6.0) : équipe en entente vue des deux clubs (n° 78)
+export const LEGAL = { version: '1.12', date: '23 novembre 2026' }; // 1.12 (bêta 1.7.0) : signalement d'un problème (n° 292), contact du coach dans la convocation (n° 295) ; 1.11 (bêta 1.6.0) : équipe en entente vue des deux clubs (n° 78)
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -103,7 +103,7 @@ Contact pour toute question : ${C}.
 - **Fiche d'un joueur** : nom, prénom, date de naissance, équipe ; e-mail et téléphone d'un parent et contact d'urgence, quand le club les note ; autorisations notées par la famille ou le club (rentrer seul, soins d'urgence, covoiturage) ; réponse de chaque parent sur le droit à l'image.
 - **Réglages** : équipes suivies, réglages de l'application, abonnement aux notifications sur chaque appareil, avancée du guide « Pour bien démarrer ».
 - **Signalements** : un message signalé garde la trace de la personne qui l'a signalé et de la date.
-- **Vie du club** : rendez-vous et réponses, présences (avec l'heure d'arrivée notée à l'appel), convocations, messages et groupes d'échange, sondages, missions de bénévole.
+- **Vie du club** : rendez-vous et réponses, présences (avec l'heure d'arrivée notée à l'appel), convocations, messages et groupes d'échange, sondages, missions de bénévole, signalements d'un problème lors d'un rendez-vous.
 - **Entraîneurs** : heures, taux horaire et montants, visibles du président et de la trésorerie.
 - **Licence et cotisation** : état de la licence, cotisation, remise éventuelle, versements notés, demandes d'attestation de paiement ; visibles du bureau, et du parent ou du joueur majeur pour sa propre fiche (c'est là qu'il demande une attestation).
 - **Attestations de paiement** : demande (nom du demandeur), attestation délivrée en PDF, signature en image de la personne qui la délivre (gardée avec son compte) ; coordonnées, numéro SIRET ou RNA et cachet du club, réglés par le président.
@@ -137,6 +137,8 @@ Vos données ne servent ni à de la publicité, ni à de la revente, ni à étab
 - **Les coordonnées des familles** (e-mail, téléphone, contact d'urgence) ne sont visibles, pour tout le club, que du président, du secrétariat, de la trésorerie, du directeur technique (sauf si le président les lui masque), du contact licences et du contact rencontres. Le vice-président, la communication, le sponsoring, les événements et les autres fonctions ne les voient pas.
 - **Dans Messages**, chacun ne peut inviter dans un groupe que les personnes avec qui il a un lien : le bureau (tout le monde peut lui écrire), les coachs et les membres de son équipe ou de celle de son enfant, les autres coachs s'il est coach ; le bureau peut écrire à tout le club. Les noms apparaissent sous la forme « Prénom N. », sauf pour le bureau et le coach de l'équipe.
 - **Équipe en entente entre deux clubs** : une fois l'entente acceptée par les deux clubs, les membres de l'autre club qui font partie de l'équipe (joueurs, parents, coachs) voient l'équipe et ses rendez-vous, et y répondent. Un joueur de l'autre club leur apparaît sous la forme « Prénom N. ». Les coachs de l'équipe, des deux clubs, voient les joueurs de toute l'équipe ; le bureau du club qui porte l'équipe voit leurs fiches ; le bureau de l'autre club ne voit que les fiches de son club. Les licences, cotisations et coordonnées restent gérées par chaque club pour ses joueurs. Il n'y a pas de messages entre les deux clubs. Les deux clubs sont responsables ensemble de ces données ; l'entente cesse dès que le club qui porte l'équipe la retire.
+- **Signalement d'un problème** : depuis un rendez-vous, le coach de l'équipe, le directeur technique, le vice-président et le président peuvent signaler un problème matériel, ou un problème humain qui nomme un enfant de l'équipe. Un signalement n'est lu que par le coach de l'équipe, le directeur technique, le vice-président et le président. Il ne doit contenir aucune information médicale. La notification envoyée ne contient ni le texte, ni le nom de l'enfant.
+- **Contact du coach dans la convocation** : la convocation envoyée aux clubs reçus donne le nom du coach de chaque équipe. Son téléphone ou son adresse e-mail n'y figurent que s'il l'a choisi dans « Mon compte » (rien par défaut) ; il peut changer d'avis à tout moment.
 - **Le président du club** voit les messages signalés dans les groupes du club, avec leur auteur ; il peut aussi retirer l'accès d'un joueur à son club.
 - **Le contact du club** choisit lui-même si son e-mail ou son téléphone est affiché aux personnes connectées.
 - **Une personne non connectée** ne voit que la liste des clubs.
@@ -161,6 +163,7 @@ Les e-mails nécessaires au service sont toujours envoyés : convocation, change
 | Compte que vous supprimez | 30 jours de corbeille, puis effacement |
 | Accès et fiche retirés par le président du club | 30 jours de corbeille (le président peut les restaurer), puis effacement |
 | Message signalé | Gardé avec son signalement, visible du président du club, tant que le message existe |
+| Signalement d'un problème lors d'un rendez-vous | Durée en cours de décision (version de test) ; effacé avec le club |
 | Présences | Rendues anonymes après 1 saison |
 | Messages et groupes | 2 saisons |
 | Appareils de connexion | Effacés après 12 mois sans usage |

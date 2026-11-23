@@ -34,7 +34,8 @@ import './js/v511.js'; // 5.11.0 : n° 227 banque d'exercices dans le menu de ga
 import './js/v56.js'; // 5.6.0 : n° 202 compte administrateur (espace admin, double vérification)
 import './js/v515.js'; // 5.15.0 : n° 239, 242, 243, 246
 import './js/v517.js'; // 5.17.0 : n° 254 (gymnases du club), n° 257 (notifications proposées après une demande)
-import './js/b110.js'; // bêta 1.1.0 : n° 244 (espace Président « pro », aperçu de chaque fonction au même modèle)
+import './js/b110.js';
+import './js/b170.js'; // bêta 1.7.0 : n° 292 (signaler un problème), 295 (contact du coach), 293 (prêt), 78 suites // bêta 1.1.0 : n° 244 (espace Président « pro », aperçu de chaque fonction au même modèle)
 import './js/v55.js'; // 5.5.0 : onboarding « Pour bien démarrer », FAQ (Aide), n° 164 justificatif d'adhésion
 import { validationReminders } from './js/v54.js'; // 5.4.0 : n° 201 (conversation avec un mineur), n° 84 (rattacher), transfert d'une convocation, n° 182
 import './js/v51.js'; // 5.1.0 : n° 189 (retour du téléphone), 190 (pastilles des rôles), 191 (demandes), 196 (bienvenue)
@@ -161,6 +162,22 @@ const onScroll = () => {
   document.body.classList.toggle('scrolled', on);
 };
 addEventListener('scroll', onScroll, { passive: true }); addEventListener('resize', onScroll, { passive: true });
+// bêta 1.7.0 · n° 291 : bouton rond « ↑ » pour remonter en haut d'une page longue (toutes les pages qui défilent, trois supports).
+// Il apparaît après environ deux écrans de défilement ; il se place au-dessus de la barre d'onglets (téléphone) et des barres fixes du bas
+// (barre de l'éditeur de schéma, appel, sélection, bouton « Pour bien démarrer », zone de saisie des messages).
+const toTop = document.createElement('button');
+toTop.type = 'button'; toTop.id = 'totop'; toTop.hidden = true; toTop.setAttribute('aria-label', 'Remonter en haut de la page');
+toTop.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+toTop.addEventListener('click', () => scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }));
+document.body.appendChild(toTop);
+const placeTop = () => {
+  const show = scrollY > innerHeight * 2 && !document.querySelector('.docview,.obov,.pipov');
+  toTop.hidden = !show; if (!show) return;
+  let lift = 0;
+  document.querySelectorAll('.sttool,.rollfoot,.selbar div,.obpill,.compose').forEach((el) => { const r = el.getBoundingClientRect(); if (r.height && r.top < innerHeight && r.bottom > innerHeight - 220) lift = Math.max(lift, innerHeight - r.top); });
+  toTop.style.bottom = Math.max(innerWidth < 600 ? 96 : 24, lift + 12) + 'px';
+};
+addEventListener('scroll', placeTop, { passive: true }); addEventListener('resize', placeTop, { passive: true });
 
 // ---------- temps réel ----------
 function subscribe() {

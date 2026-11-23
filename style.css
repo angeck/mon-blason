@@ -237,6 +237,10 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .selbar div{width:100%;max-width:528px;background:var(--pc-aplat);color:var(--pc-aplat-texte);border-radius:24px;padding:10px 12px 10px 18px;display:flex;align-items:center;gap:10px;box-shadow:var(--pc-ombre)}
 .selbar span{flex:1;font-weight:700}
 
+/* bêta 1.7.0 · n° 291 : bouton « ↑ » (la hauteur est réglée par app.js selon les barres fixes du bas) */
+#totop{position:fixed;right:16px;bottom:96px;z-index:7;width:52px;height:52px;border-radius:26px;border:0;background:var(--pc-action);color:var(--pc-action-texte);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px rgba(17,22,46,.25);cursor:pointer}
+#totop[hidden]{display:none}
+@media (min-width:600px){#totop{right:max(16px,calc(50% - 504px))}}
 #toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);z-index:20;max-width:92vw;background:var(--pc-aplat);color:var(--pc-aplat-texte);padding:12px 20px;border-radius:24px;font-weight:700;box-shadow:var(--pc-ombre)}
 
 /* ---------- Ordinateur : onglets en colonne à gauche ---------- */
@@ -380,6 +384,25 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .score-l{display:grid;grid-template-columns:1fr 64px 12px 64px 48px;gap:6px;align-items:center}
 .score-l input{min-height:48px;border:2px solid var(--pc-trait);border-radius:12px;padding:4px 8px;width:100%}
 .score-l input[type=number]{text-align:center;font-weight:800;font-size:18px}
+/* bêta 1.7.0 · n° 292 : signaler un problème */
+.stseg.repseg{display:flex;width:100%}.stseg.repseg button{flex:1}
+.repmed{background:var(--pc-attente-fond);color:var(--pc-attente-texte);border-radius:12px;padding:8px 12px;margin:0}
+.repbtn{align-self:flex-start}
+/* bêta 1.7.0 · n° 294 : sets (volley) et encart « Résultat » de l'Accueil */
+.setgrid{display:grid;grid-template-columns:minmax(64px,1.4fr) repeat(5,minmax(0,1fr));gap:6px;align-items:center}
+.setgrid .det{text-align:center;font-size:12px}
+.setgrid b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.setgrid input{min-height:44px;width:100%;border:2px solid var(--pc-trait);border-radius:12px;padding:2px;text-align:center;font-weight:800;font-size:17px;background:var(--pc-papier);color:var(--pc-texte-ecran)}
+.score-l.setsl{grid-template-columns:1fr 48px}
+.resc{border:0;border-left:6px solid;text-align:left;font:inherit;color:inherit}
+.resl{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;font-weight:700;text-align:center}
+.resl b{font-family:var(--pc-titre);font-size:34px;line-height:1}
+.resv{font-family:var(--pc-titre);font-size:30px;text-align:center;text-transform:uppercase;letter-spacing:.02em;line-height:1.1}
+.res-t-v{color:var(--pc-oui-texte)}.res-t-d{color:var(--pc-non-texte)}.res-t-n{color:var(--pc-texte-doux)}
+.resset{text-align:center}
+.reslist{display:flex;flex-direction:column;gap:6px}
+.resrow{display:flex;align-items:center;gap:8px;justify-content:space-between;border-top:1px solid var(--pc-trait);padding-top:6px}
+.resrow small{display:block;color:var(--pc-texte-doux)}
 .res-v{background:var(--pc-oui-fond);color:var(--pc-oui-texte)}.res-d{background:var(--pc-non-fond);color:var(--pc-non-texte)}.res-n{background:var(--pc-neutre-fond);color:var(--pc-texte-doux)}
 /* n° 76 · réorganiser les blocs */
 .blk{position:relative;display:flex;flex-direction:column;gap:12px}
@@ -530,12 +553,16 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 .stseg button+button{border-left:2px solid var(--pc-trait)}
 .stseg button[aria-pressed=true]{background:var(--pc-action);color:var(--pc-action-texte)}
 @media (min-width:600px){.sttool{bottom:12px}}
+/* bêta 1.7.0 · n° 290 : le cercle apparaît à l'impact puis disparaît ; le ballon rapetisse et regrossit (vue de dessus) */
 .stbnc.anim{animation:stbnc .8s ease both}
-@keyframes stbnc{0%,40%{opacity:0}55%{opacity:1;stroke-width:3.5}100%{opacity:.75}}
+@keyframes stbnc{0%,40%{opacity:0}52%{opacity:1;stroke-width:3.5}75%,100%{opacity:0}}
+.stbz{transform-box:fill-box;transform-origin:center}
+@keyframes stbz{0%,100%{transform:scale(1)}50%{transform:scale(.6)}}
+@keyframes stbzs{0%,100%{transform:scale(1)}50%{transform:scale(1.45)}}
 /* bêta 1.6.0 · n° 274 : dribble, un cercle à chaque rebond, qui apparaît au passage du ballon */
 .stdrb.anim{animation:stdrb .3s ease both}
-@keyframes stdrb{0%{opacity:0}50%{opacity:1;stroke-width:3.5}100%{opacity:.75}}
-@media (prefers-reduced-motion:reduce){.stbnc.anim,.stdrb.anim{animation:none}}
+@keyframes stdrb{0%{opacity:0}45%{opacity:1;stroke-width:3.5}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.stbnc.anim,.stdrb.anim{animation:none;opacity:0}.stbz{animation:none!important}}
 .dmini .stsvg{width:46px;border-radius:6px}
 @media (min-width:700px){.stp,.stedit .stsvg{max-width:420px}}
 

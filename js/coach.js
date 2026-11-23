@@ -502,13 +502,13 @@ export function statsPage() {
   <div class="chips">${[['mois', 'Ce mois'], ['3mois', '3 derniers mois'], ['saison', 'Saison']].map(([k, l]) => `<button class="chip" data-act="stper" data-v="${k}" aria-pressed="${st.period === k}">${l}</button>`).join('')}</div>`;
   if (S.cload || !st.rows) return h + '<p class="empty">Chargement…</p>';
   const sessions = new Set(st.detail.map((d) => d.event_id)).size;
-  if (!sessions) return h + '<div class="card"><p class="empty">Aucune séance pointée sur cette période.</p><p class="note">Seules les séances dont l’appel est fait comptent. Fais l’appel depuis le rendez-vous.</p></div>';
+  if (!sessions) return h + '<div class="card"><p class="empty">Aucune séance pointée sur cette période.</p><p class="note">Seules les séances dont l’appel est fait comptent. Fais l’appel depuis le rendez-vous.</p></div>' + (hooks.reportsBlock ? hooks.reportsBlock(st.team) : '');
   const tot = st.rows.reduce((o, r) => ({ s: o.s + r.sessions, p: o.p + r.present + r.late, l: o.l + r.late, ya: o.ya + r.yes_absent, an: o.an + r.answered }), { s: 0, p: 0, l: 0, ya: 0, an: 0 });
   h += `<div class="grid2"><div class="card lift"><span class="big">${pct(tot.p, tot.s)}</span><span class="det">assiduité · ${plural(sessions, 'séance pointée', 'séances pointées')}</span></div><div class="card lift"><span class="big">${pct(tot.an, tot.s)}</span><span class="det">réponses données avant la séance</span></div></div>`;
   h += `<div class="btns"><button class="btn" data-act="stxlsx">${icon('down', 20)}Excel</button><button class="btn ghost" data-act="stpdf">${icon('doc', 20)}PDF</button></div><button class="klink" data-act="stpdfn" style="align-self:flex-start">Tableau détaillé avec les noms (PDF)</button>`;
   h += `<div class="card" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Joueur</th><th>Présence</th><th>Retards</th><th>Absences</th><th>A répondu</th><th>Oui mais absent</th><th>Non mais venu</th></tr></thead><tbody>${st.rows.map((r) => `<tr><td><b>${esc(r.first_name)} ${esc(r.last_name)}</b></td><td>${pct(r.present + r.late, r.sessions)}</td><td>${r.late}</td><td>${r.absent}</td><td>${pct(r.answered, r.sessions)}</td><td>${r.yes_absent ? `<span class="pill ko">${r.yes_absent}</span>` : 0}</td><td>${r.no_present}</td></tr>`).join('')}</tbody></table></div>`;
   h += '<p class="note">Fiabilité : « Oui mais absent » = a répondu « Je viens » puis n’est pas venu. Un retard compte comme une présence. Une séance sans appel ne compte pas.</p>';
-  return h;
+  return h + (hooks.reportsBlock ? hooks.reportsBlock(st.team) : ''); // bêta 1.7.0 · n° 292 : signalements de l'équipe
 }
 const sheetName = (s, used) => { let b = cleanFile(s).replace(/[[\]]/g, '').slice(0, 28) || 'Joueur', n = b, i = 2; while (used.has(n)) n = b.slice(0, 25) + ' ' + i++; used.add(n); return n; };
 const ST = { present: ['P', 'C8F0D4'], retard: ['R', 'FFE8A3'], absent: ['A', 'FFC9C9'] };

@@ -7,7 +7,7 @@ import {
 } from './core.js';
 import { BRAND } from '../config.js';
 import { icon, field } from './ui.js';
-import { scoreSum } from './agenda.js';
+import { scoreSum, setsText } from './agenda.js';
 
 const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const monthOf = (d) => { const x = new Date(d + (String(d).length === 10 ? 'T12:00' : '')); return MONTHS[x.getMonth()]; };
@@ -85,10 +85,31 @@ FORMS.hcf = async (v) => {
 
 // ---------- n° 77 · résultats ----------
 const linked = (e) => evTeams(e).some((t) => coachOf(t) || iPlayIn([t]) || myKidsIn([t]).length || follows(t));
-const fresh = (e) => e.scores?.length && e.score_at && Date.now() - new Date(e.score_at) < 3 * 864e5;
+// bêta 1.7.0 · n° 294 : l'encart reste 36 h à partir de la saisie du score (une correction ne relance pas le compte), ou jusqu'à lecture.
+// Il remplace la carte du rendez-vous sur l'Accueil (accueil.js) : équipes, scores, Victoire / Défaite / Nul en gros ; ni lieu ni adresse ;
+// l'équipe qui reçoit passe en premier ; sets pour le volley.
+export const resultFresh = (e) => !!(e.scores?.length && e.score_at && Date.now() - new Date(e.score_at) < 36 * 3600e3);
+const fresh = resultFresh;
+const VERD = { v: 'Victoire', d: 'Défaite', n: 'Nul' }, kOf = (l) => (l.us > l.them ? 'v' : l.us < l.them ? 'd' : 'n');
+function resLine(e, l, team) {
+  const home = e.at_home !== false, opp = l.opponent || 'Adversaire';
+  const [a, x, y, b] = home ? [team, l.us, l.them, opp] : [opp, l.them, l.us, team];
+  return { a, x, y, b, sets: setsText(l, !home), k: kOf(l), ff: !!l.forfeit };
+}
 export function resultsHome() {
   const list = S.events.filter((e) => fresh(e) && linked(e) && !store.get('pc_sr_' + e.id)).sort((a, b) => b.score_at.localeCompare(a.score_at)).slice(0, 3);
-  return list.map((e) => { const s = scoreSum(e), d = new Date(e.starts_at).toLocaleDateString('fr-FR', { weekday: 'long' }); return `<button class="card" data-act="scread" data-id="${e.id}" style="border:0;text-align:left;font:inherit;color:inherit;border-left:6px solid ${s.k === 'v' ? 'var(--pc-oui-texte)' : s.k === 'd' ? 'var(--pc-non-texte)' : 'var(--pc-trait)'}"><span class="kick">Résultat · ${esc(teamsLabel(evTeams(e)))} · ${esc(d)}</span><b style="font-family:var(--pc-titre);font-size:20px">${esc(e.type === 'Match' ? s.text : e.type + ' · ' + s.text)}</b><span class="det">Toucher pour le détail</span></button>`; }).join('');
+  return list.map((e) => {
+    const s = scoreSum(e), d = new Date(e.starts_at).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' }), team = teamsLabel(evTeams(e)) || 'Nous';
+    const L = e.scores.map((l) => resLine(e, l, team));
+    let body;
+    if (L.length === 1) {
+      const r = L[0];
+      body = `<span class="resl"><span>${esc(r.a)}</span><b>${r.x}</b><b>–</b><b>${r.y}</b><span>${esc(r.b)}</span></span><b class="resv res-t-${r.k}">${VERD[r.k]}</b>${r.sets ? `<span class="det resset">${esc(r.sets)}</span>` : ''}${r.ff ? '<span class="det resset">Forfait</span>' : ''}`;
+    } else {
+      body = `<b class="resv res-t-${s.k}" style="font-size:22px">${esc(s.text)}</b><span class="reslist">${L.map((r) => `<span class="resrow"><span>${esc(r.a)} <b>${r.x} – ${r.y}</b> ${esc(r.b)}${r.sets ? `<small>${esc(r.sets)}</small>` : ''}</span><span class="pill res-${r.k}">${VERD[r.k]}</span></span>`).join('')}</span>`;
+    }
+    return `<button class="card resc" data-act="scread" data-id="${e.id}" style="border-left-color:${s.k === 'v' ? 'var(--pc-oui-texte)' : s.k === 'd' ? 'var(--pc-non-texte)' : 'var(--pc-trait)'}"><span class="kick">Résultat · ${esc(e.type)} · ${esc(team)} · ${esc(d)}</span>${body}<span class="det">Toucher pour le détail</span></button>`;
+  }).join('');
 }
 export function clubResults() {
   const list = S.events.filter((e) => e.scores?.length).sort((a, b) => b.starts_at.localeCompare(a.starts_at)).slice(0, 5);

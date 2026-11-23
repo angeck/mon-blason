@@ -189,6 +189,12 @@ const RPC = {
   set_board_area: ({ p_user, p_area, p_on }) => { if (p_on) D.board_areas.push({ club_id: C, user_id: p_user, area: p_area }); else D.board_areas = D.board_areas.filter((x) => !(x.user_id === p_user && x.area === p_area)); return null; },
   club_log: () => [{ at: at(-1), actor: 'Céline Présidente', target: 'Tom Dupont', action: 'versement ajouté', detail: { montant: 50 } }],
   request_bureau: () => C,
+  // bêta 1.7.0 : n° 289, 292, 295
+  event_push_now: ({ p_event }) => { const e = D.events.find((x) => x.id === p_event); if (e) e.pushed_at = new Date().toISOString(); return 3; },
+  report_event: () => 'r-170',
+  event_reports_list: () => [],
+  my_coach_contact: () => ({ show_phone: false, show_sms: false, show_email: false }),
+  set_coach_contact: () => null,
   set_score: ({ p_event, p_lines }) => { const e = D.events.find((x) => x.id === p_event); e.score_edited = !!e.scores; e.scores = p_lines; e.score_at = new Date().toISOString(); return p_lines.length; },
   confirm_hours: ({ p_check, p_team }) => { D.hours_confirms.filter((x) => x.check_id === p_check && x.user_id === ME && (!p_team || x.team_id === p_team)).forEach((c) => { c.confirmed_at = new Date().toISOString(); }); return 0; }, // bêta 1.5.0 · n° 276 : par équipe
   ask_hours_check: ({ p_month }) => { const id = uid(); D.hours_checks.unshift({ id, club_id: C, month: p_month }); D.hours_confirms.push({ check_id: id, user_id: 'u-c11', minutes: 120, confirmed_at: null }); return 1; },

@@ -58,7 +58,7 @@ const order = (items) => items.filter((x) => x.k === 'c').concat(items.filter((x
 function shape(it, edit) {
   const ring = edit ? '<circle class="stsel" r="19" fill="none" stroke="#FFC93C" stroke-width="3.5"/><circle r="24" fill="transparent"/>' : '';
   if (it.k === 'c') return `${ring}<path d="M0 -10l11 18h-22z" fill="#C47A1E"/>`;
-  if (it.k === 'b') return `${ring}<circle r="7" fill="#F2A23A" stroke="#7A4A0E" stroke-width="1.2"/>`;
+  if (it.k === 'b') return `${ring}<g class="stbz"><circle r="7" fill="#F2A23A" stroke="#7A4A0E" stroke-width="1.2"/></g>`; // bêta 1.7.0 · n° 290 : .stbz = taille du ballon pendant l'animation
   const K = KIND[it.k];
   return `${ring}<circle r="13" fill="${K.fill}" stroke="${K.stroke || K.fill}" stroke-width="1"/><text y="4.5" text-anchor="middle" font-size="13" font-weight="700" fill="${K.tf}" font-family="DM Sans, sans-serif">${esc(it.n)}</text>`;
 }
@@ -66,6 +66,25 @@ const tr = (q, anim) => `transform:translate(${q[0]}px,${q[1]}px)${anim ? ';tran
 // n° 271 et 272 : une flèche par mouvement demandé, selon son type
 const INK = '#11162E', GREY = '#9AA6C0';
 const r1 = (v) => Math.round(v * 10) / 10;
+// n° 274 : un rebond tous les 3 à 4 pas du schéma (environ 45 points), 2 au moins, 8 au plus
+const nBounce = (L) => Math.min(8, Math.max(2, Math.round(L / 45)));
+// bêta 1.7.0 · n° 290 : vue de dessus, le ballon rapetisse (60 %) à chaque impact puis regrossit ; au shoot, il grossit au sommet.
+// Même durée que le glissement (0,8 s) ; un rebond par cercle ; rien si l'appareil demande moins d'animations.
+const noMove = matchMedia('(prefers-reduced-motion: reduce)');
+function ballSize(root, st, i) {
+  if (!root || i < 1 || noMove.matches) return;
+  const A = st.frames[i - 1].p, B = st.frames[i];
+  st.items.forEach((it) => {
+    if (it.k !== 'b') return;
+    const el = root.querySelector(`g[data-it="${it.id}"] .stbz`), t = B.m?.[it.id], a = A[it.id], b = B.p[it.id]; if (!el) return;
+    el.style.animation = 'none';
+    if (!a || !b || !'rds'.includes(t || 'x')) return;
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1]); if (d < 8) return;
+    const n = t === 'd' ? nBounce(Math.max(1, d - 20)) : 1;
+    void el.getBoundingClientRect(); // relance l'animation
+    el.style.animation = t === 's' ? 'stbzs .8s ease-in-out' : `stbz ${(0.8 / n).toFixed(3)}s ease-in-out ${n}`;
+  });
+}
 function seg(it, a, b, t, anim) {
   if (!a || !b || !t) return '';
   const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy); if (d < 8) return '';
@@ -76,15 +95,16 @@ function seg(it, a, b, t, anim) {
     const ln = `<line class="stt-${t}" x1="${r1(x1)}" y1="${r1(y1)}" x2="${r1(x2)}" y2="${r1(y2)}" stroke="${INK}" stroke-width="2" stroke-dasharray="5 5" stroke-opacity=".6" marker-end="url(#stah)"/>`;
     if (t === 'p') return ln;
     // rebond : un cercle autour du ballon, au moment où il touche le sol (au milieu du trajet)
-    return ln + `<circle class="stbnc${anim ? ' anim' : ''}" cx="${r1((a[0] + b[0]) / 2)}" cy="${r1((a[1] + b[1]) / 2)}" r="10" fill="none" stroke="${INK}" stroke-width="2"/>`;
+    // bêta 1.7.0 · n° 290 : le cercle n'existe que pendant l'animation (il apparaît à l'impact puis disparaît) ; rien ne reste dessiné ailleurs
+    return anim ? ln + `<circle class="stbnc anim" cx="${r1((a[0] + b[0]) / 2)}" cy="${r1((a[1] + b[1]) / 2)}" r="10" fill="none" stroke="${INK}" stroke-width="2"/>` : ln;
   }
   if (t === 'd') {
     // bêta 1.6.0 · n° 274 : dribble = le ballon rebondit plusieurs fois, comme le « Rebond » (pointillés, cercle à chaque impact) ;
     // un rebond tous les 3 à 4 pas du schéma (environ 45 points), 2 au moins, 8 au plus ; en animation, chaque cercle apparaît quand le ballon y passe
-    const n = Math.min(8, Math.max(2, Math.round(L / 45))), rings = [];
-    for (let k = 0; k < n; k++) {
-      const u = (k + 0.5) / n, dl = anim ? ` style="animation-delay:${Math.max(0, u * 0.8 - 0.08).toFixed(2)}s"` : '';
-      rings.push(`<circle class="stdrb${anim ? ' anim' : ''}" cx="${r1(x1 + ux * L * u)}" cy="${r1(y1 + uy * L * u)}" r="8" fill="none" stroke="${INK}" stroke-width="2"${dl}/>`);
+    const n = nBounce(L), rings = [];
+    for (let k = 0; anim && k < n; k++) { // bêta 1.7.0 · n° 290 : cercles seulement pendant l'animation
+      const u = (k + 0.5) / n, dl = ` style="animation-delay:${Math.max(0, u * 0.8 - 0.08).toFixed(2)}s"`;
+      rings.push(`<circle class="stdrb anim" cx="${r1(x1 + ux * L * u)}" cy="${r1(y1 + uy * L * u)}" r="8" fill="none" stroke="${INK}" stroke-width="2"${dl}/>`);
     }
     return `<line class="stt-d" x1="${r1(x1)}" y1="${r1(y1)}" x2="${r1(x2)}" y2="${r1(y2)}" stroke="${INK}" stroke-width="2" stroke-dasharray="5 5" stroke-opacity=".6" marker-end="url(#stah)"/>${rings.join('')}`;
   }
@@ -132,6 +152,7 @@ function setFrame(key, i) {
   const f = st.frames[i];
   box.querySelectorAll('g[data-it]').forEach((g) => { const q = f.p[g.dataset.it]; if (q) g.style.transform = `translate(${q[0]}px,${q[1]}px)`; });
   box.querySelector('.starr').innerHTML = arrows(st, i, true);
+  ballSize(box, st, i);
   box.querySelector('.stpc').textContent = f.c; box.querySelector('.stpn').textContent = `Étape ${i + 1} sur ${n}`;
   return true;
 }
@@ -148,6 +169,7 @@ hooks.stepsThumb = (e) => {
 const thFrame = (t, i) => {
   const st = STH[t.dataset.sth]; if (!st) return;
   const f = st.frames[i]; t.querySelectorAll('g[data-it]').forEach((g) => { const q = f.p[g.dataset.it]; if (q) g.style.transform = `translate(${q[0]}px,${q[1]}px)`; });
+  ballSize(t, st, i); // bêta 1.7.0 · n° 290 : même animation dans les vignettes en boucle
 };
 hooks.sthPlay = (t) => {
   const st = STH[t.dataset.sth]; if (!st || st.frames.length < 2 || noMotion.matches || STIM.has(t)) return;

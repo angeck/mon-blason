@@ -130,6 +130,7 @@ export function coachHub(ids) {
     { id: 'afaire', label: 'À faire', html: todoH.trim() ? `<div class="sec"><h2>À faire</h2></div>${todoH}` : '' },
     { id: 'exercices', label: 'Mes exercices', html: bank },
     { id: 'heures', label: 'Mes heures', html: `<button class="btn" data-act="chours">${icon('check', 20)}Mes heures · relevé du mois</button>` },
+    { id: 'contact', label: 'Mon contact', html: hooks.coachContactCard ? hooks.coachContactCard() : '' }, // bêta 1.7.0 · n° 295
   ]);
 }
 // Coach d'une seule équipe : l'espace de l'équipe directement (onglet Planifier, bandeau « Aujourd'hui » le jour J) ; les onglets sont dans l'en-tête (n° 116)

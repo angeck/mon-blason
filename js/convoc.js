@@ -10,6 +10,12 @@ import { VIE_VIEWS } from './vie.js';
 import { sendCard, loadSends, sendsSummary } from './v42.js'; // n° 112, 109, 107
 
 const MATCHY = ['Match', 'Plateau', 'Tournoi'];
+// bêta 1.7.0 · n° 295 : le coach choisit ce qu'il partage (rien par défaut) ; sans partage, on renvoie au correspondant des rencontres
+function coachCell(x, sep) {
+  const k = x.coach; if (!k) return '—';
+  const bits = [k.phone ? esc(k.phone) + (k.sms_only ? ' (SMS)' : '') : '', k.email ? esc(k.email) : ''].filter(Boolean);
+  return esc(k.name) + sep + (bits.length ? '<small>' + bits.join(' · ') + '</small>' : '<small>contact : correspondant des rencontres</small>');
+}
 export const canConvoke = (e) => !!e && MATCHY.includes(e.type) && e.at_home !== false && e.audience === 'team' && hasArea('evenements');
 
 // Encadré sur la page d'un match à domicile
@@ -96,14 +102,14 @@ export function convocHtml(d, step, now = new Date(), o = {}) {
     body = `<h2>${esc(per.label)}</h2><h1>${esc(c.name)} ${esc(per.receive)}</h1>
     <p>Nous avons le plaisir de vous confirmer les rencontres suivantes à domicile. Le gymnase et les horaires vous seront communiqués dans la convocation définitive.</p>
     <table><thead><tr><th>Catégorie</th><th>Club(s) reçu(s) · compétition</th><th>Coach de l'équipe</th><th>Horaire</th></tr></thead><tbody>
-    ${d.events.map((x) => `<tr><td><b>${strike(x, esc(catOf(x)))}</b></td><td>${strike(x, esc(x.opponents || '—'))}<br><small>${esc(competition(x))}</small> ${status(x)}</td><td>${x.coach ? esc(x.coach.name) + (x.coach.phone ? '<br><small>' + esc(x.coach.phone) + '</small>' : '') : '—'}</td><td>À venir</td></tr>`).join('')}</tbody></table>
+    ${d.events.map((x) => `<tr><td><b>${strike(x, esc(catOf(x)))}</b></td><td>${strike(x, esc(x.opponents || '—'))}<br><small>${esc(competition(x))}</small> ${status(x)}</td><td>${coachCell(x, '<br>')}</td><td>À venir</td></tr>`).join('')}</tbody></table>
     <div class="box"><b>Empêchement ou report ?</b> Merci de prévenir au plus vite le coach de l'équipe, le contact du club et le comité.</div>
     <p class="note"><b>À noter :</b> la convocation définitive, avec le gymnase et l'horaire de chaque rencontre, suivra.</p>`;
   } else {
     body = `<h2>Convocation officielle</h2><h1>Matchs du ${esc(when)}</h1><p>${esc(c.name)} aura le plaisir de vous accueillir aux dates et lieux suivants.</p>
     <div class="cards">${d.events.map((x) => `<div class="cv${x.cancelled ? ' off' : ''}"><div class="cvl"><span class="cat">${esc(catOf(x))}</span><b>${strike(x, esc(c.name) + ' – ' + esc(x.opponents || '—'))}</b> ${status(x)}
       <div class="sm">${esc(competition(x))}${x.place ? ' · ' + esc(x.place) : ''}</div>
-      <div class="sm">Coach : ${x.coach ? [esc(x.coach.name), x.coach.phone ? esc(x.coach.phone) : '', x.coach.email ? esc(x.coach.email) : ''].filter(Boolean).join(' · ') : '—'}</div></div>
+      <div class="sm">Coach : ${coachCell(x, ' · ')}</div></div>
       <div class="cvr"><div class="sm">${esc(dayLong(paris(x.starts_at)))}</div><div class="hr">${hhmm(x.starts_at)}</div></div></div>`).join('')}</div>
     <div class="box"><b>Merci de vous présenter 30 minutes avant la rencontre.</b> En cas d'empêchement, prévenez au plus vite le coach de l'équipe, le contact du club et le comité.</div>`;
   }

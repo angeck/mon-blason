@@ -43,6 +43,7 @@ export function accountScreen() {
   h += pushCard();
   // n° 42 : le président et les membres du bureau peuvent se déclarer contacts du club
   if (c && S.cstate) h += contactChoice(c); // n° 122 : la fonction décide du contact, je choisis seulement ce que je montre
+  if (c && hooks.coachContactCard) h += hooks.coachContactCard(); // bêta 1.7.0 · n° 295 : ce que la convocation montre du coach
   h += `<div class="sec"><h2>Mes clubs et profils</h2></div><div class="card"><div class="list">${clubs.map((x) => `<button class="row" data-act="club" data-id="${x.id}">${crest(x, 30)}<span class="g">${esc(x.name)}<small>${S.mems.filter((m) => m.club_id === x.id).map((m) => (m.role === 'bureau' && m.fonction ? fl(m.fonction) : ROLES[m.role]) + (m.status === 'pending' ? ' (en attente)' : '')).join(', ')}</small></span>${x.id === S.clubId ? '<span class="pill ok">Affiché</span>' : '<span class="chev"></span>'}</button>`).join('') || '<p class="empty">Aucun club pour l’instant.</p>'}</div></div>
   <button class="btn ghost" data-act="onbopen">Rejoindre ou créer un autre club</button>`;
   if (c) h += `<button class="btn ghost ${isArmed('leave') ? 'danger armed' : ''}" data-act="leave">${isArmed('leave') ? `Confirmer : quitter ${esc(c.name)}` : `Quitter ${esc(c.name)}`}</button>`;
