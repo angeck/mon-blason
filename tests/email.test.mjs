@@ -237,6 +237,10 @@ check('n° 96 : relance : « Relance · » dans l’objet, une seule fois annonc
 k = fakeO({ resendOk: false }); r = await F.handle(req({ club_outreach: { request: 'cr-1', email: 'contact@club.fr', source: 'x' } }), env, k.f);
 check('n° 96 : refus de Resend : l’envoi est annulé dans la base (on peut réessayer)', r.status === 502 && k.calls.some((c) => c[0].endsWith('/rpc/admin_outreach_failed')));
 check('5.13.0 · n° 236 : demande anonyme : « Un membre de ton club voudrait… », sans nom', F.clubOutreachMail({ club: 'Volley Club', city: 'Lardy' }, 'https://x/#desinscription=ab').text.includes('Un membre de ton club voudrait que Volley Club (Lardy) soit sur mypocketclub.'));
+{ const lm = F.clubOutreachMail({ club: 'Volley Lointain', city: 'Lointainville', loan_dir: 'sortant', loan_from: 'BC Testville', first_name: 'Coach', last_name: 'Nommé' }, 'https://x/#desinscription=ab');
+  check('bêta 1.7.2 · n° 293 : e-mail « prêt » : le club qui prête, sans nom de personne, lien de refus', lm.subject.includes('BC Testville') && lm.text.includes('BC Testville prête cette saison un de ses joueurs à Volley Lointain (Lointainville)') && !lm.text.includes('Nommé') && !lm.text.includes('Un membre de ton club') && lm.text.includes('#desinscription=ab'));
+  const le = F.clubOutreachMail({ club: 'Volley Lointain', loan_dir: 'entrant', loan_from: 'BC Testville', relance: true }, 'L');
+  check('bêta 1.7.2 · n° 293 : e-mail « prêt » entrant et relance', le.subject.startsWith('Relance · ') && le.text.includes('Un de tes joueurs joue cette saison en prêt à BC Testville')); }
 check('n° 96 : HTML : nom du demandeur et du club échappés', !/<script>/.test(F.clubOutreachMail({ first_name: '<script>', club: '<script>' }, 'https://x/#desinscription=ab').html));
 // 5.12.0 · n° 162 (façon 1) : P.-S. seulement si la base le dit (club reçu absent de mypocketclub)
 check('n° 162 : sans réponse de la base, pas de P.-S.', !cm.text.includes('P.-S.') && !cm.html.includes('P.-S.'));

@@ -3792,6 +3792,22 @@ ok("n° 293 (1.7.1) · fonctions fermées au visiteur", "not has_function_privil
 w("reset role;")
 w("delete from player_loans; delete from club_requests where loan_id is not null; delete from groups where name like '%171';")
 
+# ---------- bêta 1.7.2 ----------
+section("bêta 1.7.2")
+w("\\i ../supabase/beta_1_7_2.sql")
+w("\\i ../supabase/beta_1_7_2.sql")
+w("set role authenticated;")
+ASK("cU9"); works("n° 293 (1.7.2) · prêt vers un club hors mpc", f"select set_player_loan({K('p1')}, 'sortant', null, 'Volley Club Lointain 172', 'Lointainville')")
+w("reset role;")
+ok("n° 293 (1.7.2) · la demande ne nomme pas le coach (anonyme)", "exists(select 1 from club_requests where club_name = 'Volley Club Lointain 172' and loan_id is not null and first_name = '' and last_name = '' and not consent and user_id is null)")
+w(f"insert into app_admins(user_id) values ({K('pres2')}) on conflict do nothing;")
+w("set role authenticated;")
+ASK("pres2"); w("select set_config('request.jwt.claims', '{\"aal\":\"aal2\"}', false);")
+ok("n° 293 (1.7.2) · l'e-mail préparé sait que c'est un prêt (sens et club, sans nom)", f"(select (x->>'loan_dir') = 'sortant' and (x->>'loan_from') = 'AS Test Basket' and coalesce(x->>'first_name', '') = '' from (select admin_outreach_prepare((select id from club_requests where club_name = 'Volley Club Lointain 172'), 'contact@lointain.test', 'site du club', '', false) x) z)")
+w("reset role;")
+w(f"delete from app_admins where user_id = {K('pres2')};")
+w("delete from club_outreach where club_name = 'Volley Club Lointain 172'; delete from player_loans; delete from club_requests where loan_id is not null;")
+
 # ---------- rapport ----------
 w("\\echo ''")
 w("\\echo '========== RAPPORT =========='")

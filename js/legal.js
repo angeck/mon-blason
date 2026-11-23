@@ -67,7 +67,7 @@ const SHORT = `
 ## Pour quoi faire ?
 Organiser la vie du club : agenda, présences, convocations, messages, cotisations. Rien d'autre : pas de publicité, pas de revente, pas de profilage.
 ## Qui voit quoi ?
-- Les autres joueurs et parents voient les joueurs sous la forme « Prénom I. », sans coordonnées ni photo.
+- Les autres joueurs et parents voient les joueurs sous la forme « Prénom N. », sans coordonnées ni photo.
 - Les coachs et le contact d'équipe voient le nom et les coordonnées utiles des joueurs de leurs équipes, y compris, pour une équipe en entente, ceux de l'autre club.
 - Un signalement d'un problème n'est lu que par le coach de l'équipe, le directeur technique, le vice-président et le président.
 - Une convocation envoyée à un autre club donne le nom des coachs ; leur téléphone ou leur e-mail seulement s'ils l'ont choisi.
@@ -87,7 +87,7 @@ Deux accords sont facultatifs, et vous pouvez les retirer à tout moment dans «
 - Attestations de paiement : jusqu'à la fin de la saison.
 - Prêt d'un joueur : la saison du prêt.
 ## Où sont vos données ?
-Dans l'Union européenne (${LIEU}), chez Supabase. Les e-mails sont envoyés par Resend et les pages sont servies par GitHub, deux sociétés américaines liées par un contrat de protection des données. Quand un coach prépare le schéma d'un exercice avec l'IA, le texte de l'exercice est envoyé à Anthropic (États-Unis), jamais un nom ni une donnée de joueur.
+Dans l'Union européenne (${LIEU}), chez Supabase. Les e-mails sont envoyés par Resend, les pages sont servies par GitHub et la vérification « vous n'êtes pas un robot » est faite par Cloudflare, trois sociétés américaines liées par un contrat de protection des données ; le nom de domaine est chez OVH, en France. Les notifications passent par le service de votre navigateur (Google, Apple ou Mozilla), chiffrées. Quand un coach prépare le schéma d'un exercice avec l'IA, le texte de l'exercice est envoyé à Anthropic (États-Unis), jamais un nom ni une donnée de joueur.
 Le bouton micro utilise la dictée de votre navigateur : sur Chrome et Samsung Internet, votre voix est transformée en texte par Google ; sur Safari, par Apple. mypocketclub ne reçoit que le texte, jamais le son. Évitez de dicter le nom d'un joueur.
 ## Vos droits
 Vous pouvez demander à voir vos données, les corriger, les effacer, en obtenir une copie ou vous opposer à un usage. Écrivez à ${C} : réponse sous un mois. Si la demande concerne les données gérées par votre club, nous la lui transmettons. Vous pouvez aussi saisir la CNIL (cnil.fr).`;
@@ -98,6 +98,7 @@ const FULL = `
 mypocketclub est une application qui aide les clubs sportifs à s'organiser. Deux responsables se partagent les rôles :
 - **Votre club** est responsable des données de ses membres : il décide de les enregistrer et de les utiliser pour la vie du club. mypocketclub agit alors comme son prestataire (« sous-traitant » au sens du RGPD) et suit ses instructions.
 - **mypocketclub**, édité par Gaël Raveneau, est responsable des données de votre compte : création, connexion, sécurité, assistance.
+- **Deux clubs en entente** sont responsables ensemble des données qu'ils partagent pour leur équipe commune (voir la partie 4).
 Contact pour toute question : ${C}.
 ## 2. Quelles données sont traitées ?
 - **Compte** : nom, prénom, adresse e-mail, téléphone si vous le donnez, mot de passe (conservé chiffré), date d'acceptation des conditions et version acceptée.
@@ -106,7 +107,7 @@ Contact pour toute question : ${C}.
 - **Fiche d'un joueur** : nom, prénom, date de naissance, équipe ; e-mail et téléphone d'un parent et contact d'urgence, quand le club les note ; autorisations notées par la famille ou le club (rentrer seul, soins d'urgence, covoiturage) ; réponse de chaque parent sur le droit à l'image.
 - **Réglages** : équipes suivies, réglages de l'application, abonnement aux notifications sur chaque appareil, avancée du guide « Pour bien démarrer ».
 - **Signalements** : un message signalé garde la trace de la personne qui l'a signalé et de la date.
-- **Vie du club** : rendez-vous et réponses, présences (avec l'heure d'arrivée notée à l'appel), convocations, messages et groupes d'échange, sondages, missions de bénévole, signalements d'un problème lors d'un rendez-vous.
+- **Vie du club** : rendez-vous et réponses, présences (avec l'heure d'arrivée notée à l'appel), scores des matchs, convocations, messages et groupes d'échange, sondages, missions de bénévole, signalements d'un problème lors d'un rendez-vous.
 - **Entraîneurs** : heures, taux horaire et montants, visibles du président et de la trésorerie.
 - **Licence et cotisation** : état de la licence, cotisation, remise éventuelle, versements notés, demandes d'attestation de paiement ; visibles du bureau, et du parent ou du joueur majeur pour sa propre fiche (c'est là qu'il demande une attestation).
 - **Attestations de paiement** : demande (nom du demandeur), attestation délivrée en PDF, signature en image de la personne qui la délivre (gardée avec son compte) ; coordonnées, numéro SIRET ou RNA et cachet du club, réglés par le président.
@@ -128,13 +129,17 @@ Les données viennent de vous, de votre club (qui peut vous inscrire ou inscrire
 | Inviter un parent par e-mail, à la demande de son enfant ou d'un adulte du club qui veut échanger avec l'enfant | Intérêt légitime du club et de l'enfant ; l'adresse ne sert qu'à cela |
 | Utiliser l'image d'un joueur | Votre accord, ou celui des parents pour un mineur |
 | Faire jouer un joueur en renfort dans une autre équipe | L'accord de sa famille (celle d'un mineur, ou lui-même s'il est majeur) |
+| Partager une équipe en entente avec l'autre club (rendez-vous, groupe d'échange, coordonnées utiles aux coachs) | Intérêt légitime des deux clubs, responsables ensemble |
+| Noter le prêt d'un joueur et prévenir l'autre club | Relation d'adhésion entre le club et ses membres, et intérêt légitime des deux clubs |
+| Garder le signalement d'un problème lors d'un rendez-vous | Intérêt légitime du club : sécurité des joueurs et bon déroulement des activités |
+| Montrer le téléphone ou l'e-mail d'un coach dans une convocation envoyée à un autre club | Le choix du coach, modifiable à tout moment |
 | Vous envoyer des e-mails d'information | Votre accord |
 | Préparer le schéma d'un exercice avec l'IA, à la demande d'un coach (seul le texte de l'exercice est envoyé, jamais un nom) | Intérêt légitime du club (outil d'entraînement) |
 | Répondre à vos demandes et respecter nos obligations légales | Obligation légale |
 Vos données ne servent ni à de la publicité, ni à de la revente, ni à établir un profil de vous.
 ## 4. Qui peut voir vos données ?
-- **Les autres joueurs et parents** voient les joueurs sous la forme « Prénom I. », sans coordonnées ni photo.
-- **Les entraîneurs** voient le nom complet et les coordonnées utiles des joueurs de leurs équipes et de leurs parents. Un joueur qui renforce une équipe n'est vu de son coach que sous la forme « Prénom I. » tant que sa famille n'a pas accepté.
+- **Les autres joueurs et parents** voient les joueurs sous la forme « Prénom N. », sans coordonnées ni photo.
+- **Les entraîneurs** voient le nom complet et les coordonnées utiles des joueurs de leurs équipes et de leurs parents. Un joueur qui renforce une équipe n'est vu de son coach que sous la forme « Prénom N. » tant que sa famille n'a pas accepté.
 - **Le contact d'équipe**, un adulte choisi pour une équipe (coach, joueur majeur ou membre du bureau), voit les coordonnées des familles et des joueurs de cette équipe seulement. Son droit s'arrête dès qu'il n'a plus le rôle qui le justifiait.
 - **Le profil « Aide coach »**, que peut avoir un jeune de 15 à 17 ans choisi par un entraîneur ou le président, ne donne aucun droit de plus : il permet de voir l'effectif de l'équipe, sans coordonnées. Il s'arrête à 18 ans.
 - **Le bureau du club** voit ce dont il a besoin pour gérer le club. La cotisation, la remise et la licence ne sont visibles que du bureau.
@@ -142,7 +147,7 @@ Vos données ne servent ni à de la publicité, ni à de la revente, ni à étab
 - **Dans Messages**, chacun ne peut inviter dans un groupe que les personnes avec qui il a un lien : le bureau (tout le monde peut lui écrire), les coachs et les membres de son équipe ou de celle de son enfant, les autres coachs s'il est coach ; le bureau peut écrire à tout le club. Les noms apparaissent sous la forme « Prénom N. », sauf pour le bureau et le coach de l'équipe.
 - **Équipe en entente entre deux clubs** : une fois l'entente acceptée par les deux clubs, les membres de l'autre club qui font partie de l'équipe (joueurs, parents, coachs) voient l'équipe et ses rendez-vous, et y répondent. Un joueur de l'autre club leur apparaît sous la forme « Prénom N. ». Les coachs de l'équipe, des deux clubs, voient les joueurs de toute l'équipe ; le bureau du club qui porte l'équipe voit leurs fiches ; le bureau de l'autre club ne voit que les fiches de son club. Les licences et cotisations restent gérées par chaque club pour ses joueurs. Les coordonnées des familles de toute l'équipe sont visibles des coachs et du contact de l'équipe, des deux clubs. Le groupe d'échange de l'équipe (messages et sondages) peut réunir les membres de l'équipe des deux clubs ; il n'y a pas d'autres messages entre les deux clubs. Les deux clubs sont responsables ensemble de ces données ; l'entente cesse dès que le club qui porte l'équipe la retire.
 - **Signalement d'un problème** : depuis un rendez-vous, le coach de l'équipe, le directeur technique, le vice-président et le président peuvent signaler un problème matériel, ou un problème humain qui nomme un enfant de l'équipe. Un signalement n'est lu que par le coach de l'équipe, le directeur technique, le vice-président et le président. Il ne doit contenir aucune information médicale. La notification envoyée ne contient ni le texte, ni le nom de l'enfant.
-- **Joueur prêté ou en prêt** : le bureau ou le coach de l'équipe peut noter qu'un joueur est prêté à un autre club, ou qu'il vient en prêt d'un autre club, pour la saison. Si l'autre club utilise mypocketclub, son président en est prévenu, avec seulement le prénom et l'initiale du nom du joueur. Sinon, mypocketclub écrit une seule fois au club, à l'adresse qu'il publie, avec un lien pour refuser définitivement ; aucune donnée du joueur n'est donnée à ce club.
+- **Joueur prêté ou en prêt** : le bureau ou le coach de l'équipe peut noter qu'un joueur est prêté à un autre club, ou qu'il vient en prêt d'un autre club, pour la saison. Si l'autre club utilise mypocketclub, son président en est prévenu, avec seulement le prénom et l'initiale du nom du joueur. Sinon, mypocketclub écrit au club, à l'adresse qu'il publie, un seul message (et au plus une relance), avec un lien pour refuser définitivement ; ce message ne nomme ni le joueur ni la personne qui a noté le prêt.
 - **Contact du coach dans la convocation** : la convocation envoyée aux clubs reçus donne le nom du coach de chaque équipe. Son téléphone ou son adresse e-mail n'y figurent que s'il l'a choisi dans « Mon compte » (rien par défaut) ; il peut changer d'avis à tout moment.
 - **Le président du club** voit les messages signalés dans les groupes du club, avec leur auteur ; il peut aussi retirer l'accès d'un joueur à son club.
 - **Le contact du club** choisit lui-même si son e-mail ou son téléphone est affiché aux personnes connectées.
@@ -170,6 +175,8 @@ Les e-mails nécessaires au service sont toujours envoyés : convocation, change
 | Message signalé | Gardé avec son signalement, visible du président du club, tant que le message existe |
 | Signalement d'un problème lors d'un rendez-vous | Durée en cours de décision (version de test) ; effacé avec le club |
 | Prêt d'un joueur | La saison du prêt, puis gardé avec la fiche du joueur |
+| Choix du coach pour les convocations | Tant que le coach le garde ; une convocation déjà envoyée garde ce qu'elle montrait |
+| Rendez-vous, réponses et scores | Gardés avec le club (version de test) ; une durée plus courte reste à fixer |
 | Présences | Rendues anonymes après 1 saison |
 | Messages et groupes | 2 saisons |
 | Appareils de connexion | Effacés après 12 mois sans usage |
@@ -195,6 +202,7 @@ Les copies de sauvegarde sont effacées dans les semaines qui suivent. Le motif 
 | GitHub | Pages de l'application (aucune donnée de membre) · États-Unis |
 | Anthropic | IA Claude : propose le schéma d'un exercice à la demande d'un coach ; reçoit seulement le titre, la description et les tags de l'exercice, jamais un nom ni une donnée de joueur · États-Unis |
 | OVH | Nom de domaine et boîte de contact · France |
+| Services de notification des navigateurs (Google, Apple, Mozilla, selon votre appareil) | Acheminent les notifications, dont le contenu est chiffré de bout en bout · selon le navigateur |
 Les prestataires américains interviennent dans le cadre des garanties prévues par le RGPD pour les transferts hors de l'Union européenne (clauses contractuelles types ou cadre de protection des données entre l'Union européenne et les États-Unis). Cette liste est mise à jour à chaque changement.
 
 **Dictée.** Le bouton micro (description d'un exercice, consignes d'une tactique) n'est pas un service de mypocketclub : c'est la dictée de votre navigateur, régie par les règles de son éditeur (Google pour Chrome et Samsung Internet, Apple pour Safari), qui peut envoyer votre voix à ses serveurs pour la transformer en texte. mypocketclub ne reçoit que le texte écrit dans le champ, jamais le son. Évitez de dicter le nom d'un joueur ; si vous ne voulez pas utiliser la dictée, tapez le texte.
@@ -218,9 +226,10 @@ Si la réponse ne vous satisfait pas, vous pouvez saisir la CNIL : cnil.fr.
 mypocketclub n'utilise aucun traceur publicitaire ni outil de mesure d'audience. L'application enregistre sur votre appareil ce qui est strictement nécessaire : votre connexion, vos réglages et un identifiant d'appareil servant à la sécurité. Ces éléments ne demandent pas de consentement.
 ## 12. Démarchage des clubs
 mypocketclub peut écrire à un club pour se présenter. Il n'utilise pour cela que les adresses publiées par le club ou sa fédération pour le contacter. Il n'écrit que si une personne le demande (« Recommander mon club », quand elle n'a pas l'adresse d'un contact du club). Elle choisit de donner ses coordonnées ou de rester anonyme : si elle les donne, le message indique son nom et son e-mail sert seulement à la prévenir quand le club arrive ; sinon, le message dit seulement qu'un membre du club l'a demandé et rien n'est gardé sur elle. Chaque message indique d'où vient l'adresse et permet de refuser tout nouvel envoi ; ce refus est définitif. Un club n'est contacté qu'une fois, avec au plus une relance. Les adresses reçues à l'occasion d'une convocation ne servent jamais à cela.
-Deux autres façons de faire connaître mypocketclub existent :
+Trois autres façons de faire connaître mypocketclub existent :
 - **La recommandation.** Une personne peut saisir l'adresse e-mail d'un contact de son club qu'elle connaît. Un seul e-mail part, avec son prénom si elle choisit de le donner ; il permet de refuser tout nouvel envoi. Une adresse ne reçoit jamais deux recommandations, ni une recommandation si elle s'est désinscrite ou si elle a déjà un compte.
 - **La convocation.** Quand un club envoie une convocation par e-mail à un club qui n'utilise pas mypocketclub, une courte mention de mypocketclub figure en bas du message. L'adresse du destinataire n'est pas gardée.
+- **Le prêt d'un joueur.** Quand un club note qu'un joueur est prêté à un club qui n'utilise pas mypocketclub, ou qu'il en vient, mypocketclub peut écrire à ce club, avec les mêmes règles que ci-dessus (adresse publiée, un message et au plus une relance, refus définitif). Le message ne nomme ni le joueur ni la personne qui a noté le prêt.
 ## 13. Modification de cette politique
 Toute modification importante vous est signalée dans l'application avant de s'appliquer. La version et la date figurent en tête de cette page.`;
 
@@ -245,7 +254,7 @@ Chaque club est créé par son président, dont la qualité est vérifiée par m
 - déclare avec exactitude les joueurs prêtés à un autre club ou venus en prêt d'un autre club : un joueur est compté par le club où il a signé sa licence ;
 - pour une équipe en entente, partage avec l'autre club, dans l'application, l'équipe, ses rendez-vous, son groupe d'échange et les coordonnées utiles aux coachs : les deux clubs en sont responsables ensemble.
 ## 5. Protection des mineurs
-- Les autres joueurs et parents voient les joueurs sous la forme « Prénom I. », sans coordonnées ni photo.
+- Les autres joueurs et parents voient les joueurs sous la forme « Prénom N. », sans coordonnées ni photo.
 - Un adulte ne peut pas échanger en privé avec un mineur. En dehors des groupes d'équipe, un parent de chaque mineur est présent dans la conversation. Dans un groupe d'équipe, y compris celui d'une équipe en entente, les parents inscrits du mineur sont ajoutés d'office. Il est interdit de contourner cette règle, dans l'application ou en invitant un mineur à poursuivre l'échange ailleurs.
 - Le droit à l'image est donné par les parents. Publier la photo d'un mineur sans cet accord est interdit.
 - Un jeune ne tient une mission de bénévole que si son parent l'a inscrit. Le club s'engage à ce qu'un adulte soit présent, et aucune mission où l'on manie de l'argent ne lui est confiée.

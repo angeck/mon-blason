@@ -370,13 +370,26 @@ export function pitchMail(open: string[], foot: string, link: string) {
 <p style="color:#4A5068;font-size:13px;border-top:1px solid #D8DCEA;padding-top:10px;margin-top:20px">${escHtml(foot)}<a href="${escHtml(link)}" style="color:#4A5068">me désinscrire</a>.</p>`);
   return { text, html };
 }
-export function clubOutreachMail(d: { first_name?: string; last_name?: string; club?: string; city?: string; count?: number; relance?: boolean; source?: string }, link: string) {
+export function clubOutreachMail(d: { first_name?: string; last_name?: string; club?: string; city?: string; count?: number; relance?: boolean; source?: string; loan_dir?: string; loan_from?: string }, link: string) {
+  // bêta 1.7.2 · n° 293 : demande née d'un prêt de joueur : un autre club (jamais le nom du coach ni du joueur)
+  if (d.loan_dir) return loanOutreachMail(d, link);
   const who = [d.first_name, d.last_name].map((x) => String(x || '').trim()).filter(Boolean).join(' '), club = String(d.club || 'ton club'), city = String(d.city || '').trim(), n = Number(d.count) || 1;
   const p1 = `Un membre de ton club${who ? ', ' + who + ',' : ''} voudrait que ${club}${city ? ` (${city})` : ''} soit sur mypocketclub.${n > 1 ? ` ${n} membres de ton club ont fait cette demande.` : ''}`;
   const src = String(d.source || '').replace(/\s*\(.*\)$/, '').trim();
   const foot = `Tu reçois ce message parce qu\u2019un membre de ton club a demandé son arrivée sur mypocketclub${src ? ` ; nous avons trouvé cette adresse ici : ${src.toLowerCase()}` : ''}. Tu ne recevras rien d\u2019autre sans ton accord. Pour ne plus rien recevoir : `;
   const m = pitchMail(d.relance ? ['Je me permets de te relancer, une seule fois, au sujet de ce message.', p1] : [p1], foot, link);
   const subject = (d.relance ? 'Relance · ' : '') + 'Un membre de ton club voudrait utiliser mypocketclub';
+  return { subject, ...m };
+}
+export function loanOutreachMail(d: { club?: string; city?: string; relance?: boolean; source?: string; loan_dir?: string; loan_from?: string }, link: string) {
+  const club = String(d.club || 'ton club'), city = String(d.city || '').trim(), from = String(d.loan_from || 'un autre club').trim();
+  const p1 = d.loan_dir === 'sortant'
+    ? `${from} prête cette saison un de ses joueurs à ${club}${city ? ` (${city})` : ''}. ${from} organise sa vie de club avec mypocketclub.`
+    : `Un de tes joueurs joue cette saison en prêt à ${from}, qui organise sa vie de club avec mypocketclub.`;
+  const src = String(d.source || '').replace(/\s*\(.*\)$/, '').trim();
+  const foot = `Tu reçois ce message parce qu\u2019un club qui accueille ou prête un joueur avec ton club utilise mypocketclub${src ? ` ; nous avons trouvé cette adresse ici : ${src.toLowerCase()}` : ''}. Aucune donnée de joueur n\u2019est transmise. Tu ne recevras rien d\u2019autre sans ton accord. Pour ne plus rien recevoir : `;
+  const m = pitchMail(d.relance ? ['Je me permets de te relancer, une seule fois, au sujet de ce message.', p1, 'Si vous l\u2019utilisiez aussi, le prêt se suivrait des deux côtés.'] : [p1, 'Si vous l\u2019utilisiez aussi, le prêt se suivrait des deux côtés.'], foot, link);
+  const subject = (d.relance ? 'Relance · ' : '') + `Un joueur en prêt avec ${from}`;
   return { subject, ...m };
 }
 async function sendClubOutreach(env: Env, auth: string, doFetch: typeof fetch, c: any) {

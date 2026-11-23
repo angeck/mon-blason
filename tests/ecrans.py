@@ -353,7 +353,7 @@ with sync_playwright() as p:
     check('mentions légales : adresse de contact, éditeur, hébergeurs, Irlande, version et date', has('contact@mypocketclub.fr') and not has('@gmail.com') and has('Gaël Raveneau') and has('Irlande') and has('Kellermann') and has('version 1.14 du 23 novembre 2026') and not has('Paris (région'))
     act('[data-act=back]')
     act('[data-act=legal][data-v=donnees]')
-    check('n° 175 · « Vos données » : version courte, lien vers la politique complète', has('Qui s\'occupe de vos données ?') and has('Prénom I.') and pg.locator('[data-act=legal][data-v=politique]').count() == 1)
+    check('n° 175 · « Vos données » : version courte, lien vers la politique complète', has('Qui s\'occupe de vos données ?') and has('Prénom N.') and pg.locator('[data-act=legal][data-v=politique]').count() == 1)
     act('[data-act=legal][data-v=politique]')
     check('n° 175 · politique complète : 13 parties, prestataires, durées', has('13. Modification de cette politique') and has('Resend') and has('sans connexion pendant 2 saisons') and not has('(J)'))
     check('5.11.0 · n° 229-230 · politique : date de naissance, versements, empreinte IP, coordonnées par fonction', has('date de naissance') and has('versements notés') and has('empreinte') and has('du contact licences et du contact rencontres'))
