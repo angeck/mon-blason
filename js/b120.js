@@ -115,7 +115,10 @@ export function cockpitTiles({ ov = {}, ai = null, mails = null, todo = 0, todoS
     t.push({ l: 'Ne sert pas', n: num(u.clubs) ? none.length : '—', sub: none.length ? none.slice(0, 3).map((k) => FEATS[k]).join(', ') + (none.length > 3 ? '…' : '') : num(u.clubs) ? 'tout a servi ce mois' : 'aucun club', subHot: none.length > 0, act: 'admtab', attrs: 'data-k="usage"' }); }
   if (mails && !mails.missing) t.push({ l: 'E-mails envoyés', n: num(mails.jour), small: '/' + (num(mails.limite_jour) || 100), sub: 'aujourd’hui', subHot: num(mails.jour) >= 0.8 * (num(mails.limite_jour) || 100), act: 'admtab', attrs: 'data-k="couts"' });
   if (ai && !ai.missing) t.push({ l: 'IA · exercices', n: money(ai.spent_month), sub: `ce mois · ${plural(num(ai.count_month), 'schéma')}`, act: 'admtab', attrs: 'data-k="couts"' });
-  return `<div class="cktiles">${t.map(ktile).join('')}</div>`;
+  // bêta 1.7.3 · n° 293 : prêts en cours, une tuile coupée en deux (prêtés · en prêt) ; le club qui déclare le plus de joueurs « en prêt »
+  const lo = num(ov.loans_out), li = num(ov.loans_in), top = ov.loans_top || null;
+  const loans = `<div class="ckt cksplit" role="group" aria-label="Prêts en cours : ${lo} prêtés, ${li} en prêt"><span class="ckl">Prêts de joueurs</span><span class="ckhalf"><span class="out"><span class="ckn">${lo}</span><span class="cks">prêtés</span></span><span class="in"><span class="ckn">${li}</span><span class="cks">en prêt</span></span></span><span class="cks">${top ? esc(`le plus : ${top.club} · ${top.n} en prêt sur ${num(top.players)}`) : (lo + li ? esc(plural(num(ov.loans_clubs), 'club')) : 'aucun cette saison')}</span></div>`;
+  return `<div class="cktiles">${t.map(ktile).join('')}${loans}</div>`;
 }
 // Actions à mener : en retard, aujourd'hui, les 7 prochains jours
 export function relancesCard() {

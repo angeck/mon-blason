@@ -9,7 +9,7 @@ import { BRAND, IS_PROD } from '../config.js';
 const LIEU = IS_PROD ? 'France, à Paris' : 'Irlande';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.14', date: '23 novembre 2026' }; // 1.14 (bêta 1.7.2) : toutes les pages légales alignées sur les bêtas 1.7.0 et 1.7.1 (version courte, conditions 1.4) ; 1.13 (bêta 1.7.1) : groupe d'équipe commun d'une entente (n° 78), joueur en prêt (n° 293) ; 1.12 (bêta 1.7.0) : signalement d'un problème (n° 292), contact du coach dans la convocation (n° 295) ; 1.11 (bêta 1.6.0) : équipe en entente vue des deux clubs (n° 78)
+export const LEGAL = { version: '1.15', date: '24 novembre 2026' }; // 1.15 (bêta 1.7.3) : société et adresse de Supabase, durée des rendez-vous, réponses et scores (Gaël, 24 novembre) ; 1.14 (bêta 1.7.2) : toutes les pages légales alignées sur les bêtas 1.7.0 et 1.7.1 (version courte, conditions 1.4) ; 1.13 (bêta 1.7.1) : groupe d'équipe commun d'une entente (n° 78), joueur en prêt (n° 293) ; 1.12 (bêta 1.7.0) : signalement d'un problème (n° 292), contact du coach dans la convocation (n° 295) ; 1.11 (bêta 1.6.0) : équipe en entente vue des deux clubs (n° 78)
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -39,7 +39,7 @@ Contact : ${C}
 Directeur de la publication : Gaël Raveneau.
 ## Hébergement
 - Pages de l'application : GitHub Pages, GitHub, Inc., 88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, États-Unis.
-- Base de données et fichiers : Supabase, Inc. ; les données sont stockées dans l'Union européenne (${LIEU}).
+- Base de données et fichiers : Supabase Pte. Ltd., 65 Chulia Street #38-02/03, OCBC Centre, Singapour 049513 ; les données sont stockées dans l'Union européenne (${LIEU}).
 - Nom de domaine : OVH SAS, 2 rue Kellermann, 59100 Roubaix, France.
 ## Version de test
 Le service est fourni gratuitement pendant le test. Il peut évoluer, être interrompu ou comporter des erreurs. Merci de nous les signaler à ${C}.
@@ -87,7 +87,7 @@ Deux accords sont facultatifs, et vous pouvez les retirer à tout moment dans «
 - Attestations de paiement : jusqu'à la fin de la saison.
 - Prêt d'un joueur : la saison du prêt.
 ## Où sont vos données ?
-Dans l'Union européenne (${LIEU}), chez Supabase. Les e-mails sont envoyés par Resend, les pages sont servies par GitHub et la vérification « vous n'êtes pas un robot » est faite par Cloudflare, trois sociétés américaines liées par un contrat de protection des données ; le nom de domaine est chez OVH, en France. Les notifications passent par le service de votre navigateur (Google, Apple ou Mozilla), chiffrées. Quand un coach prépare le schéma d'un exercice avec l'IA, le texte de l'exercice est envoyé à Anthropic (États-Unis), jamais un nom ni une donnée de joueur.
+Dans l'Union européenne (${LIEU}), chez Supabase (société de Singapour, liée par un contrat de protection des données). Les e-mails sont envoyés par Resend, les pages sont servies par GitHub et la vérification « vous n'êtes pas un robot » est faite par Cloudflare, trois sociétés américaines liées par un contrat de protection des données ; le nom de domaine est chez OVH, en France. Les notifications passent par le service de votre navigateur (Google, Apple ou Mozilla), chiffrées. Quand un coach prépare le schéma d'un exercice avec l'IA, le texte de l'exercice est envoyé à Anthropic (États-Unis), jamais un nom ni une donnée de joueur.
 Le bouton micro utilise la dictée de votre navigateur : sur Chrome et Samsung Internet, votre voix est transformée en texte par Google ; sur Safari, par Apple. mypocketclub ne reçoit que le texte, jamais le son. Évitez de dicter le nom d'un joueur.
 ## Vos droits
 Vous pouvez demander à voir vos données, les corriger, les effacer, en obtenir une copie ou vous opposer à un usage. Écrivez à ${C} : réponse sous un mois. Si la demande concerne les données gérées par votre club, nous la lui transmettons. Vous pouvez aussi saisir la CNIL (cnil.fr).`;
@@ -176,7 +176,7 @@ Les e-mails nécessaires au service sont toujours envoyés : convocation, change
 | Signalement d'un problème lors d'un rendez-vous | Durée en cours de décision (version de test) ; effacé avec le club |
 | Prêt d'un joueur | La saison du prêt, puis gardé avec la fiche du joueur |
 | Choix du coach pour les convocations | Tant que le coach le garde ; une convocation déjà envoyée garde ce qu'elle montrait |
-| Rendez-vous, réponses et scores | Gardés avec le club (version de test) ; une durée plus courte reste à fixer |
+| Rendez-vous, réponses et scores | La saison en cours et la saison suivante ; ensuite archivés avec le reste de la saison passée |
 | Présences | Rendues anonymes après 1 saison |
 | Messages et groupes | 2 saisons |
 | Appareils de connexion | Effacés après 12 mois sans usage |

@@ -61,7 +61,9 @@ a{color:var(--pc-action)}
 .splash .wordmark{font-size:52px}
 .bigsplash{min-height:100vh;min-height:100dvh;background:#11162E}
 html.ouv,html.ouv body{background:#11162E;color:#FFFFFF}
-.bigsplash .wordmark{font-size:min(14vw,92px)}
+.bigsplash .wordmark{font-size:min(12.5vw,92px)}
+/* bêta 1.7.3 · n° 288 : écran d'ouverture (chargement) et page avant la connexion : pas de colonne d'onglets, donc pas de marge à gauche ; logo au centre */
+@media (min-width:600px){html.ouv #app,#app:has(>.bigsplash){padding-left:0;max-width:800px}}
 .splash p{margin:0;color:var(--pc-texte-doux);font-size:17px}
 
 /* ---------- En-tête ---------- */
@@ -899,6 +901,13 @@ details[data-qui]>summary{font-weight:700}
 .ckt .cks.warn{color:var(--pc-attente-texte);font-weight:600}
 .ckt.hot{background:var(--pc-jaune);border-color:var(--pc-jaune);color:var(--pc-encre)}
 .ckt.hot .ckl,.ckt.hot .cks,.ckt.hot .ckn small{color:var(--pc-encre)}
+/* bêta 1.7.3 · n° 293 : tuile « Prêts de joueurs » coupée en deux couleurs (prêtés en bleu, en prêt en jaune) */
+.ckt.cksplit{cursor:default}
+.cksplit .ckhalf{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:100%}
+.cksplit .ckhalf>span{display:flex;flex-direction:column;gap:2px;padding:6px 10px;border-radius:12px}
+.cksplit .ckhalf .out{background:var(--pc-bleu-pale)}.cksplit .ckhalf .out .ckn{color:var(--pc-action)}
+.cksplit .ckhalf .in{background:var(--pc-jaune-pale)}.cksplit .ckhalf .in .ckn{color:var(--pc-attente-texte)}
+.cksplit .ckhalf .ckn{font-size:24px}
 .ckt:focus-visible{outline:3px solid var(--pc-action);outline-offset:2px}
 .ckpc{display:none}
 @media (min-width:960px){
