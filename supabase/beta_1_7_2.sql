@@ -65,6 +65,23 @@ begin
   select * into r from club_requests where id = p_request;
   if r.id is null then raise exception 'Demande introuvable'; end if;
   k := outreach_key(r.club_name, r.city);
+  -- bêta 1.7.2 (Gaël, 24 novembre) : « un message par club » vaut pour le démarchage ; une demande née d'un prêt n'y entre pas
+  -- (un e-mail par prêt, sans relance, sans toucher au suivi du démarchage) ; la liste noire et les limites du jour restent.
+  if r.loan_id is not null then
+    if coalesce(p_relance, false) then raise exception 'Pas de relance pour un e-mail de prêt'; end if;
+    if r.status = 'done' then raise exception 'Cet e-mail de prêt est déjà parti'; end if;
+    if em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(em) > 160 then raise exception 'Adresse e-mail du club à vérifier'; end if;
+    if length(trim(coalesce(p_source, ''))) < 2 then raise exception 'Indique d''où vient l''adresse (site du club, fédération…)'; end if;
+    if exists(select 1 from mail_blocklist where email_hash = mail_hash(em)) then raise exception 'Cette adresse a refusé tout envoi : on ne lui écrit plus'; end if;
+    if (select count(*) from mail_log where kind = 'information' and at >= date_trunc('day', now())) >= 10 then raise exception 'Limite du jour atteinte (10 e-mails aux clubs) : réessaie demain'; end if;
+    if mails_today(null) >= 80 then raise exception 'Limite d''e-mails du jour atteinte : réessaie demain'; end if;
+    update club_requests set status = 'done', done_at = now() where id = r.id;
+    perform admin_note('club contacté pour un prêt de joueur', null, jsonb_build_object('club', r.club_name, 'ville', r.city, 'source', left(trim(p_source), 80)));
+    return jsonb_build_object('outreach', null, 'email', em, 'token', mail_info_token(em), 'club', r.club_name, 'city', r.city,
+      'first_name', '', 'last_name', '', 'count', 1, 'relance', false, 'source', left(trim(p_source), 80),
+      'loan_dir', (select l.direction from player_loans l where l.id = r.loan_id),
+      'loan_from', (select c.name from player_loans l join clubs c on c.id = l.club_id where l.id = r.loan_id));
+  end if;
   select * into o from club_outreach where club_key = k for update;
   if coalesce(p_relance, false) then
     if o.id is null or o.status <> 'envoye' then raise exception 'Relance possible seulement après un premier envoi, et une seule fois'; end if;
