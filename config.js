@@ -24,7 +24,7 @@ export const VERSION = 'bêta 1.7.3';
 // (table test_profiles, remplie par le script privé du projet) et lue après la connexion par js/v43.js, qui remplit ce tableau.
 export const SWITCH_PROFILES = [];
 // N° 180 (4.9.0) : version des conditions d'utilisation (claude/15c). La changer redemande l'accord de chacun à sa connexion suivante.
-export const CGU_VERSION = '1.4-2026-11-23';
+export const CGU_VERSION = '1.5-2026-11-24';
 // N° 46 · Cloudflare Turnstile (anti-robots) : clé PUBLIQUE du site (« Site Key »), faite pour être visible.
 // Vide = pas de vérification. Ne l'activer dans Supabase (Authentication → Bot and Abuse Protection) qu'APRÈS l'avoir mise ici.
 export const TURNSTILE_SITEKEY = '0x4AAAAAAF9T-CBEkMgHhN_H';

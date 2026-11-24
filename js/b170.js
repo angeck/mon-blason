@@ -118,7 +118,7 @@ function loanPage() {
     if (L.res?.length) h += `<div class="list">${L.res.map((c) => `<button class="row" data-act="loanpick" data-id="${c.id}"><span class="g">${esc(c.name)}<small>${esc([c.city, c.sport].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`).join('')}</div>`;
     if (L.res && (L.q || '').trim().length >= 2) h += `<div class="card flat"><b>Le club n’est pas sur mypocketclub ?</b><div class="grid2"><div class="field"><label for="loann">Nom du club</label><input id="loann" value="${esc(L.name || L.q || '')}" maxlength="120"></div><div class="field"><label for="loanc">Ville</label><input id="loanc" value="${esc(L.city || '')}" maxlength="80"></div></div><p class="note" style="margin:0">mypocketclub le préviendra par un seul e-mail, à l’adresse que le club publie, avec un lien pour refuser définitivement.</p></div>`;
   }
-  h += `<button class="btn main" data-act="loansave">${icon('check', 18)}Enregistrer le prêt</button></div>`;
+  h += `<p class="note">Les règles des prêts sont à l’article « Prêts de joueurs » des <button type="button" class="btn link inl" data-act="legal" data-v="cgu">conditions d’utilisation</button> : tu déclares le prêt avec exactitude, et l’autre club en est prévenu.</p><button class="btn main" data-act="loansave">${icon('check', 18)}Enregistrer le prêt</button></div>`;
   return h;
 }
 V310_VIEWS.loan = () => ({ head: header({ back: true, kicker: 'Fiche du joueur', title: 'Prêt à un autre club' }), body: loanPage() });

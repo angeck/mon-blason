@@ -9,7 +9,7 @@ import { BRAND, IS_PROD } from '../config.js';
 const LIEU = IS_PROD ? 'France, à Paris' : 'Irlande';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.15', date: '24 novembre 2026' }; // 1.15 (bêta 1.7.3) : société et adresse de Supabase, durée des rendez-vous, réponses et scores (Gaël, 24 novembre) ; 1.14 (bêta 1.7.2) : toutes les pages légales alignées sur les bêtas 1.7.0 et 1.7.1 (version courte, conditions 1.4) ; 1.13 (bêta 1.7.1) : groupe d'équipe commun d'une entente (n° 78), joueur en prêt (n° 293) ; 1.12 (bêta 1.7.0) : signalement d'un problème (n° 292), contact du coach dans la convocation (n° 295) ; 1.11 (bêta 1.6.0) : équipe en entente vue des deux clubs (n° 78)
+export const LEGAL = { version: '1.16', date: '24 novembre 2026' }; // 1.16 (bêta 1.7.3, conditions 1.5) : articles « Ententes entre clubs » (5) et « Prêts de joueurs » (6), conditions renumérotées ; 1.15 (bêta 1.7.3) : société et adresse de Supabase, durée des rendez-vous, réponses et scores (Gaël, 24 novembre) ; 1.14 (bêta 1.7.2) : toutes les pages légales alignées sur les bêtas 1.7.0 et 1.7.1 (version courte, conditions 1.4) ; 1.13 (bêta 1.7.1) : groupe d'équipe commun d'une entente (n° 78), joueur en prêt (n° 293) ; 1.12 (bêta 1.7.0) : signalement d'un problème (n° 292), contact du coach dans la convocation (n° 295) ; 1.11 (bêta 1.6.0) : équipe en entente vue des deux clubs (n° 78)
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -250,15 +250,27 @@ Chaque club est créé par son président, dont la qualité est vérifiée par m
 - décide qui tient quelle fonction (bureau, entraîneurs, contacts, contact d'équipe) et retire les accès quand une personne quitte son rôle ;
 - est responsable des informations qu'il enregistre sur ses membres et de l'usage qu'il en fait ;
 - informe ses membres, et les parents des joueurs mineurs, qu'il utilise mypocketclub ;
-- reste seul organisateur de ses activités : entraînements, matchs, déplacements, événements, bénévolat. mypocketclub n'organise, n'encadre et n'assure aucune de ces activités ;
-- déclare avec exactitude les joueurs prêtés à un autre club ou venus en prêt d'un autre club : un joueur est compté par le club où il a signé sa licence ;
-- pour une équipe en entente, partage avec l'autre club, dans l'application, l'équipe, ses rendez-vous, son groupe d'échange et les coordonnées utiles aux coachs : les deux clubs en sont responsables ensemble.
-## 5. Protection des mineurs
+- reste seul organisateur de ses activités : entraînements, matchs, déplacements, événements, bénévolat. mypocketclub n'organise, n'encadre et n'assure aucune de ces activités.
+
+Les ententes avec un autre club et les prêts de joueurs ont leurs propres articles (5 et 6).
+## 5. Ententes entre clubs
+- **Principe.** Une entente réunit, pour une équipe, des joueurs de deux clubs. Le club qui porte l'équipe la crée et invite l'autre club. L'entente n'existe que lorsque l'autre club l'a acceptée, et seulement pour cette équipe.
+- **Ce qui est partagé.** Une fois l'entente acceptée, les deux clubs voient l'équipe, ses rendez-vous et son groupe d'échange. Les coachs et le contact de l'équipe voient les noms et les coordonnées utiles des familles des deux clubs. Pour les autres personnes, un joueur de l'autre club apparaît sous la forme « Prénom N. ».
+- **Qui est responsable.** Chaque club reste responsable de ses joueurs, de leurs licences et de leurs cotisations. Les deux clubs sont responsables ensemble des données partagées pour l'équipe commune, et ne les utilisent que pour la vie de cette équipe.
+- **Qui accepte.** En acceptant une entente, la personne du club qui répond (le président ou le Directeur technique) accepte le présent article au nom de son club et s'engage à informer les familles concernées.
+- **Fin.** Le club qui porte l'équipe peut retirer l'entente à tout moment ; elle prend fin alors. Le club partenaire qui veut en sortir le demande au club porteur, ou à ${C}.
+- **Règles sportives.** mypocketclub ne remplace pas la convention d'entente que les deux clubs concluent entre eux et avec leur fédération : licences, engagements en compétition et règles sportives restent leur affaire.
+## 6. Prêts de joueurs
+- **Principe.** Le bureau ou le coach d'une équipe peut noter qu'un joueur est prêté à un autre club, ou qu'il vient en prêt d'un autre club, pour la saison en cours.
+- **Exactitude.** Le club déclare ces prêts avec exactitude. Un joueur est compté par le club où il a signé sa licence : un joueur prêté reste compté par son club, un joueur venu en prêt n'est pas compté par le club qui l'accueille.
+- **Prévenir l'autre club.** Si l'autre club utilise mypocketclub, son président est prévenu, avec seulement le prénom et l'initiale du nom du joueur. Sinon, mypocketclub lui écrit un seul e-mail par prêt, à l'adresse que ce club publie. Cet e-mail ne nomme ni le joueur ni la personne qui a noté le prêt, et contient un lien pour refuser définitivement.
+- **Pas de partage.** Un prêt ne crée ni groupe commun ni équipe partagée, et ne donne à l'autre club aucun accès aux informations du joueur.
+## 7. Protection des mineurs
 - Les autres joueurs et parents voient les joueurs sous la forme « Prénom N. », sans coordonnées ni photo.
 - Un adulte ne peut pas échanger en privé avec un mineur. En dehors des groupes d'équipe, un parent de chaque mineur est présent dans la conversation. Dans un groupe d'équipe, y compris celui d'une équipe en entente, les parents inscrits du mineur sont ajoutés d'office. Il est interdit de contourner cette règle, dans l'application ou en invitant un mineur à poursuivre l'échange ailleurs.
 - Le droit à l'image est donné par les parents. Publier la photo d'un mineur sans cet accord est interdit.
 - Un jeune ne tient une mission de bénévole que si son parent l'a inscrit. Le club s'engage à ce qu'un adulte soit présent, et aucune mission où l'on manie de l'argent ne lui est confiée.
-## 6. Règles de conduite
+## 8. Règles de conduite
 Vous vous engagez à ne pas :
 - publier de contenu illégal, insultant, menaçant, discriminatoire, à caractère sexuel ou portant atteinte à la vie privée d'autrui ;
 - écrire d'information médicale sur une personne, y compris dans le signalement d'un problème ;
@@ -267,35 +279,35 @@ Vous vous engagez à ne pas :
 - vous faire passer pour une autre personne ou pour un club ;
 - tenter d'accéder à des données qui ne vous sont pas destinées, ni perturber le fonctionnement de l'application ;
 - extraire en masse les données de l'application.
-## 7. Vos contenus
+## 9. Vos contenus
 - **Ils restent à vous.** Vous gardez vos droits sur les messages, exercices, séances et fichiers que vous créez.
 - **Ce que vous autorisez.** Vous autorisez mypocketclub à les stocker et à les afficher aux personnes à qui vous les destinez, pour faire fonctionner l'application.
 - **Exercices partagés.** En partageant un exercice avec votre club ou avec tous les clubs, vous certifiez en être l'auteur ou avoir le droit de le partager, et vous accordez aux autres utilisateurs le droit gratuit et non exclusif de l'utiliser pour leurs entraînements. Vous pouvez le retirer à tout moment ; les séances déjà préparées par d'autres peuvent en garder une copie.
 - **Images créées avec une aide automatique.** Si l'application propose de générer une image ou une animation pour un exercice, vous restez responsable de l'exercice publié et vous vérifiez le résultat avant de le partager.
 - **Logo du club.** Le club certifie avoir le droit d'utiliser le logo qu'il importe.
-## 8. Signalement et retrait
+## 10. Signalement et retrait
 Tout contenu peut être signalé, dans l'application ou à ${C}. mypocketclub héberge les contenus des utilisateurs sans les lire à l'avance. Il retire rapidement ce qui lui est signalé et qui est manifestement illicite ou contraire à ces conditions, et peut en informer le président du club concerné. Dans un groupe, le président du club voit les messages signalés. Un problème signalé depuis un rendez-vous (matériel ou comportement d'un joueur) n'est lu que par le coach de l'équipe, le directeur technique, le vice-président et le président du club, qui décident de la suite.
-## 9. Données personnelles
+## 11. Données personnelles
 Le traitement de vos données est décrit dans la politique de confidentialité, accessible depuis l'application (« Vos données »).
-## 10. Suspension, suppression et fin
+## 12. Suspension, suppression et fin
 - **Par vous.** Vous pouvez quitter un profil, quitter un club ou supprimer votre compte à tout moment depuis « Mon compte ». Un compte supprimé reste 30 jours en corbeille, puis il est effacé.
 - **Par le club.** Un club peut retirer un membre ou une fonction.
 - **Par mypocketclub.** En cas de manquement à ces conditions, mypocketclub peut retirer un contenu, suspendre un compte ou le supprimer, après vous avoir prévenu, sauf urgence ou risque pour un mineur.
 - **Club non validé.** Un club dont le président n'est pas validé est prévenu de la date limite. Sans validation dans les 30 jours, le club est supprimé.
 - **Club supprimé.** Ses données restent 90 jours en corbeille, sans être consultées, puis elles sont effacées. Le président peut annuler la suppression pendant ce délai.
-## 11. Disponibilité et responsabilité
+## 13. Disponibilité et responsabilité
 mypocketclub fait ses meilleurs efforts pour que l'application fonctionne et pour protéger vos données, sans garantie de disponibilité permanente pendant le test. Il ne peut pas être tenu responsable :
 - des décisions et des activités du club, ni des informations que le club ou ses membres enregistrent ;
 - d'une absence ou d'un retard de notification : pour une information importante, le club garde un autre moyen de prévenir ses membres ;
 - d'une interruption due à un prestataire technique ou à votre connexion.
 Rien dans ces conditions ne limite les droits que la loi vous reconnaît.
-## 12. Propriété intellectuelle
+## 14. Propriété intellectuelle
 L'application, son nom, son logo, ses textes et son code appartiennent à leur éditeur. Tous droits réservés. Vous disposez d'un droit personnel d'utiliser l'application, sans pouvoir la copier, la revendre ni en réutiliser le contenu en dehors de la vie de votre club.
-## 13. Offres payantes
+## 15. Offres payantes
 L'application est gratuite pendant le test. Si une offre payante est proposée plus tard, elle fera l'objet de conditions séparées, acceptées par le club ou par la personne concernée. Deux gratuités sont prévues : un club qui s'inscrit est gratuit jusqu'à la fin de la saison en cours (une saison va du 1er juillet au 30 juin) ; une équipe est gratuite pendant une saison complète, de sa date de début à la même date l'année suivante (par exemple de décembre à décembre). Un soutien versé à un club par l'application ne sera jamais un don ouvrant droit à un reçu fiscal. Si un prix est fixé par joueur, chaque joueur n'est compté qu'une fois, par le club où il a signé sa licence : un joueur prêté à un autre club reste compté par son club ; un joueur venu en prêt n'est pas compté par le club qui l'accueille.
-## 14. Modification des conditions
+## 16. Modification des conditions
 Ces conditions peuvent évoluer. Une modification importante vous est présentée à votre connexion suivante, et votre accord vous est redemandé. La version et la date figurent en tête de cette page.
-## 15. Droit applicable et contact
+## 17. Droit applicable et contact
 Ces conditions sont soumises au droit français. Pour toute question ou réclamation : ${C}. Nous cherchons d'abord une solution amiable.`;
 
 // Pages : menu (sans id), « mentions », « donnees » (courte), « politique » (complète), « cgu »
