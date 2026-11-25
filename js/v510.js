@@ -71,7 +71,9 @@ const nBounce = (L) => Math.min(8, Math.max(2, Math.round(L / 45)));
 // bêta 1.7.0 · n° 290 : vue de dessus, le ballon rapetisse (60 %) à chaque impact puis regrossit ; au shoot, il grossit au sommet.
 // Même durée que le glissement (0,8 s) ; un rebond par cercle ; rien si l'appareil demande moins d'animations.
 const noMove = matchMedia('(prefers-reduced-motion: reduce)');
-function ballSize(root, st, i) {
+// bêta 1.8.0 · n° 302 : la lecture (page de l'exercice) glisse en 1 s ; les vignettes de la liste gardent 0,8 s
+const GLIDE = 0.8, GLIDE_PLAY = 1;
+function ballSize(root, st, i, g = GLIDE) {
   if (!root || i < 1 || noMove.matches) return;
   const A = st.frames[i - 1].p, B = st.frames[i];
   st.items.forEach((it) => {
@@ -82,7 +84,7 @@ function ballSize(root, st, i) {
     const d = Math.hypot(b[0] - a[0], b[1] - a[1]); if (d < 8) return;
     const n = t === 'd' ? nBounce(Math.max(1, d - 20)) : 1;
     void el.getBoundingClientRect(); // relance l'animation
-    el.style.animation = t === 's' ? 'stbzs .8s ease-in-out' : `stbz ${(0.8 / n).toFixed(3)}s ease-in-out ${n}`;
+    el.style.animation = t === 's' ? `stbzs ${g}s ease-in-out` : `stbz ${(g / n).toFixed(3)}s ease-in-out ${n}`;
   });
 }
 function seg(it, a, b, t, anim) {
@@ -103,7 +105,7 @@ function seg(it, a, b, t, anim) {
     // un rebond tous les 3 à 4 pas du schéma (environ 45 points), 2 au moins, 8 au plus ; en animation, chaque cercle apparaît quand le ballon y passe
     const n = nBounce(L), rings = [];
     for (let k = 0; anim && k < n; k++) { // bêta 1.7.0 · n° 290 : cercles seulement pendant l'animation
-      const u = (k + 0.5) / n, dl = ` style="animation-delay:${Math.max(0, u * 0.8 - 0.08).toFixed(2)}s"`;
+      const u = (k + 0.5) / n, dl = ` style="animation-delay:${Math.max(0, u * GLIDE_PLAY - 0.08).toFixed(2)}s"`; // n° 302 : seulement dans la lecture (1 s)
       rings.push(`<circle class="stdrb anim" cx="${r1(x1 + ux * L * u)}" cy="${r1(y1 + uy * L * u)}" r="8" fill="none" stroke="${INK}" stroke-width="2"${dl}/>`);
     }
     return `<line class="stt-d" x1="${r1(x1)}" y1="${r1(y1)}" x2="${r1(x2)}" y2="${r1(y2)}" stroke="${INK}" stroke-width="2" stroke-dasharray="5 5" stroke-opacity=".6" marker-end="url(#stah)"/>${rings.join('')}`;
@@ -152,11 +154,12 @@ function setFrame(key, i) {
   const f = st.frames[i];
   box.querySelectorAll('g[data-it]').forEach((g) => { const q = f.p[g.dataset.it]; if (q) g.style.transform = `translate(${q[0]}px,${q[1]}px)`; });
   box.querySelector('.starr').innerHTML = arrows(st, i, true);
-  ballSize(box, st, i);
+  ballSize(box, st, i, GLIDE_PLAY);
   box.querySelector('.stpc').textContent = f.c; box.querySelector('.stpn').textContent = `Étape ${i + 1} sur ${n}`;
   return true;
 }
-function stop(key) { clearInterval(TIMERS[key]); delete TIMERS[key]; const b = document.querySelector(`[data-stp="${key}"] [data-act=stplay]`); if (b) b.textContent = 'Lecture'; }
+export const stepMs = (txt) => Math.min(5000, 2200 + Math.max(0, String(txt || '').trim().length - 40) * 30);
+function stop(key) { clearTimeout(TIMERS[key]); clearInterval(TIMERS[key]); delete TIMERS[key]; const b = document.querySelector(`[data-stp="${key}"] [data-act=stplay]`); if (b) b.textContent = 'Lecture'; }
 // 5.13.0 · n° 233 : vignette de la liste des exercices = le schéma animé, en boucle (au survol sur ordinateur, à l'écran sur téléphone ; le déclenchement est dans coach.js).
 // Sans mouvement réduit demandé : sinon la vignette reste fixe (étape 1).
 const STH = {}, STIM = new WeakMap(), noMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -292,7 +295,9 @@ Object.assign(ACTIONS, {
     if (TIMERS[d.k]) return stop(d.k);
     if (!setFrame(d.k, 0)) return;
     el.textContent = 'Pause';
-    TIMERS[d.k] = setInterval(() => { const box = document.querySelector(`[data-stp="${d.k}"]`); if (!box || +box.dataset.i >= PLAYERS[d.k].frames.length - 1) return stop(d.k); setFrame(d.k, +box.dataset.i + 1); }, 1600);
+    // bêta 1.8.0 · n° 302 : 2,2 s par étape au moins, un peu plus quand le texte de l'étape est long (5 s au plus)
+    const next = () => { const box = document.querySelector(`[data-stp="${d.k}"]`), st = PLAYERS[d.k]; if (!box || !st || +box.dataset.i >= st.frames.length - 1) return stop(d.k); setFrame(d.k, +box.dataset.i + 1); TIMERS[d.k] = setTimeout(next, stepMs(st.frames[+box.dataset.i]?.c)); };
+    TIMERS[d.k] = setTimeout(next, stepMs(PLAYERS[d.k].frames[0]?.c));
   },
   stai: async () => {
     keepEx(); const f = S.exf; if (!f) return;

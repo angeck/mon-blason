@@ -269,6 +269,8 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
   .selbar{bottom:20px;padding-left:256px}
   /* n° 139 : en-tête réduite figée en haut, sur ordinateur seulement, quand le bloc bleu est sorti de l'écran */
   body.scrolled .hdmini{display:flex;position:fixed;top:0;z-index:8;left:calc(max(0px,50% - 520px) + 240px);right:max(0px,50% - 520px);align-items:center;gap:12px;padding:8px 20px;background:var(--pc-entete);color:var(--pc-entete-texte);border-radius:0 0 20px 20px;box-shadow:var(--pc-ombre)}
+  /* bêta 1.8.0 · n° 297 : la barre réduite suit la vraie largeur de la page : centrée 800 px sans colonne d'onglets (html.notb) */
+  html.notb body.scrolled .hdmini{left:max(0px,50% - 400px);right:max(0px,50% - 400px)}
   .hdmini .logo{flex:none;display:flex;align-items:center}
   .hdmini .wordmark,.hdmini .wordmark .club{color:inherit}
   .hdmini .wordmark .my{box-shadow:0 0 0 .035em var(--pc-encre)}
@@ -557,6 +559,9 @@ button.pill.armed{background:var(--pc-non-texte);color:var(--pc-papier)}
 @media (min-width:600px){.sttool{bottom:12px}}
 /* bêta 1.7.0 · n° 290 : le cercle apparaît à l'impact puis disparaît ; le ballon rapetisse et regrossit (vue de dessus) */
 .stbnc.anim{animation:stbnc .8s ease both}
+/* bêta 1.8.0 · n° 302 : lecture plus lente (glissement 1 s) ; les vignettes de la liste (.sthumb) gardent 0,8 s */
+[data-stp] .stsvg g[data-it]{transition-duration:1s!important}
+[data-stp] .stbnc.anim{animation-duration:1s}
 @keyframes stbnc{0%,40%{opacity:0}52%{opacity:1;stroke-width:3.5}75%,100%{opacity:0}}
 .stbz{transform-box:fill-box;transform-origin:center}
 @keyframes stbz{0%,100%{transform:scale(1)}50%{transform:scale(.6)}}
@@ -831,6 +836,9 @@ html.site-test body::after { content: 'TEST'; position: fixed; top: calc(env(saf
 @media (min-width:1200px){
   html.prov #app{max-width:1480px}
   html.prov .tb{left:max(0px,calc(50% - 740px))}
+  /* bêta 1.8.0 · n° 297 : pages larges (1480 px), avec ou sans la colonne d'onglets */
+  html.prov body.scrolled .hdmini{left:calc(max(0px,50% - 740px) + 240px);right:max(0px,50% - 740px)}
+  html.prov.notb body.scrolled .hdmini{left:max(0px,50% - 740px)}
   .idtop{flex-wrap:nowrap}
   .idfacts{width:480px;flex:none}
   .fgrid{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -1010,3 +1018,32 @@ body.dv-open{overflow:hidden}
 @media print{body.dv-open>*:not(.docview){display:none!important}body.dv-open .dv-bar{display:none}}
 /* bêta 1.5.1 · n° 284 : un relevé par équipe dans l'onglet Heures du bureau */
 .hstmt{display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--pc-trait)}
+
+/* ---------- bêta 1.8.0 ---------- */
+/* n° 298 : état de l'e-mail du prêt sur la fiche du joueur */
+.loanmail{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:6px;font-size:15px}
+.loanmail>span{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.loanmail small{flex-basis:100%;color:var(--pc-texte-doux)}
+.loanmail.ok>span{color:var(--pc-oui-texte)}
+.loanmail.wait>span{color:var(--pc-attente-texte,var(--pc-texte-ecran))}
+/* n° 296 : thèmes de fêtes · couleurs des cartes de rendez-vous cochées (contraste 4,5:1 au moins, vérifié) */
+.ev.th-noel,.card.yellow.th-noel{background:#C8102E;color:#FFFFFF}
+.ev.th-galette,.card.yellow.th-galette{background:#E3A72F;color:#11162E}
+.ev.th-carnaval,.card.yellow.th-carnaval{background:#6A2FD6;color:#FFFFFF}
+.ev.th-stpatrick,.card.yellow.th-stpatrick{background:#157A3F;color:#FFFFFF}
+.ev[class*=" th-"] .s,.ev[class*=" th-"] .t{color:inherit}
+.card.yellow.th-noel *:not(.btn):not(.pill),.card.yellow.th-carnaval *:not(.btn):not(.pill),.card.yellow.th-stpatrick *:not(.btn):not(.pill){color:#FFFFFF!important}
+.card.yellow.th-noel .btn,.card.yellow.th-carnaval .btn,.card.yellow.th-stpatrick .btn{border-color:#FFFFFF;color:#FFFFFF}
+.card.yellow.th-noel .btn.main,.card.yellow.th-carnaval .btn.main,.card.yellow.th-stpatrick .btn.main,
+.card.yellow.th-noel .pair .yes,.card.yellow.th-carnaval .pair .yes,.card.yellow.th-stpatrick .pair .yes{background:#FFFFFF;border-color:#FFFFFF;color:#11162E}
+.card.yellow.th-noel .pair .no,.card.yellow.th-carnaval .pair .no,.card.yellow.th-stpatrick .pair .no{border-color:#FFFFFF;color:#FFFFFF}
+.ev.th-noel .btn,.ev.th-carnaval .btn,.ev.th-stpatrick .btn{border-color:#FFFFFF;color:#FFFFFF}
+.ev.th-noel .btn.main,.ev.th-carnaval .btn.main,.ev.th-stpatrick .btn.main,.ev.th-noel .pair .yes,.ev.th-carnaval .pair .yes,.ev.th-stpatrick .pair .yes{background:#FFFFFF;border-color:#FFFFFF;color:#11162E}
+.ev.th-noel .pair .no,.ev.th-carnaval .pair .no,.ev.th-stpatrick .pair .no{border-color:#FFFFFF;color:#FFFFFF;background:transparent}
+.hatb .hat{pointer-events:none}
+.fetebox b{color:var(--pc-texte-ecran)}
+.ev[class*=" th-"] .daybadge{background:#FFFFFF;color:#11162E}
+.ev[class*=" th-"] .daybadge span{color:#11162E}
+.ev[class*=" th-"] .btn:not(.main):not(.yes),.card.yellow[class*=" th-"] .btn:not(.main):not(.yes){background:transparent}
+.ev.th-galette .btn,.card.yellow.th-galette .btn{border-color:#11162E;color:#11162E}
+.ev[class*=" th-"] .pill{background:#FFFFFF;color:#11162E}

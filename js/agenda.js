@@ -282,7 +282,7 @@ export function evCard(e, o = {}) {
   const sub = [timeRange(e), e.place, e.audience !== 'club' && e.audience !== 'team' ? '' : teamsLabel(evTeams(e)), myMissionLabel(e)].filter(Boolean).join(' · ');
   const sel = o.select && canManageEvent(e), checked = S.sel?.has(e.id);
   const badgeCls = new Date(e.starts_at) < Date.now() ? 'past' : needsAnswer(e) ? 'wait' : '';
-  return `<div class="ev ${e.cancelled ? 'cancel' : ''}">${sel
+  return `<div class="ev ${e.cancelled ? 'cancel' : ''}${hooks.evThemeClass ? hooks.evThemeClass(e) : ''}">${sel
     ? `<label class="head" style="cursor:pointer"><input type="checkbox" class="sel" data-evsel="${e.id}" ${checked ? 'checked' : ''} aria-label="Sélectionner ${esc(e.title)}">${dayBadge(e.starts_at, badgeCls)}<span class="info"><span class="t">${esc(e.title)}</span><span class="s">${esc(sub)}</span></span></label>`
     : `<button class="head" data-act="event" data-id="${e.id}">${dayBadge(e.starts_at, badgeCls)}<span class="info"><span class="t">${esc(e.title)}</span><span class="s">${esc(e.type)} · ${esc(sub)}</span></span>${statusPill(e)}</button>`}${o.answer && !o.select && needsAnswer(e) ? answerBlock(e) : ''}${!o.select ? cancelBtn(e) : ''}</div>`;
 }
@@ -404,12 +404,14 @@ export function eventForm() {
   ${reinfField(f)}
   ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && hasArea('evenements') ? `<label class="check"><input type="checkbox" name="mkconv" ${f.mkconv ? 'checked' : ''}><span>Préparer la convocation des clubs reçus après l'enregistrement</span></label>` : ''}
   ${!f.id && matchy && f.at_home !== false && f.aud === 'team' && !hasArea('evenements') ? '<p class="note">Le contact rencontres du club sera prévenu pour préparer la convocation des clubs reçus.</p>' : ''}
+  ${hooks.themeField ? hooks.themeField(f) : ''}
   <button class="btn main" type="submit">${f.id ? 'Enregistrer les changements' : 'Enregistrer'}</button></form>`;
 }
 export function keepForm() {
   const fm = document.getElementById('evf'); if (!fm) return; const v = Object.fromEntries(new FormData(fm)); Object.assign(S.form, v); S.form.repeat = !!v.repeat; S.form.skiphol = !!v.skiphol;
   if (fm.querySelector('[data-evhome]')) S.form.at_home = !!v.at_home;
   S.form.mkconv = !!v.mkconv;
+  if (fm.querySelector('[name=evtheme]')) S.form.evtheme = !!v.evtheme; // bêta 1.8.0 · n° 296
 }
 
 // ---------- page d'un rendez-vous ----------
@@ -678,6 +680,9 @@ FORMS.evf = async (v) => {
   const rfOn = aud === 'team' && TEAM_TYPES.includes(f.type) && !conv.length, rfMode = rfOn ? (f.rfMode || 'aucun') : 'aucun';
   if (rfMode === 'choisis' && !(f.rf || new Set()).size) return toast('Choisis au moins un renfort, ou « Équipe seule ».');
   base.reinforcements = rfMode; base.reinforcement_players = rfMode === 'choisis' ? [...f.rf] : [];
+  // bêta 1.8.0 · n° 296 : « Appliquer le thème » (la base refuse un thème qui n'est pas celui du jour)
+  const hasTh = !!document.querySelector('#evf [name=evtheme]'), theme = hasTh && hooks.themeOf ? hooks.themeOf(f, !!v.evtheme) : undefined;
+  if (f.id && hasTh) base.theme = theme;
   const allDay = v.dur === 'jour'; base.all_day = allDay; base.duration_min = allDay ? null : +v.dur || DEF_DUR[f.type] || 120;
   const start = new Date(v.starts_at), th = titleHour(v.title);
   if (th && (th.h !== start.getHours() || th.mi !== start.getMinutes()) && !confirm(`Le titre parle de ${th.h} h ${String(th.mi).padStart(2, '0')}, mais l’heure choisie est ${hm(start)}. Enregistrer quand même ?`)) return;
@@ -703,6 +708,7 @@ FORMS.evf = async (v) => {
   }
   const fc = f.fromConvoc;
   const n = await run(sb.rpc('create_events', { p: { ...base, starts, series } }));
+  if (n !== null && theme) await sb.from('events').update({ theme }).eq('created_by', S.me.id).eq('title', base.title).in('starts_at', starts); // n° 296
   if (n !== null) {
     toast(n > 1 ? plural(n, 'séance créée', 'séances créées') + ', une par semaine.' : 'Rendez-vous ajouté.'); S.view = null; S.form = null; S.tab = 1; await refresh();
     // n° 84 : on relie le rendez-vous créé au match du document reçu

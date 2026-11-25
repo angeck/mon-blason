@@ -9,7 +9,25 @@ const BALLS = { 'Basket-ball': 'basket', 'Basketball': 'basket', 'Volley-ball': 
 export const BRAND_BALL = 'mypocketclub-etoile';
 export const ballName = (sport) => (!sport ? BRAND_BALL : BALLS[sport] || (/basket/i.test(sport) ? 'basket' : /volley/i.test(sport) ? 'volley' : /foot/i.test(sport) ? 'foot' : /rugby/i.test(sport) ? 'rugby' : BRAND_BALL));
 export const ballSrc = (sport) => `img/ballon-${ballName(sport)}.svg`;
-export const ball = (size, sport) => `<img class="ball" src="${ballSrc(sport)}" width="${size}" height="${size}" alt="" aria-hidden="true" style="display:inline-block;vertical-align:middle">`;
+// bêta 1.8.0 · n° 296 : thèmes de fêtes. Le chapeau est un calque commun (cadre 56 × 56 de tous les ballons), posé sur le ballon
+// de chaque sport quand l'administrateur a activé un thème (S.fete) ; le rugby (ovale incliné) a sa propre position.
+// Dessins validés par Gaël le 24 novembre (canvas https://claude.ai/artifact/A9bjuJnwCeXuzshFCPA3fH). Le blason du club ne change jamais.
+export const FETES = {
+  noel: { label: 'Noël', tr: 'rotate(18 28 28)', g: '<path d="M8 6C10 -10 22 -20 36 -20C47 -20 54 -14 57 -6L50 -3C48 -8 44 -10 41 -8C43 -3 45 1 47 4Z" fill="#C8102E"/><rect x="5" y="-1" width="46" height="11" rx="5.5" fill="#FFFFFF"/><circle cx="55" cy="-3" r="6.5" fill="#FFFFFF"/>' },
+  galette: { label: 'galette des rois', tr: 'rotate(14 28 28)', g: '<path d="M9 9L6 -15L17 -4L28 -19L39 -4L50 -15L47 9Z" fill="#FFC93C"/><circle cx="6" cy="-15" r="3" fill="#FFC93C"/><circle cx="28" cy="-19" r="3" fill="#FFC93C"/><circle cx="50" cy="-15" r="3" fill="#FFC93C"/><circle cx="28" cy="2" r="3.5" fill="#2F5BFF"/>' },
+  carnaval: { label: 'carnaval', tr: '', g: '<path d="M50 18C54 6 61 -2 69 -5C66 4 60 12 53 20Z" fill="#FF6FA8"/><path d="M1 25C1 16 11 14 19 16C23 17 25 19 28 19C31 19 33 17 37 16C45 14 55 16 55 25C55 34 46 38 38 36C33 35 31 31 28 31C25 31 23 35 18 36C10 38 1 34 1 25Z" fill="#2F5BFF"/><ellipse cx="16" cy="25" rx="6" ry="4" fill="#11162E"/><ellipse cx="40" cy="25" rx="6" ry="4" fill="#11162E"/>' },
+  stpatrick: { label: 'Saint-Patrick', tr: 'rotate(14 28 28)', g: '<path d="M16 6L18 -20L40 -20L42 6Z" fill="#1E9E57"/><rect x="17" y="-5" width="24" height="7" fill="#11162E"/><rect x="24.5" y="-7" width="9" height="11" rx="1.5" fill="#FFC93C"/><ellipse cx="29" cy="6" rx="24" ry="5" fill="#1E9E57"/>' },
+};
+export function hatG(fete, sport) {
+  const F = FETES[fete]; if (!F) return '';
+  const tr = ballName(sport) === 'rugby' ? (fete === 'carnaval' ? 'rotate(-35 28 28)' : 'rotate(62 28 28) translate(0 -4.5)') : F.tr;
+  return `<g${tr ? ` transform="${tr}"` : ''} stroke="#11162E" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">${F.g}</g>`;
+}
+export const ball = (size, sport) => {
+  const img = `<img class="ball" src="${ballSrc(sport)}" width="${size}" height="${size}" alt="" aria-hidden="true" style="display:inline-block;vertical-align:middle">`;
+  if (!S.fete || !FETES[S.fete]) return img;
+  return `<span class="ball hatb" aria-hidden="true" style="position:relative;display:inline-block;vertical-align:middle;width:${size}px;height:${size}px"><img src="${ballSrc(sport)}" alt="" style="display:block;width:100%;height:100%"><svg class="hat" viewBox="0 0 56 56" focusable="false" style="position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible">${hatG(S.fete, sport)}</svg></span>`;
+};
 // Mot-symbole « mypocketclub » : « my » en étiquette jaune inclinée, « p●cket » encre (ballon dans le « o »), « club » bleu, sans espace.
 // Les tailles sont en em (règles de 04-jetons-design.css), le style est dans style.css (.wordmark).
 export function wordmark(px, sport, ink = false) {

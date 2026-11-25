@@ -103,7 +103,7 @@ hooks.loanBlock = (p) => {
   if (!canManagePlayer(p)) return '';
   loadLoans();
   const l = loanOf(p.id);
-  if (l) return `<div class="card loanc"><div class="kick">Prêt · saison ${esc(l.season)}</div><b>${l.direction === 'sortant' ? 'Prêté à ' : 'En prêt de '}${esc(l.other_name)}</b><p class="note" style="margin:0">${l.direction === 'sortant' ? 'Il joue là-bas ; sa licence reste chez nous : notre club paye pour lui.' : 'Il joue chez nous ; sa licence est dans l’autre club : notre club ne paye pas pour lui.'}${l.notice === 'mpc' ? ' Le club a été prévenu dans mypocketclub.' : l.notice === 'email' ? ' mypocketclub prévient le club par e-mail (adresse publiée par le club).' : ''}</p><button class="btn small ghost" data-act="loanend" data-id="${p.id}">${isArmed('loanend' + p.id) ? 'Touche encore pour mettre fin au prêt' : 'Mettre fin au prêt'}</button></div>`;
+  if (l) return `<div class="card loanc"><div class="kick">Prêt · saison ${esc(l.season)}</div><b>${l.direction === 'sortant' ? 'Prêté à ' : 'En prêt de '}${esc(l.other_name)}</b>${hooks.loanMailLine ? hooks.loanMailLine(l) : ''}<p class="note" style="margin:0">${l.direction === 'sortant' ? 'Il joue là-bas ; sa licence reste chez nous : notre club paye pour lui.' : 'Il joue chez nous ; sa licence est dans l’autre club : notre club ne paye pas pour lui.'}${l.notice === 'mpc' ? ' Le club a été prévenu dans mypocketclub.' : l.notice === 'email' ? ' mypocketclub prévient le club par e-mail (adresse publiée par le club).' : ''}</p><button class="btn small ghost" data-act="loanend" data-id="${p.id}">${isArmed('loanend' + p.id) ? 'Touche encore pour mettre fin au prêt' : 'Mettre fin au prêt'}</button></div>`;
   return `<button class="btn ghost loanbtn" data-act="loannew" data-id="${p.id}">${icon('swap', 20)}Prêt à un autre club</button>`;
 };
 function loanPage() {
@@ -112,17 +112,20 @@ function loanPage() {
   let h = `<div class="card lift"><div class="det">${esc(pname(p))} · ${esc(teamName(p.team_id) || 'Sans équipe')}</div>
   <div class="stseg repseg" role="group" aria-label="Sens du prêt"><button type="button" data-act="loandir" data-v="sortant" aria-pressed="${out}">Il part dans un autre club</button><button type="button" data-act="loandir" data-v="entrant" aria-pressed="${!out}">Il vient d’un autre club</button></div>
   <p class="note repmed">${out ? 'Il joue ailleurs, sa licence reste chez nous : notre club paye pour lui.' : 'Il joue chez nous, sa licence est dans l’autre club : notre club ne paye pas pour lui.'} Pour la saison en cours.</p>`;
-  if (L.club) h += `<div class="card flat"><b>${esc(L.club.name)}</b><span class="det">${esc(L.club.city || '')} · sur mypocketclub : son président sera prévenu</span><button class="btn small ghost" data-act="loanclr">Changer de club</button></div>`;
+  if (L.club) h += `<div class="card flat"><b>${esc(L.club.name)}</b><span class="det">${esc(L.club.city || '')} · sur mypocketclub : son président sera prévenu par notification et par e-mail</span><button class="btn small ghost" data-act="loanclr">Changer de club</button></div>`;
   else {
     h += `<div class="field"><label for="loanq">${out ? 'Club d’accueil' : 'Club d’origine'}</label><input id="loanq" type="search" data-loanq="1" value="${esc(L.q || '')}" placeholder="Nom ou ville du club" autocomplete="off"></div>`;
     if (L.res?.length) h += `<div class="list">${L.res.map((c) => `<button class="row" data-act="loanpick" data-id="${c.id}"><span class="g">${esc(c.name)}<small>${esc([c.city, c.sport].filter(Boolean).join(' · '))}</small></span><span class="chev"></span></button>`).join('')}</div>`;
-    if (L.res && (L.q || '').trim().length >= 2) h += `<div class="card flat"><b>Le club n’est pas sur mypocketclub ?</b><div class="grid2"><div class="field"><label for="loann">Nom du club</label><input id="loann" value="${esc(L.name || L.q || '')}" maxlength="120"></div><div class="field"><label for="loanc">Ville</label><input id="loanc" value="${esc(L.city || '')}" maxlength="80"></div></div><p class="note" style="margin:0">mypocketclub le préviendra par un seul e-mail, à l’adresse que le club publie, avec un lien pour refuser définitivement.</p></div>`;
+    if (L.res && (L.q || '').trim().length >= 2) h += `<div class="card flat"><b>Le club n’est pas sur mypocketclub ?</b><div class="grid2"><div class="field"><label for="loann">Nom du club</label><input id="loann" value="${esc(L.name || L.q || '')}" maxlength="120"></div><div class="field"><label for="loanc">Ville</label><input id="loanc" value="${esc(L.city || '')}" maxlength="80"></div></div><div class="kick" style="margin-top:6px">Son président</div><div class="grid2"><div class="field"><label for="loanpf">Prénom</label><input id="loanpf" value="${esc(L.pf || '')}" maxlength="60" autocomplete="off"></div><div class="field"><label for="loanpl">Nom</label><input id="loanpl" value="${esc(L.pl || '')}" maxlength="60" autocomplete="off"></div></div><div class="field"><label for="loanpe">E-mail</label><input id="loanpe" type="email" value="${esc(L.pe || '')}" maxlength="160" autocomplete="off" inputmode="email"></div><p class="note" style="margin:0">Un e-mail part au président de l’autre club dès l’enregistrement, avec le prénom et l’initiale du joueur, jamais ton nom. Son adresse sert seulement à ce prêt : elle est effacée à la fin du prêt ou de la saison.</p></div>`;
   }
   h += `<p class="note">Les règles des prêts sont à l’article « Prêts de joueurs » des <button type="button" class="btn link inl" data-act="legal" data-v="cgu">conditions d’utilisation</button> : tu déclares le prêt avec exactitude, et l’autre club en est prévenu.</p><button class="btn main" data-act="loansave">${icon('check', 18)}Enregistrer le prêt</button></div>`;
   return h;
 }
 V310_VIEWS.loan = () => ({ head: header({ back: true, kicker: 'Fiche du joueur', title: 'Prêt à un autre club' }), body: loanPage() });
 let loanT = 0;
+// bêta 1.8.0 · n° 298 : la saisie (club et président hors mypocketclub) survit aux redessins de la recherche
+const LOANF = { loann: 'name', loanc: 'city', loanpf: 'pf', loanpl: 'pl', loanpe: 'pe' };
+INPUTS.push((t) => { if (S.loan && LOANF[t.id]) { S.loan[LOANF[t.id]] = t.value; return true; } return false; });
 INPUTS.push((t) => {
   if (t.dataset.loanq && S.loan) {
     S.loan.q = t.value; clearTimeout(loanT);
@@ -138,10 +141,21 @@ Object.assign(ACTIONS, {
   loanclr: () => { S.loan.club = null; render(true); },
   loansave: async () => {
     const L = S.loan; if (!L) return;
-    const name = (document.getElementById('loann')?.value || '').trim(), city = (document.getElementById('loanc')?.value || '').trim();
+    const val = (k) => (document.getElementById(k)?.value || '').trim();
+    const name = val('loann'), city = val('loanc'), pf = val('loanpf'), plast = val('loanpl'), pe = val('loanpe');
     if (!L.club && (name.length < 2 || !city)) return toast('Choisis le club dans la liste, ou écris son nom et sa ville.');
-    const id = await run(sb.rpc('set_player_loan', { p_player: L.pid, p_dir: L.dir, p_club: L.club?.id || null, p_name: L.club ? null : name, p_city: L.club ? null : city }));
-    if (id) { toast(L.dir === 'sortant' ? 'Prêt enregistré : le joueur reste compté dans ton club.' : 'Prêt enregistré : le joueur n’est pas compté dans la facture de ton club.'); S.loan = null; S.loansClub = null; ACTIONS.back(); }
+    // bêta 1.8.0 · n° 298 : hors mypocketclub, le contact du président de l'autre club est demandé (e-mail du prêt)
+    if (!L.club && (!pf || !plast)) return toast('Écris le prénom et le nom du président de l’autre club.');
+    if (!L.club && !/^[^@\s<>"]+@[^@\s<>"]+\.[^@\s<>"]+$/.test(pe)) return toast('Vérifie l’e-mail du président de l’autre club.');
+    if (L.saving) return; L.saving = true;
+    const id = await run(sb.rpc('set_player_loan', { p_player: L.pid, p_dir: L.dir, p_club: L.club?.id || null, p_name: L.club ? null : name, p_city: L.club ? null : city,
+      p_pfirst: L.club ? null : pf, p_plast: L.club ? null : plast, p_pemail: L.club ? null : pe }));
+    L.saving = false;
+    if (id) {
+      toast(L.dir === 'sortant' ? 'Prêt enregistré : le joueur reste compté dans ton club.' : 'Prêt enregistré : le joueur n’est pas compté dans la facture de ton club.');
+      S.loan = null; S.loansClub = null; ACTIONS.back();
+      if (hooks.loanMailSend) hooks.loanMailSend(id, true);
+    }
   },
   loanend: async (el, d) => { if (!armed('loanend' + d.id)) return; if (await run(sb.rpc('end_player_loan', { p_player: d.id }), 'Prêt terminé.')) { S.loansClub = null; render(true); } },
 });

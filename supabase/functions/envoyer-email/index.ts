@@ -4,6 +4,7 @@
 // 5.12.0 : n° 124, plus de validation pour envoyer ; n° 162, P.-S. « on utilise mypocketclub » quand le club reçu n'est pas inscrit ;
 // 5.17.0 : n° 256, logo complet et mise en page commune ; n° 257, « ta demande est validée » sans notification)
 // bêta 1.2.2 : n° 264, l'attestation se retrouve sur la fiche du joueur (plus dans Mon compte)
+// bêta 1.8.0 : n° 298, e-mail au président de l'autre club pour chaque prêt de joueur (loan_mail)
 // N° 107 · fonction d’envoi des e-mails (Supabase → Edge Functions)
 // Nom de la fonction : envoyer-email
 // Deux envois possibles : l'e-mail de test (administrateur, à sa propre adresse, réponses vers contact@) et les convocations
@@ -410,6 +411,47 @@ async function sendClubOutreach(env: Env, auth: string, doFetch: typeof fetch, c
   return json({ envoye: true, relance });
 }
 
+// ---------- bêta 1.8.0 · n° 298 · prêt d'un joueur : e-mail au président de l'autre club ----------
+// Un e-mail par prêt, demandé par l'application juste après l'enregistrement (ou « Réessayer »). La base vérifie les droits
+// (bureau, coach de l'équipe du joueur), la liste noire, le plafond du club (1 par jour, 10 le jour accordé par l'administrateur)
+// et la limite du jour, puis RÉSERVE l'envoi (loan_mail_prepare) ; après Resend, « envoyé » ou « échec » (loan_mail_finish).
+// Contenu (Gaël, 24 novembre) : le texte de la demande, « Prénom N. » du joueur, jamais le nom du coach ; charte et slogan
+// seulement, aucune publicité. Réponses vers le contact des rencontres du club qui déclare s'il montre son e-mail, sinon contact@.
+export function loanMail(d: { first_name?: string; player?: string; dir?: string; season?: string; club?: string; other?: string; other_city?: string; mpc?: boolean; reply?: string | null }, link: string) {
+  const first = String(d.first_name || '').trim(), hello = first ? `Bonjour ${first},` : 'Bonjour,';
+  const club = String(d.club || 'un club').trim(), other = String(d.other || 'ton club').trim(), who = String(d.player || 'un joueur').trim(), season = String(d.season || '').trim();
+  const out = d.dir === 'sortant';
+  const p1 = out
+    ? `${club} prête ${who} à ${other}${season ? ` pour la saison ${season}` : ' pour la saison'}. Sa licence reste à ${club}.`
+    : `${who}, licencié à ${other}, joue${season ? ` pour la saison ${season}` : ' cette saison'} en prêt à ${club}. Sa licence reste à ${other}.`;
+  const p2 = d.reply ? `Une question sur ce prêt ? Réponds simplement à cet e-mail : ta réponse arrive au club ${club}.` : `Une question sur ce prêt ? Réponds simplement à cet e-mail : nous la transmettons au club ${club}.`;
+  const why = d.mpc
+    ? `Tu reçois cet e-mail parce que tu es président de ${other} sur mypocketclub, l'application que ${club} utilise pour ses prêts. Pour ne plus recevoir d'e-mail de mypocketclub : `
+    : `Tu reçois cet e-mail parce que ${club} t'a indiqué comme président de ${other} pour ce prêt. mypocketclub, l'application que ${club} utilise, garde ton adresse le temps du prêt, au plus jusqu'à la fin de la saison, puis l'efface. Pour ne plus recevoir d'e-mail de mypocketclub : `;
+  const subject = (out ? `Prêt de joueur : ${who} joue à ${other} cette saison` : `Prêt de joueur : ${who} joue à ${club} cette saison`).replace(/[\r\n]/g, ' ').slice(0, 120);
+  const text = `${hello}\n\n${p1}\n\n${p2}\n\n--\n${why}${link}\n\n${TEXT_FOOT}`;
+  const html = mailLayout(`<p>${escHtml(hello)}</p><p>${escHtml(p1)}</p><p>${escHtml(p2)}</p>
+<p style="color:#4A5068;font-size:13px;border-top:1px solid #D8DCEA;padding-top:10px;margin-top:20px">${escHtml(why)}<a href="${escHtml(link)}" style="color:#4A5068">me désinscrire</a>.</p>`);
+  return { subject, text, html };
+}
+async function sendLoanMail(env: Env, auth: string, doFetch: typeof fetch, c: any) {
+  if (typeof c?.loan !== 'string' || !/^[0-9a-f-]{36}$/.test(c.loan)) return json({ erreur: 'prêt inconnu' }, 400);
+  const p = await rpc(env, auth, doFetch, 'loan_mail_prepare', { p_loan: c.loan });
+  const d = p.data || {}, to = String(d.email || ''), tok = String(d.token || '');
+  if (!p.ok || !EMAIL.test(to) || !/^[a-f0-9]{32,80}$/.test(tok)) {
+    const msg = String(d?.message || '');
+    return json({ erreur: msg || 'envoi refusé' }, /Limite/i.test(msg) ? 429 : 403);
+  }
+  const link = (env.appUrl || 'https://angeck.github.io/mon-blason/').replace(/#.*$/, '') + '#desinscription=' + tok;
+  const m = loanMail(d, link);
+  const reply = typeof d.reply === 'string' && EMAIL.test(d.reply) ? d.reply : env.replyTo;
+  const s = await resend(env, doFetch, { from: env.from, to: [to], reply_to: reply, subject: m.subject, text: m.text, html: m.html, headers: { 'List-Unsubscribe': `<${link}>` } });
+  await logMail(env, doFetch, 'pret', typeof d.club_id === 'string' ? d.club_id : null, s.ok);
+  await rpc(env, auth, doFetch, 'loan_mail_finish', { p_loan: c.loan, p_ok: s.ok, p_error: s.ok ? null : s.detail });
+  if (!s.ok) return json({ erreur: 'Le service d’e-mails a refusé l’envoi', detail: s.detail }, 502);
+  return json({ envoye: true });
+}
+
 // ---------- 5.17.0 · n° 257 · « ta demande est validée », seulement sans notification ----------
 // La base met l'e-mail en attente quand aucun appareil de la personne n'a les notifications (notify_validated) ;
 // l'application de la personne qui valide demande l'envoi juste après. Adresses lues avec la clé du serveur, 20 au plus.
@@ -472,6 +514,7 @@ export async function handle(req: Request, env: Env, doFetch: typeof fetch = fet
   if (body?.validation_reminders) return sendValidationReminders(env, doFetch); // 5.4.0 · n° 182
   if (body?.validated) return sendValidated(env, doFetch); // 5.17.0 · n° 257
   if (body?.attestation) return sendAttestation(env, auth, doFetch, body.attestation); // 5.11.0 · n° 207
+  if (body?.loan_mail) return sendLoanMail(env, auth, doFetch, body.loan_mail); // bêta 1.8.0 · n° 298
   if (body?.club_outreach) return who.admin ? sendClubOutreach(env, auth, doFetch, body.club_outreach) : json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403); // 5.11.0 · n° 96
   if (body?.inactive_warnings) return who.admin ? sendInactiveWarnings(env, auth, doFetch) : json({ erreur: 'réservé à l’administrateur de mypocketclub' }, 403); // 5.11.0 · n° 187
   if (!body?.test) return json({ erreur: 'seul l’e-mail de test, une convocation, une invitation, une attestation ou un rappel peuvent partir' }, 400);

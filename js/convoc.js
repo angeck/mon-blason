@@ -4,7 +4,7 @@
 // Réservé à la rubrique Événements (coordinateur, vice-président, président) ; la base le vérifie (convocation_data).
 import { BRAND } from '../config.js';
 import { showDoc } from './docview.js'; // bêta 1.5.1 · n° 285
-import { S, sb, esc, run, toast, render, ACTIONS, hooks, hasArea, onColor, contrast, catGender } from './core.js';
+import { S, sb, esc, run, toast, render, ACTIONS, CHANGES, hooks, hasArea, onColor, contrast, catGender } from './core.js';
 import { header, icon, crest, ballSrc } from './ui.js';
 import { VIE_VIEWS } from './vie.js';
 import { sendCard, loadSends, sendsSummary } from './v42.js'; // n° 112, 109, 107
@@ -79,11 +79,15 @@ export function missing(d, step) {
   if (!d.club.logo) m.push('le logo du club (onglet Club → Blason)');
   m.push(...contactMissing(d));
   live.filter((x) => !x.coach).forEach((x) => m.push(`le coach de ${catOf(x)}`));
+  if (!d.nocoach) coachPending(d).forEach((x) => m.push(`les coordonnées de ${x.coach.name || 'son coach'} (${catOf(x)}) : il ne les a pas encore choisies`));
   live.filter((x) => !x.opponents).forEach((x) => m.push(`le club reçu pour ${catOf(x)} (champ Adversaire du rendez-vous)`));
   if (step === 'C') live.filter((x) => !x.place).forEach((x) => m.push(`le gymnase de ${catOf(x)} (champ Lieu du rendez-vous)`));
   return m;
 }
-export const blocking = (d, step) => (step === 'C' && d.events.some((x) => !x.cancelled && !x.place)) || contactMissing(d).length > 0;
+// bêta 1.8.0 · n° 300 : coachs des rencontres qui n'ont pas encore choisi leurs coordonnées (une seule fois, pour toutes les convocations).
+// Ils bloquent l'envoi, sauf si la case « Envoyer la convocation sans les coordonnées du coach » est cochée (d.nocoach, au cas par cas).
+export const coachPending = (d) => [...new Map((d.events || []).filter((x) => !x.cancelled && x.coach && x.coach.answered === false).map((x) => [x.coach.id || x.coach.name, x])).values()];
+export const blocking = (d, step) => (step === 'C' && d.events.some((x) => !x.cancelled && !x.place)) || contactMissing(d).length > 0 || (!d.nocoach && coachPending(d).length > 0);
 
 // Le document A4 (HTML imprimé en PDF par le téléphone ou l'ordinateur)
 export function convocHtml(d, step, now = new Date(), o = {}) {
@@ -144,12 +148,30 @@ function convocScreen() {
   <div class="det">${esc(periodOf(d.from, d.to).label)} · ${d.events.length} rencontre${d.events.length > 1 ? 's' : ''} à domicile · réf. ${esc(reference(d.club.name, d.from, step))}</div></div>`;
   h += `<div class="card"><div class="list">${d.events.map((x) => `<div class="row static"><span class="g">${esc(catOf(x))} · ${esc(x.opponents || 'club reçu à préciser')}<small>${esc(dayLong(paris(x.starts_at)))} à ${hhmm(x.starts_at)}${x.place ? ' · ' + esc(x.place) : ''}${x.coach ? ' · coach ' + esc(x.coach.name) : ''}</small></span>${x.cancelled ? '<span class="pill ko">Annulée</span>' : ''}</div>`).join('') || '<p class="empty">Aucune rencontre à domicile ce week-end.</p>'}</div></div>`;
   const cm = contactMissing(d);
-  if (miss.length) h += `<div class="card warn"><b>${block ? 'À compléter avant l’envoi et le PDF :' : 'À compléter avant l’envoi (le document reste possible) :'}</b><ul style="margin:6px 0 0 18px;padding:0">${miss.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>${d.correspondent && cm.length ? `<div class="btns" style="margin-top:10px"><button type="button" class="btn small main" data-act="convfill">Aller les compléter</button></div><p class="note">Le contact complète ses coordonnées dans Mon compte, puis revient ici avec le bouton « Revenir à la convocation ».</p>` : ''}</div>`; // 5.13.0 · n° 234
+  if (miss.length) h += `<div class="card warn"><b>${block ? 'À compléter avant l’envoi et le PDF :' : 'À compléter avant l’envoi (le document reste possible) :'}</b><ul style="margin:6px 0 0 18px;padding:0">${miss.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>${d.correspondent && cm.length ? `<div class="btns" style="margin-top:10px"><button type="button" class="btn small main" data-act="convfill">Aller les compléter</button><button type="button" class="btn small ghost" data-act="convrefresh">Actualiser</button></div><p class="note">Le contact complète ses coordonnées dans Mon compte, puis revient ici avec le bouton « Revenir à la convocation ».</p>` : ''}</div>`; // 5.13.0 · n° 234
+  h += coachAskCard(d); // bêta 1.8.0 · n° 300
   // N° 109, 112 : chercher le club reçu (envoi dans mypocketclub), sinon e-mail avec le PDF joint ; suivi des envois du week-end
   h += sendCard(d, step);
   return h;
 }
-VIE_VIEWS.convoc = () => ({ head: header({ back: true, kicker: 'Convocation', title: S.convoc?.step === 'P' ? 'Pré-convocation' : 'Convocation' }), body: convocScreen() });
+// bêta 1.8.0 · n° 299 : après un passage par Mon compte (ou un retour par la flèche), la convocation relit les coordonnées dans la base,
+// sans rafraîchir la page ; le bouton « Actualiser » fait de même à la demande.
+async function reloadConvoc() {
+  const v = S.convoc; if (!v || v.loading) return;
+  v.loading = true; v.reload = false;
+  try { const { data, error } = await sb.rpc('convocation_data', { p_event: v.eid }); if (!error && data && S.convoc === v) { data.nocoach = !!v.data?.nocoach; v.data = data; await loadSends(v.eid); } }
+  finally { v.loading = false; if (S.convoc === v && S.view?.type === 'convoc') render(true); }
+}
+// bêta 1.8.0 · n° 300 : relancer le coach (il choisit lui-même, le bouton ne coche jamais à sa place) ; ou envoyer sans ses coordonnées
+function coachAskCard(d) {
+  const P = coachPending(d); if (!P.length) return '';
+  const stamp = (iso) => new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  return `<div class="card flat coachask"><div class="kick">Coordonnées du coach</div><p class="note" style="margin:0">Chaque coach choisit une seule fois ce que les convocations montrent de lui. Le bouton le prévient seulement ; il choisit lui-même dans Mon compte.</p>
+  <div class="list">${P.map((x) => `<div class="row static"><span class="g">${esc(x.coach.name)} · ${esc(catOf(x))}<small>${x.coach.asked_at ? `Demande envoyée le ${esc(stamp(x.coach.asked_at))}` : 'Pas encore relancé'}</small></span>${x.coach.id && x.coach.id !== S.me?.id ? `<button type="button" class="btn small ghost" data-act="convask" data-id="${esc(x.coach.id)}">${icon('bell', 18)}Notifier le coach</button>` : '<button type="button" class="btn small ghost" data-act="ccgo">Choisir maintenant</button>'}</div>`).join('')}</div>
+  <label class="check"><input type="checkbox" data-convnocoach="1" ${d.nocoach ? 'checked' : ''}><span>Envoyer la convocation sans les coordonnées du coach (elle renvoie au correspondant des rencontres)</span></label>
+  <div class="btns"><button type="button" class="btn small ghost" data-act="convrefresh">Actualiser</button></div></div>`;
+}
+VIE_VIEWS.convoc = () => { if (S.convoc?.reload) setTimeout(reloadConvoc, 0); return { head: header({ back: true, kicker: 'Convocation', title: S.convoc?.step === 'P' ? 'Pré-convocation' : 'Convocation' }), body: convocScreen() }; };
 
 export async function openConvoc(eid, step) {
   S.convRet = null;
@@ -158,10 +180,13 @@ export async function openConvoc(eid, step) {
   if (!d) { S.view = { type: 'event', id: eid }; render(); return; }
   S.convoc.data = d; await loadSends(eid); render(true);
 }
+CHANGES.push((t) => { if (!t.dataset.convnocoach || !S.convoc?.data) return false; S.convoc.data.nocoach = t.checked; render(true); return true; }); // n° 300
 Object.assign(ACTIONS, {
   convoc: (el, d) => openConvoc(d.id, d.v),
   // 5.13.0 · n° 234 : aller compléter les coordonnées du contact (Mon compte), puis revenir à la convocation en cours
-  convfill: () => { const v = S.convoc; if (!v) return; S.convRet = { eid: v.eid, step: v.step }; S.view = { type: 'account' }; render(); setTimeout(() => document.getElementById('contactf')?.scrollIntoView({ block: 'start' }), 60); },
+  convrefresh: () => reloadConvoc(),
+  convask: async (el, d) => { const v = S.convoc; if (!v) return; if (await run(sb.rpc('coach_contact_remind', { p_event: v.eid, p_coach: d.id }), 'Coach prévenu par notification.')) reloadConvoc(); },
+  convfill: () => { const v = S.convoc; if (!v) return; v.reload = true; S.convRet = { eid: v.eid, step: v.step }; S.view = { type: 'account' }; render(); setTimeout(() => document.getElementById('contactf')?.scrollIntoView({ block: 'start' }), 60); },
   convback: () => { const r = S.convRet; S.convRet = null; if (!r) return; S.stack = (S.stack || []).filter((x) => x.type !== 'convoc'); S.noStack = true; return openConvoc(r.eid, r.step); },
   convstep: async (el, d) => { S.convoc.step = d.v; S.convoc.version = 0; if (S.convoc.send) S.convoc.send.confirm = false; render(true); await loadSends(S.convoc.eid); render(true); },
   convpdf: () => {

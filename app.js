@@ -35,7 +35,8 @@ import './js/v56.js'; // 5.6.0 : n° 202 compte administrateur (espace admin, do
 import './js/v515.js'; // 5.15.0 : n° 239, 242, 243, 246
 import './js/v517.js'; // 5.17.0 : n° 254 (gymnases du club), n° 257 (notifications proposées après une demande)
 import './js/b110.js';
-import './js/b170.js'; // bêta 1.7.0 : n° 292 (signaler un problème), 295 (contact du coach), 293 (prêt), 78 suites // bêta 1.1.0 : n° 244 (espace Président « pro », aperçu de chaque fonction au même modèle)
+import './js/b170.js';
+import { loadB180 } from './js/b180.js'; // bêta 1.8.0 : n° 298 (e-mail de prêt), 300 (contact du coach), 296 (thèmes de fêtes) // bêta 1.7.0 : n° 292 (signaler un problème), 295 (contact du coach), 293 (prêt), 78 suites // bêta 1.1.0 : n° 244 (espace Président « pro », aperçu de chaque fonction au même modèle)
 import './js/v55.js'; // 5.5.0 : onboarding « Pour bien démarrer », FAQ (Aide), n° 164 justificatif d'adhésion
 import { validationReminders } from './js/v54.js'; // 5.4.0 : n° 201 (conversation avec un mineur), n° 84 (rattacher), transfert d'une convocation, n° 182
 import './js/v51.js'; // 5.1.0 : n° 189 (retour du téléphone), 190 (pastilles des rôles), 191 (demandes), 196 (bienvenue)
@@ -125,10 +126,10 @@ async function refresh(msg) {
   if (S.openFiche && S.me) { const f = S.openFiche; if (S.clubs[f.club] && f.club !== S.clubId) { S.clubId = f.club; try { localStorage.setItem('pc_club', f.club); } catch { /* sans stockage */ } S.tab = 0; S.names = {}; S.attMine = undefined; } } // n° 264
   if (S.openGo && S.me && S.clubs[S.openGo.club] && S.openGo.club !== S.clubId) { S.clubId = S.openGo.club; try { localStorage.setItem('pc_club', S.openGo.club); } catch { /* sans stockage */ } S.tab = 0; S.names = {}; S.attMine = undefined; } // bêta 1.5.0 · n° 278
   await loadClub();
-  if (S.openGo && S.me) { const g = S.openGo; S.openGo = null; if (g.club === S.clubId) { S.stack = []; try { if (g.to === 'heures') ACTIONS.fview(null, { v: 'Trésorier', tab: 'heures' }); else if (g.to === 'exos') ACTIONS.cexos(null, { tab: 'club' }); else if (g.to === 'bureau') ACTIONS.ptab(null, { v: 'bureau' }); } catch (e) { console.warn('ouvrir', e); } } }
+  if (S.openGo && S.me) { const g = S.openGo; S.openGo = null; if (g.club === S.clubId) { S.stack = []; try { if (g.to === 'heures') ACTIONS.fview(null, { v: 'Trésorier', tab: 'heures' }); else if (g.to === 'exos') ACTIONS.cexos(null, { tab: 'club' }); else if (g.to === 'bureau') ACTIONS.ptab(null, { v: 'bureau' }); else if (g.to === 'contact') ACTIONS.ccgo(); /* bêta 1.8.0 · n° 300 */ } catch (e) { console.warn('ouvrir', e); } } }
   if (S.openFiche && S.me) { const f = S.openFiche; S.openFiche = null; if (f.club === S.clubId && S.players.some((x) => x.id === f.player)) { S.view = { type: 'player', id: f.player }; S.stack = []; } } // n° 264
   restoreDraftScreen(); // 5.2.1 : après un rechargement, retour là où la saisie avait commencé
-  await Promise.all([loadCoachCounts(), loadEvPlans(), loadAdminCounts(), loadV310(), loadV43(), loadV44(), loadV57()]).catch(() => {});
+  await Promise.all([loadCoachCounts(), loadEvPlans(), loadAdminCounts(), loadV310(), loadV43(), loadV44(), loadV57(), loadB180()]).catch(() => {});
   if (S.view?.type === 'group') await loadGroup(S.view.id);
   const bg = S.bgRefresh; S.bgRefresh = false;
   renderKeep(bg); subscribe(); if (msg) toast('À jour.');
@@ -308,7 +309,7 @@ function captureFiche() {
 }
 // bêta 1.5.0 · n° 278 : lien « #ouvrir=<club>.heures » ou « .exos » d'une notification : ouvre l'écran où il y a quelque chose à traiter
 function captureGo() {
-  const m = /^#ouvrir=([0-9a-f-]{36})\.(heures|exos|bureau)$/.exec(location.hash || ''); if (!m) return false; // bureau : bêta 1.5.1, fonction sans titulaire
+  const m = /^#ouvrir=([0-9a-f-]{36})\.(heures|exos|bureau|contact)$/.exec(location.hash || ''); if (!m) return false; // bureau : bêta 1.5.1, fonction sans titulaire
   S.openGo = { club: m[1], to: m[2] }; history.replaceState(null, '', location.pathname + location.search); return true;
 }
 captureFiche(); captureGo();

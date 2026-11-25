@@ -290,5 +290,41 @@ check('5.17.0 · n° 256 : une pré-convocation ne demande rien à la base et n�
   check('5.17.0 · n° 257 : e-mail de service : dit pourquoi (pas de notification), pas de désinscription', sent.every((m) => m.text.includes('notifications ne sont pas activées') && !m.headers));
   check('5.17.0 · n° 257 : compté comme « validation »', calls.filter((c) => c[0].endsWith('mail_log_add')).every((c) => JSON.parse(c[1].body).p_kind === 'validation'));
 }
+
+// ---------- bêta 1.8.0 · n° 298 · e-mail de prêt au président de l'autre club ----------
+{
+  const mk = (prep, resendOk = true) => {
+    const calls = []; const f = async (url, o = {}) => { calls.push([url, o]); const res = (s, b) => ({ ok: s < 300, status: s, json: async () => b });
+      if (url.endsWith('/auth/v1/user')) return res(200, { email: 'coach@exemple.fr' }); if (url.endsWith('/rpc/is_app_admin')) return res(200, false); if (url.endsWith('/rpc/my_profile')) return res(200, { first_name: 'Lily' });
+      if (url.endsWith('/rpc/loan_mail_prepare')) return prep;
+      if (url.endsWith('/rpc/loan_mail_finish')) return res(200, null);
+      if (url === 'https://api.resend.com/emails') return resendOk ? res(200, { id: 'p' }) : res(422, { message: 'domaine refusé' });
+      return res(200, null); };
+    return { calls, f };
+  };
+  const ID = '11111111-2222-4333-8444-555555555555', TOK = 'a'.repeat(40);
+  const good = (o = {}) => ({ ok: true, status: 200, json: async () => ({ email: 'marie@club.test', first_name: 'Marie', player: 'Lou M.', dir: 'sortant', season: '2026-2027', club: 'Boissy Basket 91', club_id: ID, other: 'Volley Lointain', other_city: 'Ville', mpc: false, reply: 'corr@boissy.test', token: TOK, ...o }) });
+  let k = mk(good()); let r = await F.handle(req({ loan_mail: { loan: ID } }), { ...env, service: 'sb_secret_x' }, k.f);
+  let sent = k.calls.filter((c) => c[0] === 'https://api.resend.com/emails').map((c) => JSON.parse(c[1].body));
+  check('1.8.0 · n° 298 : prêt : un e-mail au président, réservé puis noté « envoyé »', r.status === 200 && sent.length === 1 && sent[0].to[0] === 'marie@club.test' && k.calls.some((c) => c[0].endsWith('loan_mail_finish') && JSON.parse(c[1].body).p_ok === true));
+  check('1.8.0 · n° 298 : « Bonjour Marie », « Prénom N. » du joueur, sens du prêt et licence', sent[0].text.startsWith('Bonjour Marie,') && sent[0].text.includes('Boissy Basket 91 prête Lou M. à Volley Lointain pour la saison 2026-2027') && sent[0].text.includes('Sa licence reste à Boissy Basket 91'));
+  check('1.8.0 · n° 298 : jamais le nom du coach, aucune publicité', !/Lily/.test(sent[0].text) && !sent[0].text.includes('Teste gratuitement') && !sent[0].text.includes('Découvrir mypocketclub'));
+  check('1.8.0 · n° 298 : charte et slogan, lien « me désinscrire » et en-tête List-Unsubscribe', sent[0].html.includes('Tout ton club dans ta poche') && sent[0].html.includes('me désinscrire') && /desinscription=a{40}/.test(sent[0].headers['List-Unsubscribe']));
+  check('1.8.0 · n° 298 : réponses vers le contact du club qui prête', sent[0].reply_to === 'corr@boissy.test');
+  check('1.8.0 · n° 298 : hors mpc : dit pourquoi on a son adresse et combien de temps on la garde', sent[0].text.includes('t\'a indiqué comme président') && sent[0].text.includes('jusqu\'à la fin de la saison'));
+  check('1.8.0 · n° 298 : compté comme « pret » avec le club', k.calls.some((c) => c[0].endsWith('mail_log_add') && JSON.parse(c[1].body).p_kind === 'pret' && JSON.parse(c[1].body).p_club === ID));
+  k = mk(good({ dir: 'entrant', mpc: true, reply: null, first_name: '' })); r = await F.handle(req({ loan_mail: { loan: ID } }), env, k.f);
+  sent = k.calls.filter((c) => c[0] === 'https://api.resend.com/emails').map((c) => JSON.parse(c[1].body));
+  check('1.8.0 · n° 298 : « en prêt » : licence dans l\'autre club ; club sur mpc : « tu es président … sur mypocketclub »', sent[0].text.includes('Lou M., licencié à Volley Lointain, joue pour la saison 2026-2027 en prêt à Boissy Basket 91') && sent[0].text.includes('tu es président de Volley Lointain sur mypocketclub') && sent[0].text.startsWith('Bonjour,'));
+  check('1.8.0 · n° 298 : sans contact qui montre son e-mail : réponses vers contact@', sent[0].reply_to === env.replyTo);
+  k = mk({ ok: false, status: 400, json: async () => ({ message: 'Limite du jour atteinte (1 e-mail de prêt par jour pour ton club) : réessaie demain' }) }); r = await F.handle(req({ loan_mail: { loan: ID } }), env, k.f);
+  check('1.8.0 · n° 298 : plafond du club : rien ne part, 429 et raison', r.status === 429 && /Limite du jour/.test((await r.json()).erreur) && !k.calls.some((c) => c[0] === 'https://api.resend.com/emails'));
+  k = mk(good(), false); r = await F.handle(req({ loan_mail: { loan: ID } }), env, k.f);
+  check('1.8.0 · n° 298 : refus de Resend : noté « échec » avec la raison, 502', r.status === 502 && k.calls.some((c) => c[0].endsWith('loan_mail_finish') && JSON.parse(c[1].body).p_ok === false && JSON.parse(c[1].body).p_error === 'domaine refusé'));
+  k = mk(good()); r = await F.handle(req({ loan_mail: { loan: 'pas-un-id' } }), env, k.f);
+  check('1.8.0 · n° 298 : identifiant de prêt invalide : refusé avant tout appel', r.status === 400 && !k.calls.some((c) => c[0].endsWith('loan_mail_prepare')));
+  const sub = F.loanMail({ dir: 'sortant', club: 'A\r\nB', other: 'C', player: 'D E.' }, 'L').subject;
+  check('1.8.0 · n° 298 : objet sans saut de ligne', !/[\r\n]/.test(sub));
+}
 console.log(`\n   ${ok} réussis sur ${ok + ko} tests d'e-mail`);
 if (ko) process.exitCode = 1;

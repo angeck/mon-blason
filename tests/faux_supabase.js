@@ -16,7 +16,7 @@ const now = Date.now(), at = (d, h = 18) => { const x = new Date(now + d * 864e5
 const ME = 'u-me', C = 'c-1', T9 = 't-u9', T11 = 't-u11', T13 = 't-u13';
 const people = { 'u-me': ['Gaël', 'Test'], 'u-pres': ['Céline', 'Présidente'], 'u-c11': ['Karim', 'Coach'], 'u-p1': ['Nina', 'Parent'], 'u-p2': ['Hugo', 'Parent'], 'u-s1': ['Léa', 'Supportrice'] };
 const D = {
-  profiles: Object.entries(people).map(([id, [f, l]]) => ({ id, first_name: f, last_name: l, full_name: f + ' ' + l, nickname: null, phone: id === ME ? '06 00 00 00 00' : '06 11 22 33 44', cgu_version: '1.5-2026-11-24', optin_emails: false, show_all_club: false, deleted_at: null })),
+  profiles: Object.entries(people).map(([id, [f, l]]) => ({ id, first_name: f, last_name: l, full_name: f + ' ' + l, nickname: null, phone: id === ME ? '06 00 00 00 00' : '06 11 22 33 44', cgu_version: '1.6-2026-11-25', optin_emails: false, show_all_club: false, deleted_at: null })),
   clubs: [{ id: 'c-3', name: 'Palaiseau Basket', city: 'Palaiseau', sport: 'Basket-ball', color1: '#123A7A', color2: '#E2001A', crest_bg: null, logo: null, custom_header: false, join_code: 'PP3CD4EF', public_listed: true, created_at: at(-90) }, { id: 'c-2', name: 'Volley Ailleurs', city: 'Ailleurs', sport: 'Volley-ball', color1: '#0F1A3A', color2: '#FF5B14', crest_bg: null, logo: null, custom_header: false, join_code: 'ZZ3CD4EF', created_at: at(-60) }, { id: C, default_missions: [{ label: 'Arbitre', slots: 2 }, { label: 'Table de marque', slots: 2 }, { label: 'Aide', slots: 2 }, { label: 'Buvette', slots: 2 }], coach_sees_fees: true, public_listed: true, name: 'BC Testville', city: 'Testville', sport: 'Basket-ball', color1: '#C2410C', color2: '#FFC93C', crest_bg: null, logo: null, custom_header: false, join_code: 'AB3CD4EF', created_at: at(-60) }],
   teams: [
     { id: T9, club_id: C, name: 'U9', category: 'U9', gender: 'Mixte', state: 'Visible', season: '2026-2027', slots: 'Mercredi 17 h 30, gymnase', deleted_at: null },
@@ -170,7 +170,7 @@ const RPC = {
   decide_coach_month: ({ p_statement, p_ok, p_comment }) => { const s = D.coach_statements.find((x) => x.id === p_statement); s.status = p_ok ? 'validated' : 'refused'; s.comment = p_comment; s.decided_by = ME; s.decided_at = new Date().toISOString(); return null; },
   convocation_data: ({ p_event }) => { const e = D.events.find((x) => x.id === p_event); const d = new Date(e.starts_at).toLocaleDateString('sv-SE');
     return { club: { id: C, name: 'BC Testville', city: 'Testville', sport: 'Basket-ball', color1: '#C2410C', color2: '#FFD400', logo: null }, from: d, to: d, correspondent: window.__CORR !== undefined ? window.__CORR : { name: 'Rémi Contact', phone: '0600000009', email: 'remi@exemple.invalid' }, // 5.13.0 · n° 234 : contact complet par défaut
-      events: [{ id: e.id, type: e.type, title: e.title, starts_at: e.starts_at, place: e.place, opponents: e.opponents, cancelled: false, team: { name: 'U11', category: 'U11' }, coach: { name: 'Karim Coach', phone: '0600000001', email: 'karim@exemple.invalid' } },
+      events: [{ id: e.id, type: e.type, title: e.title, starts_at: e.starts_at, place: e.place, opponents: e.opponents, cancelled: false, team: { name: 'U11', category: 'U11' }, coach: { name: 'Karim Coach', id: 'u-karim', phone: window.__COACHANS === false ? null : '0600000001', email: window.__COACHANS === false ? null : 'karim@exemple.invalid', answered: window.__COACHANS !== false, asked_at: window.__ASKED || null } },
         { id: 'x9', type: 'Plateau', title: 'Plateau U9', starts_at: e.starts_at, place: '', opponents: 'Étampes', cancelled: false, team: { name: 'U9', category: 'U9' }, coach: null }] }; },
   my_areas: () => window.__AREAS || ['communication', 'evenements', 'secretariat', 'technique', 'tresorerie'],
   my_clubs_overview: () => [{ club_id: C, name: 'BC Testville', sport: 'Basket-ball', color1: '#C2410C', roles: ['bureau'], next_events: [], unread: 0 }, { club_id: 'c-2', name: 'Volley Ailleurs', sport: 'Volley-ball', color1: '#0F1A3A', roles: ['joueur'], next_events: [{ id: 'v1', title: 'Match 4x4', type: 'Match', starts_at: at(2, 20) }], unread: 2 }],
@@ -193,11 +193,14 @@ const RPC = {
   event_push_now: ({ p_event }) => { const e = D.events.find((x) => x.id === p_event); if (e) e.pushed_at = new Date().toISOString(); return 3; },
   report_event: () => 'r-170',
   club_loans: () => (window.__LOANS || []),
-  set_player_loan: ({ p_player, p_dir, p_name }) => { (window.__LOANS = window.__LOANS || []).push({ player_id: p_player, direction: p_dir, other_name: p_name || 'Club', season: '2026-2027', notice: 'email' }); return 'l-171'; },
+  set_player_loan: ({ p_player, p_dir, p_name, p_pfirst, p_plast }) => { (window.__LOANS = window.__LOANS || []).push({ id: 'l-171', player_id: p_player, direction: p_dir, other_name: p_name || 'Club', season: '2026-2027', notice: 'email', mail_status: window.__LOANMAIL || 'envoye', mail_error: window.__LOANMAIL === 'echec' ? 'domaine refusé' : null, mail_at: new Date().toISOString(), pres_name: p_pfirst ? p_pfirst + ' ' + p_plast : 'Paul M.' }); return 'l-171'; },
   end_player_loan: ({ p_player }) => { window.__LOANS = (window.__LOANS || []).filter((l) => l.player_id !== p_player); return null; },
   entente_group_fill: () => 2,
   event_reports_list: () => [],
-  my_coach_contact: () => ({ show_phone: false, show_sms: false, show_email: false }),
+  my_coach_contact: () => ({ show_phone: false, show_sms: false, show_email: false, answered: window.__CCANS !== false }), // bêta 1.8.0 · n° 300
+  active_theme: () => window.__FETE || null, // bêta 1.8.0 · n° 296
+  coach_contact_remind: () => new Date().toISOString(),
+  admin_theme_get: () => ({ theme: null, enabled: false, active: null }), admin_loan_mails: () => [], admin_loan_day_get: () => null,
   set_coach_contact: () => null,
   set_score: ({ p_event, p_lines }) => { const e = D.events.find((x) => x.id === p_event); e.score_edited = !!e.scores; e.scores = p_lines; e.score_at = new Date().toISOString(); return p_lines.length; },
   confirm_hours: ({ p_check, p_team }) => { D.hours_confirms.filter((x) => x.check_id === p_check && x.user_id === ME && (!p_team || x.team_id === p_team)).forEach((c) => { c.confirmed_at = new Date().toISOString(); }); return 0; }, // bêta 1.5.0 · n° 276 : par équipe
@@ -285,6 +288,7 @@ export function createClient() {
       if (n === 'generer-exercice') return { data: clone(window.__AIRESP || { ok: true, left_today: 19, steps: { v: 1, sport: o?.body?.sport, items: [{ id: 'a1', k: 'a', n: '1' }, { id: 'a2', k: 'a', n: '2' }, { id: 'b', k: 'b', n: '' }], frames: [{ c: 'Le 1 a le ballon.', p: { a1: [180, 260], a2: [300, 190], b: [192, 252] } }, { c: 'Passe au 2.', p: { b: [292, 184] } }, { c: 'Le 1 coupe, double pas.', p: { a1: [170, 70], b: [176, 62] } }] } }), error: null };
       // n° 124 : window.__MAILFAIL = { status, erreur, code } imite un refus de la fonction (compte non validé, limite, Resend)
       const f = window.__MAILFAIL; if (f && o?.body?.convocation && (!f.to || f.to === o.body.convocation.to?.email)) return { data: null, error: { message: 'Edge Function returned a non-2xx status code', context: new Response(JSON.stringify({ erreur: f.erreur, code: f.code }), { status: f.status || 502 }) } };
+      if (o?.body?.loan_mail && window.__LOANMAIL === 'echec') return { data: null, error: { message: 'Edge Function returned a non-2xx status code', context: new Response(JSON.stringify({ erreur: 'Le service d’e-mails a refusé l’envoi' }), { status: 502 }) } }; // bêta 1.8.0 · n° 298
       return { data: { envoye: true, to: window.__EMAIL || 'gael@exemple.fr' }, error: null }; } },
   };
 }
