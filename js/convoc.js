@@ -79,15 +79,16 @@ export function missing(d, step) {
   if (!d.club.logo) m.push('le logo du club (onglet Club → Blason)');
   m.push(...contactMissing(d));
   live.filter((x) => !x.coach).forEach((x) => m.push(`le coach de ${catOf(x)}`));
-  if (!d.nocoach) coachPending(d).forEach((x) => m.push(`les coordonnées de ${x.coach.name || 'son coach'} (${catOf(x)}) : il ne les a pas encore choisies`));
   live.filter((x) => !x.opponents).forEach((x) => m.push(`le club reçu pour ${catOf(x)} (champ Adversaire du rendez-vous)`));
-  if (step === 'C') live.filter((x) => !x.place).forEach((x) => m.push(`le gymnase de ${catOf(x)} (champ Lieu du rendez-vous)`));
+  if (step === 'C') live.filter((x) => !String(x.place || '').trim()).forEach((x) => m.push(`le gymnase de ${catOf(x)}`));
   return m;
 }
 // bêta 1.8.0 · n° 300 : coachs des rencontres qui n'ont pas encore choisi leurs coordonnées (une seule fois, pour toutes les convocations).
-// Ils bloquent l'envoi, sauf si la case « Envoyer la convocation sans les coordonnées du coach » est cochée (d.nocoach, au cas par cas).
+// bêta 1.8.2 · n° 306 : ils ne bloquent plus rien : la demande part toute seule (une relance 24 h après), et en attendant la convocation
+// renvoie au correspondant des rencontres (repli provisoire, définitif si le coach répond « rien »).
 export const coachPending = (d) => [...new Map((d.events || []).filter((x) => !x.cancelled && x.coach && x.coach.answered === false).map((x) => [x.coach.id || x.coach.name, x])).values()];
-export const blocking = (d, step) => (step === 'C' && d.events.some((x) => !x.cancelled && !x.place)) || contactMissing(d).length > 0 || (!d.nocoach && coachPending(d).length > 0);
+export const noPlace = (d) => d.events.filter((x) => !x.cancelled && !String(x.place || '').trim());
+export const blocking = (d, step) => (step === 'C' && noPlace(d).length > 0) || contactMissing(d).length > 0;
 
 // Le document A4 (HTML imprimé en PDF par le téléphone ou l'ordinateur)
 export function convocHtml(d, step, now = new Date(), o = {}) {
@@ -148,8 +149,9 @@ function convocScreen() {
   <div class="det">${esc(periodOf(d.from, d.to).label)} · ${d.events.length} rencontre${d.events.length > 1 ? 's' : ''} à domicile · réf. ${esc(reference(d.club.name, d.from, step))}</div></div>`;
   h += `<div class="card"><div class="list">${d.events.map((x) => `<div class="row static"><span class="g">${esc(catOf(x))} · ${esc(x.opponents || 'club reçu à préciser')}<small>${esc(dayLong(paris(x.starts_at)))} à ${hhmm(x.starts_at)}${x.place ? ' · ' + esc(x.place) : ''}${x.coach ? ' · coach ' + esc(x.coach.name) : ''}</small></span>${x.cancelled ? '<span class="pill ko">Annulée</span>' : ''}</div>`).join('') || '<p class="empty">Aucune rencontre à domicile ce week-end.</p>'}</div></div>`;
   const cm = contactMissing(d);
-  if (miss.length) h += `<div class="card warn"><b>${block ? 'À compléter avant l’envoi et le PDF :' : 'À compléter avant l’envoi (le document reste possible) :'}</b><ul style="margin:6px 0 0 18px;padding:0">${miss.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>${d.correspondent && cm.length ? `<div class="btns" style="margin-top:10px"><button type="button" class="btn small main" data-act="convfill">Aller les compléter</button><button type="button" class="btn small ghost" data-act="convrefresh">Actualiser</button></div><p class="note">Le contact complète ses coordonnées dans Mon compte, puis revient ici avec le bouton « Revenir à la convocation ».</p>` : ''}</div>`; // 5.13.0 · n° 234
-  h += coachAskCard(d); // bêta 1.8.0 · n° 300
+  if (miss.length) h += `<div class="card warn"><b>${block ? 'À compléter avant l’envoi et le PDF :' : 'À compléter avant l’envoi (le document reste possible) :'}</b><ul style="margin:6px 0 0 18px;padding:0">${miss.map((m) => (m.startsWith('le gymnase de ') ? `<li><button type="button" class="linkbtn" data-act="convgymfocus">${esc(m)} : compléter ›</button></li>` : `<li>${esc(m)}</li>`)).join('')}</ul>${d.correspondent && cm.length ? `<div class="btns" style="margin-top:10px"><button type="button" class="btn small main" data-act="convfill">Aller les compléter</button><button type="button" class="btn small ghost" data-act="convrefresh">Actualiser</button></div><p class="note">Le contact complète ses coordonnées dans Mon compte, puis revient ici avec le bouton « Revenir à la convocation ».</p>` : ''}</div>`; // 5.13.0 · n° 234
+  if (step === 'C') h += gymCard(d); // bêta 1.8.2 · n° 304, 305
+  h += coachAskCard(d); // bêta 1.8.0 · n° 300 ; 1.8.2 · n° 306 (information seulement)
   // N° 109, 112 : chercher le club reçu (envoi dans mypocketclub), sinon e-mail avec le PDF joint ; suivi des envois du week-end
   h += sendCard(d, step);
   return h;
@@ -159,17 +161,39 @@ function convocScreen() {
 async function reloadConvoc() {
   const v = S.convoc; if (!v || v.loading) return;
   v.loading = true; v.reload = false;
-  try { const { data, error } = await sb.rpc('convocation_data', { p_event: v.eid }); if (!error && data && S.convoc === v) { data.nocoach = !!v.data?.nocoach; v.data = data; await loadSends(v.eid); } }
+  try { const { data, error } = await sb.rpc('convocation_data', { p_event: v.eid }); if (!error && data && S.convoc === v) { v.data = data; await loadSends(v.eid); } }
   finally { v.loading = false; if (S.convoc === v && S.view?.type === 'convoc') render(true); }
 }
-// bêta 1.8.0 · n° 300 : relancer le coach (il choisit lui-même, le bouton ne coche jamais à sa place) ; ou envoyer sans ses coordonnées
+const stamp = (iso) => new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+// bêta 1.8.2 · n° 306 : le coach est prévenu tout seul (une demande, puis une seule relance 24 h après) ; rien ne bloque.
+// Plus de bouton « Notifier le coach » ni de case « sans les coordonnées du coach » (décision de Gaël, 26 novembre).
 function coachAskCard(d) {
   const P = coachPending(d); if (!P.length) return '';
-  const stamp = (iso) => new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
-  return `<div class="card flat coachask"><div class="kick">Coordonnées du coach</div><p class="note" style="margin:0">Chaque coach choisit une seule fois ce que les convocations montrent de lui. Le bouton le prévient seulement ; il choisit lui-même dans Mon compte.</p>
-  <div class="list">${P.map((x) => `<div class="row static"><span class="g">${esc(x.coach.name)} · ${esc(catOf(x))}<small>${x.coach.asked_at ? `Demande envoyée le ${esc(stamp(x.coach.asked_at))}` : 'Pas encore relancé'}</small></span>${x.coach.id && x.coach.id !== S.me?.id ? `<button type="button" class="btn small ghost" data-act="convask" data-id="${esc(x.coach.id)}">${icon('bell', 18)}Notifier le coach</button>` : '<button type="button" class="btn small ghost" data-act="ccgo">Choisir maintenant</button>'}</div>`).join('')}</div>
-  <label class="check"><input type="checkbox" data-convnocoach="1" ${d.nocoach ? 'checked' : ''}><span>Envoyer la convocation sans les coordonnées du coach (elle renvoie au correspondant des rencontres)</span></label>
+  const st = (k) => (k.asks >= 2 ? `Demande envoyée le ${stamp(k.asked_at)}, relancé une fois` : k.asked_at ? `Demande envoyée le ${stamp(k.asked_at)} · une relance partira 24 h après` : 'Demande envoyée dès qu’un autre que lui prépare la convocation');
+  return `<div class="card flat coachask"><div class="kick">Coordonnées du coach</div><p class="note" style="margin:0">En attendant sa réponse, la convocation indique « contact : correspondant des rencontres ». Le coach choisit lui-même dans Mon compte ; s’il choisit « rien », ça reste ainsi.</p>
+  <div class="list">${P.map((x) => `<div class="row static"><span class="g">${esc(x.coach.name)} · ${esc(catOf(x))}<small>${esc(st(x.coach))}</small></span></div>`).join('')}</div>
   <div class="btns"><button type="button" class="btn small ghost" data-act="convrefresh">Actualiser</button></div></div>`;
+}
+// bêta 1.8.2 · n° 304, 305 : compléter le gymnase des rencontres sans lieu, depuis la convocation (étape 2).
+// Plusieurs gymnases : liste déroulante ; aucun (ou « Autre lieu ») : saisie à la main. Le président peut ajouter le lieu à la liste
+// du club ; les autres peuvent demander au président d'ajouter les gymnases. La base vérifie chaque droit (set_event_place).
+function gymCard(d) {
+  const L = noPlace(d); if (!L.length) return '';
+  const v = S.convoc, gyms = d.gyms || [], pres = !!d.president, man = v.manual || {};
+  const gp = (g) => [String(g.name || '').trim(), String(g.address || '').trim()].filter(Boolean).join(', ');
+  const row = (x) => {
+    const own = gyms.length && !man[x.id];
+    const sel = gyms.length ? `<select data-convgym="${x.id}" aria-label="Gymnase de ${esc(catOf(x))}"><option value="">Choisir le gymnase…</option>${gyms.map((g, i) => `<option value="${i}">${esc(g.name)}</option>`).join('')}<option value="autre" ${man[x.id] ? 'selected' : ''}>Autre lieu (écrire l’adresse)</option></select>` : '';
+    const form = own ? '' : `<div class="stack" style="margin-top:8px"><input id="cvn-${x.id}" maxlength="80" placeholder="Nom du lieu (ex. Gymnase du Parc)" aria-label="Nom du lieu"><input id="cva-${x.id}" maxlength="200" placeholder="Numéro, rue, code postal, ville" aria-label="Adresse du lieu" autocomplete="street-address">
+      ${pres ? `<label class="check"><input type="checkbox" id="cvs-${x.id}" checked><span>Ajouter à la liste des gymnases du club</span></label>` : ''}
+      <div class="btns"><button type="button" class="btn small main" data-act="convplace" data-id="${x.id}">${icon('check', 18)}Enregistrer le lieu</button></div></div>`;
+    return `<div class="gymrow" data-gym="${x.id}"><b>${esc(catOf(x))} · ${esc(x.opponents || 'club reçu à préciser')}</b><small class="det">${esc(dayLong(paris(x.starts_at)))} à ${hhmm(x.starts_at)}</small>${sel}${form}</div>`;
+  };
+  let h = `<div class="card gymcard" id="convgym"><div class="kick">Gymnase des rencontres</div>${L.map(row).join('')}`;
+  if (pres) h += `<div class="btns"><button type="button" class="btn small ghost" data-act="gymgo">${icon('pin', 18)}${gyms.length ? 'Gérer les gymnases du club' : 'Ajouter les gymnases du club'}</button></div>`;
+  else if (!gyms.length) h += `<p class="note">Aucun gymnase enregistré dans le club : écris le lieu, ou demande au président de les ajouter (le lieu se remplira tout seul ensuite).</p>
+    <div class="btns"><button type="button" class="btn small ghost" data-act="convgymask">${icon('bell', 18)}Demander au président d’ajouter les gymnases</button></div>${d.gym_asked_at ? `<p class="note">Président prévenu le ${esc(stamp(d.gym_asked_at))}.</p>` : ''}`;
+  return h + '</div>';
 }
 VIE_VIEWS.convoc = () => { if (S.convoc?.reload) setTimeout(reloadConvoc, 0); return { head: header({ back: true, kicker: 'Convocation', title: S.convoc?.step === 'P' ? 'Pré-convocation' : 'Convocation' }), body: convocScreen() }; };
 
@@ -179,13 +203,32 @@ export async function openConvoc(eid, step) {
   const d = await run(sb.rpc('convocation_data', { p_event: eid }));
   if (!d) { S.view = { type: 'event', id: eid }; render(); return; }
   S.convoc.data = d; await loadSends(eid); render(true);
+  // bêta 1.8.2 · n° 306 : la demande part toute seule aux coachs du week-end jamais demandés (pas de doublon : la base le vérifie)
+  if (coachPending(d).some((x) => !x.coach.asked_at)) { const { data: n } = await sb.rpc('convocation_ask_coaches', { p_event: eid }); if (n > 0 && S.convoc?.eid === eid) reloadConvoc(); }
 }
-CHANGES.push((t) => { if (!t.dataset.convnocoach || !S.convoc?.data) return false; S.convoc.data.nocoach = t.checked; render(true); return true; }); // n° 300
+// bêta 1.8.2 · n° 304 : choix d'un gymnase de la liste (ou « Autre lieu » : saisie à la main)
+CHANGES.push(async (t) => {
+  const eid = t.dataset.convgym; if (!eid || !S.convoc?.data) return false;
+  const v = S.convoc; v.manual = v.manual || {};
+  if (t.value === 'autre') { v.manual[eid] = true; render(true); return true; }
+  const g = (v.data.gyms || [])[+t.value]; if (!g || t.value === '') return true;
+  if (await run(sb.rpc('set_event_place', { p_event: eid, p_name: g.name, p_address: g.address || '' }), 'Gymnase enregistré sur la rencontre.')) { delete v.manual[eid]; await reloadConvoc(); }
+  return true;
+});
 Object.assign(ACTIONS, {
   convoc: (el, d) => openConvoc(d.id, d.v),
   // 5.13.0 · n° 234 : aller compléter les coordonnées du contact (Mon compte), puis revenir à la convocation en cours
   convrefresh: () => reloadConvoc(),
-  convask: async (el, d) => { const v = S.convoc; if (!v) return; if (await run(sb.rpc('coach_contact_remind', { p_event: v.eid, p_coach: d.id }), 'Coach prévenu par notification.')) reloadConvoc(); },
+  // bêta 1.8.2 · n° 304, 305 : gymnase des rencontres
+  convgymfocus: () => { const c = document.getElementById('convgym'); c?.scrollIntoView({ block: 'center', behavior: 'smooth' }); c?.querySelector('select,input')?.focus({ preventScroll: true }); },
+  convplace: async (el, d) => {
+    const v = S.convoc; if (!v) return;
+    const n = document.getElementById('cvn-' + d.id)?.value.trim() || '', a = document.getElementById('cva-' + d.id)?.value.trim() || '', save = !!document.getElementById('cvs-' + d.id)?.checked;
+    if (!n && !a) return toast('Écris le nom ou l’adresse du lieu.');
+    if (save && !n) return toast('Donne un nom au gymnase pour l’ajouter à la liste du club.');
+    if (await run(sb.rpc('set_event_place', { p_event: d.id, p_name: n, p_address: a, p_save: save }), save ? 'Lieu enregistré et ajouté aux gymnases du club.' : 'Lieu enregistré sur la rencontre.')) { if (v.manual) delete v.manual[d.id]; S.gymsClub = null; await reloadConvoc(); }
+  },
+  convgymask: async () => { const v = S.convoc; if (!v) return; if (await run(sb.rpc('gyms_ask_president', { p_event: v.eid }), 'Président prévenu par notification.')) reloadConvoc(); },
   convfill: () => { const v = S.convoc; if (!v) return; v.reload = true; S.convRet = { eid: v.eid, step: v.step }; S.view = { type: 'account' }; render(); setTimeout(() => document.getElementById('contactf')?.scrollIntoView({ block: 'start' }), 60); },
   convback: () => { const r = S.convRet; S.convRet = null; if (!r) return; S.stack = (S.stack || []).filter((x) => x.type !== 'convoc'); S.noStack = true; return openConvoc(r.eid, r.step); },
   convstep: async (el, d) => { S.convoc.step = d.v; S.convoc.version = 0; if (S.convoc.send) S.convoc.send.confirm = false; render(true); await loadSends(S.convoc.eid); render(true); },

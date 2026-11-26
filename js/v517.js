@@ -9,7 +9,7 @@
 //            demande attend. Sans notification, la base met un e-mail « ta demande est validée » en attente : l'application de la
 //            personne qui valide demande son envoi juste après (envoyer-email, branche « validated »).
 // Rappel : chaque droit est vérifié par la base (supabase/alpha_5_17_0.sql) ; l'écran n'est qu'un confort.
-import { S, sb, esc, hooks, ACTIONS, FORMS, CHANGES, render, toast, run, isPresident, armed, isArmed, isActive } from './core.js';
+import { S, sb, esc, hooks, ACTIONS, FORMS, CHANGES, render, toast, run, isPresident, armed, isArmed, isActive, refresh } from './core.js';
 import { icon, field } from './ui.js';
 import { keepForm } from './agenda.js';
 import { N, isIOS, pushState } from './notif.js';
@@ -78,7 +78,7 @@ hooks.gymSettings = () => {
     <button class="roundbtn" data-act="gymedit" data-id="${g.id}" aria-label="Modifier ${esc(g.name)}">${icon('edit', 18)}</button>
     <button class="btn small ${isArmed('gymdel' + g.id) ? 'danger armed' : 'ghost'}" data-act="gymdel" data-id="${g.id}">${isArmed('gymdel' + g.id) ? 'Confirmer' : 'Retirer'}</button></div>`).join('');
   return `<div class="sec"><h2>Gymnases du club</h2></div><div class="card" data-anchor="gyms">
-    <p class="note" style="margin:0">Le lieu des entraînements et des rendez-vous à domicile se remplit tout seul avec ces gymnases. Un toucher sur l’adresse ouvre le GPS.</p>
+    <p class="note" style="margin:0">Le lieu des entraînements et des rendez-vous à domicile se remplit tout seul avec le gymnase du club, même pour ceux déjà créés sans lieu ; avec plusieurs gymnases, on choisit dans une liste. Seul le président gère cette liste ; tout le club la voit dans l’onglet Club. Un toucher sur l’adresse ouvre le GPS.</p>
     ${rows ? `<div class="list">${rows}</div>` : ''}
     <form id="gymf" class="stack">${ed ? `<div class="kick">Modifier ${esc(ed.name)}</div>` : `<div class="kick">${gyms.length ? 'Ajouter un gymnase' : 'Premier gymnase'}</div>`}
       ${field('gyn', 'Nom', `<input id="gyn" name="name" required maxlength="80" value="${esc(ed?.name || '')}" placeholder="Ex. Gymnase du Parc">`)}
@@ -90,9 +90,22 @@ FORMS.gymf = async (v) => {
   if (!name) return toast('Donne un nom au gymnase.');
   const q = S.gymEdit ? sb.from('club_gyms').update({ name, address }).eq('id', S.gymEdit)
     : sb.from('club_gyms').insert({ club_id: S.clubId, name, address, position: (S.gyms || []).length });
-  if (await run(q, S.gymEdit ? 'Gymnase modifié.' : 'Gymnase ajouté.')) { S.gymEdit = null; await loadGyms(); render(true); }
+  // bêta 1.8.2 · n° 304 : le premier gymnase se met aussi sur les rendez-vous à venir sans lieu (déclencheur de la base) : on les relit
+  const first = !S.gymEdit && !(S.gyms || []).length;
+  if (await run(q, S.gymEdit ? 'Gymnase modifié.' : first ? 'Gymnase ajouté. Il est mis sur les rendez-vous à domicile à venir qui n’avaient pas de lieu.' : 'Gymnase ajouté.')) { S.gymEdit = null; await loadGyms(); if (first) refresh(); else render(true); }
+};
+// bêta 1.8.2 · n° 305 : onglet Club › Gymnases, en lecture seule pour tous les membres ; le président a un lien vers ses réglages
+hooks.gymsBlock = () => {
+  const gyms = gymsNow(); if (!gyms) return '';
+  if (!gyms.length && !isPresident()) return '';
+  const rows = gyms.map((g) => { const p = gymPlace(g); return `<div class="row static"><span class="g">${esc(g.name)}${g.address ? `<a class="placelink" ${linkAttrs(p)}>${icon('pin', 16)}${esc(g.address)}</a>` : '<small>Adresse non renseignée</small>'}</span></div>`; }).join('');
+  return `<details class="card" data-anchor="clubgyms"><summary>${icon('pin', 18)} Gymnases du club${gyms.length ? ` <span class="det">${gyms.length}</span>` : ''}</summary>
+    ${rows ? `<div class="list">${rows}</div>` : '<p class="note">Aucun gymnase enregistré.</p>'}
+    ${isPresident() ? `<div class="btns"><button class="btn small ghost" data-act="gymgo">${icon('edit', 18)}Gérer les gymnases</button></div>` : ''}</details>`;
 };
 Object.assign(ACTIONS, {
+  // bêta 1.8.2 · n° 305 : Président › Réglages › « Gymnases du club » (depuis la convocation, l'onglet Club ou la notification)
+  gymgo: () => { ACTIONS.ptab(null, { v: 'reglages' }); setTimeout(() => { const c = document.querySelector('[data-anchor="gyms"]'); c?.scrollIntoView({ block: 'start', behavior: 'smooth' }); c?.querySelector('#gyn')?.focus({ preventScroll: true }); }, 120); },
   gymedit: (el, d) => { S.gymEdit = d.id || null; render(true); },
   gymdel: async (el, d) => {
     if (!armed('gymdel' + d.id)) return;

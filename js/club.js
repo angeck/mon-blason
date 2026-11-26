@@ -1,7 +1,7 @@
 // mypocketclub · onglet Club : blason et en-tête, code, validations, licences et cotisations, tarifs, équipes, membres, corbeille.
 import { BRAND } from '../config.js';
 import {
-  S, sb, esc, fl, roleLabel, hasArea, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, catsFor, SEASON, XLSX_URL, club, isBoard, isPresident,
+  S, sb, esc, hooks, fl, roleLabel, hasArea, run, toast, render, refresh, armed, isArmed, ACTIONS, FORMS, INPUTS, CHANGES, ROLES, catsFor, SEASON, XLSX_URL, club, isBoard, isPresident,
   coachTeams, coachOf, teamName, name, pname, adminOf, toValidate, canValidate, norm, loadJs, download, toDataUrl, num, plural, onColor, contrast, rankOf, myRank, niceFirst, niceLast,
 } from './core.js';
 import { entTag } from './core.js';
@@ -273,7 +273,7 @@ export function clubTab() {
   // n° 101 : la gestion se fait dans l'espace (bouton « Mes rôles ») ; 5.1.0 (n° 190) : les demandes à valider aussi, plus dans l'onglet Club
     h += `<div class="card yellow" style="transform:none"><span class="kick" style="color:var(--pc-texte-ecran)">Code pour rejoindre le club</span><span class="codebox">${esc(c.join_code)}</span><button class="btn ink small" data-act="share">${icon('share', 18, '#FFFFFF')}Partager l'invitation</button></div>`;
   // 5.1.0 (n° 191) : la page « Gestion du club » n'existe plus ; la liste des membres (consulter) est dans l'onglet Club pour tous
-  h += contactsBlock() + teamsBlock() + (board ? '' : feesBlock()) + membersBlock();
+  h += contactsBlock() + (hooks.gymsBlock ? hooks.gymsBlock() : '') + teamsBlock() + (board ? '' : feesBlock()) + membersBlock(); // bêta 1.8.2 · n° 305 : gymnases
   return h;
 }
 

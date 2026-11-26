@@ -1047,3 +1047,7 @@ body.dv-open{overflow:hidden}
 .ev[class*=" th-"] .btn:not(.main):not(.yes),.card.yellow[class*=" th-"] .btn:not(.main):not(.yes){background:transparent}
 .ev.th-galette .btn,.card.yellow.th-galette .btn{border-color:#11162E;color:#11162E}
 .ev[class*=" th-"] .pill{background:#FFFFFF;color:#11162E}
+/* bêta 1.8.2 · n° 304, 305 : gymnase des rencontres dans la convocation */
+.gymcard .gymrow{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-top:1px solid var(--pc-bord,#D8DCEA)}
+.gymcard .gymrow:first-of-type{border-top:0}
+.gymcard .gymrow select,.gymcard .gymrow input{width:100%}
