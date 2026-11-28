@@ -25,7 +25,7 @@ export function homeTab() {
   // n° 94 ; 5.1.0 (n° 191) : une seule touche mène là où la personne valide (Président › Demandes, Secrétariat, Technique, espace coach)
   if (vp) h += `<button class="btn main" data-act="vdem">${plural(vp, 'demande à valider', 'demandes à valider')}</button>`;
   h += todayHome(today); // n° 156 : le jour J, le rendez-vous passe en tête de l'Accueil (tous les rôles ; « Faire l'appel » pour le coach)
-  h += adminValidateHome() + adminHome() + coachHome() + (hooks.coachContactHome ? hooks.coachContactHome() : '') + annoncesHome() + hoursHome() + resultsHome(); // n° 88 : cartes du coach en tête ; n° 96 : demandes de clubs (admin)
+  h += adminValidateHome() + adminHome() + (hooks.vitrineHome ? hooks.vitrineHome() : '') + coachHome() + (hooks.coachContactHome ? hooks.coachContactHome() : '') + annoncesHome() + hoursHome() + resultsHome(); // n° 88 : cartes du coach en tête ; n° 96 : demandes de clubs (admin)
   if (next) {
     h += `<div class="card yellow${hooks.evThemeClass ? hooks.evThemeClass(next) : ''}"><span class="kick" style="color:var(--pc-texte-ecran)">À répondre${todo.length > 1 ? ` · 1 sur ${todo.length}` : ''}</span><button data-act="event" data-id="${next.id}" style="background:none;border:0;padding:0;text-align:left;color:inherit;display:flex;flex-direction:column;gap:2px"><b style="font-family:var(--pc-titre);font-size:26px;line-height:1.05">${esc(next.title)}</b><span style="font-size:17px">${esc(fmtDate(next.starts_at))}${next.place ? ' · ' + esc(next.place) : ''}</span></button>${answerBlock(next)}</div>`;
   }

@@ -17,3 +17,5 @@ node --experimental-strip-types --no-warnings email.test.mjs
 node --experimental-strip-types --no-warnings recommandation.test.mjs
 node pdf.test.mjs
 node dictee.test.mjs
+node --experimental-strip-types --no-warnings vitrine.test.mjs
+python3 vitrine_ecrans.py

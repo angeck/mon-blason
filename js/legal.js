@@ -9,7 +9,7 @@ import { BRAND, IS_PROD } from '../config.js';
 const LIEU = IS_PROD ? 'France, à Paris' : 'Irlande';
 import { esc } from './core.js';
 
-export const LEGAL = { version: '1.17', date: '25 novembre 2026' }; // 1.17 (bêta 1.8.0, conditions 1.6) : n° 298, e-mail au président de l'autre club pour chaque prêt (contact saisi, « Prénom N. », durée) ; n° 300, rappel au coach ; 1.16 (bêta 1.7.3, conditions 1.5) : articles « Ententes entre clubs » (5) et « Prêts de joueurs » (6), conditions renumérotées ; 1.15 (bêta 1.7.3) : société et adresse de Supabase, durée des rendez-vous, réponses et scores (Gaël, 24 novembre) ; 1.14 (bêta 1.7.2) : toutes les pages légales alignées sur les bêtas 1.7.0 et 1.7.1 (version courte, conditions 1.4) ; 1.13 (bêta 1.7.1) : groupe d'équipe commun d'une entente (n° 78), joueur en prêt (n° 293) ; 1.12 (bêta 1.7.0) : signalement d'un problème (n° 292), contact du coach dans la convocation (n° 295) ; 1.11 (bêta 1.6.0) : équipe en entente vue des deux clubs (n° 78)
+export const LEGAL = { version: '1.18', date: '28 novembre 2026' }; // 1.18 (bêta 1.9.0, conditions 1.7) : n° 311 à 313, vitrine publique du club (ce qui y est montré, formulaires « Venir faire un essai » et « Écrire au club », 3 mois), article 7 « Vitrine du club », conditions renumérotées ; 1.17 (bêta 1.8.0, conditions 1.6) : n° 298, e-mail au président de l'autre club pour chaque prêt (contact saisi, « Prénom N. », durée) ; n° 300, rappel au coach ; 1.16 (bêta 1.7.3, conditions 1.5) : articles « Ententes entre clubs » (5) et « Prêts de joueurs » (6), conditions renumérotées ; 1.15 (bêta 1.7.3) : société et adresse de Supabase, durée des rendez-vous, réponses et scores (Gaël, 24 novembre) ; 1.14 (bêta 1.7.2) : toutes les pages légales alignées sur les bêtas 1.7.0 et 1.7.1 (version courte, conditions 1.4) ; 1.13 (bêta 1.7.1) : groupe d'équipe commun d'une entente (n° 78), joueur en prêt (n° 293) ; 1.12 (bêta 1.7.0) : signalement d'un problème (n° 292), contact du coach dans la convocation (n° 295) ; 1.11 (bêta 1.6.0) : équipe en entente vue des deux clubs (n° 78)
 const C = BRAND.contact;
 
 // Petit format de texte : « ## » titre de carte, « - » puce, « | a | b | » ligne de tableau, **gras**, lien mailto pour l'adresse de contact.
@@ -63,6 +63,7 @@ const SHORT = `
 - Licence et cotisation : état de la licence, cotisation, remise éventuelle, versements notés, attestations de paiement ; visibles du bureau, et du parent ou du joueur majeur pour sa propre fiche.
 - Vos réglages : équipes suivies, notifications sur chaque appareil, avancée du guide « Pour bien démarrer ».
 - Renforts, ententes et prêts : le fait qu'un joueur renforce une autre équipe de son club (avec l'accord de sa famille) ; pour une équipe en entente, le club d'origine du joueur ; le prêt d'un joueur à un autre club, ou venu d'un autre club, pour la saison ; si l'autre club n'utilise pas mypocketclub, le prénom, le nom et l'e-mail de son président, saisis par le club pour le prévenir.
+- Vitrine du club : si votre club l'active, une page publique montre son nom, son blason, ses équipes (nom, catégorie, nombre de joueurs), ses créneaux d'entraînement et ses gymnases, ses matchs à domicile et ses textes. Jamais le nom ni la photo d'un joueur, jamais une coordonnée. Les résultats ne sont visibles qu'avec un compte. Une personne qui demande un essai ou écrit au club par cette page laisse son nom, un moyen de la recontacter, son message et, pour un essai, l'année de naissance du joueur (jamais son nom) : la demande va à la personne choisie par le club et est effacée après 3 mois.
 - Jamais d'information médicale. Merci de ne pas en écrire dans l'application.
 ## Pour quoi faire ?
 Organiser la vie du club : agenda, présences, convocations, messages, cotisations. Rien d'autre : pas de publicité, pas de revente, pas de profilage.
@@ -118,6 +119,8 @@ Contact pour toute question : ${C}.
 - **E-mails envoyés** : type, club, date et réussite de chaque envoi, pour respecter les limites d'envoi ; jamais l'adresse ni le contenu. Une adresse qui s'est désinscrite est gardée sous forme d'empreinte, pour ne plus jamais y écrire.
 - **Gymnases du club** : nom et adresse des salles, saisis par le président, visibles des membres du club pour remplir le lieu des rendez-vous à domicile. Toucher une adresse ouvre l'application de cartes de votre appareil (Plans, Google Maps…), qui reçoit alors cette adresse.
 - **Recommandations** : quand une personne recommande mypocketclub à un dirigeant de son club, nous gardons seulement l'empreinte de l'adresse du dirigeant (pour ne jamais lui écrire deux fois), jamais l'adresse, ni le prénom ou le club saisis.
+- **Vitrine du club** : si le club l'active, une page publique (mypocketclub.fr/nom-du-club) montre ce que le club choisit : nom, blason et couleurs, ville, équipes (nom, catégorie, nombre de joueurs, « On recrute » ou « Complet »), créneaux d'entraînement (sauf ceux que le club cache), gymnases, matchs à domicile à venir, textes (présentation, tarifs, pièces à fournir, palmarès, partenaires, liens vers ses réseaux). Jamais le nom ni la photo d'un joueur, jamais une coordonnée d'un membre. Les derniers résultats ne sont montrés qu'aux personnes connectées. Pendant la version de test, la page est cachée des moteurs de recherche.
+- **Demandes reçues par la vitrine** : la personne qui demande un essai ou écrit au club donne son nom, un téléphone ou un e-mail pour la réponse, son message, et pour un essai l'équipe visée et l'année de naissance du joueur (jamais son nom). La demande va, dans mypocketclub et par e-mail, à la personne choisie par le président (par défaut : le contact licences pour un essai, le président pour un message). L'adresse IP est vérifiée par l'anti-robots Cloudflare Turnstile et gardée sous forme d'empreinte pour limiter les abus.
 - **Accords** : droit à l'image et e-mails d'information, avec leur date.
 - **Contenus que vous créez** : exercices, séances, tactiques (schémas de placement des coachs), annonces, fichiers joints.
 mypocketclub ne demande **aucune donnée de santé**. Seul le fait qu'un certificat a été fourni, oui ou non, peut être noté par le club. Merci de ne pas écrire d'information médicale dans l'application.
@@ -191,7 +194,8 @@ Les e-mails nécessaires au service sont toujours envoyés : convocation, change
 | Journal des e-mails envoyés | 13 mois |
 | Empreinte d'une adresse désinscrite | Tant que le service existe, pour ne plus y écrire |
 | Empreinte d'une adresse recommandée | Tant que le service existe, pour ne jamais lui écrire deux fois |
-| Empreinte d'adresse IP | Environ 1 heure (recherche de club) ; 2 jours (recommandation) ; avec la demande d'ajout d'un club, tant qu'elle est gardée |
+| Empreinte d'adresse IP | Environ 1 heure (recherche de club) ; 2 jours (recommandation) ; avec la demande d'ajout d'un club, tant qu'elle est gardée ; avec une demande envoyée par la vitrine, 3 mois |
+| Demande reçue par la vitrine du club (essai, message) | 3 mois, puis effacée |
 | Club supprimé | 90 jours de corbeille, données non consultées, puis effacement |
 | Adresse saisie pour inviter une personne (par exemple un parent) | Le lien d'invitation vaut 14 jours ; l'adresse est effacée après 30 jours |
 | Demande de conversation avec un mineur (qui la fait, le parent sollicité, sa réponse) | Effacée 30 jours après la réponse ou l'annulation |
@@ -253,7 +257,7 @@ Chaque club est créé par son président, dont la qualité est vérifiée par m
 - informe ses membres, et les parents des joueurs mineurs, qu'il utilise mypocketclub ;
 - reste seul organisateur de ses activités : entraînements, matchs, déplacements, événements, bénévolat. mypocketclub n'organise, n'encadre et n'assure aucune de ces activités.
 
-Les ententes avec un autre club et les prêts de joueurs ont leurs propres articles (5 et 6).
+Les ententes avec un autre club, les prêts de joueurs et la vitrine du club ont leurs propres articles (5, 6 et 7).
 ## 5. Ententes entre clubs
 - **Principe.** Une entente réunit, pour une équipe, des joueurs de deux clubs. Le club qui porte l'équipe la crée et invite l'autre club. L'entente n'existe que lorsque l'autre club l'a acceptée, et seulement pour cette équipe.
 - **Ce qui est partagé.** Une fois l'entente acceptée, les deux clubs voient l'équipe, ses rendez-vous et son groupe d'échange. Les coachs et le contact de l'équipe voient les noms et les coordonnées utiles des familles des deux clubs. Pour les autres personnes, un joueur de l'autre club apparaît sous la forme « Prénom N. ».
@@ -266,12 +270,17 @@ Les ententes avec un autre club et les prêts de joueurs ont leurs propres artic
 - **Exactitude.** Le club déclare ces prêts avec exactitude. Un joueur est compté par le club où il a signé sa licence : un joueur prêté reste compté par son club, un joueur venu en prêt n'est pas compté par le club qui l'accueille.
 - **Prévenir l'autre club.** Le président de l'autre club reçoit un e-mail par prêt (et une notification s'il utilise mypocketclub), avec seulement le prénom et l'initiale du nom du joueur. Si l'autre club n'utilise pas mypocketclub, le club qui note le prêt saisit le prénom, le nom et l'e-mail de son président : il s'engage à saisir une adresse exacte, celle du président, qu'il a obtenue normalement. Ces e-mails sont limités à un par jour et par club, dix un jour par saison sur accord de mypocketclub.
 - **Pas de partage.** Un prêt ne crée ni groupe commun ni équipe partagée, et ne donne à l'autre club aucun accès aux informations du joueur.
-## 7. Protection des mineurs
+## 7. Vitrine du club
+- **Principe.** Le président peut activer la vitrine du club : une page publique, à l'adresse qu'il choisit, remplie avec ce que le club gère déjà dans mypocketclub. Le président et le responsable vitrine qu'il désigne choisissent ce qui s'y voit.
+- **Contenu.** Le club est responsable des textes, tarifs, liens et noms de partenaires qu'il publie. Il n'y publie ni nom, ni photo, ni coordonnée de personne. mypocketclub ne montre jamais le nom d'un joueur ni une coordonnée d'un membre sur cette page.
+- **Demandes reçues.** Les demandes d'essai et les messages envoyés par la page arrivent à la personne choisie par le président ; le club y répond lui-même et ne s'en sert que pour répondre. Elles sont effacées après 3 mois.
+- **Fin.** Le président peut couper la vitrine à tout moment ; la page n'est alors plus visible.
+## 8. Protection des mineurs
 - Les autres joueurs et parents voient les joueurs sous la forme « Prénom N. », sans coordonnées ni photo.
 - Un adulte ne peut pas échanger en privé avec un mineur. En dehors des groupes d'équipe, un parent de chaque mineur est présent dans la conversation. Dans un groupe d'équipe, y compris celui d'une équipe en entente, les parents inscrits du mineur sont ajoutés d'office. Il est interdit de contourner cette règle, dans l'application ou en invitant un mineur à poursuivre l'échange ailleurs.
 - Le droit à l'image est donné par les parents. Publier la photo d'un mineur sans cet accord est interdit.
 - Un jeune ne tient une mission de bénévole que si son parent l'a inscrit. Le club s'engage à ce qu'un adulte soit présent, et aucune mission où l'on manie de l'argent ne lui est confiée.
-## 8. Règles de conduite
+## 9. Règles de conduite
 Vous vous engagez à ne pas :
 - publier de contenu illégal, insultant, menaçant, discriminatoire, à caractère sexuel ou portant atteinte à la vie privée d'autrui ;
 - écrire d'information médicale sur une personne, y compris dans le signalement d'un problème ;
@@ -280,35 +289,35 @@ Vous vous engagez à ne pas :
 - vous faire passer pour une autre personne ou pour un club ;
 - tenter d'accéder à des données qui ne vous sont pas destinées, ni perturber le fonctionnement de l'application ;
 - extraire en masse les données de l'application.
-## 9. Vos contenus
+## 10. Vos contenus
 - **Ils restent à vous.** Vous gardez vos droits sur les messages, exercices, séances et fichiers que vous créez.
 - **Ce que vous autorisez.** Vous autorisez mypocketclub à les stocker et à les afficher aux personnes à qui vous les destinez, pour faire fonctionner l'application.
 - **Exercices partagés.** En partageant un exercice avec votre club ou avec tous les clubs, vous certifiez en être l'auteur ou avoir le droit de le partager, et vous accordez aux autres utilisateurs le droit gratuit et non exclusif de l'utiliser pour leurs entraînements. Vous pouvez le retirer à tout moment ; les séances déjà préparées par d'autres peuvent en garder une copie.
 - **Images créées avec une aide automatique.** Si l'application propose de générer une image ou une animation pour un exercice, vous restez responsable de l'exercice publié et vous vérifiez le résultat avant de le partager.
 - **Logo du club.** Le club certifie avoir le droit d'utiliser le logo qu'il importe.
-## 10. Signalement et retrait
+## 11. Signalement et retrait
 Tout contenu peut être signalé, dans l'application ou à ${C}. mypocketclub héberge les contenus des utilisateurs sans les lire à l'avance. Il retire rapidement ce qui lui est signalé et qui est manifestement illicite ou contraire à ces conditions, et peut en informer le président du club concerné. Dans un groupe, le président du club voit les messages signalés. Un problème signalé depuis un rendez-vous (matériel ou comportement d'un joueur) n'est lu que par le coach de l'équipe, le directeur technique, le vice-président et le président du club, qui décident de la suite.
-## 11. Données personnelles
+## 12. Données personnelles
 Le traitement de vos données est décrit dans la politique de confidentialité, accessible depuis l'application (« Vos données »).
-## 12. Suspension, suppression et fin
+## 13. Suspension, suppression et fin
 - **Par vous.** Vous pouvez quitter un profil, quitter un club ou supprimer votre compte à tout moment depuis « Mon compte ». Un compte supprimé reste 30 jours en corbeille, puis il est effacé.
 - **Par le club.** Un club peut retirer un membre ou une fonction.
 - **Par mypocketclub.** En cas de manquement à ces conditions, mypocketclub peut retirer un contenu, suspendre un compte ou le supprimer, après vous avoir prévenu, sauf urgence ou risque pour un mineur.
 - **Club non validé.** Un club dont le président n'est pas validé est prévenu de la date limite. Sans validation dans les 30 jours, le club est supprimé.
 - **Club supprimé.** Ses données restent 90 jours en corbeille, sans être consultées, puis elles sont effacées. Le président peut annuler la suppression pendant ce délai.
-## 13. Disponibilité et responsabilité
+## 14. Disponibilité et responsabilité
 mypocketclub fait ses meilleurs efforts pour que l'application fonctionne et pour protéger vos données, sans garantie de disponibilité permanente pendant le test. Il ne peut pas être tenu responsable :
 - des décisions et des activités du club, ni des informations que le club ou ses membres enregistrent ;
 - d'une absence ou d'un retard de notification : pour une information importante, le club garde un autre moyen de prévenir ses membres ;
 - d'une interruption due à un prestataire technique ou à votre connexion.
 Rien dans ces conditions ne limite les droits que la loi vous reconnaît.
-## 14. Propriété intellectuelle
+## 15. Propriété intellectuelle
 L'application, son nom, son logo, ses textes et son code appartiennent à leur éditeur. Tous droits réservés. Vous disposez d'un droit personnel d'utiliser l'application, sans pouvoir la copier, la revendre ni en réutiliser le contenu en dehors de la vie de votre club.
-## 15. Offres payantes
+## 16. Offres payantes
 L'application est gratuite pendant le test. Si une offre payante est proposée plus tard, elle fera l'objet de conditions séparées, acceptées par le club ou par la personne concernée. Deux gratuités sont prévues : un club qui s'inscrit est gratuit jusqu'à la fin de la saison en cours (une saison va du 1er juillet au 30 juin) ; une équipe est gratuite pendant une saison complète, de sa date de début à la même date l'année suivante (par exemple de décembre à décembre). Un soutien versé à un club par l'application ne sera jamais un don ouvrant droit à un reçu fiscal. Si un prix est fixé par joueur, chaque joueur n'est compté qu'une fois, par le club où il a signé sa licence : un joueur prêté à un autre club reste compté par son club ; un joueur venu en prêt n'est pas compté par le club qui l'accueille.
-## 16. Modification des conditions
+## 17. Modification des conditions
 Ces conditions peuvent évoluer. Une modification importante vous est présentée à votre connexion suivante, et votre accord vous est redemandé. La version et la date figurent en tête de cette page.
-## 17. Droit applicable et contact
+## 18. Droit applicable et contact
 Ces conditions sont soumises au droit français. Pour toute question ou réclamation : ${C}. Nous cherchons d'abord une solution amiable.`;
 
 // Pages : menu (sans id), « mentions », « donnees » (courte), « politique » (complète), « cgu »

@@ -8,7 +8,7 @@ FILES="schema.sql alpha_3_0_1.sql alpha_3_0_2.sql alpha_3_1.sql alpha_3_2.sql al
 alpha_3_4.sql alpha_3_4_1.sql alpha_3_4_2.sql alpha_3_5_0.sql alpha_3_6_0.sql alpha_3_7_0.sql alpha_3_8_0.sql alpha_3_9_0.sql alpha_3_10_0.sql
 alpha_4_2_0.sql alpha_4_3_0.sql alpha_4_4_0.sql alpha_4_5_0.sql alpha_4_6_0.sql alpha_4_7_0.sql alpha_4_8_0.sql alpha_4_9_0.sql alpha_4_10_0.sql
 alpha_5_1_0.sql alpha_5_2_0.sql alpha_5_2_1.sql alpha_5_3_0.sql alpha_5_4_0.sql alpha_5_5_0.sql alpha_5_6_0.sql alpha_5_7_0.sql alpha_5_9_0.sql
-alpha_5_10_0.sql alpha_5_11_0.sql alpha_5_12_0.sql alpha_5_13_0.sql alpha_5_15_0.sql alpha_5_17_0.sql beta_1_1_0.sql beta_1_2_0.sql beta_1_2_2.sql beta_1_3_0.sql beta_1_5_0.sql beta_1_5_1.sql beta_1_6_0.sql beta_1_7_0.sql beta_1_7_1.sql beta_1_7_2.sql beta_1_7_3.sql beta_1_8_0.sql"
+alpha_5_10_0.sql alpha_5_11_0.sql alpha_5_12_0.sql alpha_5_13_0.sql alpha_5_15_0.sql alpha_5_17_0.sql beta_1_1_0.sql beta_1_2_0.sql beta_1_2_2.sql beta_1_3_0.sql beta_1_5_0.sql beta_1_5_1.sql beta_1_6_0.sql beta_1_7_0.sql beta_1_7_1.sql beta_1_7_2.sql beta_1_7_3.sql beta_1_8_0.sql beta_1_8_2.sql beta_1_9_0.sql"
 {
   cat <<'EOF'
 -- =====================================================================

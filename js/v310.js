@@ -180,7 +180,7 @@ export const FONCTION_RIGHTS = {
   'Secrétaire': 'Secrétariat : demandes, fiches, licences, import et export', 'Secrétaire adjoint': 'Comme le secrétaire',
   'Correspondant licences': 'Licences (état, numéro, certificat fourni) et contact licences', 'Directeur technique': 'Technique : toutes les équipes, coachs, exercices, ententes',
   'Correspondant rencontres': 'Événements : matchs, plateaux, tournois, convocations, bénévoles', 'Chargé de communication': 'Communication : annonces et lecteurs', 'Responsable événements': 'Événements : événements du club, participants, bénévoles',
-  'Responsable sponsoring': 'Pas d’espace pour l’instant (partie Commun)', 'Membre du bureau': 'La partie Commun, et les accès que tu ouvres en plus',
+  'Responsable sponsoring': 'Pas d’espace pour l’instant (partie Commun)', 'Responsable vitrine': 'Vitrine du club : ce que montre la page publique, textes, équipes et créneaux, passage de saison', 'Membre du bureau': 'La partie Commun, et les accès que tu ouvres en plus',
 };
 export function rightsNote() {
   return `<details class="card"><summary>Ce que donne chaque fonction</summary><div class="list">${FONCTIONS.map((f) => `<div class="row static"><span class="g">${esc(fl(f))}<small>${esc(FONCTION_RIGHTS[f] || '')}</small></span></div>`).join('')}</div><p class="note">Les droits s’additionnent quand une personne a plusieurs fonctions. Seuls les adultes reçoivent une fonction.</p></details>`;
@@ -189,7 +189,7 @@ export function rightsNote() {
 // bêta 1.1.0 · n° 244 : le bandeau (presBand), le dépliant « Bureau » et le dépliant « Équipes » de la Vue d'ensemble sont remplacés
 // par la Vue d'ensemble « pro » et les onglets Bureau et Équipes (js/b110.js). Les filtres d'équipes (n° 261) y sont repris.
 // bêta 1.1.0 · n° 244 : six onglets ; « Fonctions du bureau » (ancien onglet « qui ») est dans Bureau
-const PTABS = [['ensemble', 'Vue d’ensemble'], ['demandes', 'Demandes'], ['bureau', 'Bureau'], ['equipes', 'Équipes'], ['reglages', 'Réglages'], ['journal', 'Journal']];
+const PTABS = [['ensemble', 'Vue d’ensemble'], ['demandes', 'Demandes'], ['bureau', 'Bureau'], ['equipes', 'Équipes'], ['reglages', 'Réglages'], ['vitrine', 'Vitrine'], ['journal', 'Journal']]; // bêta 1.9.0 · n° 311 : onglet Vitrine
 const ptabNow = () => (S.ptab === 'qui' ? 'bureau' : S.ptab || 'ensemble');
 // N° 116 : les onglets du président au bas du bloc bleu de l'en-tête, juste sous les casquettes
 export function presidentTabs() {
@@ -207,6 +207,7 @@ export function presidentSpace310() {
   else if (t === 'equipes') h += hooks.presEquipes(teamToolsBlock(true));
   else if (t === 'demandes') { h += hooks.attestReqBlock ? hooks.attestReqBlock() : ''; const vp = toValidate(); h += vp.length ? `<div class="card lift">${pendRows(vp)}</div><p class="note">Toi seul valides les demandes des membres du bureau. Le secrétariat et les coachs valident aussi les autres.</p>` : '<p class="empty">Aucune demande à valider.</p>'; }
   else if (t === 'reglages') h += reglagesView();
+  else if (t === 'vitrine') h += hooks.vitrineSpace ? hooks.vitrineSpace('president') : ''; // bêta 1.9.0 · n° 311
   else h += journalBody();
   return h;
 }

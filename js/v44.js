@@ -26,10 +26,11 @@ const DAY = 864e5;
 const FN_SET = {
   'Trésorier': 'tresorerie', 'Trésorier adjoint': 'tresorerie', 'Secrétaire': 'secretariat', 'Secrétaire adjoint': 'secretariat',
   'Correspondant licences': 'licences', 'Correspondant rencontres': 'rencontres', 'Directeur technique': 'technique', 'Chargé de communication': 'communication', 'Responsable événements': 'evenements',
+  'Responsable vitrine': 'vitrine', // bêta 1.9.0 · n° 311
 };
 const DESIG_SET = { licences: 'licences', rencontres: 'rencontres', evenements: 'evenements', communication: 'communication' };
 // rubriques que la présentation d'une fonction contient déjà
-const SET_AREAS = { tresorerie: ['tresorerie'], secretariat: ['secretariat', 'licences'], licences: ['licences'], rencontres: ['evenements'], technique: ['technique'], communication: ['communication'], evenements: ['evenements'] };
+const SET_AREAS = { vitrine: ['vitrine'], tresorerie: ['tresorerie'], secretariat: ['secretariat', 'licences'], licences: ['licences'], rencontres: ['evenements'], technique: ['technique'], communication: ['communication'], evenements: ['evenements'] };
 // une présentation en couvre d'autres (le Secrétariat comprend les licences ; les rencontres comprennent les bénévoles)
 const COVERS = { secretariat: ['licences'], rencontres: ['evenements'] };
 // n° 152 et 153 (9 novembre 2026) : le premier onglet de chaque fonction est un « Aperçu » (bandeau, à faire, droits) ;
@@ -42,6 +43,7 @@ const SETS = {
   technique: [['ap_technique', 'Aperçu'], ['equipes', 'Équipes'], ['exos', 'Exercices'], ['ententes', 'Ententes']],
   communication: [['ap_communication', 'Aperçu'], ['annonces', 'Annonces'], ['lecteurs', 'Lecteurs']],
   evenements: [['ap_evenements', 'Aperçu'], ['events', 'Événements']],
+  vitrine: [['vitrinep', 'Vitrine']], // bêta 1.9.0 · n° 311 : une seule page, sans Aperçu (Gaël, 28 novembre)
 };
 
 // Présentations d'une fonction ; « mine » = ma propre casquette (on ajoute ce que le président m'a confié en plus)
@@ -52,6 +54,7 @@ function setsFor(f, mine) {
     const prim = myFonctions().map((x) => FN_SET[x]).filter(Boolean);
     const covered = (k) => prim.includes(k) || prim.some((x) => (COVERS[x] || []).includes(k));
     (S.desig || []).filter((d) => d.user_id === S.me.id).forEach((d) => { const k = DESIG_SET[d.resp]; if (k && !covered(k)) add(k); });
+    if ((S.areas || []).includes('vitrine') && !covered('vitrine')) add('vitrine'); // bêta 1.9.0 : accès « vitrine » ouvert en plus (ex. au contact licences)
   }
   // une présentation déjà comprise dans une autre n'est pas répétée (licences dans le Secrétariat, bénévoles dans les rencontres)
   return out.filter((k) => !out.some((x) => (COVERS[x] || []).includes(k)));
@@ -195,6 +198,7 @@ function convokeBlock() {
 const canExportMembers = () => isPresident() || myFonctions().some((f) => ['Secrétaire', 'Secrétaire adjoint'].includes(f));
 
 const BODY = {
+  vitrinep: () => (hooks.vitrineSpace ? hooks.vitrineSpace('fonction') : ''), // bêta 1.9.0 · n° 311
   // Trésorier
   cotis: () => {
     const late = lateFees();

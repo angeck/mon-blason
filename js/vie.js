@@ -18,13 +18,13 @@ import { coachHub, coachSingle, defaultAsk, defaultCasq, presidentSpace310, pres
 
 // Rubriques de chaque fonction (même table que la base : fonction_areas)
 export const FONCTION_AREAS = {
-  'Vice-président': Object.keys(AREAS), 'Trésorier': ['tresorerie'], 'Trésorier adjoint': ['tresorerie'], 'Secrétaire': ['secretariat'], 'Secrétaire adjoint': ['secretariat'],
+  'Vice-président': ['tresorerie', 'secretariat', 'technique', 'communication', 'evenements'], 'Responsable vitrine': ['vitrine'], /* bêta 1.9.0 : la vitrine n'est pas donnée au vice-président */ 'Trésorier': ['tresorerie'], 'Trésorier adjoint': ['tresorerie'], 'Secrétaire': ['secretariat'], 'Secrétaire adjoint': ['secretariat'],
   // n° 114 : « Correspondant licences » = les licences seulement (sous-rubrique « licences », hors AREAS) ; « Correspondant rencontres » (ex-coordinateur)
   // sans la rubrique Technique ; « Directeur technique » (ex-directeur sportif) ; le sponsoring n'a pas encore d'espace
   'Correspondant licences': [], 'Directeur technique': ['technique'], 'Correspondant rencontres': ['evenements'], 'Chargé de communication': ['communication'], 'Responsable événements': ['evenements'], // 5.2.0 (n° 172)
   'Responsable sponsoring': [], 'Membre du bureau': [],
 };
-const AREA_ICON = { tresorerie: 'doc', secretariat: 'user', technique: 'team', communication: 'msg', evenements: 'cal', commun: 'shield' };
+const AREA_ICON = { tresorerie: 'doc', secretariat: 'user', technique: 'team', communication: 'msg', evenements: 'cal', vitrine: 'home', commun: 'shield' };
 const eur = (n) => (Math.round((+n || 0) * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €';
 
 // ---------- espaces ----------
@@ -109,7 +109,7 @@ export function rubList(keys) {
 const RUB_SUB = {
   tresorerie: 'Tarifs, réductions, cotisations, relances, export', secretariat: 'Demandes, membres, licences, dates de naissance',
   technique: 'Équipes, coachs, heures, exercices, statistiques', communication: 'Annonces, contacts, blason et couleurs',
-  evenements: 'Bénévoles, missions par défaut, événements', commun: 'Agenda, messages, annonces, corbeille, journal',
+  evenements: 'Bénévoles, missions par défaut, événements', vitrine: 'Page publique du club, textes, équipes montrées, demandes', commun: 'Agenda, messages, annonces, corbeille, journal',
 };
 export function fonctionSpace(f, asPresident = false) {
   const own = (FONCTION_AREAS[f] || []).filter(hasArea), extra = (S.areas || []).filter((a) => !own.includes(a));
@@ -134,6 +134,7 @@ function rubView(a) {
   return { head: header({ back: true, kicker: 'Accès', title: esc(AREAS[a] || 'Commun'), casq: ok ? casqTabs() : '' }), body: ok ? rubBody(a) : '<div class="card"><p class="empty">Cet accès n’est pas ouvert pour toi. Le président peut l’ouvrir dans « Fonctions du bureau ».</p></div>' };
 }
 export function rubBody(a) {
+  if (a === 'vitrine') return hooks.vitrineSpace ? hooks.vitrineSpace('rub') : ''; // bêta 1.9.0 · n° 311
   if (a === 'tresorerie') return payTreasurerSoon() + tresoSummary() + feesBlock() + licencesBlock(); // n° 115
   if (a === 'secretariat') { const vp = toValidate(); return (vp.length ? `<div class="sec" id="demandes"><h2>Demandes à valider</h2><span class="pill wait">${vp.length}</span></div><div class="card lift">${pendRows(vp)}</div>` : '') + namesToCheck() + effectifsBlock() + licencesBlock() + membersBlock(); } // n° 191 : effectifs
   // n° 191 : les demandes de coachs, venues de « Gestion du club »

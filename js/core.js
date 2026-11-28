@@ -159,8 +159,8 @@ export const hasArea = (a) => (S.areas || []).includes(a);
 // bêta 1.6.0 · n° 286 : les statistiques de toutes les équipes, dans l'espace président : président, vice-président, directeur technique (rubrique Technique)
 export const isVP = () => active().some((m) => m.role === 'bureau' && m.fonction === 'Vice-président');
 export const canAllStats = () => isPresident() || isVP() || hasArea('technique');
-export const AREAS = { tresorerie: 'Trésorerie', secretariat: 'Secrétariat', technique: 'Technique', communication: 'Communication', evenements: 'Événements' };
-export const FONCTIONS = ['Vice-président', 'Secrétaire', 'Secrétaire adjoint', 'Trésorier', 'Trésorier adjoint', 'Directeur technique', 'Correspondant rencontres', 'Correspondant licences', 'Chargé de communication', 'Responsable événements', 'Responsable sponsoring', 'Membre du bureau'];
+export const AREAS = { tresorerie: 'Trésorerie', secretariat: 'Secrétariat', technique: 'Technique', communication: 'Communication', evenements: 'Événements', vitrine: 'Vitrine' }; // bêta 1.9.0 · n° 311 : accès « vitrine »
+export const FONCTIONS = ['Vice-président', 'Secrétaire', 'Secrétaire adjoint', 'Trésorier', 'Trésorier adjoint', 'Directeur technique', 'Correspondant rencontres', 'Correspondant licences', 'Chargé de communication', 'Responsable événements', 'Responsable sponsoring', 'Responsable vitrine', 'Membre du bureau'];
 // Casquettes de l'espace (charte du 31 octobre) : Coach, Président, chaque fonction du bureau
 // N° 100 : un coach de plusieurs équipes a une casquette par équipe (« Coach U9 », « Coach Reines », clé « coach:<équipe> ») ;
 // un coach d'une seule équipe garde la casquette « coach », comme avant.

@@ -251,6 +251,7 @@ function todoTab() {
   h += '<p class="note">Seuls les messages qu’un président te transmet arrivent ici : tu vois le message signalé, jamais la conversation.</p>';
   h += `<div class="sec"><h2>Doublons d’exercices publics</h2><span class="det">${a.dups.length}</span></div>`;
   h += a.dups.length ? `<section class="card"><div class="list">${a.dups.map((d) => { const on = isArmed('admdup' + d.id); return `<div class="row static"><span class="g">« ${esc(d.title)} » = « ${esc(d.other_title)} »<small>${esc(d.reported_by_name || '')} · ${esc(day(d.reported_at))}</small></span><button class="btn small ${on ? 'danger armed' : 'main'}" data-act="admdupm" data-id="${esc(d.id)}">${on ? 'Confirmer' : 'Fusionner'}</button><button class="btn small ghost" data-act="admdupn" data-id="${esc(d.id)}">Pas un doublon</button></div>`; }).join('')}</div><p class="note">« Fusionner » garde le second exercice ; le premier part à la corbeille.</p></section>` : '<p class="empty">Aucun doublon signalé.</p>';
+  if (hooks.adminVitrines) h += hooks.adminVitrines(); // bêta 1.9.0 · n° 314
   h += `<div class="sec"><h2>Demandes</h2></div><section class="card"><button class="btn" data-act="creqs">${icon('search', 20)}Demandes de clubs · ${+ov.club_requests || 0}</button><p class="note">« Mon club n’est pas dans la liste ».</p><button class="btn" data-act="cschemas">${icon('doc', 20)}Demandes de schéma · ${+ov.schemas || 0}</button><p class="note">Exercices envoyés par les coachs : dépose la vidéo du schéma.</p></section>`;
   return h;
 }
