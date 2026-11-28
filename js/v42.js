@@ -14,7 +14,7 @@
 import { BRAND } from '../config.js';
 import { S, sb, esc, run, toast, render, ACTIONS, INPUTS, CHANGES, hooks, catGender, onColor, contrast } from './core.js';
 import { icon, field } from './ui.js';
-import { reference, weekendLabel, periodOf, mailSender, blocking, contactMissing, convocHtml } from './convoc.js';
+import { reference, weekendLabel, periodOf, mailSender, blocking, contactMissing, coachPending, convocHtml } from './convoc.js';
 import { Pdf, wrap, toBase64 } from './pdfmin.js';
 import { pdfArt } from './v43.js';
 import { showDoc } from './docview.js'; // bêta 1.5.1 · n° 285
@@ -152,7 +152,7 @@ export function sendCard(d, step) {
   const s = st(), off = blocking(d, step) || !d.events.length;
   if (!canSend()) s.dest.forEach((x) => { x.mode = 'pdf'; });   // n° 124 : sans validation, seul le PDF envoyé à la main reste possible
   let h = `<div class="card"><div class="kick">Envoyer aux clubs reçus</div>`;
-  if (off) return h + `<button class="btn small ghost" data-act="convpdf" disabled>${icon('down', 18)}Imprimer ou enregistrer le PDF</button><p class="note">${step === 'C' && d.events.length && !contactMissing(d).length ? 'En attente du gymnase : complète-le ci-dessus.' : 'Complète d’abord ce qui manque ci-dessus.'}</p></div>`; // bêta 1.8.2 · n° 305
+  if (off) return h + `<button class="btn small ghost" data-act="convpdf" disabled>${icon('down', 18)}Imprimer ou enregistrer le PDF</button><p class="note">${coachPending(d).length && !contactMissing(d).length ? 'En attente du choix pour le coach : « Relancer le coach » ou « Envoyer avec le correspondant », ci-dessus.' : step === 'C' && d.events.length && !contactMissing(d).length ? 'En attente du gymnase : complète-le ci-dessus.' : 'Complète d’abord ce qui manque ci-dessus.'}</p></div>`; // bêta 1.8.2 · n° 305 ; 1.9.1 · n° 307
   h += `<div class="btns"><button class="btn small ghost" data-act="convpdf">${icon('down', 18)}Imprimer ou enregistrer le PDF</button><button class="btn small ghost" data-act="cvpreview">${icon('doc', 18)}Voir le PDF joint</button></div>`;
   // n° 124 : compte non validé → envoi grisé, le PDF reste libre
   if (!canSend()) h += `<div class="card warn" style="transform:none"><b>Envoi réservé aux comptes validés par ${esc(BRAND.name)}</b><span class="note" style="color:var(--pc-texte-ecran)">Tu peux télécharger le PDF et l’envoyer toi-même. Pour ouvrir l’envoi par e-mail et dans ${esc(BRAND.name)}, écris à <a href="mailto:${esc(BRAND.contact)}">${esc(BRAND.contact)}</a>.</span></div>`;

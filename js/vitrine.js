@@ -27,6 +27,22 @@ const txt = (x) => (typeof x === 'string' ? x.trim() : '');
 import { BLOCKS, orderOf } from './vitrine_blocs.js';
 const LABEL = Object.fromEntries(BLOCKS);
 
+// Cotisation : prise équipe par équipe dans les tarifs du trésorier (Club › Tarifs, jamais saisie dans la vitrine).
+// Tarif particulier de l'équipe, sinon celui de sa catégorie ; équipes au même prix regroupées ; sans tarif, pas de ligne.
+const eur = (n) => (+n).toLocaleString('fr-FR', { minimumFractionDigits: Number.isInteger(+n) ? 0 : 2, maximumFractionDigits: 2 }) + ' €';
+function feeRows(d) {
+  const by = new Map();
+  arr(d.teams).filter((t) => t.fee != null).forEach((t) => { const k = +t.fee; by.set(k, [...(by.get(k) || []), t.name]); });
+  return [...by.entries()].sort((a, b) => a[0] - b[0]).map(([k, names]) => [names.join(' · '), eur(k)]);
+}
+// Écusson : même dessin que crest() de js/ui.js (n° 37 et n° 92). La vitrine est une page à part : elle ne charge pas ui.js.
+const lum = (hex) => { const n = parseInt(String(hex || '#2F5BFF').slice(1), 16), f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(n >> 16) + 0.7152 * f((n >> 8) & 255) + 0.0722 * f(n & 255); };
+function ecu(c, size, bg) {
+  const h = Math.round(size * 1.14), clip = 'clip-path:polygon(0 0,100% 0,100% 62%,50% 100%,0 62%)', m = c.crest_outline || 'auto', base = c.crest_bg || '#FFFFFF';
+  const o = m === 'aucun' ? null : m === 'noir' ? '#11162E' : m === 'blanc' ? '#FFFFFF' : lum(bg) < 0.35 || lum(base) < 0.35 ? '#FFFFFF' : '#11162E';
+  const inner = `<span style="display:flex;align-items:center;justify-content:center;width:${size}px;height:${h}px;background:${esc(base)};${clip}"><img src="${esc(c.logo)}" alt="Blason du club" style="width:78%;height:66%;object-fit:contain;margin-top:-10%"></span>`;
+  return `<span class="vecu" style="flex:none;display:flex;align-items:center;justify-content:center;${o ? `width:${size + 6}px;height:${h + 7}px;background:${o};${clip}` : ''}">${inner}</span>`;
+}
 const V = { d: null, slug: '', ed: false, draft: null, open: 'fees', form: null, busy: false, captcha: null };
 
 function slugOf() {
@@ -122,7 +138,7 @@ function body(k, d) {
   }
   if (k === 'inscrire') {
     const tiles = [
-      ['fees', 'Cotisation', arr(c.fees).filter((x) => txt(x?.[0]) || txt(x?.[1])).map((x) => [txt(x[0]), txt(x[1])])],
+      ['fees', 'Cotisation', feeRows(d)],
       ['docs', 'Pièces à fournir', arr(c.docs).map(txt).filter(Boolean).map((x) => [x, ''])],
       ['when', 'Quand ?', arr(c.when).map(txt).filter(Boolean).map((x) => [x, ''])],
     ].filter((t) => t[2].length);
@@ -168,7 +184,8 @@ function page() {
   document.title = c.name + ' · mypocketclub';
   $('meta[name=theme-color]')?.setAttribute('content', c.color1);
   const ball = c.sport === 'Volley-ball' ? 'img/ballon-volley.svg' : 'img/ballon-basket.svg';
-  const crest = c.logo ? `<img class="logo" src="${esc(c.logo)}" alt="Blason du club">` : `<img src="${ball}" alt="">`;
+  // Blason du club dans son écusson, comme dans l'appli et sur la convocation (même forme, même fond, même contour) ; sans logo : ballon mpc
+  const crest = c.logo ? ecu(c, 76, c.color1) : `<div class="vblason"><img src="${ball}" alt=""></div>`;
   const n = d.counts || {}, cc = d.content || {};
   const url = (location.host + location.pathname).replace(/\/$/, '');
   const lead = txt(cc.lead) || `Le ${c.sport === 'Volley-ball' ? 'volley' : 'basket'} pour tout le monde${c.city ? ', à ' + c.city : ''}. Viens essayer avant de t’inscrire.`;
@@ -176,7 +193,7 @@ function page() {
   const edbar = V.ed ? `<div class="vedbar"><div class="wrap"><div class="t"><strong style="font-family:var(--titre)">Mode édition</strong><span> · ↑ ↓ pour l’ordre, l’œil pour cacher. L’en-tête et le bas de page restent fixes.</span></div><button class="btn contour petit" data-a="cancel">Annuler</button><button class="btn jaune petit" data-a="save" ${V.busy ? 'disabled' : ''}>Enregistrer</button></div></div>` : '';
   const pre = !d.enabled ? '<div class="preview">Aperçu : la vitrine n’est pas encore activée, seuls le président et le responsable la voient.</div>' : '';
   $('#vit').innerHTML = `${edbar}${pre}<header class="vhd ${txtc === '#11162E' ? 'ink' : ''}"><div class="wrap"><div class="vtop"><span class="url">${esc(url)}</span>${d.can_edit && !V.ed ? '<button class="btn contour petit" data-a="edit" style="min-height:40px">Éditer la page</button>' : ''}${d.logged ? '' : `<a href="${esc(APP)}">Se connecter</a>`}</div>
-    <div class="vhero"><div class="txt"><div class="vid"><div class="vblason">${crest}</div><div style="font-size:15px;opacity:.9">${esc(sub)}${txt(cc.founded) ? `<br>Club fondé en ${esc(txt(cc.founded))}` : ''}</div></div>
+    <div class="vhero"><div class="txt"><div class="vid">${crest}<div style="font-size:15px;opacity:.9">${esc(sub)}${txt(cc.founded) ? `<br>Club fondé en ${esc(txt(cc.founded))}` : ''}</div></div>
     <h1 class="vh1">${esc(c.name)}</h1><p class="vlead">${esc(lead)}</p><div class="vbtns"><button class="btn jaune" data-a="form" data-k="essai">Venir faire un essai</button><button class="btn contour" data-a="form" data-k="ecrire">Écrire au club</button></div></div>
     <div class="vnums"><div class="vnum"><b>${+n.teams || 0}</b><span>équipe${+n.teams > 1 ? 's' : ''}</span></div><div class="vnum"><b>${+n.players || 0}</b><span>licencié${+n.players > 1 ? 's' : ''}</span></div><div class="vnum"><b>${+n.gyms || 0}</b><span>gymnase${+n.gyms > 1 ? 's' : ''}</span></div></div></div></div></header>
     <main class="wrap vmain">${blocks(d)}</main>

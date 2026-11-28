@@ -37,13 +37,11 @@ const apply = (data) => { if (data && typeof data === 'object') S.vit = data; };
 
 // ---------- textes et infos : une ligne = un élément ----------
 const lines = (s) => String(s || '').split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 30);
-const two = (l, re) => { const m = re.exec(l); return m ? [m[1].trim(), m[2].trim()] : [l, '']; };
 export function parseContent(v) {
   const links = lines(v.links).map((l) => { const m = /^(.*?)[\s:–-]*\s(https:\/\/\S+)$/i.exec(l) || /^()(https:\/\/\S+)$/i.exec(l); if (!m) return null; let n = m[1].replace(/[:–-]\s*$/, '').trim(); if (!n) { try { n = new URL(m[2]).hostname.replace(/^www\./, '').split('.')[0]; n = n.charAt(0).toUpperCase() + n.slice(1); } catch { n = 'Lien'; } } return [n.slice(0, 40), m[2].slice(0, 300)]; }).filter(Boolean);
   return {
     lead: String(v.lead || '').trim().slice(0, 200), presentation: String(v.presentation || '').trim().slice(0, 1500), founded: String(v.founded || '').trim().slice(0, 10),
     values: String(v.values || '').split(/[,\n]/).map((x) => x.trim()).filter(Boolean).slice(0, 8).map((x) => x.slice(0, 40)),
-    fees: lines(v.fees).map((l) => two(l, /^(.*?)\s*:\s*(.+)$/).map((x) => x.slice(0, 80))),
     docs: lines(v.docs).map((x) => x.slice(0, 120)), when: lines(v.when).map((x) => x.slice(0, 160)), wanted: lines(v.wanted).map((x) => x.slice(0, 160)),
     palmares: lines(v.palmares).map((l) => { const p = l.split(/\s*[·|]\s*/); return p.length >= 3 ? [p[0], p[1], p.slice(2).join(' · ')] : p.length === 2 ? [p[0], '', p[1]] : ['', '', p[0]]; }).map((x) => x.map((y) => y.slice(0, 80))),
     partners: lines(v.partners).map((x) => x.slice(0, 60)), links,
@@ -51,7 +49,7 @@ export function parseContent(v) {
 }
 const unparse = (c = {}) => ({
   lead: c.lead || '', presentation: c.presentation || '', founded: c.founded || '', values: arr(c.values).join(', '),
-  fees: arr(c.fees).map((x) => (x[1] ? `${x[0]} : ${x[1]}` : x[0])).join('\n'), docs: arr(c.docs).join('\n'), when: arr(c.when).join('\n'), wanted: arr(c.wanted).join('\n'),
+  docs: arr(c.docs).join('\n'), when: arr(c.when).join('\n'), wanted: arr(c.wanted).join('\n'),
   palmares: arr(c.palmares).map((x) => x.filter(Boolean).join(' · ')).join('\n'), partners: arr(c.partners).join('\n'), links: arr(c.links).map((x) => `${x[0]} : ${x[1]}`).join('\n'),
 });
 
@@ -149,7 +147,7 @@ function textCard(v) {
     ${ta('vtp', 'presentation', 'Présentation du club', 'Qui vous êtes, l’esprit du club…', 4)}
     <div class="grid2">${field('vtf', 'Année de création', `<input id="vtf" name="founded" inputmode="numeric" maxlength="10" value="${esc(c.founded)}" placeholder="Ex. 1978">`)}${field('vtv', 'Valeurs (séparées par des virgules)', `<input id="vtv" name="values" maxlength="300" value="${esc(c.values)}" placeholder="Ex. Convivialité, Formation">`)}</div>
     <div class="kick">S’inscrire</div>
-    ${ta('vtfe', 'fees', 'Cotisation (une ligne par tarif : catégorie : prix)', 'U7 à U11 : 120 €\nU13 à U18 : 150 €\nSeniors : 180 €')}
+    <p class="note">La cotisation se remplit toute seule, équipe par équipe, avec les tarifs du trésorier (Trésorerie › Tarifs).</p>
     ${ta('vtd', 'docs', 'Pièces à fournir (une par ligne)', 'Certificat médical ou questionnaire de santé\nPhoto d’identité')}
     ${ta('vtw', 'when', 'Quand ? (une ligne par info)', 'Essais gratuits pendant 2 semaines\nInscriptions toute l’année')}
     <div class="kick">Le reste</div>

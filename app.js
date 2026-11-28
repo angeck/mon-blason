@@ -37,6 +37,7 @@ import './js/v517.js'; // 5.17.0 : n° 254 (gymnases du club), n° 257 (notifica
 import './js/b110.js';
 import './js/b170.js';
 import { loadB190 } from './js/b190.js'; // bêta 1.9.0 : n° 311 à 314 (vitrine du club)
+import './js/b191.js'; // bêta 1.9.1 : demande de logo à mpc, demandes de logo dans l'espace admin
 import { loadB180 } from './js/b180.js'; // bêta 1.8.0 : n° 298 (e-mail de prêt), 300 (contact du coach), 296 (thèmes de fêtes) // bêta 1.7.0 : n° 292 (signaler un problème), 295 (contact du coach), 293 (prêt), 78 suites // bêta 1.1.0 : n° 244 (espace Président « pro », aperçu de chaque fonction au même modèle)
 import './js/v55.js'; // 5.5.0 : onboarding « Pour bien démarrer », FAQ (Aide), n° 164 justificatif d'adhésion
 import { validationReminders } from './js/v54.js'; // 5.4.0 : n° 201 (conversation avec un mineur), n° 84 (rattacher), transfert d'une convocation, n° 182

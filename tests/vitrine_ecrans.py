@@ -25,8 +25,8 @@ DATA = {
               'docs': ['Certificat médical'], 'when': ['Essais gratuits pendant 2 semaines'], 'wanted': ['Des coachs pour les U9'], 'palmares': [['2024', 'Régional 2', 'Champion']],
               'partners': ['Boulangerie du Centre'], 'links': [['Instagram', 'https://instagram.com/exemple'], ['Pas sûr', 'http://exemple.fr']]},
   'layout': {'order': [], 'hidden': []},
-  'teams': [{'id': T1, 'name': 'U11 mixte', 'category': 'U11', 'players': 12, 'status': 'recrute', 'slots_hidden': False},
-            {'id': T2, 'name': 'Seniors', 'category': 'Seniors', 'players': 9, 'status': 'complet', 'slots_hidden': False},
+  'teams': [{'id': T1, 'name': 'U11 mixte', 'category': 'U11', 'players': 12, 'status': 'recrute', 'slots_hidden': False, 'fee': 120},
+            {'id': T2, 'name': 'Seniors', 'category': 'Seniors', 'players': 9, 'status': 'complet', 'slots_hidden': False, 'fee': 180},
             {'id': T3, 'name': 'Loisirs', 'category': 'Loisirs', 'players': 7, 'status': 'recrute', 'slots_hidden': True}],
   'slots': [{'team': T1, 'day': 3, 'start': '14:00', 'min': 90, 'gym': 'Gymnase du Parc'}, {'team': T2, 'day': 5, 'start': '20:30', 'min': 120, 'gym': 'Salle Jean Moulin'},
             {'team': T1, 'day': 6, 'start': '10:00', 'min': 60, 'gym': 'Gymnase du Parc'}],
@@ -43,7 +43,7 @@ export function createClient(){
   return {
     auth: { getSession: () => q({ data: { session: null } }), onAuthStateChange(){ return { data: { subscription: { unsubscribe(){} } } }; } },
     rpc(fn, args){ st.calls.push([fn, args]);
-      if (fn === 'vitrine_public') { if (args.p_slug !== DATA.slug) return q({ data: null, error: null }); const d = JSON.parse(JSON.stringify(DATA)); if (window.__EDIT) { d.can_edit = true; d.logged = true; d.results = []; } return q({ data: d, error: null }); }
+      if (fn === 'vitrine_public') { if (args.p_slug !== DATA.slug) return q({ data: null, error: null }); const d = JSON.parse(JSON.stringify(DATA)); if (window.__LOGO) { d.club.logo = window.__LOGO; d.club.crest_bg = '#FFFFFF'; d.club.color1 = '#123A7A'; d.club.mpc = false; } if (window.__EDIT) { d.can_edit = true; d.logged = true; d.results = []; } return q({ data: d, error: null }); }
       if (fn === 'vitrine_save') return q({ data: {}, error: null });
       return q({ data: null, error: { message: 'inconnu' } }); },
     functions: { invoke(name, o){ st.calls.push([name, o.body]); return q({ data: { envoye: true }, error: null }); } },
@@ -66,6 +66,11 @@ with sync_playwright() as p:
         pg.on('console', lambda m: errors.append(m.text) if m.type == 'error' and '404' not in m.text else None)
         pg.goto('http://127.0.0.1:8766/bc-tilleuls-91')
         pg.wait_for_selector('.vhd', timeout=8000)
+        # bêta 1.9.1 : avec un logo, le blason est dans l'écusson, comme sur la convocation
+        pg2 = ctx.new_page(); pg2.add_init_script("window.__LOGO = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 10 10%22%3E%3Ccircle cx=%225%22 cy=%225%22 r=%225%22/%3E%3C/svg%3E'")
+        pg2.goto('http://127.0.0.1:8766/bc-tilleuls-91'); pg2.wait_for_selector('.vhd', timeout=8000)
+        check(f'{tag} · logo du club dans l’écusson (forme de la convocation, contour)', pg2.locator('.vecu img').count() == 1 and 'polygon' in pg2.evaluate("getComputedStyle(document.querySelector('.vecu')).clipPath") and pg2.locator('.vblason').count() == 0)
+        pg2.close()
         t = pg.inner_text('#vit')
         check(f'{tag} · adresse /nom-du-club servie par 404.html : nom du club', 'Basket Club des Tilleuls' in t)
         check(f'{tag} · chiffres', '28' in t and 'licenciés' in t)
@@ -83,6 +88,11 @@ with sync_playwright() as p:
             check('tél · liste par jour affichée, calendrier caché', pg.evaluate("getComputedStyle(document.querySelector('.cal')).display === 'none' && getComputedStyle(document.querySelector('.callist')).display !== 'none'"))
             check('tél · pas de défilement horizontal', pg.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"))
         OUT and pg.screenshot(path=os.path.join(OUT, f'vitrine-{tag}.png'), full_page=True)
+        # cotisation : prise équipe par équipe dans les tarifs, pas dans le texte saisi à la main
+        tf = pg.inner_text('#vit')  # la tuile « Cotisation » est ouverte d'office
+        check(f'{tag} · cotisation prise équipe par équipe', 'U11 mixte' in tf and '120 €' in tf and 'Seniors' in tf and '180 €' in tf and 'U7 à U11' not in tf)
+        check(f'{tag} · équipe sans tarif : pas de ligne Loisirs dans la cotisation', 'Loisirs' not in pg.inner_text('.carte.acc.on .det'))
+        check(f'{tag} · sans logo : ballon mpc, pas d’écusson', pg.locator('.vblason img').count() == 1 and pg.locator('.vecu').count() == 0)
         # accordéon
         pg.click('[data-a=acc][data-id=docs]'); pg.wait_for_timeout(100)
         check(f'{tag} · tuile « Pièces à fournir » dépliée', 'Certificat médical' in pg.inner_text('#vit'))

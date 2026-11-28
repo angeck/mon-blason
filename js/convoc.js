@@ -79,6 +79,7 @@ export function missing(d, step) {
   if (!d.club.logo) m.push('le logo du club (onglet Club → Blason)');
   m.push(...contactMissing(d));
   live.filter((x) => !x.coach).forEach((x) => m.push(`le coach de ${catOf(x)}`));
+  coachPending(d).forEach((x) => m.push(`le contact de ${x.coach.name || 'du coach'} (${catOf(x)}) : « Relancer le coach » ou « Envoyer avec le correspondant »`));
   live.filter((x) => !x.opponents).forEach((x) => m.push(`le club reçu pour ${catOf(x)} (champ Adversaire du rendez-vous)`));
   if (step === 'C') live.filter((x) => !String(x.place || '').trim()).forEach((x) => m.push(`le gymnase de ${catOf(x)}`));
   return m;
@@ -86,9 +87,12 @@ export function missing(d, step) {
 // bêta 1.8.0 · n° 300 : coachs des rencontres qui n'ont pas encore choisi leurs coordonnées (une seule fois, pour toutes les convocations).
 // bêta 1.8.2 · n° 306 : ils ne bloquent plus rien : la demande part toute seule (une relance 24 h après), et en attendant la convocation
 // renvoie au correspondant des rencontres (repli provisoire, définitif si le coach répond « rien »).
-export const coachPending = (d) => [...new Map((d.events || []).filter((x) => !x.cancelled && x.coach && x.coach.answered === false).map((x) => [x.coach.id || x.coach.name, x])).values()];
+// bêta 1.9.1 · n° 307 : trois états. Coordonnées → elles s'affichent ; refus explicite → correspondant, définitif ;
+// rien fait (ou tout décoché) → « Relancer le coach » ou « Envoyer avec le correspondant » : l'envoi et le PDF attendent ce choix.
+const coachWaits = (x) => !x.cancelled && x.coach && x.coach.answered === false && !x.coach.refused && !x.coach.skip;
+export const coachPending = (d) => [...new Map((d.events || []).filter(coachWaits).map((x) => [x.coach.id || x.coach.name, x])).values()];
 export const noPlace = (d) => d.events.filter((x) => !x.cancelled && !String(x.place || '').trim());
-export const blocking = (d, step) => (step === 'C' && noPlace(d).length > 0) || contactMissing(d).length > 0;
+export const blocking = (d, step) => (step === 'C' && noPlace(d).length > 0) || contactMissing(d).length > 0 || coachPending(d).length > 0;
 
 // Le document A4 (HTML imprimé en PDF par le téléphone ou l'ordinateur)
 export function convocHtml(d, step, now = new Date(), o = {}) {
@@ -165,13 +169,15 @@ async function reloadConvoc() {
   finally { v.loading = false; if (S.convoc === v && S.view?.type === 'convoc') render(true); }
 }
 const stamp = (iso) => new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
-// bêta 1.8.2 · n° 306 : le coach est prévenu tout seul (une demande, puis une seule relance 24 h après) ; rien ne bloque.
-// Plus de bouton « Notifier le coach » ni de case « sans les coordonnées du coach » (décision de Gaël, 26 novembre).
+// bêta 1.9.1 · n° 307 : pour chaque coach qui n'a rien fait, deux boutons ; la relance à la main : une fois par jour et par coach
+// (la demande automatique compte) ; la relance automatique à 24 h reste.
+const today = (iso) => !!iso && new Date(iso).toDateString() === new Date().toDateString();
 function coachAskCard(d) {
   const P = coachPending(d); if (!P.length) return '';
-  const st = (k) => (k.asks >= 2 ? `Demande envoyée le ${stamp(k.asked_at)}, relancé une fois` : k.asked_at ? `Demande envoyée le ${stamp(k.asked_at)} · une relance partira 24 h après` : 'Demande envoyée dès qu’un autre que lui prépare la convocation');
-  return `<div class="card flat coachask"><div class="kick">Coordonnées du coach</div><p class="note" style="margin:0">En attendant sa réponse, la convocation indique « contact : correspondant des rencontres ». Le coach choisit lui-même dans Mon compte ; s’il choisit « rien », ça reste ainsi.</p>
-  <div class="list">${P.map((x) => `<div class="row static"><span class="g">${esc(x.coach.name)} · ${esc(catOf(x))}<small>${esc(st(x.coach))}</small></span></div>`).join('')}</div>
+  const st = (k) => (k.last_at ? `Dernière demande le ${stamp(k.last_at)}${k.asks > 1 ? ` · ${k.asks} demandes` : ''}` : 'Pas encore demandé');
+  const evs = (x) => (d.events || []).filter((y) => coachWaits(y) && (y.coach.id || y.coach.name) === (x.coach.id || x.coach.name)).map((y) => y.id).join(',');
+  return `<div class="card warn coachask"><div class="kick">Coordonnées du coach</div><p class="note" style="margin:0">Ce coach n’a pas encore choisi ce que les clubs reçus verront de lui. Relance-le, ou envoie avec « contact : correspondant des rencontres ». L’envoi et le PDF attendent ce choix.</p>
+  <div class="list">${P.map((x) => `<div class="row static" style="flex-wrap:wrap;gap:8px"><span class="g">${esc(x.coach.name)} · ${esc(catOf(x))}<small>${esc(st(x.coach))}</small></span><span class="btns" style="margin:0">${x.coach.id ? (today(x.coach.last_at) ? '<button type="button" class="btn small ghost" disabled>Déjà demandé aujourd’hui</button>' : `<button type="button" class="btn small" data-act="convcoachremind" data-id="${esc(x.id)}" data-v="${esc(x.coach.id)}">Relancer le coach</button>`) : ''}${x.coach.id ? `<button type="button" class="btn small main" data-act="convcoachskip" data-id="${esc(evs(x))}" data-v="${esc(x.coach.id)}">Envoyer avec le correspondant</button>` : ''}</span></div>`).join('')}</div>
   <div class="btns"><button type="button" class="btn small ghost" data-act="convrefresh">Actualiser</button></div></div>`;
 }
 // bêta 1.8.2 · n° 304, 305 : compléter le gymnase des rencontres sans lieu, depuis la convocation (étape 2).
@@ -219,6 +225,8 @@ Object.assign(ACTIONS, {
   convoc: (el, d) => openConvoc(d.id, d.v),
   // 5.13.0 · n° 234 : aller compléter les coordonnées du contact (Mon compte), puis revenir à la convocation en cours
   convrefresh: () => reloadConvoc(),
+  convcoachremind: async (el, d) => { if (await run(sb.rpc('coach_contact_remind', { p_event: d.id, p_coach: d.v }), 'Coach relancé par notification.')) reloadConvoc(); }, // n° 307
+  convcoachskip: async (el, d) => { for (const id of String(d.id || '').split(',').filter(Boolean)) if (!(await run(sb.rpc('coach_contact_skip', { p_event: id, p_coach: d.v })))) return; toast('C’est noté : la convocation renvoie au correspondant des rencontres.'); reloadConvoc(); }, // n° 307
   // bêta 1.8.2 · n° 304, 305 : gymnase des rencontres
   convgymfocus: () => { const c = document.getElementById('convgym'); c?.scrollIntoView({ block: 'center', behavior: 'smooth' }); c?.querySelector('select,input')?.focus({ preventScroll: true }); },
   convplace: async (el, d) => {

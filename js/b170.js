@@ -80,15 +80,25 @@ hooks.coachContactCard = () => {
   const v = S.cc.v; if (!v) return '';
   const box = (k, ic, l, val) => `<label class="check"><input type="checkbox" data-ccset="${k}" ${v[k] ? 'checked' : ''}><span>${icon(ic, 18)} <b>${l}</b>${val ? ' · ' + esc(val) : ''}</span></label>`;
   const any = v.show_phone || v.show_sms || v.show_email;
+  // bêta 1.9.1 · n° 307 : refus explicite (définitif, sans relance) ; tout décocher sans refus = pas encore choisi
+  if (v.refused) return `<div class="card" id="ccard" data-anchor="contactconvoc"><div class="kick">Mon contact dans les convocations</div><p style="margin:0"><b>Tu as refusé de partager tes coordonnées.</b> La convocation donne ton nom et renvoie au correspondant des rencontres. Personne ne te relance.</p>
+  <div class="btns"><button type="button" class="btn small ghost" data-act="ccrefuse" data-v="0">Revenir sur mon refus</button></div></div>`;
   return `<div class="card" id="ccard" data-anchor="contactconvoc"><div class="kick">Mon contact dans les convocations</div><p class="note" style="margin:0">Rien n’est partagé tant que tu ne coches pas. Ton choix vaut pour toutes tes convocations ; tu peux le changer à tout moment.</p>
   ${box('show_phone', 'phone', 'Téléphone', S.me.phone || 'à ajouter dans « Mon profil »')}${box('show_sms', 'sms', 'SMS', S.me.phone || '')}${box('show_email', 'mail', 'E-mail', S.session?.user?.email || '')}
-  <p class="note" style="margin:0">${any ? 'La convocation envoyée aux clubs reçus donne ces coordonnées à côté de ton nom.' : 'Aujourd’hui : la convocation donne ton nom et renvoie au correspondant des rencontres.'}</p></div>`;
+  <p class="note" style="margin:0">${any ? 'La convocation envoyée aux clubs reçus donne ces coordonnées à côté de ton nom.' : 'Rien de coché : ton club attend ton choix pour envoyer ses convocations. Coche une case, ou refuse.'}</p>
+  ${any ? '' : '<div class="btns"><button type="button" class="btn small ghost" data-act="ccrefuse" data-v="1">Je refuse de partager mes coordonnées</button></div>'}</div>`;
+};
+ACTIONS.ccrefuse = async (el, d) => {
+  const on = d.v === '1';
+  if (await run(sb.rpc('set_coach_refuse', { p_club: S.clubId, p_on: on }), on ? 'C’est noté : la convocation renvoie au correspondant des rencontres.' : 'Refus retiré : choisis ce que tu partages.')) {
+    S.cc.v = { show_phone: false, show_sms: false, show_email: false, refused: on, answered: on }; render(true);
+  }
 };
 CHANGES.push(async (t) => {
   if (!t.dataset.ccset || !S.cc?.v) return false;
   const v = { ...S.cc.v, [t.dataset.ccset]: t.checked };
   if (await run(sb.rpc('set_coach_contact', { p_club: S.clubId, p_phone: !!v.show_phone, p_sms: !!v.show_sms, p_email: !!v.show_email }), 'Enregistré.')) {
-    S.cc.v = v; render(true);
+    S.cc.v = { ...v, refused: false, answered: !!(v.show_phone || v.show_sms || v.show_email) }; render(true);
     if ((v.show_phone || v.show_sms) && !S.me.phone) toast('Ajoute ton téléphone dans « Mon profil » pour qu’il apparaisse.');
   } else t.checked = !t.checked;
   return true;

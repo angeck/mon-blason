@@ -170,7 +170,7 @@ const RPC = {
   decide_coach_month: ({ p_statement, p_ok, p_comment }) => { const s = D.coach_statements.find((x) => x.id === p_statement); s.status = p_ok ? 'validated' : 'refused'; s.comment = p_comment; s.decided_by = ME; s.decided_at = new Date().toISOString(); return null; },
   convocation_data: ({ p_event }) => { const e = D.events.find((x) => x.id === p_event); const d = new Date(e.starts_at).toLocaleDateString('sv-SE');
     return { president: !!window.__CPRES, gyms: window.__CGYMS || [], gym_asked_at: window.__GYMASKED || null, club: { id: C, name: 'BC Testville', city: 'Testville', sport: 'Basket-ball', color1: '#C2410C', color2: '#FFD400', logo: null }, from: d, to: d, correspondent: window.__CORR !== undefined ? window.__CORR : { name: 'Rémi Contact', phone: '0600000009', email: 'remi@exemple.invalid' }, // 5.13.0 · n° 234 : contact complet par défaut
-      events: [{ id: e.id, type: e.type, title: e.title, starts_at: e.starts_at, place: e.place, opponents: e.opponents, cancelled: false, team: { name: 'U11', category: 'U11' }, coach: { name: 'Karim Coach', id: 'u-karim', phone: window.__COACHANS === false ? null : '0600000001', email: window.__COACHANS === false ? null : 'karim@exemple.invalid', answered: window.__COACHANS !== false, asked_at: window.__ASKED || null, asks: window.__ASKS || (window.__ASKED ? 1 : 0) } },
+      events: [{ id: e.id, type: e.type, title: e.title, starts_at: e.starts_at, place: e.place, opponents: e.opponents, cancelled: false, team: { name: 'U11', category: 'U11' }, coach: { name: 'Karim Coach', id: 'u-karim', phone: window.__COACHANS === false ? null : '0600000001', email: window.__COACHANS === false ? null : 'karim@exemple.invalid', answered: window.__COACHANS !== false, refused: !!window.__CREFUSE, skip: !!window.__CSKIP, asked_at: window.__ASKED || null, last_at: window.__ASKED || null, asks: window.__ASKS || (window.__ASKED ? 1 : 0) } },
         { id: 'x9', type: 'Plateau', title: 'Plateau U9', starts_at: e.starts_at, place: window.__X9PLACE || '', opponents: 'Étampes', cancelled: false, team: { name: 'U9', category: 'U9' }, coach: null }] }; },
   // bêta 1.9.0 · n° 311 : vitrine du club (président par défaut)
   vitrine_get: () => ({ exists: false, enabled: false, slug: null, suggest: 'bc-testville-91', season: '2026-2027', next_season: '2027-2028', next_teams: 0, seasons: ['2026-2027'], content: window.__VITC || {}, layout: {}, slots_hidden: [], team_status: {}, essai_to: null, ecrire_to: null, essai_real: ME, ecrire_real: ME, holders: [ME], president: true, encart: !!window.__VITENC, rentree_monday: '2026-09-07', remind_after: null, has_logo: false }),
@@ -200,9 +200,13 @@ const RPC = {
   end_player_loan: ({ p_player }) => { window.__LOANS = (window.__LOANS || []).filter((l) => l.player_id !== p_player); return null; },
   entente_group_fill: () => 2,
   event_reports_list: () => [],
-  my_coach_contact: () => ({ show_phone: false, show_sms: false, show_email: false, answered: window.__CCANS !== false }), // bêta 1.8.0 · n° 300
+  my_coach_contact: () => ({ show_phone: false, show_sms: false, show_email: false, refused: !!window.__CCREF, answered: window.__CCANS !== false }), // bêta 1.8.0 · n° 300
   active_theme: () => window.__FETE || null, // bêta 1.8.0 · n° 296
-  coach_contact_remind: () => new Date().toISOString(),
+  coach_contact_remind: () => { window.__ASKED = new Date().toISOString(); return window.__ASKED; },
+  coach_contact_skip: () => { window.__CSKIP = true; return null; }, // bêta 1.9.1 · n° 307
+  set_coach_refuse: () => null,
+  my_logo_requests: () => window.__LOGOREQ || [],
+  admin_logo_requests: () => window.__ADMLOGO || [],
   // bêta 1.8.2 · n° 304 à 306
   convocation_ask_coaches: () => 0,
   set_event_place: ({ p_event, p_name, p_address, p_save }) => { const pl = [p_name, p_address].filter(Boolean).join(', '); if (p_event === 'x9') window.__X9PLACE = pl; const e = D.events.find((x) => x.id === p_event); if (e) e.place = pl; window.__SETPLACE = { p_event, p_name, p_address, p_save }; return pl; },
